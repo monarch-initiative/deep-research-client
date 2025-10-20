@@ -1,0 +1,906 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/templates/">
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+    
+    
+      
+        <title>Template Support - deep-research-client</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../css/ansi-colours.css">
+    
+      <link rel="stylesheet" href="../css/jupyter-cells.css">
+    
+      <link rel="stylesheet" href="../css/pandas-dataframe.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#template-support" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deep-research-client
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Template Support
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deep-research-client
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#template-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Template Formats
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template Formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f-string-templates-legacy" class="md-nav__link">
+    <span class="md-ellipsis">
+      F-String Templates (Legacy)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jinja2-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Jinja2 Templates
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#format-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Format Detection
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Format Detection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-file-extension" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. File Extension
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-yaml-frontmatter" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. YAML Frontmatter
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-default-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Default Behavior
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-templates-with-the-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Templates with the CLI
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-templates-programmatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Templates Programmatically
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#template-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Template Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Template Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-1-simple-f-string-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 1: Simple F-String Template
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-2-jinja2-with-conditionals" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 2: Jinja2 with Conditionals
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-3-jinja2-with-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 3: Jinja2 with Loops
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-4-frontmatter-based-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example 4: Frontmatter-Based Format
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jinja2-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Jinja2 Features
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Jinja2 Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditionals" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conditionals
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Loops
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inline-conditionals" class="md-nav__link">
+    <span class="md-ellipsis">
+      Inline Conditionals
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metadata Tracking
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      Best Practices
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      Migration Guide
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#template-variables-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      Template Variables Not Found
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#jinja2-syntax-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Jinja2 Syntax Errors
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#format-not-detected" class="md-nav__link">
+    <span class="md-ellipsis">
+      Format Not Detected
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="template-support">Template Support</h1>
+<p>The deep-research-client supports both <strong>f-string</strong> style templates and <strong>Jinja2</strong> templates, allowing you to create flexible, reusable research queries.</p>
+<h2 id="template-formats">Template Formats</h2>
+<h3 id="f-string-templates-legacy">F-String Templates (Legacy)</h3>
+<p>F-string templates use simple <code>{variable}</code> placeholders:</p>
+<pre><code class="language-markdown">Research the {gene} gene in {organism}.
+</code></pre>
+<p>These templates are straightforward and work well for simple variable substitution.</p>
+<h3 id="jinja2-templates">Jinja2 Templates</h3>
+<p>Jinja2 templates offer advanced features including:
+- Conditional logic
+- Loops
+- Filters and transformations
+- Template inheritance</p>
+<p>Example with conditionals:</p>
+<pre><code class="language-jinja">Research the {{gene}} gene in {{organism}}.
+{% if detail_level == &quot;high&quot; %}
+Include detailed information about:
+- Molecular function
+- Biological processes
+- Known mutations
+{% else %}
+Provide a brief overview.
+{% endif %}
+</code></pre>
+<p>Example with loops:</p>
+<pre><code class="language-jinja">Research topics for {{gene}}:
+{% for topic in topics %}
+- {{topic}}
+{% endfor %}
+</code></pre>
+<h2 id="format-detection">Format Detection</h2>
+<p>The template format is automatically detected based on:</p>
+<h3 id="1-file-extension">1. File Extension</h3>
+<p>Files with these extensions are treated as Jinja2 templates:
+- <code>.j2</code>
+- <code>.jinja</code>
+- <code>.jinja2</code></p>
+<p>Examples:
+- <code>gene_research.md.j2</code> → Jinja2
+- <code>query.jinja</code> → Jinja2
+- <code>template.md</code> → F-string (default)</p>
+<h3 id="2-yaml-frontmatter">2. YAML Frontmatter</h3>
+<p>For <code>.md</code> files, you can specify the format in YAML frontmatter:</p>
+<pre><code class="language-markdown">---
+format: jinja
+description: Advanced gene research template
+---
+Research the {{gene}} gene{% if organism %} in {{organism}}{% endif %}.
+</code></pre>
+<p>Supported format values:
+- <code>jinja</code>, <code>jinja2</code> → Jinja2 format
+- <code>fstring</code>, <code>f-string</code>, <code>python</code> → F-string format</p>
+<h3 id="3-default-behavior">3. Default Behavior</h3>
+<p>If no extension or frontmatter indicates the format:
+- <strong>Default: F-string</strong> (for backward compatibility)</p>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="using-templates-with-the-cli">Using Templates with the CLI</h3>
+<pre><code class="language-bash"># F-string template
+deep-research-client research \
+  --template templates/gene_family.md \
+  --var family=HOX
+
+# Jinja2 template with file extension
+deep-research-client research \
+  --template templates/gene_jinja.md.j2 \
+  --var gene=BRCA1 \
+  --var organism=human \
+  --var detail_level=high
+
+# Jinja2 template with frontmatter
+deep-research-client research \
+  --template templates/gene_frontmatter.md \
+  --var gene=TP53 \
+  --var organism=mouse
+</code></pre>
+<h3 id="using-templates-programmatically">Using Templates Programmatically</h3>
+<pre><code class="language-python">from pathlib import Path
+from deep_research_client.processing import TemplateProcessor
+
+tp = TemplateProcessor()
+
+# Render an f-string template
+result = tp.render_template(
+    Path('templates/gene_family.md'),
+    {'family': 'HOX'}
+)
+
+# Render a Jinja2 template
+result = tp.render_template(
+    Path('templates/gene_jinja.md.j2'),
+    {
+        'gene': 'BRCA1',
+        'organism': 'human',
+        'detail_level': 'high'
+    }
+)
+
+# Process template with metadata
+rendered_query, metadata = tp.process_template(
+    Path('templates/gene_jinja.md.j2'),
+    {'gene': 'BRCA1', 'organism': 'human', 'detail_level': 'high'}
+)
+# metadata contains: template_file, template_variables, template_format
+</code></pre>
+<h2 id="template-examples">Template Examples</h2>
+<h3 id="example-1-simple-f-string-template">Example 1: Simple F-String Template</h3>
+<p><strong>File:</strong> <code>templates/simple_gene.md</code></p>
+<pre><code class="language-markdown">Research the {gene} gene in {organism}.
+</code></pre>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">deep-research-client research --template templates/simple_gene.md \
+  --var gene=TP53 --var organism=human
+</code></pre>
+<h3 id="example-2-jinja2-with-conditionals">Example 2: Jinja2 with Conditionals</h3>
+<p><strong>File:</strong> <code>templates/detailed_gene.md.j2</code></p>
+<pre><code class="language-jinja">Research the {{gene}} gene in {{organism}}.
+
+{% if include_mutations %}
+Focus on:
+- Known pathogenic mutations
+- Structural variants
+- Clinical significance
+{% endif %}
+
+{% if include_expression %}
+Include expression data:
+- Tissue specificity
+- Developmental stages
+- Disease states
+{% endif %}
+</code></pre>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-bash">deep-research-client research --template templates/detailed_gene.md.j2 \
+  --var gene=BRCA1 \
+  --var organism=human \
+  --var include_mutations=true \
+  --var include_expression=true
+</code></pre>
+<h3 id="example-3-jinja2-with-loops">Example 3: Jinja2 with Loops</h3>
+<p><strong>File:</strong> <code>templates/multi_topic.md.j2</code></p>
+<pre><code class="language-jinja">Comprehensive research on {{gene}}:
+
+{% for topic in topics %}
+## {{topic|title}}
+
+Provide detailed information about {{gene}} related to {{topic}}.
+
+{% endfor %}
+</code></pre>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-python">from pathlib import Path
+from deep_research_client.processing import TemplateProcessor
+
+tp = TemplateProcessor()
+result = tp.render_template(
+    Path('templates/multi_topic.md.j2'),
+    {
+        'gene': 'TP53',
+        'topics': ['function', 'expression', 'mutations', 'pathways']
+    }
+)
+</code></pre>
+<h3 id="example-4-frontmatter-based-format">Example 4: Frontmatter-Based Format</h3>
+<p><strong>File:</strong> <code>templates/frontmatter_example.md</code></p>
+<pre><code class="language-markdown">---
+format: jinja
+author: Research Team
+version: 1.0
+---
+# {{title}}
+
+Research question: {{question}}
+
+{% if background %}
+## Background
+{{background}}
+{% endif %}
+
+## Specific Questions
+{% for q in specific_questions %}
+{{loop.index}}. {{q}}
+{% endfor %}
+</code></pre>
+<h2 id="jinja2-features">Jinja2 Features</h2>
+<h3 id="filters">Filters</h3>
+<p>Jinja2 includes many built-in filters:</p>
+<pre><code class="language-jinja">Gene: {{gene|upper}}
+Organism: {{organism|capitalize}}
+Date: {{date|default('2024-01-01')}}
+</code></pre>
+<h3 id="conditionals">Conditionals</h3>
+<pre><code class="language-jinja">{% if condition %}
+  content when true
+{% elif other_condition %}
+  alternative content
+{% else %}
+  default content
+{% endif %}
+</code></pre>
+<h3 id="loops">Loops</h3>
+<pre><code class="language-jinja">{% for item in list %}
+  - {{item}}
+{% endfor %}
+
+{% for key, value in dict.items() %}
+  {{key}}: {{value}}
+{% endfor %}
+</code></pre>
+<h3 id="inline-conditionals">Inline Conditionals</h3>
+<pre><code class="language-jinja">Research {{gene}}{% if organism %} in {{organism}}{% endif %}.
+</code></pre>
+<h2 id="metadata-tracking">Metadata Tracking</h2>
+<p>When using templates, the output includes metadata about the template used:</p>
+<pre><code class="language-yaml">---
+provider: openai
+model: gpt-4
+template_file: templates/gene_jinja.md.j2
+template_format: jinja
+template_variables:
+  gene: BRCA1
+  organism: human
+  detail_level: high
+---
+</code></pre>
+<h2 id="best-practices">Best Practices</h2>
+<ol>
+<li><strong>Use file extensions</strong> for clarity (<code>.j2</code> for Jinja2 templates)</li>
+<li><strong>Add frontmatter</strong> to <code>.md</code> files when using Jinja2 features</li>
+<li><strong>Keep it simple</strong> - use f-strings for basic substitution</li>
+<li><strong>Use Jinja2</strong> when you need:</li>
+<li>Conditional content</li>
+<li>Loops over lists</li>
+<li>Filters and transformations</li>
+<li>Complex logic</li>
+<li><strong>Document your templates</strong> with frontmatter metadata</li>
+<li><strong>Test templates</strong> with various variable combinations</li>
+</ol>
+<h2 id="migration-guide">Migration Guide</h2>
+<p>If you have existing f-string templates:</p>
+<ol>
+<li><strong>No changes needed</strong> - they continue to work as-is</li>
+<li><strong>Optional upgrade</strong> - convert to <code>.md.j2</code> or add frontmatter if you want Jinja2 features</li>
+<li><strong>Gradual adoption</strong> - mix both formats in the same project</li>
+</ol>
+<p>Example migration:</p>
+<p><strong>Before (f-string):</strong></p>
+<pre><code class="language-markdown">Research {gene} in {organism}.
+</code></pre>
+<p><strong>After (Jinja2 with enhancements):</strong></p>
+<pre><code class="language-jinja">Research {{gene}}{% if organism %} in {{organism}}{% endif %}.
+
+{% if detail_level == &quot;comprehensive&quot; %}
+Include:
+- Molecular function
+- Disease associations
+- Expression patterns
+{% endif %}
+</code></pre>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="template-variables-not-found">Template Variables Not Found</h3>
+<p><strong>Error:</strong> <code>Missing template variables: gene, organism</code></p>
+<p><strong>Solution:</strong> Ensure all required variables are provided via <code>--var</code> flags or in the variables dictionary.</p>
+<h3 id="jinja2-syntax-errors">Jinja2 Syntax Errors</h3>
+<p><strong>Error:</strong> <code>TemplateSyntaxError: unexpected '}'</code></p>
+<p><strong>Solution:</strong> Check that Jinja2 templates use <code>{{variable}}</code> (double braces), not <code>{variable}</code> (single braces).</p>
+<h3 id="format-not-detected">Format Not Detected</h3>
+<p><strong>Issue:</strong> Template uses Jinja2 syntax but is parsed as f-string.</p>
+<p><strong>Solution:</strong>
+- Rename file with <code>.j2</code> extension, or
+- Add frontmatter with <code>format: jinja</code></p>
+<h2 id="reference">Reference</h2>
+<ul>
+<li><a href="https://jinja.palletsprojects.com/">Jinja2 Documentation</a></li>
+<li><a href="https://jinja.palletsprojects.com/en/3.1.x/templates/">Jinja2 Template Designer Documentation</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["content.tabs.link"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,30 @@
+---
+site_name: "deep-research-client"
+theme:
+  name: material
+  # palette:
+  #  scheme: slate
+  #  primary: cyan
+  features:
+    - content.tabs.link
+
+# for adding extra css/js see https://www.mkdocs.org/user-guide/customizing-your-theme/
+
+plugins:
+  - search
+  - mknotebooks:
+      execute: false
+  - mermaid2:
+      version: 11.4.1
+  
+#watch:
+#  - src/deep_research_client/schema
+
+nav:
+  - Home: index.md
+  
+exclude_docs: |
+  /templates-linkml/
+
+site_url: https://ai4curation.github.io/deep-research-client
+repo_url: https://github.com/ai4curation/deep-research-client

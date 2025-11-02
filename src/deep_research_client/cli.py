@@ -1,6 +1,7 @@
 """CLI interface for deep-research-client."""
 
 import logging
+import os
 import typer
 from pathlib import Path
 from typing import Optional, List
@@ -81,6 +82,9 @@ def research(
     template: Annotated[Optional[Path], typer.Option(help="Template file with {variable} placeholders")] = None,
     var: Annotated[Optional[List[str]], typer.Option(help="Template variable as 'key=value' (can be used multiple times)")] = None,
     param: Annotated[Optional[List[str]], typer.Option(help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
+    base_url: Annotated[Optional[str], typer.Option("--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
+    use_cborg: Annotated[bool, typer.Option("--use-cborg", help="Use CBORG proxy (Berkeley Lab's AI Portal at api.cborg.lbl.gov)")] = False,
+    api_key_env: Annotated[Optional[str], typer.Option("--api-key-env", help="Environment variable name to use for API key (e.g., 'CBORG_API_KEY')")] = None,
 ):
     """Perform deep research on a query.
 
@@ -103,6 +107,15 @@ def research(
 
       # Disable cache and specify custom cache directory
       deep-research-client research "Real-time data" --no-cache --cache-dir ./custom_cache
+
+      # Use CBORG proxy (requires CBORG_API_KEY environment variable)
+      deep-research-client research "Quantum computing advances" --use-cborg
+
+      # Use custom OpenAI-compatible endpoint
+      deep-research-client research "AI ethics" --base-url https://api.example.com --api-key-env CUSTOM_API_KEY
+
+      # Use CBORG with explicit API key environment variable
+      deep-research-client research "Climate models" --use-cborg --api-key-env MY_CBORG_KEY
     """
     from .models import CacheConfig
 
@@ -157,9 +170,54 @@ def research(
         cache_config.directory = str(cache_dir)
         logger.debug(f"Using custom cache directory: {cache_dir}")
 
+    # Handle proxy/endpoint configuration
+    proxy_base_url = None
+    proxy_api_key_env = api_key_env
+
+    # --use-cborg is a shortcut for CBORG configuration
+    if use_cborg:
+        if base_url:
+            typer.echo("⚠️  Warning: --use-cborg overrides --base-url", err=True)
+        proxy_base_url = "https://api.cborg.lbl.gov"
+        # Default to CBORG_API_KEY if no specific env var is provided
+        if not proxy_api_key_env:
+            proxy_api_key_env = "CBORG_API_KEY"
+        typer.echo(f"🔗 Using CBORG proxy at {proxy_base_url}")
+    elif base_url:
+        proxy_base_url = base_url
+        typer.echo(f"🔗 Using custom endpoint at {proxy_base_url}")
+
+    # Build provider configs if proxy settings are specified
+    provider_configs = None
+    if proxy_base_url or proxy_api_key_env:
+        from .models import ProviderConfig
+        provider_configs = {}
+
+        # Determine API key based on env var
+        api_key = None
+        if proxy_api_key_env:
+            api_key = os.getenv(proxy_api_key_env)
+            if not api_key:
+                typer.echo(f"❌ Environment variable {proxy_api_key_env} not set", err=True)
+                raise typer.Exit(1)
+        else:
+            # Use default provider env vars
+            if provider == "openai" or not provider:
+                api_key = os.getenv("OPENAI_API_KEY")
+
+        # Only configure the selected provider (or openai as default)
+        target_provider = provider or "openai"
+        if target_provider == "openai":
+            provider_configs["openai"] = ProviderConfig(
+                name="openai",
+                api_key=api_key,
+                base_url=proxy_base_url,
+                enabled=True
+            )
+
     # Initialize client
     logger.debug("Initializing DeepResearchClient")
-    client = DeepResearchClient(cache_config=cache_config)
+    client = DeepResearchClient(cache_config=cache_config, provider_configs=provider_configs)
 
     # Check if any providers are available
     available_providers = client.get_available_providers()

@@ -44,7 +44,17 @@ class OpenAIProvider(ResearchProvider):
             )
         )
 
-        client = OpenAI(api_key=self.config.api_key, http_client=http_client)
+        # Build OpenAI client kwargs
+        client_kwargs = {
+            "api_key": self.config.api_key,
+            "http_client": http_client
+        }
+
+        # Add base_url if configured (for proxies/OpenAI-compatible endpoints)
+        if self.config.base_url:
+            client_kwargs["base_url"] = self.config.base_url
+
+        client = OpenAI(**client_kwargs)
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT

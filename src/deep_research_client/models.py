@@ -33,6 +33,7 @@ class ProviderConfig(BaseModel):
 
     name: str = Field(..., description="Provider name")
     api_key: Optional[str] = Field(default=None, description="API key for the provider")
+    base_url: Optional[str] = Field(default=None, description="Custom base URL for API endpoint (e.g., proxy or OpenAI-compatible service)")
     enabled: bool = Field(default=True, description="Whether provider is enabled")
     timeout: int = Field(default=600, description="Request timeout in seconds")
     max_retries: int = Field(default=3, description="Maximum number of retries")

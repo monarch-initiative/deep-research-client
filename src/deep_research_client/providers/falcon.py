@@ -96,8 +96,6 @@ class FalconProvider(ResearchProvider):
 
         Citations are embedded in the formatted_answer text using various patterns.
         """
-        citations: List[str] = []
-
         # Extract inline citations from the formatted answer text
         # Look for PaperQA-style citations like (Author2020Title pages 6-8)
         paperqa_citations = re.findall(r'\(([a-z]+\d{4}[a-z\s]+pages?\s+[\d\-]+)\)', report_text, re.IGNORECASE)

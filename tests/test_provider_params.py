@@ -1,7 +1,6 @@
 """Tests for provider-specific parameters and harmonization."""
 
 import pytest
-from pydantic import ValidationError
 
 from deep_research_client.provider_params import (
     BaseProviderParams,

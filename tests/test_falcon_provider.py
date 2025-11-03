@@ -1,13 +1,10 @@
 """Tests for Falcon provider response handling."""
 
 import pytest
-from unittest.mock import Mock
 from datetime import datetime
-from uuid import uuid4
 
 from deep_research_client.providers.falcon import FalconProvider
 from deep_research_client.models import ProviderConfig
-from deep_research_client.provider_params import FalconParams
 
 
 def create_mock_pqa_response(

@@ -1,10 +1,9 @@
 """OpenAI Deep Research provider."""
 
-from typing import List, Optional, Any, Dict, cast
+from typing import List, Optional, Any, Dict
 
 import httpx
 from openai import OpenAI
-from openai.types.responses import WebSearchPreviewToolParam
 
 from . import ResearchProvider
 from ..models import ResearchResult, ProviderConfig
@@ -74,7 +73,7 @@ class OpenAIProvider(ResearchProvider):
             response = client.responses.create(
                 model=self.model,
                 input=input_messages,
-                tools=[cast(WebSearchPreviewToolParam, web_search_tool)],
+                tools=[web_search_tool],
             )
 
             # Extract the final report

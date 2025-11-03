@@ -4,6 +4,7 @@ import re
 from typing import List, Optional
 
 from futurehouse_client import FutureHouseClient, JobNames
+from futurehouse_client.models.app import PQATaskResponse
 
 from . import ResearchProvider
 from ..models import ResearchResult, ProviderConfig
@@ -62,104 +63,64 @@ class FalconProvider(ResearchProvider):
         )
 
     def _extract_text_content(self, response) -> str:
-        """Extract text content from Falcon response."""
-        report_text = None
+        """Extract text content from Falcon response.
 
+        Falcon returns PQATaskResponse objects with 'formatted_answer' (preferred)
+        and 'answer' fields.
+        """
         if isinstance(response, list) and len(response) > 0:
             # Get the first (and usually only) response
             task_response = response[0]
 
-            # Extract formatted_answer if available (preferred)
+            # For PQATaskResponse, prefer formatted_answer as it includes references
+            if isinstance(task_response, PQATaskResponse):
+                if task_response.formatted_answer:
+                    return task_response.formatted_answer
+                elif task_response.answer:
+                    return task_response.answer
+                else:
+                    raise ValueError(
+                        f"PQATaskResponse has no answer. Status: {task_response.status}, "
+                        f"has_successful_answer: {task_response.has_successful_answer}"
+                    )
+
+            # Fallback for other response types (backwards compatibility)
             if hasattr(task_response, 'formatted_answer') and task_response.formatted_answer:
-                report_text = task_response.formatted_answer
+                return task_response.formatted_answer
             elif hasattr(task_response, 'answer') and task_response.answer:
-                report_text = task_response.answer
+                return task_response.answer
             else:
-                # Fallback to string representation
-                report_text = str(task_response)
+                raise ValueError(f"Unexpected Falcon response type: {type(task_response)}")
 
-        elif hasattr(response, 'formatted_answer'):
-            report_text = response.formatted_answer
-        elif hasattr(response, 'answer'):
-            report_text = response.answer
-        elif hasattr(response, 'result'):
-            report_text = response.result
-        elif hasattr(response, 'content'):
-            report_text = response.content
-        elif isinstance(response, dict):
-            # Try various possible keys
-            if 'formatted_answer' in response:
-                report_text = response['formatted_answer']
-            elif 'answer' in response:
-                report_text = response['answer']
-            elif 'result' in response:
-                report_text = response['result']
-            elif 'content' in response:
-                report_text = response['content']
-            else:
-                report_text = str(response)
-        elif isinstance(response, str):
-            report_text = response
-        else:
-            report_text = str(response)
-
-        # Validate that we got meaningful content
-        if not report_text or len(report_text.strip()) < 100:
-            report_text = str(response)
-
-        return report_text or ""
+        raise ValueError(f"Unexpected Falcon response structure: {type(response)}")
 
     def _extract_citations(self, response, report_text: str) -> List[str]:
-        """Extract citations from Falcon response."""
+        """Extract citations from Falcon response.
+
+        Citations are embedded in the formatted_answer text using various patterns.
+        """
         citations = []
 
-        # Try to extract citations from the response object
-        task_response = None
-        if isinstance(response, list) and len(response) > 0:
-            task_response = response[0]
-        else:
-            task_response = response
+        # Extract inline citations from the formatted answer text
+        # Look for PaperQA-style citations like (Author2020Title pages 6-8)
+        paperqa_citations = re.findall(r'\(([a-z]+\d{4}[a-z\s]+pages?\s+[\d\-]+)\)', report_text, re.IGNORECASE)
 
-        # Try to extract citations from the response
-        if task_response and hasattr(task_response, 'sources'):
-            citations = task_response.sources
-        elif task_response and hasattr(task_response, 'citations'):
-            citations = task_response.citations
-        elif task_response and hasattr(task_response, 'references'):
-            citations = task_response.references
-        elif isinstance(task_response, dict):
-            if 'sources' in task_response:
-                citations = task_response['sources']
-            elif 'citations' in task_response:
-                citations = task_response['citations']
-            elif 'references' in task_response:
-                citations = task_response['references']
-
-        # Extract inline citations from the text using regex patterns
-        # Look for Falcon-style citations like (elsen2005ppsramultifaceted pages 6-8)
-        falcon_citations = re.findall(r'\(([^)]+pages?[^)]+)\)', report_text)
-
-        # Look for standard patterns like [PMID:12345678], [1], etc.
+        # Look for standard reference patterns like [PMID:12345678], [DOI:10.xxx], [1]
         standard_refs = re.findall(r'\[([^\]]+)\]', report_text)
 
+        # Look for URL citations
+        url_citations = re.findall(r'https?://[^\s\)]+', report_text)
+
         # Combine all citation sources
-        all_inline_citations = falcon_citations + standard_refs
+        all_citations = paperqa_citations + standard_refs + url_citations
 
-        if all_inline_citations and not citations:
-            citations = all_inline_citations
-        elif all_inline_citations and citations:
-            # Merge both sources
-            if isinstance(citations, list):
-                citations.extend(all_inline_citations)
-
-        # Convert to list of strings and remove duplicates
-        if citations:
-            # Remove duplicates while preserving order
+        # Remove duplicates while preserving order
+        if all_citations:
             seen = set()
             unique_citations = []
-            for citation in citations:
-                citation_str = str(citation)
-                if citation_str not in seen:
+            for citation in all_citations:
+                citation_str = str(citation).strip()
+                if citation_str and citation_str not in seen:
                     seen.add(citation_str)
                     unique_citations.append(citation_str)
             return unique_citations

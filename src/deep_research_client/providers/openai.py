@@ -62,10 +62,18 @@ class OpenAIProvider(ResearchProvider):
         })
 
         try:
+            # Configure web search tool with optional domain filtering
+            web_search_tool = {"type": "web_search_preview"}
+            if self.params.allowed_domains:
+                # Add domain filtering if specified
+                web_search_tool["filters"] = {
+                    "allowed_domains": self.params.allowed_domains
+                }
+
             response = client.responses.create(
                 model=self.model,
                 input=input_messages,
-                tools=[{"type": "web_search_preview"}],
+                tools=[web_search_tool],
             )
 
             # Extract the final report

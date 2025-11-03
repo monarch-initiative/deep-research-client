@@ -134,6 +134,83 @@ client = DeepResearchClient(
 )
 ```
 
+### Provider-Specific Parameters
+
+Each provider supports specific parameters for fine-tuning behavior. The library provides both **harmonized parameters** (work across all providers) and **provider-specific parameters** (native API options).
+
+#### Harmonized Parameters
+
+These parameters work consistently across all providers:
+
+- `allowed_domains`: Filter web search to specific domains (max 20)
+  ```python
+  client.research(
+      "What is CRISPR?",
+      provider="openai",
+      provider_params={"allowed_domains": ["wikipedia.org", "nih.gov"]}
+  )
+  ```
+
+#### OpenAI-Specific Parameters
+
+```python
+from deep_research_client.provider_params import OpenAIParams
+
+params = OpenAIParams(
+    allowed_domains=["pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"],
+    temperature=0.2,
+    max_tokens=4000,
+    top_p=0.95
+)
+
+result = client.research("Cancer immunotherapy research", provider="openai", provider_params=params)
+```
+
+#### Perplexity-Specific Parameters
+
+Perplexity supports both the harmonized `allowed_domains` and its native `search_domain_filter` (which supports deny-lists):
+
+```python
+from deep_research_client.provider_params import PerplexityParams
+
+# Using harmonized parameter
+params = PerplexityParams(
+    allowed_domains=["wikipedia.org", "github.com"],  # Allowlist only
+    reasoning_effort="high",
+    search_recency_filter="month"
+)
+
+# Or using Perplexity's native parameter for more control
+params = PerplexityParams(
+    search_domain_filter=[
+        "github.com",           # Allow
+        "stackoverflow.com",    # Allow
+        "-reddit.com",          # Deny (prefix with -)
+        "-quora.com"            # Deny
+    ],
+    reasoning_effort="high"
+)
+
+result = client.research("Python best practices", provider="perplexity", provider_params=params)
+```
+
+#### Falcon-Specific Parameters
+
+```python
+from deep_research_client.provider_params import FalconParams
+
+params = FalconParams(
+    temperature=0.1,
+    max_tokens=8000
+)
+
+result = client.research("Protein folding mechanisms", provider="falcon", provider_params=params)
+```
+
+#### CLI Usage with Provider Parameters
+
+Currently, provider-specific parameters are primarily accessible via the Python API. For CLI usage, use default parameters or create custom wrapper scripts.
+
 ## Caching
 
 The client uses intelligent file-based caching to avoid expensive re-queries:

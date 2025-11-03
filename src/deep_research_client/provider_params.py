@@ -1,6 +1,6 @@
 """Provider-specific parameter models using Pydantic for validation."""
 
-from typing import Optional, Literal, List, Type
+from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
@@ -79,7 +79,7 @@ class PerplexityParams(BaseProviderParams):
         use allowed_domains as search_domain_filter.
         """
         if self.allowed_domains and not self.search_domain_filter:
-            self.search_domain_filter = self.allowed_domains.copy()
+            self.search_domain_filter = self.allowed_domains
         return self
 
 
@@ -201,7 +201,7 @@ def get_provider_params_class(provider_name: str) -> type[BaseProviderParams]:
 def create_provider_params(
     provider_name: str,
     model: Optional[str] = None,
-    provider_params: Optional[dict] = None
+    provider_params: Optional[Dict[str, Any]] = None
 ) -> BaseProviderParams:
     """Create and validate provider parameters.
 
@@ -219,7 +219,7 @@ def create_provider_params(
     params_class = get_provider_params_class(provider_name)
 
     # Prepare parameter data
-    param_data = {}
+    param_data: Dict[str, Any] = {}
     if model:
         param_data["model"] = model
     if provider_params:

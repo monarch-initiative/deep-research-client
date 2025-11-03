@@ -68,38 +68,35 @@ class FalconProvider(ResearchProvider):
         Falcon returns PQATaskResponse objects with 'formatted_answer' (preferred)
         and 'answer' fields.
         """
-        if isinstance(response, list) and len(response) > 0:
-            # Get the first (and usually only) response
-            task_response = response[0]
+        if not isinstance(response, list) or len(response) == 0:
+            raise ValueError(f"Unexpected Falcon response structure: {type(response)}")
 
-            # For PQATaskResponse, prefer formatted_answer as it includes references
-            if isinstance(task_response, PQATaskResponse):
-                if task_response.formatted_answer:
-                    return task_response.formatted_answer
-                elif task_response.answer:
-                    return task_response.answer
-                else:
-                    raise ValueError(
-                        f"PQATaskResponse has no answer. Status: {task_response.status}, "
-                        f"has_successful_answer: {task_response.has_successful_answer}"
-                    )
+        task_response = response[0]
 
-            # Fallback for other response types (backwards compatibility)
-            if hasattr(task_response, 'formatted_answer') and task_response.formatted_answer:
-                return task_response.formatted_answer
-            elif hasattr(task_response, 'answer') and task_response.answer:
-                return task_response.answer
-            else:
-                raise ValueError(f"Unexpected Falcon response type: {type(task_response)}")
+        # Falcon always returns PQATaskResponse - fail fast if it doesn't
+        if not isinstance(task_response, PQATaskResponse):
+            raise ValueError(
+                f"Expected PQATaskResponse, got {type(task_response)}. "
+                f"This indicates an API change in futurehouse-client."
+            )
 
-        raise ValueError(f"Unexpected Falcon response structure: {type(response)}")
+        # Prefer formatted_answer as it includes references
+        if task_response.formatted_answer:
+            return task_response.formatted_answer
+        elif task_response.answer:
+            return task_response.answer
+        else:
+            raise ValueError(
+                f"PQATaskResponse has no answer. Status: {task_response.status}, "
+                f"has_successful_answer: {task_response.has_successful_answer}"
+            )
 
     def _extract_citations(self, response, report_text: str) -> List[str]:
         """Extract citations from Falcon response.
 
         Citations are embedded in the formatted_answer text using various patterns.
         """
-        citations = []
+        citations: List[str] = []
 
         # Extract inline citations from the formatted answer text
         # Look for PaperQA-style citations like (Author2020Title pages 6-8)

@@ -662,7 +662,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=23.0.0" },
-    { name = "futurehouse-client", specifier = ">=0.4.1" },
+    { name = "futurehouse-client", specifier = ">=0.4.1,<0.7.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "openai", specifier = ">=1.101.0" },

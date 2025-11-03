@@ -1,7 +1,7 @@
 """Provider-specific parameter models using Pydantic for validation."""
 
-from typing import Optional, Literal, List, Type
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, Literal, List, Type, Any, Dict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class BaseProviderParams(BaseModel):
@@ -12,6 +12,15 @@ class BaseProviderParams(BaseModel):
         default=None,
         description="Custom system prompt to override the default research prompt"
     )
+    allowed_domains: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Harmonized parameter: Filter web search to specific domains (max 20). "
+            "Only include results from these domains. "
+            "Example: ['wikipedia.org', 'github.com']. "
+            "Use domain names without protocols (http/https)."
+        )
+    )
 
     model_config = ConfigDict(
         extra="forbid",  # Reject unknown fields
@@ -20,7 +29,13 @@ class BaseProviderParams(BaseModel):
 
 
 class PerplexityParams(BaseProviderParams):
-    """Parameters specific to Perplexity AI provider."""
+    """Parameters specific to Perplexity AI provider.
+
+    Note: Both `allowed_domains` (harmonized) and `search_domain_filter` (Perplexity-specific)
+    are supported. If `allowed_domains` is provided and `search_domain_filter` is empty,
+    `allowed_domains` will be used. The Perplexity-specific `search_domain_filter` supports
+    both allowlist and denylist (prefix with '-' to exclude).
+    """
 
     reasoning_effort: Literal["low", "medium", "high"] = Field(
         default="medium",
@@ -33,14 +48,16 @@ class PerplexityParams(BaseProviderParams):
     search_domain_filter: List[str] = Field(
         default_factory=list,
         description=(
-            "Filter search results by domains or URLs. Supports allowlist (include) and "
-            "denylist (exclude) modes. Maximum 20 domains/URLs per request.\n"
+            "Provider-specific alias: Filter search results by domains or URLs. "
+            "Supports allowlist (include) and denylist (exclude) modes. "
+            "Maximum 20 domains/URLs per request.\n"
             "Examples:\n"
             "  Allowlist: ['wikipedia.org', 'github.com'] - only these domains\n"
             "  Denylist: ['-reddit.com', '-quora.com'] - exclude these domains\n"
             "  Mixed: ['github.com', 'stackoverflow.com', '-reddit.com']\n"
             "Can use domain names (e.g., 'wikipedia.org') or specific URLs.\n"
-            "Use simple domain names without protocols (http/https)."
+            "Use simple domain names without protocols (http/https).\n"
+            "Note: You can also use the harmonized `allowed_domains` parameter instead."
         )
     )
     return_citations: bool = Field(
@@ -54,9 +71,24 @@ class PerplexityParams(BaseProviderParams):
         description="Temperature for response generation"
     )
 
+    @model_validator(mode='after')
+    def sync_domain_filters(self):
+        """Sync allowed_domains with search_domain_filter.
+
+        If allowed_domains is provided but search_domain_filter is empty,
+        use allowed_domains as search_domain_filter.
+        """
+        if self.allowed_domains and not self.search_domain_filter:
+            self.search_domain_filter = self.allowed_domains
+        return self
+
 
 class OpenAIParams(BaseProviderParams):
-    """Parameters specific to OpenAI provider."""
+    """Parameters specific to OpenAI provider.
+
+    Supports the harmonized `allowed_domains` parameter (inherited from BaseProviderParams)
+    to filter web search results to specific domains (max 20).
+    """
 
     temperature: float = Field(
         default=0.1,
@@ -169,7 +201,7 @@ def get_provider_params_class(provider_name: str) -> type[BaseProviderParams]:
 def create_provider_params(
     provider_name: str,
     model: Optional[str] = None,
-    provider_params: Optional[dict] = None
+    provider_params: Optional[Dict[str, Any]] = None
 ) -> BaseProviderParams:
     """Create and validate provider parameters.
 
@@ -187,7 +219,7 @@ def create_provider_params(
     params_class = get_provider_params_class(provider_name)
 
     # Prepare parameter data
-    param_data = {}
+    param_data: Dict[str, Any] = {}
     if model:
         param_data["model"] = model
     if provider_params:

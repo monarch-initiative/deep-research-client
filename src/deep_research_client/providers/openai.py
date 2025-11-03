@@ -1,9 +1,10 @@
 """OpenAI Deep Research provider."""
 
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict, cast
 
 import httpx
 from openai import OpenAI
+from openai.types.responses import WebSearchPreviewToolParam
 
 from . import ResearchProvider
 from ..models import ResearchResult, ProviderConfig
@@ -62,10 +63,18 @@ class OpenAIProvider(ResearchProvider):
         })
 
         try:
+            # Configure web search tool with optional domain filtering
+            web_search_tool: Dict[str, Any] = {"type": "web_search_preview"}
+            if self.params.allowed_domains:
+                # Add domain filtering if specified
+                web_search_tool["filters"] = {
+                    "allowed_domains": self.params.allowed_domains
+                }
+
             response = client.responses.create(
                 model=self.model,
                 input=input_messages,
-                tools=[{"type": "web_search_preview"}],
+                tools=[cast(WebSearchPreviewToolParam, web_search_tool)],
             )
 
             # Extract the final report

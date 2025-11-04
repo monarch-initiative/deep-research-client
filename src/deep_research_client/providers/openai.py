@@ -46,7 +46,7 @@ class OpenAIProvider(ResearchProvider):
         )
 
         # Build OpenAI client kwargs
-        client_kwargs = {
+        client_kwargs: Dict[str, Any] = {
             "api_key": self.config.api_key,
             "http_client": http_client
         }

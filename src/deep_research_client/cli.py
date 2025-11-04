@@ -177,15 +177,15 @@ def research(
     # --use-cborg is a shortcut for CBORG configuration
     if use_cborg:
         if base_url:
-            typer.echo("⚠️  Warning: --use-cborg overrides --base-url", err=True)
+            logger.warning("--use-cborg overrides --base-url")
         proxy_base_url = "https://api.cborg.lbl.gov"
         # Default to CBORG_API_KEY if no specific env var is provided
         if not proxy_api_key_env:
             proxy_api_key_env = "CBORG_API_KEY"
-        typer.echo(f"🔗 Using CBORG proxy at {proxy_base_url}")
+        logger.info(f"Using CBORG proxy at {proxy_base_url}")
     elif base_url:
         proxy_base_url = base_url
-        typer.echo(f"🔗 Using custom endpoint at {proxy_base_url}")
+        logger.info(f"Using custom endpoint at {proxy_base_url}")
 
     # Build provider configs if proxy settings are specified
     provider_configs = None
@@ -198,8 +198,9 @@ def research(
         if proxy_api_key_env:
             api_key = os.getenv(proxy_api_key_env)
             if not api_key:
-                typer.echo(f"❌ Environment variable {proxy_api_key_env} not set", err=True)
+                logger.error(f"Environment variable {proxy_api_key_env} not set")
                 raise typer.Exit(1)
+            logger.debug(f"Using API key from {proxy_api_key_env}")
         else:
             # Use default provider env vars
             if provider == "openai" or not provider:

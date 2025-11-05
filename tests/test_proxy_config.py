@@ -1,6 +1,5 @@
 """Tests for proxy configuration."""
 
-import pytest
 from deep_research_client.models import ProviderConfig
 from deep_research_client.providers.openai import OpenAIProvider
 

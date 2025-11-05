@@ -211,6 +211,136 @@ result = client.research("Protein folding mechanisms", provider="falcon", provid
 
 Currently, provider-specific parameters are primarily accessible via the Python API. For CLI usage, use default parameters or create custom wrapper scripts.
 
+## Using Proxies and OpenAI-Compatible Endpoints
+
+The client supports using proxy services and OpenAI-compatible endpoints, enabling you to route requests through institutional proxies like CBORG, or use alternative services like Azure OpenAI, LiteLLM, or OpenRouter.
+
+### CBORG (Berkeley Lab's AI Portal)
+
+CBORG provides an OpenAI-compatible proxy for institutional access with cost management and tracking.
+
+```bash
+# Set up CBORG API key
+export CBORG_API_KEY="your-cborg-key"
+
+# Use CBORG proxy with convenient shortcut
+deep-research-client research "Quantum computing advances" --use-cborg
+
+# Run without installation using uvx
+uvx deep-research-client research "AI ethics" --use-cborg
+```
+
+The `--use-cborg` flag automatically:
+- Sets the base URL to `https://api.cborg.lbl.gov`
+- Uses the `CBORG_API_KEY` environment variable
+- Maintains compatibility with all OpenAI models
+
+### Custom OpenAI-Compatible Endpoints
+
+Use any OpenAI-compatible service with `--base-url`:
+
+```bash
+# Azure OpenAI
+deep-research-client research "AI trends" \
+  --base-url https://your-resource.openai.azure.com \
+  --api-key-env AZURE_OPENAI_KEY
+
+# LiteLLM proxy (local or hosted)
+deep-research-client research "ML developments" \
+  --base-url http://localhost:4000 \
+  --api-key-env LITELLM_API_KEY
+
+# OpenRouter
+deep-research-client research "Technology review" \
+  --base-url https://openrouter.ai/api/v1 \
+  --api-key-env OPENROUTER_API_KEY
+
+# Custom proxy with default OPENAI_API_KEY
+deep-research-client research "Research query" \
+  --base-url https://api.example.com
+```
+
+### Proxy Configuration Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `--use-cborg` | Use CBORG proxy (shortcut) | `--use-cborg` |
+| `--base-url <url>` | Custom API endpoint URL | `--base-url https://api.example.com` |
+| `--api-key-env <name>` | Environment variable for API key | `--api-key-env CBORG_API_KEY` |
+
+### Python API with Proxies
+
+```python
+import os
+from deep_research_client import DeepResearchClient, ProviderConfig
+
+# CBORG configuration
+cborg_config = {
+    "openai": ProviderConfig(
+        name="openai",
+        api_key=os.getenv("CBORG_API_KEY"),
+        base_url="https://api.cborg.lbl.gov",
+        enabled=True
+    )
+}
+
+client = DeepResearchClient(provider_configs=cborg_config)
+result = client.research("Latest AI developments")
+
+# Custom endpoint (e.g., Azure OpenAI)
+azure_config = {
+    "openai": ProviderConfig(
+        name="openai",
+        api_key=os.getenv("AZURE_OPENAI_KEY"),
+        base_url="https://your-resource.openai.azure.com",
+        enabled=True
+    )
+}
+
+client = DeepResearchClient(provider_configs=azure_config)
+result = client.research("AI ethics research")
+```
+
+### Common Proxy Use Cases
+
+**Institutional Access (CBORG)**
+```bash
+# Keep personal OpenAI key for direct access
+export OPENAI_API_KEY="sk-personal-key"
+
+# Use CBORG for institutional billing
+export CBORG_API_KEY="cborg-institutional-key"
+deep-research-client research "Scientific topic" --use-cborg
+```
+
+**LiteLLM Multi-Provider Gateway**
+```bash
+# Run LiteLLM proxy locally
+litellm --port 4000
+
+# Use it with deep-research-client
+export LITELLM_API_KEY="your-key"
+deep-research-client research "Research query" \
+  --base-url http://localhost:4000 \
+  --api-key-env LITELLM_API_KEY
+```
+
+**Azure OpenAI Deployment**
+```bash
+export AZURE_OPENAI_KEY="your-azure-key"
+deep-research-client research "Enterprise research" \
+  --base-url https://your-resource.openai.azure.com \
+  --api-key-env AZURE_OPENAI_KEY
+```
+
+### Benefits of Proxy Usage
+
+- **Institutional Billing**: Route through services like CBORG for cost management
+- **Compliance**: Meet data residency and privacy requirements
+- **Multi-Provider**: Use LiteLLM to access multiple LLM providers through one interface
+- **Fallback**: Implement automatic provider fallback for reliability
+- **Cost Control**: Add budget limits and rate limiting through gateway services
+
 ## Caching
 
 The client uses intelligent file-based caching to avoid expensive re-queries:

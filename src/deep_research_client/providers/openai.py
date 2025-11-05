@@ -1,5 +1,6 @@
 """OpenAI Deep Research provider."""
 
+import logging
 from typing import List, Optional, Any, Dict, cast
 
 import httpx
@@ -12,6 +13,8 @@ from ..provider_params import OpenAIParams
 from ..model_cards import ProviderModelCards, create_openai_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAIProvider(ResearchProvider):
     """Provider for OpenAI Deep Research API."""
@@ -20,6 +23,19 @@ class OpenAIProvider(ResearchProvider):
         """Initialize OpenAI provider."""
         self.params = params or OpenAIParams()
         super().__init__(config, self.params.model)
+
+        # Log initialization details
+        logger.debug(f"Initializing OpenAI provider with model: {self.model}")
+        if config.base_url:
+            logger.info(f"OpenAI provider configured with custom endpoint: {config.base_url}")
+        else:
+            logger.debug("OpenAI provider using default endpoint (api.openai.com)")
+
+        # Log API key presence (not the actual key!)
+        if config.api_key:
+            # Show first 8 chars to help identify which key is being used
+            key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
+            logger.debug(f"API key configured (starts with: {key_preview})")
 
     def get_default_model(self) -> str:
         """Get default OpenAI model."""
@@ -32,6 +48,9 @@ class OpenAIProvider(ResearchProvider):
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using OpenAI Deep Research API."""
+        logger.info(f"Starting OpenAI research query (model: {self.model})")
+        logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
+
         if not self.is_available():
             raise ValueError(f"OpenAI provider not available (API key: {bool(self.config.api_key)})")
 
@@ -44,8 +63,20 @@ class OpenAIProvider(ResearchProvider):
                 pool=30.0,
             )
         )
+        logger.debug(f"HTTP client configured with timeout: {self.config.timeout}s")
 
-        client = OpenAI(api_key=self.config.api_key, http_client=http_client)
+        # Build OpenAI client kwargs
+        client_kwargs: Dict[str, Any] = {
+            "api_key": self.config.api_key,
+            "http_client": http_client
+        }
+
+        # Add base_url if configured (for proxies/OpenAI-compatible endpoints)
+        if self.config.base_url:
+            client_kwargs["base_url"] = self.config.base_url
+            logger.info(f"Using custom endpoint: {self.config.base_url}")
+
+        client = OpenAI(**client_kwargs)
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
@@ -70,19 +101,27 @@ class OpenAIProvider(ResearchProvider):
                 web_search_tool["filters"] = {
                     "allowed_domains": self.params.allowed_domains
                 }
+                logger.info(f"Domain filtering enabled: {len(self.params.allowed_domains)} domains")
+                logger.debug(f"Allowed domains: {', '.join(self.params.allowed_domains)}")
 
+            logger.debug(f"Making API request to OpenAI (model: {self.model})")
             response = client.responses.create(
                 model=self.model,
                 input=input_messages,
                 tools=[cast(WebSearchPreviewToolParam, web_search_tool)],
             )
+            logger.info("OpenAI API request completed successfully")
 
             # Extract the final report
             final_output = response.output[-1]
             markdown_content = self._extract_text_content(final_output)
+            logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
 
             # Extract citations
             citations = self._extract_citations(final_output)
+            logger.info(f"Extracted {len(citations)} citations from response")
+            if citations:
+                logger.debug(f"Citation sources: {citations[:3]}{'...' if len(citations) > 3 else ''}")
 
             return ResearchResult(
                 markdown=markdown_content,
@@ -91,8 +130,13 @@ class OpenAIProvider(ResearchProvider):
                 query=query
             )
 
+        except Exception as e:
+            logger.error(f"OpenAI API request failed: {e}")
+            logger.debug("Error details:", exc_info=True)
+            raise
         finally:
             http_client.close()
+            logger.debug("HTTP client closed")
 
     def _extract_text_content(self, output) -> str:
         """Extract text content from OpenAI response output."""

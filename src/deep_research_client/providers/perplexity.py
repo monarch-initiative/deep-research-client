@@ -1,5 +1,6 @@
 """Perplexity AI provider."""
 
+import logging
 import re
 from typing import List, Optional, Dict, Any
 
@@ -10,6 +11,8 @@ from ..models import ResearchResult, ProviderConfig
 from ..provider_params import PerplexityParams
 from ..model_cards import ProviderModelCards, create_perplexity_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 class PerplexityProvider(ResearchProvider):
@@ -26,6 +29,11 @@ class PerplexityProvider(ResearchProvider):
         super().__init__(config, self.params.model)
         self.api_url = "https://api.perplexity.ai/chat/completions"
 
+        logger.debug(f"Initializing Perplexity provider with model: {self.model}")
+        if config.api_key:
+            key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
+            logger.debug(f"API key configured (starts with: {key_preview})")
+
     def get_default_model(self) -> str:
         """Get default Perplexity model."""
         return "sonar-deep-research"
@@ -37,6 +45,9 @@ class PerplexityProvider(ResearchProvider):
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Perplexity AI API."""
+        logger.info(f"Starting Perplexity research query (model: {self.model})")
+        logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
+
         if not self.is_available():
             raise ValueError(f"Perplexity provider not available (API key: {bool(self.config.api_key)})")
 
@@ -56,12 +67,16 @@ class PerplexityProvider(ResearchProvider):
         # Add Perplexity-specific parameters
         if self.params.reasoning_effort != "medium":
             payload["reasoning_effort"] = self.params.reasoning_effort
+            logger.debug(f"Reasoning effort: {self.params.reasoning_effort}")
 
         if self.params.search_recency_filter:
             payload["search_recency_filter"] = self.params.search_recency_filter
+            logger.debug(f"Search recency filter: {self.params.search_recency_filter}")
 
         if self.params.search_domain_filter:
             payload["search_domain_filter"] = self.params.search_domain_filter
+            logger.info(f"Domain filtering enabled: {len(self.params.search_domain_filter)} domains")
+            logger.debug(f"Domain filter: {', '.join(self.params.search_domain_filter)}")
 
         # Always pass return_citations since it affects response format
         payload["return_citations"] = self.params.return_citations
@@ -73,6 +88,7 @@ class PerplexityProvider(ResearchProvider):
         }
 
         try:
+            logger.debug(f"Making API request to Perplexity (model: {self.model})")
             async with httpx.AsyncClient(timeout=self.config.timeout) as client:
                 response = await client.post(
                     self.api_url,
@@ -83,14 +99,18 @@ class PerplexityProvider(ResearchProvider):
 
                 data = response.json()
 
+            logger.info("Perplexity API request completed successfully")
+
             # Extract the response content
             if "choices" in data and data["choices"] and "message" in data["choices"][0]:
                 markdown_content = data["choices"][0]["message"].get("content", "")
+                logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
             else:
                 raise ValueError("No response content received from Perplexity")
 
             # Extract citations from the response (both from content and metadata)
             citations = self._extract_citations(markdown_content, data)
+            logger.info(f"Extracted {len(citations)} citations from response")
 
             return ResearchResult(
                 markdown=markdown_content,
@@ -100,8 +120,12 @@ class PerplexityProvider(ResearchProvider):
             )
 
         except httpx.HTTPStatusError as e:
+            logger.error(f"Perplexity API HTTP error: {e.response.status_code}")
+            logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Perplexity API HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
+            logger.error(f"Perplexity API request failed: {e}")
+            logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Perplexity API error: {e}")
 
     def _extract_citations(self, content: str, response_data: Optional[Dict[str, Any]] = None) -> List[str]:

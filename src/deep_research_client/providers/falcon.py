@@ -1,5 +1,6 @@
 """FutureHouse Falcon provider."""
 
+import logging
 import re
 from typing import List, Optional
 
@@ -12,6 +13,8 @@ from ..provider_params import FalconParams
 from ..model_cards import ProviderModelCards, create_falcon_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
+logger = logging.getLogger(__name__)
+
 
 class FalconProvider(ResearchProvider):
     """Provider for FutureHouse Falcon API."""
@@ -20,6 +23,11 @@ class FalconProvider(ResearchProvider):
         """Initialize Falcon provider."""
         self.params = params or FalconParams()
         super().__init__(config, self.params.model)
+
+        logger.debug(f"Initializing Falcon provider with model: {self.model}")
+        if config.api_key:
+            key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
+            logger.debug(f"API key configured (starts with: {key_preview})")
 
     def get_default_model(self) -> str:
         """Get default Falcon model."""
@@ -32,6 +40,9 @@ class FalconProvider(ResearchProvider):
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using FutureHouse Falcon API."""
+        logger.info(f"Starting Falcon research query (model: {self.model})")
+        logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
+
         if not self.is_available():
             raise ValueError(f"Falcon provider not available (API key: {bool(self.config.api_key)})")
 
@@ -49,18 +60,28 @@ class FalconProvider(ResearchProvider):
             "query": full_query
         }
 
-        response = client.run_tasks_until_done(task_data)
+        try:
+            logger.debug("Making API request to Falcon")
+            response = client.run_tasks_until_done(task_data)
+            logger.info("Falcon API request completed successfully")
 
-        # Extract the report text and citations
-        markdown_content = self._extract_text_content(response)
-        citations = self._extract_citations(response, markdown_content)
+            # Extract the report text and citations
+            markdown_content = self._extract_text_content(response)
+            logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
 
-        return ResearchResult(
-            markdown=markdown_content,
-            citations=citations,
-            provider=self.name,
-            query=query
-        )
+            citations = self._extract_citations(response, markdown_content)
+            logger.info(f"Extracted {len(citations)} citations from response")
+
+            return ResearchResult(
+                markdown=markdown_content,
+                citations=citations,
+                provider=self.name,
+                query=query
+            )
+        except Exception as e:
+            logger.error(f"Falcon API request failed: {e}")
+            logger.debug("Error details:", exc_info=True)
+            raise
 
     def _extract_text_content(self, response) -> str:
         """Extract text content from Falcon response.

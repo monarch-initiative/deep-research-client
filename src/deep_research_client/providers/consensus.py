@@ -1,5 +1,6 @@
 """Consensus AI provider for academic research."""
 
+import logging
 from typing import List, Optional
 
 import httpx
@@ -9,6 +10,8 @@ from ..models import ResearchResult, ProviderConfig
 from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
 
+logger = logging.getLogger(__name__)
+
 
 class ConsensusProvider(ResearchProvider):
     """Provider for Consensus AI academic research API."""
@@ -17,6 +20,11 @@ class ConsensusProvider(ResearchProvider):
         """Initialize Consensus provider."""
         self.params = params or ConsensusParams()
         super().__init__(config, self.params.model)
+
+        logger.debug(f"Initializing Consensus provider with model: {self.model}")
+        if config.api_key:
+            key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
+            logger.debug(f"API key configured (starts with: {key_preview})")
 
     def get_default_model(self) -> str:
         """Get default Consensus model."""
@@ -29,6 +37,9 @@ class ConsensusProvider(ResearchProvider):
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Consensus AI API."""
+        logger.info(f"Starting Consensus research query (model: {self.model})")
+        logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
+
         if not self.is_available():
             raise ValueError(f"Consensus provider not available (API key: {bool(self.config.api_key)})")
 
@@ -41,6 +52,7 @@ class ConsensusProvider(ResearchProvider):
                 pool=30.0,
             )
         )
+        logger.debug(f"HTTP client configured with timeout: {self.config.timeout}s")
 
         try:
             # Prepare headers for API authentication
@@ -61,6 +73,7 @@ class ConsensusProvider(ResearchProvider):
             }
 
             # Make API request to Consensus
+            logger.debug("Making API request to Consensus (academic search)")
             response = await http_client.get(
                 'https://api.consensus.app/v1/quick_search',
                 headers=headers,
@@ -69,10 +82,14 @@ class ConsensusProvider(ResearchProvider):
 
             response.raise_for_status()
             data = response.json()
+            logger.info("Consensus API request completed successfully")
 
             # Extract papers and format as markdown
             markdown_content = self._format_research_report(query, data)
+            logger.debug(f"Formatted research report: {len(markdown_content)} characters")
+
             citations = self._extract_citations(data)
+            logger.info(f"Extracted {len(citations)} academic paper citations")
 
             return ResearchResult(
                 markdown=markdown_content,
@@ -82,6 +99,8 @@ class ConsensusProvider(ResearchProvider):
             )
 
         except httpx.HTTPStatusError as e:
+            logger.error(f"Consensus API HTTP error: {e.response.status_code}")
+            logger.debug("Error details:", exc_info=True)
             if e.response.status_code == 401:
                 raise ValueError("Invalid Consensus API key")
             elif e.response.status_code == 403:
@@ -91,9 +110,12 @@ class ConsensusProvider(ResearchProvider):
             else:
                 raise ValueError(f"Consensus API error: {e.response.status_code} - {e.response.text}")
         except httpx.RequestError as e:
+            logger.error(f"Consensus API request failed: {e}")
+            logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Consensus API request failed: {e}")
         finally:
             await http_client.aclose()
+            logger.debug("HTTP client closed")
 
     def _format_research_report(self, query: str, data: dict) -> str:
         """Format Consensus API response into a comprehensive research report."""

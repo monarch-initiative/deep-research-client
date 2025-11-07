@@ -225,7 +225,7 @@ def research(
     if not available_providers:
         logger.error("No research providers available. Please set API keys:")
         logger.error("  - OPENAI_API_KEY for OpenAI Deep Research")
-        logger.error("  - FUTUREHOUSE_API_KEY for Falcon")
+        logger.error("  - EDISON_API_KEY for Edison Scientific")
         logger.error("  - PERPLEXITY_API_KEY for Perplexity AI")
         raise typer.Exit(1)
 
@@ -325,7 +325,7 @@ def providers(
             # Show required environment variable
             env_vars = {
                 "openai": "OPENAI_API_KEY",
-                "falcon": "FUTUREHOUSE_API_KEY",
+                "falcon": "EDISON_API_KEY",
                 "perplexity": "PERPLEXITY_API_KEY",
                 "consensus": "CONSENSUS_API_KEY",
                 "mock": "ENABLE_MOCK_PROVIDER=true"
@@ -371,7 +371,7 @@ def providers(
     else:
         logger.error("No providers available. Please set API keys:")
         typer.echo("  - OPENAI_API_KEY for OpenAI Deep Research")
-        typer.echo("  - FUTUREHOUSE_API_KEY for Falcon")
+        typer.echo("  - EDISON_API_KEY for Edison Scientific")
         typer.echo("  - PERPLEXITY_API_KEY for Perplexity AI")
         typer.echo("  - CONSENSUS_API_KEY for Consensus")
         typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")

@@ -1,11 +1,11 @@
-"""FutureHouse Falcon provider."""
+"""Edison Scientific provider (formerly FutureHouse Falcon)."""
 
 import logging
 import re
 from typing import List, Optional
 
-from futurehouse_client import FutureHouseClient, JobNames
-from futurehouse_client.models.app import PQATaskResponse
+from edison_client import EdisonClient, JobNames
+from edison_client.models.app import PQATaskResponse
 
 from . import ResearchProvider
 from ..models import ResearchResult, ProviderConfig
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class FalconProvider(ResearchProvider):
-    """Provider for FutureHouse Falcon API."""
+    """Provider for Edison Scientific API (formerly FutureHouse Falcon)."""
 
     def __init__(self, config: ProviderConfig, params: Optional[FalconParams] = None):
         """Initialize Falcon provider."""
@@ -30,8 +30,8 @@ class FalconProvider(ResearchProvider):
             logger.debug(f"API key configured (starts with: {key_preview})")
 
     def get_default_model(self) -> str:
-        """Get default Falcon model."""
-        return "FutureHouse Falcon API"
+        """Get default model."""
+        return "Edison Scientific Literature"
 
     @classmethod
     def model_cards(cls) -> ProviderModelCards:
@@ -39,31 +39,31 @@ class FalconProvider(ResearchProvider):
         return create_falcon_model_cards()
 
     async def research(self, query: str) -> ResearchResult:
-        """Perform research using FutureHouse Falcon API."""
-        logger.info(f"Starting Falcon research query (model: {self.model})")
+        """Perform research using Edison Scientific API."""
+        logger.info(f"Starting Edison research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"Falcon provider not available (API key: {bool(self.config.api_key)})")
+            raise ValueError(f"Edison provider not available (API key: {bool(self.config.api_key)})")
 
-        client = FutureHouseClient(api_key=self.config.api_key)
+        client = EdisonClient(api_key=self.config.api_key)
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
 
-        # Falcon combines system prompt and user query
+        # Edison combines system prompt and user query
         full_query = f"{system_prompt}\n\n{query}"
 
-        # Use Falcon API for deep research
+        # Use Edison LITERATURE API for deep research
         task_data = {
-            "name": JobNames.FALCON,
+            "name": JobNames.LITERATURE,
             "query": full_query
         }
 
         try:
-            logger.debug("Making API request to Falcon")
+            logger.debug("Making API request to Edison")
             response = client.run_tasks_until_done(task_data)
-            logger.info("Falcon API request completed successfully")
+            logger.info("Edison API request completed successfully")
 
             # Extract the report text and citations
             markdown_content = self._extract_text_content(response)
@@ -79,26 +79,26 @@ class FalconProvider(ResearchProvider):
                 query=query
             )
         except Exception as e:
-            logger.error(f"Falcon API request failed: {e}")
+            logger.error(f"Edison API request failed: {e}")
             logger.debug("Error details:", exc_info=True)
             raise
 
     def _extract_text_content(self, response) -> str:
-        """Extract text content from Falcon response.
+        """Extract text content from Edison response.
 
-        Falcon returns PQATaskResponse objects with 'formatted_answer' (preferred)
+        Edison returns PQATaskResponse objects with 'formatted_answer' (preferred)
         and 'answer' fields.
         """
         if not isinstance(response, list) or len(response) == 0:
-            raise ValueError(f"Unexpected Falcon response structure: {type(response)}")
+            raise ValueError(f"Unexpected Edison response structure: {type(response)}")
 
         task_response = response[0]
 
-        # Falcon always returns PQATaskResponse - fail fast if it doesn't
+        # Edison always returns PQATaskResponse - fail fast if it doesn't
         if not isinstance(task_response, PQATaskResponse):
             raise ValueError(
                 f"Expected PQATaskResponse, got {type(task_response)}. "
-                f"This indicates an API change in futurehouse-client."
+                f"This indicates an API change in edison-client."
             )
 
         # Prefer formatted_answer as it includes references
@@ -113,7 +113,7 @@ class FalconProvider(ResearchProvider):
             )
 
     def _extract_citations(self, response, report_text: str) -> List[str]:
-        """Extract citations from Falcon response.
+        """Extract citations from Edison response.
 
         Citations are embedded in the formatted_answer text using various patterns.
         """

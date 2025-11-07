@@ -106,7 +106,7 @@ Integration tests will only run meaningful tests if you have API keys configured
 export OPENAI_API_KEY="your-openai-key"
 export PERPLEXITY_API_KEY="your-perplexity-key"
 export CONSENSUS_API_KEY="your-consensus-key"
-export FUTUREHOUSE_API_KEY="your-falcon-key"
+export EDISON_API_KEY="your-edison-key"
 
 # Enable mock provider for testing (optional)
 export ENABLE_MOCK_PROVIDER="true"

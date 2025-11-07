@@ -56,12 +56,20 @@ class DeepResearchClient:
             )
             self.registry.register(OpenAIProvider(config, None))
 
-        # Falcon provider
-        falcon_key = os.getenv("FUTUREHOUSE_API_KEY")
-        if falcon_key:
+        # Edison provider (formerly Falcon/FutureHouse)
+        edison_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
+        if edison_key:
+            # Show deprecation warning if using old env var
+            if not os.getenv("EDISON_API_KEY") and os.getenv("FUTUREHOUSE_API_KEY"):
+                import warnings
+                warnings.warn(
+                    "FUTUREHOUSE_API_KEY is deprecated. Please use EDISON_API_KEY instead.",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
             config = ProviderConfig(
                 name="falcon",
-                api_key=falcon_key,
+                api_key=edison_key,
                 enabled=True
             )
             self.registry.register(FalconProvider(config, None))

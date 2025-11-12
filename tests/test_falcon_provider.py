@@ -13,7 +13,7 @@ def create_mock_pqa_response(
     has_successful_answer: bool = True
 ):
     """Create a mock PQATaskResponse for testing."""
-    from futurehouse_client.models.app import PQATaskResponse
+    from edison_client.models.app import PQATaskResponse
 
     # Use model_construct to bypass validation for testing
     return PQATaskResponse.model_construct(

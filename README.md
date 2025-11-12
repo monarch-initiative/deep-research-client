@@ -1,11 +1,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, FutureHouse Falcon, and Perplexity AI.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), and Perplexity AI.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, FutureHouse Falcon, and Perplexity AI
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, and Perplexity AI
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -39,8 +39,8 @@ uv sync
 # For OpenAI Deep Research
 export OPENAI_API_KEY="your-openai-key"
 
-# For FutureHouse Falcon
-export FUTUREHOUSE_API_KEY="your-futurehouse-key"
+# For Edison Scientific (formerly FutureHouse Falcon)
+export EDISON_API_KEY="your-edison-key"
 
 # For Perplexity AI
 export PERPLEXITY_API_KEY="your-perplexity-key"
@@ -657,7 +657,7 @@ deep-research-client research "AI trends" --provider openai --model o4-mini
 | **Perplexity** | `sonar-deep-research` | deep, deep-research, sdr | 💰💰💰 | 🐌 | 200K | Comprehensive with real-time data |
 | **Perplexity** | `sonar-pro` | pro, sp | 💰💰 | ⏳ | 200K | Fast with good quality |
 | **Perplexity** | `sonar` | basic, fast, s | 💰 | ⚡ | 100K | Fastest, budget-friendly |
-| **Falcon** | `FutureHouse Falcon API` | falcon, fh, science | 💰💰💰 | 🐌 | - | Scientific literature focus |
+| **Edison** | `Edison Scientific Literature` | falcon, edison, eds, science | 💰💰💰 | 🐌 | - | Scientific literature focus |
 | **Consensus** | `Consensus Academic Search` | consensus, academic, papers, c | 💰 | ⚡ | - | Peer-reviewed papers only |
 
 **Cost Legend:** 💰 = Low, 💰💰 = Medium, 💰💰💰 = High, 💰💰💰💰 = Very High
@@ -670,8 +670,8 @@ Each model has different capabilities:
 | Capability | Models |
 |------------|--------|
 | **Web Search** | OpenAI (o3, o4-mini), Perplexity (all) |
-| **Academic Search** | Falcon, Consensus |
-| **Scientific Literature** | Falcon |
+| **Academic Search** | Edison, Consensus |
+| **Scientific Literature** | Edison |
 | **Real-time Data** | OpenAI (all), Perplexity (all) |
 | **Citation Tracking** | All providers |
 | **Code Interpretation** | OpenAI (o3) |
@@ -736,7 +736,7 @@ fast_models = openai_cards.get_models_by_time(TimeEstimate.FAST)
 - Perplexity sonar (fastest, cheapest)
 
 **For academic/scientific research:**
-- Falcon (scientific literature focused)
+- Edison (scientific literature focused, powered by PaperQA3)
 - Consensus (peer-reviewed papers only)
 
 **Budget considerations:**
@@ -756,7 +756,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Provider | Environment Variable | Model/Service | Strengths |
 |----------|---------------------|---------------|-----------|
 | OpenAI | `OPENAI_API_KEY` | o3-deep-research-2025-06-26 | Deep research, comprehensive reports |
-| Falcon | `FUTUREHOUSE_API_KEY` | FutureHouse Falcon API | Scientific literature focus |
+| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3 |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 

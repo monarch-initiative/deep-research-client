@@ -91,10 +91,17 @@ class CyberianProvider(ResearchProvider):
         # Check if cyberian can be imported
         try:
             import cyberian  # noqa
-            return True
         except ImportError:
             logger.warning("cyberian not installed")
             return False
+
+        # Check if agentapi is available in PATH
+        import shutil
+        if not shutil.which("agentapi"):
+            logger.warning("agentapi not found in PATH")
+            return False
+
+        return True
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using cyberian agent workflow.

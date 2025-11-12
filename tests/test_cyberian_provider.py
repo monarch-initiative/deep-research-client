@@ -5,6 +5,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+# Skip all tests in this module if cyberian is not installed
+pytest.importorskip("cyberian")
+
 from deep_research_client.providers.cyberian import CyberianProvider
 from deep_research_client.models import ProviderConfig
 

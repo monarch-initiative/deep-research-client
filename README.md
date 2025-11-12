@@ -1,11 +1,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), and Perplexity AI.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Perplexity AI, Consensus Academic Search, and Cyberian agent-based research.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, and Perplexity AI
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Perplexity AI, Consensus, and Cyberian (agent-based)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -47,6 +47,10 @@ export PERPLEXITY_API_KEY="your-perplexity-key"
 
 # For Consensus AI (requires application approval)
 export CONSENSUS_API_KEY="your-consensus-key"
+
+# For Cyberian (agent-based research) - requires cyberian installation
+pip install deep-research-client[cyberian]
+# Cyberian uses your local AI agents (Claude, etc.) - no separate API key needed
 ```
 
 ### Command Line Usage
@@ -206,6 +210,55 @@ params = FalconParams(
 
 result = client.research("Protein folding mechanisms", provider="falcon", provider_params=params)
 ```
+
+#### Cyberian-Specific Parameters (Agent-Based Research)
+
+Cyberian is unique among the providers - it uses local AI agents (Claude, Aider, etc.) running through the cyberian workflow system to perform iterative, multi-step research.
+
+```python
+from deep_research_client.provider_params import CyberianParams
+
+# Install cyberian provider support first
+# pip install deep-research-client[cyberian]
+
+params = CyberianParams(
+    agent_type="claude",           # Agent to use: claude, aider, cursor, goose
+    workflow_file=None,            # Custom workflow (defaults to deep-research.yaml)
+    port=3284,                     # agentapi server port
+    skip_permissions=True,         # Skip permission checks for agent
+    sources="academic papers"      # Source guidance for research
+)
+
+# Note: Cyberian research is slow but thorough
+# - Typically takes 10-30 minutes per query
+# - Performs iterative research with citation management
+# - Creates structured reports with REPORT.md and citations/
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="cyberian",
+    provider_params=params
+)
+
+# The result includes:
+# - Comprehensive markdown report (from REPORT.md)
+# - Citations extracted from citations/ directory
+# - Timing information for the full workflow
+print(result.markdown)
+print(f"Citations found: {len(result.citations)}")
+print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
+```
+
+**When to use Cyberian:**
+- 📚 Comprehensive literature reviews
+- 🔬 Deep technical research requiring synthesis
+- 📊 Multi-source citation management
+- 🔄 Iterative hypothesis exploration
+
+**Trade-offs:**
+- ⏱️ **Slow**: 10-30+ minutes per query (vs seconds for API providers)
+- 💰 **Variable cost**: Depends on agent and research depth
+- 🖥️ **Local compute**: Requires agentapi and agent setup
+- 🎯 **Thorough**: More comprehensive than API-based providers
 
 #### CLI Usage with Provider Parameters
 

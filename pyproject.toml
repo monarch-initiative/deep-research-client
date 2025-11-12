@@ -25,6 +25,11 @@ dependencies = [
   "jinja2>=3.1.6",
 ]
 
+[project.optional-dependencies]
+cyberian = [
+    "cyberian>=0.1.0",
+]
+
 [dependency-groups]
 dev = [
     "mypy>=1.17.1",
@@ -43,6 +48,13 @@ deep-research-client = "deep_research_client.cli:main"
 
 # See https://hatch.pypa.io/latest/config/build/#file-selection for how to
 # explicitly include files other than default into the build distributions.
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deep_research_client"]
+# Include all files in workflows directory (including .yaml files)
+include = [
+  "src/deep_research_client/workflows/*.yaml",
+]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"

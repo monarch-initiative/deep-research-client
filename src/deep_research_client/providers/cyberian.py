@@ -6,7 +6,6 @@ perform iterative deep research.
 
 import asyncio
 import logging
-import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -60,7 +59,7 @@ class CyberianProvider(ResearchProvider):
 
         # Fallback for development: try cyberian's example location
         try:
-            import cyberian
+            import cyberian  # type: ignore[import-untyped]
             cyberian_path = Path(cyberian.__file__).parent.parent.parent
             fallback_path = cyberian_path / "tests" / "examples" / "deep-research.yaml"
             if fallback_path.exists():
@@ -164,8 +163,8 @@ class CyberianProvider(ResearchProvider):
             query: Research question
             workdir: Working directory for output
         """
-        from cyberian.models import Task
-        from cyberian.runner import TaskRunner
+        from cyberian.models import Task  # type: ignore[import-untyped]
+        from cyberian.runner import TaskRunner  # type: ignore[import-untyped]
 
         # Load workflow definition
         logger.debug(f"Loading workflow from: {self.workflow_file}")
@@ -243,7 +242,7 @@ class CyberianProvider(ResearchProvider):
         Returns:
             List of citation strings
         """
-        citations = []
+        citations: List[str] = []
         citations_dir = Path(workdir) / "citations"
 
         if not citations_dir.exists():

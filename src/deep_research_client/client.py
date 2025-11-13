@@ -97,7 +97,7 @@ class DeepResearchClient:
 
         # Cyberian provider - check if cyberian is installed
         try:
-            import cyberian  # noqa
+            import cyberian  # type: ignore[import-untyped]  # noqa: F401
             cyberian_config = ProviderConfig(
                 name="cyberian",
                 api_key=None,  # Not required for cyberian

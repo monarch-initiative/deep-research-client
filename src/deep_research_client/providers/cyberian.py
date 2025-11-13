@@ -59,7 +59,7 @@ class CyberianProvider(ResearchProvider):
 
         # Fallback for development: try cyberian's example location
         try:
-            import cyberian  # type: ignore[import-untyped]
+            import cyberian  # type: ignore[import-not-found, import-untyped]
             cyberian_path = Path(cyberian.__file__).parent.parent.parent
             fallback_path = cyberian_path / "tests" / "examples" / "deep-research.yaml"
             if fallback_path.exists():
@@ -163,8 +163,8 @@ class CyberianProvider(ResearchProvider):
             query: Research question
             workdir: Working directory for output
         """
-        from cyberian.models import Task  # type: ignore[import-untyped]
-        from cyberian.runner import TaskRunner  # type: ignore[import-untyped]
+        from cyberian.models import Task  # type: ignore[import-not-found, import-untyped]
+        from cyberian.runner import TaskRunner  # type: ignore[import-not-found, import-untyped]
 
         # Load workflow definition
         logger.debug(f"Loading workflow from: {self.workflow_file}")

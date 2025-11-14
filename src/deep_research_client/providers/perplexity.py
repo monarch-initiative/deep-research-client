@@ -29,6 +29,9 @@ class PerplexityProvider(ResearchProvider):
         super().__init__(config, self.params.model)
         self.api_url = "https://api.perplexity.ai/chat/completions"
 
+        # Model-specific logic for reasoning models
+        self._apply_model_specific_logic()
+
         logger.debug(f"Initializing Perplexity provider with model: {self.model}")
         if config.api_key:
             key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
@@ -37,6 +40,27 @@ class PerplexityProvider(ResearchProvider):
     def get_default_model(self) -> str:
         """Get default Perplexity model."""
         return "sonar-deep-research"
+
+    def _apply_model_specific_logic(self):
+        """Apply model-specific logic for reasoning models."""
+        # Check if using reasoning model
+        is_reasoning_model = self.model == "sonar-reasoning-pro"
+
+        if is_reasoning_model:
+            # Auto-enable high reasoning effort for reasoning models
+            if self.params.reasoning_effort != "high":
+                logger.info(f"Auto-enabling reasoning_effort='high' for {self.model}")
+                self.params.reasoning_effort = "high"
+
+        # Validate response_format compatibility
+        if self.params.response_format:
+            if not is_reasoning_model:
+                raise ValueError(
+                    f"response_format is only supported with sonar-reasoning-pro model, "
+                    f"but current model is: {self.model}"
+                )
+
+            logger.info("response_format enabled for structured output")
 
     @classmethod
     def model_cards(cls) -> ProviderModelCards:
@@ -54,6 +78,14 @@ class PerplexityProvider(ResearchProvider):
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
 
+        # Log system prompt details for debugging
+        is_custom = self.params.system_prompt is not None
+        logger.info(f"System prompt: {'Custom' if is_custom else 'Default'} "
+                   f"({len(system_prompt)} chars)")
+        if is_custom:
+            logger.debug(f"Custom system prompt: {system_prompt[:200]}...")
+        logger.debug(f"Full system prompt: {system_prompt}")
+
         # Prepare request payload with all Perplexity-specific parameters
         payload = {
             "model": self.model,
@@ -63,6 +95,8 @@ class PerplexityProvider(ResearchProvider):
             ],
             "temperature": self.params.temperature,
         }
+
+        logger.debug(f"Built payload with {len(payload.get('messages', []))} messages")
 
         # Add Perplexity-specific parameters
         if self.params.reasoning_effort != "medium":
@@ -80,6 +114,12 @@ class PerplexityProvider(ResearchProvider):
 
         # Always pass return_citations since it affects response format
         payload["return_citations"] = self.params.return_citations
+
+        # Add response_format for structured output (sonar-reasoning-pro only)
+        if self.params.response_format:
+            payload["response_format"] = self.params.response_format
+            logger.info(f"Response format: {self.params.response_format.get('type', 'unknown')}")
+            logger.debug(f"Full response_format: {self.params.response_format}")
 
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",

@@ -182,7 +182,7 @@ class CyberianProvider(ResearchProvider):
 
         logger.debug(f"Workflow context: {context}")
 
-        # Create TaskRunner with lifecycle_mode='refresh' to manage server
+        # Create TaskRunner with lifecycle_mode='reuse' to manage server
         runner = TaskRunner(
             host="localhost",
             port=self.params.port or 3284,

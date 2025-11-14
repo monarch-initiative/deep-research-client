@@ -129,7 +129,7 @@ class TestModelCards:
 
         # Test filtering by capability
         web_search_models = cards.get_models_with_capability(ModelCapability.WEB_SEARCH)
-        assert len(web_search_models) == 3  # All Perplexity models have web search
+        assert len(web_search_models) == 4  # All Perplexity models have web search
 
     def test_global_model_registry(self):
         """Test global model registry functions."""

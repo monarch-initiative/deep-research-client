@@ -51,17 +51,8 @@ class FalconProvider(ResearchProvider):
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
 
-        # Log system prompt details for debugging
-        is_custom = self.params.system_prompt is not None
-        logger.info(f"System prompt: {'Custom' if is_custom else 'Default'} "
-                   f"({len(system_prompt)} chars)")
-        if is_custom:
-            logger.debug(f"Custom system prompt: {system_prompt[:200]}...")
-        logger.debug(f"Full system prompt: {system_prompt}")
-
         # Edison combines system prompt and user query
         full_query = f"{system_prompt}\n\n{query}"
-        logger.debug(f"Built full query: {len(full_query)} chars total")
 
         # Use Edison LITERATURE API for deep research
         task_data = {

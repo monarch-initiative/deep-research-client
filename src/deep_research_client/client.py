@@ -14,6 +14,7 @@ from .providers.falcon import FalconProvider
 from .providers.perplexity import PerplexityProvider
 from .providers.consensus import ConsensusProvider
 from .providers.mock import MockProvider
+from .providers.cyberian import CyberianProvider
 from .provider_params import create_provider_params
 
 
@@ -94,6 +95,19 @@ class DeepResearchClient:
             )
             self.registry.register(ConsensusProvider(config, None))
 
+        # Cyberian provider - check if cyberian is installed
+        try:
+            import cyberian  # type: ignore[import-not-found, import-untyped]  # noqa: F401
+            cyberian_config = ProviderConfig(
+                name="cyberian",
+                api_key=None,  # Not required for cyberian
+                enabled=True,
+                timeout=1800  # 30 minutes for long-running workflows
+            )
+            self.registry.register(CyberianProvider(cyberian_config, None))
+        except ImportError:
+            pass  # Cyberian not installed, skip
+
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):
             mock_config = ProviderConfig(
@@ -116,6 +130,8 @@ class DeepResearchClient:
                 provider = PerplexityProvider(config, None)
             elif name == "consensus":
                 provider = ConsensusProvider(config, None)
+            elif name == "cyberian":
+                provider = CyberianProvider(config, None)
             elif name == "mock":
                 provider = MockProvider(config, None)
             else:

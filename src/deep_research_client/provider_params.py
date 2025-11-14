@@ -170,6 +170,35 @@ class MockParams(BaseProviderParams):
     )
 
 
+class CyberianParams(BaseProviderParams):
+    """Parameters specific to Cyberian agent-based research provider.
+
+    Cyberian uses AI agents to perform iterative research workflows,
+    unlike API-based providers.
+    """
+
+    workflow_file: Optional[str] = Field(
+        default=None,
+        description="Path to cyberian workflow YAML file (defaults to deep-research.yaml)"
+    )
+    agent_type: Optional[str] = Field(
+        default="claude",
+        description="Type of agent to use (claude, aider, cursor, goose)"
+    )
+    port: Optional[int] = Field(
+        default=3284,
+        description="Port for agentapi server"
+    )
+    skip_permissions: bool = Field(
+        default=True,
+        description="Skip permission checks when starting agents"
+    )
+    sources: Optional[str] = Field(
+        default=None,
+        description="Source guidance for the research workflow"
+    )
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -177,6 +206,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "falcon": FalconParams,
     "consensus": ConsensusParams,
     "mock": MockParams,
+    "cyberian": CyberianParams,
 }
 
 

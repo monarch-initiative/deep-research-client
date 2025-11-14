@@ -475,3 +475,52 @@ def list_all_aliases() -> Dict[str, Dict[str, str]]:
         if aliases:
             result[provider] = aliases
     return result
+
+
+def create_cyberian_model_cards() -> ProviderModelCards:
+    """Create model cards for Cyberian agent-based research provider."""
+
+    deep_research = ModelCard(
+        name="Cyberian Deep Research",
+        display_name="Cyberian Agent-Based Deep Research",
+        description=(
+            "Agent-based iterative research using AI agents (Claude, Aider, etc.) "
+            "to perform multi-step research workflows with citation management, "
+            "report synthesis, and systematic literature review capabilities."
+        ),
+        cost_level=CostLevel.HIGH,  # Agent-based, potentially many LLM calls
+        time_estimate=TimeEstimate.VERY_SLOW,  # Iterative multi-step process
+        capabilities=[
+            ModelCapability.WEB_SEARCH,
+            ModelCapability.ACADEMIC_SEARCH,
+            ModelCapability.CITATION_TRACKING
+        ],
+        aliases=["cyberian", "agent-research", "cy"],
+        pricing_notes=(
+            "Costs depend on underlying agent (Claude, etc.) and research depth. "
+            "May involve multiple LLM API calls during iterative research."
+        ),
+        use_cases=[
+            "Deep comprehensive research",
+            "Systematic literature reviews",
+            "Iterative hypothesis exploration",
+            "Citation graph generation",
+            "Multi-source synthesis"
+        ],
+        limitations=[
+            "Slow (multiple agent iterations)",
+            "High cost (multiple LLM calls)",
+            "Requires agentapi server",
+            "Non-deterministic results",
+            "Needs local compute resources"
+        ]
+    )
+
+    return ProviderModelCards(
+        provider_name="cyberian",
+        default_model="Cyberian Deep Research",
+        models={
+            "Cyberian Deep Research": deep_research,
+            "deep-research": deep_research  # Alias for the workflow name
+        }
+    )

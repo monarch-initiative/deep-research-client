@@ -1,0 +1,74 @@
+name: deep-research
+description: iteratively does deep research
+requires_workdir: true
+params:
+  query:
+    range: string
+    required: true
+  sources:
+    range: string
+  workdir:
+    required: true
+    range: string
+subtasks:
+  initial_search:
+    instructions: perform deep research on {{query}}.
+
+      Keep all files in {{workdir}}.
+      Always start by writing a research plan in `PLAN.md`.
+      
+      Keep a report in a file `REPORT.md`. Update this as you go along.
+      You can also create additional notes files as needed. This MUST
+      be maintained in narrative form (not bullet points), written as coherent
+      paragraphs that are woven together clearly.
+
+      maintain a file CITATION_GRAPH.md that has entries of the form
+      `* [citX] cites [citY] claiming CLAIM`.
+      
+      Create a folder
+      `citations/` with shorthands for papers like `smith-2002-autophagy`.
+      Always cite in the report e.g. SOME-STATEMENT[smith-2002-autphagy-abstract].
+      
+      download pdf when you can, convert to markdown when you can, otherwise
+      default to abstract. Use suffixes that denote type. Create summary.md
+      yourself but all others MUST be taken directly from the external resource.
+
+      E.g
+
+        citations/
+          smith-2002-autophagy-paper.pdf
+          smith-2002-autophagy-fulltext.txt <-- MUST be actual text
+          smith-2002-autophagy-summary.md <-- YOUR summary
+          jones-2003-regulation-abstract.md  <-- MUST be actual abstract
+          jones-2003-regulation-summary.md <-- YOUR summary
+          jones-2003-regulation-supplementary/table1.csv
+
+      The above assumes that fulltest is not available for the jones paper.
+      Always try and get full text if availale, but never create it yourself.
+          
+      Always cite in the report e.g. STATEMENT[smith-2002-critical-minerals].
+      The report should end with a section `Open Questions`, including
+      what might be useful to follow up on.
+
+      The report should be in narrative format rather than bullet points, as far as
+      possible. You should structure it as much like a scientific review articles as possible, 
+      NOT as a set of bullet points, unless otherwise instructed.
+
+      You should have a reasonable number of sections (use markdown headings, e.g `##`), typically
+      6-8, but this depends on the subject area and the amount of information summarized. You
+      should start with an introduction section that has the main summary.
+
+      The final section should be a references section, with a list of the citations, mapping
+      each citation of the form `smith-2002-critical-mineral` to the full citation, including
+      URLs and IDs where available (e.g. PMID, PMCID, DOI, etc.). NEVER GUESS THE IDENTIFIERS
+      OR URLs, THESE MUST COME FROM THE RESEARCH.
+
+  iterate:
+    instructions: Keep on researching {{query}}, following the
+      plan in `PLAN.md`. Make sure that REPORT.md is complete, AND that it follows
+      the specified guidelines, and is narrative in form.
+    loop_until:
+      status: NO_MORE_RESEARCH
+      message: If you think all research avenues are exhausted, then
+        yield status NO_MORE_RESEARCH
+  

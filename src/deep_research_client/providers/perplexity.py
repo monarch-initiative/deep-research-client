@@ -96,11 +96,7 @@ class PerplexityProvider(ResearchProvider):
             "temperature": self.params.temperature,
         }
 
-        messages_list = payload.get('messages', [])
-        if isinstance(messages_list, list):
-            logger.debug(f"Built payload with {len(messages_list)} messages")
-        else:
-            logger.debug("Built payload with messages")
+        logger.debug(f"Built payload with {len(payload['messages'])} messages")
 
         # Add Perplexity-specific parameters
         if self.params.reasoning_effort != "medium":

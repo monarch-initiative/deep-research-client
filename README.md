@@ -74,6 +74,9 @@ deep-research-client research "AI trends 2024" --output report.md --separate-cit
 # Use simple template with variables (f-string style)
 deep-research-client research --template gene_research.md --var "gene=TP53" --var "organism=human"
 
+# Load the query text directly from a Markdown/text file
+deep-research-client research --input-file prompts/topic.md
+
 # Use advanced Jinja2 template with conditionals
 deep-research-client research --template gene_advanced.md.j2 \
   --var "gene=BRCA1" \
@@ -91,6 +94,8 @@ deep-research-client models --provider perplexity --detailed
 deep-research-client list-cache   # Show cached files
 deep-research-client clear-cache  # Remove all cache
 ```
+
+You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
 
 ### Python Library Usage
 

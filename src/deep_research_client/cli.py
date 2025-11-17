@@ -80,6 +80,7 @@ def research(
     separate_citations: Annotated[Optional[Path], typer.Option("--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
     cache_dir: Annotated[Optional[Path], typer.Option("--cache-dir", help="Override cache directory (default: ~/.deep_research_cache)")] = None,
     template: Annotated[Optional[Path], typer.Option(help="Template file with {variable} placeholders")] = None,
+    input_file: Annotated[Optional[Path], typer.Option("--input-file", "-f", help="Read the research query from a text/markdown file")] = None,
     var: Annotated[Optional[List[str]], typer.Option(help="Template variable as 'key=value' (can be used multiple times)")] = None,
     param: Annotated[Optional[List[str]], typer.Option(help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
     base_url: Annotated[Optional[str], typer.Option("--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
@@ -105,6 +106,9 @@ def research(
       # Use template with variables
       deep-research-client research --template research_template.md --var topic="machine learning" --var focus="healthcare applications"
 
+      # Read query directly from Markdown/text file
+      deep-research-client research --input-file topic.md --provider mock
+
       # Disable cache and specify custom cache directory
       deep-research-client research "Real-time data" --no-cache --cache-dir ./custom_cache
 
@@ -121,6 +125,32 @@ def research(
 
     # Initialize processor
     processor = ResearchProcessor()
+
+    # Load query from file when requested
+    if input_file:
+        if template:
+            logger.error("Cannot combine --input-file with --template")
+            raise typer.Exit(1)
+        if query:
+            logger.error("Provide the query either as an argument or via --input-file, not both")
+            raise typer.Exit(1)
+
+        try:
+            file_content = input_file.read_text(encoding='utf-8').strip()
+        except FileNotFoundError:
+            logger.error(f"Input file not found: {input_file}")
+            raise typer.Exit(1)
+        except OSError as exc:
+            logger.error(f"Unable to read input file {input_file}: {exc}")
+            raise typer.Exit(1)
+
+        if not file_content:
+            logger.error(f"Input file {input_file} is empty")
+            raise typer.Exit(1)
+
+        # Assign stripped content to query so the rest of the pipeline works unchanged
+        query = file_content
+        logger.info(f"Loaded query from file: {input_file}")
 
     # Process template if provided
     template_info = None

@@ -8,23 +8,25 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/reference/models/">
       
       
+        <link rel="prev" href="../providers/">
       
-        <link rel="next" href="tutorials/getting-started/">
+      
+        <link rel="next" href="../cache/">
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
     
     
       
-        <title>deep-research-client</title>
+        <title>Models - deep-research-client</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.84d31ad4.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
       
       
 
@@ -43,13 +45,13 @@
       
     
     
-      <link rel="stylesheet" href="css/ansi-colours.css">
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
     
-      <link rel="stylesheet" href="css/jupyter-cells.css">
+      <link rel="stylesheet" href="../../css/jupyter-cells.css">
     
-      <link rel="stylesheet" href="css/pandas-dataframe.css">
+      <link rel="stylesheet" href="../../css/pandas-dataframe.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -68,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#deep-research-client" class="md-skip">
+        <a href="#model-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -84,7 +86,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+    <a href="../.." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -104,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Models
             
           </span>
         </div>
@@ -194,7 +196,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+    <a href="../.." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -221,32 +223,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Home
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -257,122 +237,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      Quick Start
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
-    <span class="md-ellipsis">
-      Features
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      Supported Providers
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Documentation
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Documentation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#tutorials-learning" class="md-nav__link">
-    <span class="md-ellipsis">
-      Tutorials (Learning)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#how-to-guides-tasks" class="md-nav__link">
-    <span class="md-ellipsis">
-      How-to Guides (Tasks)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-information" class="md-nav__link">
-    <span class="md-ellipsis">
-      Reference (Information)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explanation-understanding" class="md-nav__link">
-    <span class="md-ellipsis">
-      Explanation (Understanding)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#common-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      Common Commands
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#links" class="md-nav__link">
-    <span class="md-ellipsis">
-      Links
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -429,7 +293,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/getting-started/" class="md-nav__link">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
         
   
   
@@ -452,7 +316,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/first-query/" class="md-nav__link">
+      <a href="../../tutorials/first-query/" class="md-nav__link">
         
   
   
@@ -527,7 +391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/choose-provider/" class="md-nav__link">
+      <a href="../../how-to/choose-provider/" class="md-nav__link">
         
   
   
@@ -550,7 +414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/templates/" class="md-nav__link">
+      <a href="../../how-to/templates/" class="md-nav__link">
         
   
   
@@ -573,7 +437,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/cache/" class="md-nav__link">
+      <a href="../../how-to/cache/" class="md-nav__link">
         
   
   
@@ -596,7 +460,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/browse-cache/" class="md-nav__link">
+      <a href="../../how-to/browse-cache/" class="md-nav__link">
         
   
   
@@ -619,7 +483,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/proxies/" class="md-nav__link">
+      <a href="../../how-to/proxies/" class="md-nav__link">
         
   
   
@@ -642,7 +506,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/faq/" class="md-nav__link">
+      <a href="../../how-to/faq/" class="md-nav__link">
         
   
   
@@ -669,8 +533,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -681,13 +547,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -703,7 +567,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Reference
@@ -717,7 +581,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/cli/" class="md-nav__link">
+      <a href="../cli/" class="md-nav__link">
         
   
   
@@ -740,7 +604,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/providers/" class="md-nav__link">
+      <a href="../providers/" class="md-nav__link">
         
   
   
@@ -760,10 +624,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="reference/models/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -774,6 +660,173 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#model-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-model-aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Model Aliases
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-selection-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Selection Guide
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Selection Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#by-use-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      By Use Case
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#by-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      By Budget
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovering-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      Discovering Models
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Discovering Models">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-all-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      List All Models
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Provider
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Cost
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-capability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Capability
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detailed-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detailed Information
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      Python API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cost Levels
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Time Estimates
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -786,7 +839,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/cache/" class="md-nav__link">
+      <a href="../cache/" class="md-nav__link">
         
   
   
@@ -809,7 +862,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
@@ -884,7 +937,7 @@
   
   
     <li class="md-nav__item">
-      <a href="explanation/providers/" class="md-nav__link">
+      <a href="../../explanation/providers/" class="md-nav__link">
         
   
   
@@ -907,7 +960,7 @@
   
   
     <li class="md-nav__item">
-      <a href="explanation/architecture/" class="md-nav__link">
+      <a href="../../explanation/architecture/" class="md-nav__link">
         
   
   
@@ -957,73 +1010,55 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#model-overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Quick Start
+      Model Overview
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#using-model-aliases" class="md-nav__link">
     <span class="md-ellipsis">
-      Features
+      Using Model Aliases
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-providers" class="md-nav__link">
+  <a href="#model-capabilities" class="md-nav__link">
     <span class="md-ellipsis">
-      Supported Providers
+      Model Capabilities
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
+  <a href="#model-selection-guide" class="md-nav__link">
     <span class="md-ellipsis">
-      Documentation
+      Model Selection Guide
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Documentation">
+    <nav class="md-nav" aria-label="Model Selection Guide">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#tutorials-learning" class="md-nav__link">
+  <a href="#by-use-case" class="md-nav__link">
     <span class="md-ellipsis">
-      Tutorials (Learning)
+      By Use Case
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#how-to-guides-tasks" class="md-nav__link">
+  <a href="#by-budget" class="md-nav__link">
     <span class="md-ellipsis">
-      How-to Guides (Tasks)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-information" class="md-nav__link">
-    <span class="md-ellipsis">
-      Reference (Information)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explanation-understanding" class="md-nav__link">
-    <span class="md-ellipsis">
-      Explanation (Understanding)
+      By Budget
     </span>
   </a>
   
@@ -1035,18 +1070,87 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-commands" class="md-nav__link">
+  <a href="#discovering-models" class="md-nav__link">
     <span class="md-ellipsis">
-      Common Commands
+      Discovering Models
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Discovering Models">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-all-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      List All Models
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Provider
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Cost
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-capability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Capability
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detailed-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detailed Information
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      Python API
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#links" class="md-nav__link">
+  <a href="#cost-levels" class="md-nav__link">
     <span class="md-ellipsis">
-      Links
+      Cost Levels
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#time-estimates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Time Estimates
     </span>
   </a>
   
@@ -1071,120 +1175,286 @@
   
 
 
-<h1 id="deep-research-client">deep-research-client</h1>
-<p>A CLI tool for AI-powered deep research across multiple providers.</p>
-<h2 id="quick-start">Quick Start</h2>
-<pre><code class="language-bash"># Install
-pip install deep-research-client
-
-# Set up an API key (e.g., Perplexity)
-export PERPLEXITY_API_KEY=&quot;your-key&quot;
-
-# Run a research query
-deep-research-client research &quot;Research the human CFAP300 gene including molecular function, disease associations, and evolutionary conservation&quot;
-</code></pre>
-<p>Or run without installation:</p>
-<pre><code class="language-bash">uvx deep-research-client research &quot;Analyze recent advances in solid-state battery technology for electric vehicles, focusing on materials science breakthroughs since 2023&quot;
-</code></pre>
-<h2 id="features">Features</h2>
-<ul>
-<li><strong>Multiple Providers</strong>: OpenAI, Perplexity, Edison, Consensus, Cyberian</li>
-<li><strong>Smart Caching</strong>: Avoid expensive re-queries</li>
-<li><strong>Templates</strong>: Create reusable research queries with variables</li>
-<li><strong>Model Selection</strong>: Choose speed vs comprehensiveness</li>
-<li><strong>Citations</strong>: All results include source references</li>
-</ul>
-<h2 id="supported-providers">Supported Providers</h2>
+<h1 id="model-reference">Model Reference</h1>
+<p>Complete reference for all available models.</p>
+<h2 id="model-overview">Model Overview</h2>
 <table>
 <thead>
 <tr>
 <th>Provider</th>
-<th>Best For</th>
+<th>Model</th>
+<th>Aliases</th>
+<th>Cost</th>
 <th>Speed</th>
+<th>Context</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><a href="reference/providers/#openai-deep-research">OpenAI</a></td>
-<td>Comprehensive reports</td>
-<td>Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#perplexity-ai">Perplexity</a></td>
-<td>General web research</td>
-<td>Fast-Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#edison-scientific-falcon">Edison</a></td>
-<td>Scientific literature</td>
-<td>Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#consensus">Consensus</a></td>
-<td>Academic papers</td>
-<td>Fast</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#cyberian-agent-based">Cyberian</a></td>
-<td>Agent-based deep research</td>
+<td>OpenAI</td>
+<td>o3-deep-research-2025-06-26</td>
+<td>o3, o3-deep</td>
+<td>Very High</td>
 <td>Very Slow</td>
+<td>128K</td>
+</tr>
+<tr>
+<td>OpenAI</td>
+<td>o4-mini-deep-research-2025-06-26</td>
+<td>o4m, o4-mini</td>
+<td>High</td>
+<td>Medium</td>
+<td>128K</td>
+</tr>
+<tr>
+<td>Perplexity</td>
+<td>sonar-deep-research</td>
+<td>deep, sdr</td>
+<td>High</td>
+<td>Slow</td>
+<td>200K</td>
+</tr>
+<tr>
+<td>Perplexity</td>
+<td>sonar-pro</td>
+<td>pro, sp</td>
+<td>Medium</td>
+<td>Medium</td>
+<td>200K</td>
+</tr>
+<tr>
+<td>Perplexity</td>
+<td>sonar</td>
+<td>basic, fast, s</td>
+<td>Low</td>
+<td>Fast</td>
+<td>100K</td>
+</tr>
+<tr>
+<td>Edison</td>
+<td>Edison Scientific Literature</td>
+<td>falcon, edison</td>
+<td>High</td>
+<td>Slow</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Consensus</td>
+<td>Consensus Academic Search</td>
+<td>consensus, c</td>
+<td>Low</td>
+<td>Fast</td>
+<td>-</td>
 </tr>
 </tbody>
 </table>
-<h2 id="documentation">Documentation</h2>
-<p>This documentation follows the <a href="https://diataxis.fr/">Diátaxis</a> framework:</p>
-<h3 id="tutorials-learning">Tutorials (Learning)</h3>
-<p>Step-by-step guides for getting started:</p>
-<ul>
-<li><a href="tutorials/getting-started/">Getting Started</a> - Installation and setup</li>
-<li><a href="tutorials/first-query/">Your First Query</a> - Run your first research</li>
-</ul>
-<h3 id="how-to-guides-tasks">How-to Guides (Tasks)</h3>
-<p>Solve specific problems:</p>
-<ul>
-<li><a href="how-to/choose-provider/">Choose a Provider</a> - Pick the right provider</li>
-<li><a href="how-to/templates/">Use Templates</a> - Create reusable queries</li>
-<li><a href="how-to/cache/">Manage Cache</a> - Control caching behavior</li>
-<li><a href="how-to/proxies/">Use Proxies</a> - Route through CBORG or custom endpoints</li>
-</ul>
-<h3 id="reference-information">Reference (Information)</h3>
-<p>Technical details:</p>
-<ul>
-<li><a href="reference/cli/">CLI Reference</a> - All commands and options</li>
-<li><a href="reference/providers/">Providers</a> - Provider specifications</li>
-<li><a href="reference/models/">Models</a> - Available models</li>
-<li><a href="reference/configuration/">Configuration</a> - All config options</li>
-</ul>
-<h3 id="explanation-understanding">Explanation (Understanding)</h3>
-<p>Background and concepts:</p>
-<ul>
-<li><a href="explanation/providers/">Provider Comparison</a> - How providers differ</li>
-<li><a href="explanation/architecture/">Architecture</a> - How the tool works</li>
-</ul>
-<h2 id="common-commands">Common Commands</h2>
-<pre><code class="language-bash"># Research with default provider
-deep-research-client research &quot;Review the current evidence on microplastics in human tissue and potential health implications&quot;
-
-# Use specific provider for scientific literature
-deep-research-client research &quot;Summarize mechanisms of ferroptosis in cancer therapy&quot; --provider edison
-
-# Save comprehensive report to file
-deep-research-client research &quot;Analyze the state of nuclear fusion research including ITER progress and private sector developments&quot; --output fusion-report.md
-
-# List available providers
-deep-research-client providers
-
-# List available models
-deep-research-client models
-
-# Check cache
-deep-research-client list-cache
+<h2 id="using-model-aliases">Using Model Aliases</h2>
+<p>Aliases provide shortcuts:</p>
+<pre><code class="language-bash"># These are equivalent
+deep-research-client research &quot;AI&quot; --provider openai --model o3-deep-research-2025-06-26
+deep-research-client research &quot;AI&quot; --provider openai --model o3
 </code></pre>
-<h2 id="links">Links</h2>
+<h2 id="model-capabilities">Model Capabilities</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Web Search</td>
+<td>OpenAI (all), Perplexity (all)</td>
+</tr>
+<tr>
+<td>Academic Search</td>
+<td>Edison, Consensus</td>
+</tr>
+<tr>
+<td>Scientific Literature</td>
+<td>Edison</td>
+</tr>
+<tr>
+<td>Real-time Data</td>
+<td>OpenAI (all), Perplexity (all)</td>
+</tr>
+<tr>
+<td>Code Interpretation</td>
+<td>OpenAI (o3)</td>
+</tr>
+<tr>
+<td>Citation Tracking</td>
+<td>All</td>
+</tr>
+</tbody>
+</table>
+<h2 id="model-selection-guide">Model Selection Guide</h2>
+<h3 id="by-use-case">By Use Case</h3>
+<table>
+<thead>
+<tr>
+<th>Use Case</th>
+<th>Recommended Model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quick lookup</td>
+<td>Perplexity sonar</td>
+</tr>
+<tr>
+<td>General research</td>
+<td>Perplexity sonar-pro</td>
+</tr>
+<tr>
+<td>Comprehensive report</td>
+<td>OpenAI o3</td>
+</tr>
+<tr>
+<td>Scientific research</td>
+<td>Edison</td>
+</tr>
+<tr>
+<td>Academic citations</td>
+<td>Consensus</td>
+</tr>
+<tr>
+<td>Budget-friendly</td>
+<td>Perplexity sonar, Consensus</td>
+</tr>
+</tbody>
+</table>
+<h3 id="by-budget">By Budget</h3>
+<p><strong>Lowest cost:</strong></p>
+<pre><code class="language-bash">deep-research-client research &quot;topic&quot; --provider perplexity --model sonar
+</code></pre>
+<p><strong>Best value:</strong></p>
+<pre><code class="language-bash">deep-research-client research &quot;topic&quot; --provider perplexity --model pro
+</code></pre>
+<p><strong>Most comprehensive:</strong></p>
+<pre><code class="language-bash">deep-research-client research &quot;topic&quot; --provider openai --model o3
+</code></pre>
+<h2 id="discovering-models">Discovering Models</h2>
+<h3 id="list-all-models">List All Models</h3>
+<pre><code class="language-bash">deep-research-client models
+</code></pre>
+<h3 id="filter-by-provider">Filter by Provider</h3>
+<pre><code class="language-bash">deep-research-client models --provider perplexity
+</code></pre>
+<h3 id="filter-by-cost">Filter by Cost</h3>
+<pre><code class="language-bash">deep-research-client models --cost low
+deep-research-client models --cost medium
+deep-research-client models --cost high
+deep-research-client models --cost very_high
+</code></pre>
+<h3 id="filter-by-capability">Filter by Capability</h3>
+<pre><code class="language-bash">deep-research-client models --capability web_search
+deep-research-client models --capability academic_search
+</code></pre>
+<h3 id="detailed-information">Detailed Information</h3>
+<pre><code class="language-bash">deep-research-client models --detailed
+</code></pre>
+<p>Shows:</p>
 <ul>
-<li><a href="https://github.com/ai4curation/deep-research-client">GitHub Repository</a></li>
-<li><a href="https://pypi.org/project/deep-research-client/">PyPI Package</a></li>
+<li>Pricing information</li>
+<li>Time estimates</li>
+<li>Use cases</li>
+<li>Limitations</li>
 </ul>
+<h2 id="python-api">Python API</h2>
+<pre><code class="language-python">from deep_research_client.model_cards import (
+    get_provider_model_cards,
+    list_all_models,
+    find_models_by_cost,
+    find_models_by_capability,
+    resolve_model_alias,
+    CostLevel,
+    ModelCapability
+)
+
+# Get models for a provider
+cards = get_provider_model_cards(&quot;openai&quot;)
+models = cards.list_models()
+
+# Get model details
+card = cards.get_model_card(&quot;o3-deep-research-2025-06-26&quot;)
+print(card.cost_level)
+print(card.time_estimate)
+print(card.capabilities)
+
+# Find models by criteria
+cheap = find_models_by_cost(CostLevel.LOW)
+web_search = find_models_by_capability(ModelCapability.WEB_SEARCH)
+
+# Resolve alias
+full_name = resolve_model_alias(&quot;openai&quot;, &quot;o3&quot;)
+# Returns: 'o3-deep-research-2025-06-26'
+</code></pre>
+<h2 id="cost-levels">Cost Levels</h2>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Description</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LOW</td>
+<td>Budget-friendly</td>
+<td>sonar, Consensus</td>
+</tr>
+<tr>
+<td>MEDIUM</td>
+<td>Balanced</td>
+<td>sonar-pro, o4-mini</td>
+</tr>
+<tr>
+<td>HIGH</td>
+<td>Premium</td>
+<td>sonar-deep-research, Edison</td>
+</tr>
+<tr>
+<td>VERY_HIGH</td>
+<td>Most expensive</td>
+<td>o3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="time-estimates">Time Estimates</h2>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Description</th>
+<th>Typical Duration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FAST</td>
+<td>Quick responses</td>
+<td>&lt; 30 seconds</td>
+</tr>
+<tr>
+<td>MEDIUM</td>
+<td>Moderate wait</td>
+<td>30s - 2 minutes</td>
+</tr>
+<tr>
+<td>SLOW</td>
+<td>Longer processing</td>
+<td>2-5 minutes</td>
+</tr>
+<tr>
+<td>VERY_SLOW</td>
+<td>Extended research</td>
+<td>5-15+ minutes</td>
+</tr>
+</tbody>
+</table>
 
 
 
@@ -1235,10 +1505,10 @@ deep-research-client list-cache
     
     
       
-      <script id="__config" type="application/json">{"base": ".", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.f55a23d4.min.js"></script>
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
       
     
   </body>

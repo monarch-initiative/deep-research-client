@@ -8,23 +8,25 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/cache/">
       
       
+        <link rel="prev" href="../templates/">
       
-        <link rel="next" href="tutorials/getting-started/">
+      
+        <link rel="next" href="../browse-cache/">
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
     
     
       
-        <title>deep-research-client</title>
+        <title>Manage Cache - deep-research-client</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.84d31ad4.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
       
       
 
@@ -43,13 +45,13 @@
       
     
     
-      <link rel="stylesheet" href="css/ansi-colours.css">
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
     
-      <link rel="stylesheet" href="css/jupyter-cells.css">
+      <link rel="stylesheet" href="../../css/jupyter-cells.css">
     
-      <link rel="stylesheet" href="css/pandas-dataframe.css">
+      <link rel="stylesheet" href="../../css/pandas-dataframe.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -68,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#deep-research-client" class="md-skip">
+        <a href="#how-to-manage-cache" class="md-skip">
           Skip to content
         </a>
       
@@ -84,7 +86,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+    <a href="../.." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -104,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Manage Cache
             
           </span>
         </div>
@@ -194,7 +196,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+    <a href="../.." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -221,32 +223,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Home
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -257,122 +237,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      Quick Start
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
-    <span class="md-ellipsis">
-      Features
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#supported-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      Supported Providers
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Documentation
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Documentation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#tutorials-learning" class="md-nav__link">
-    <span class="md-ellipsis">
-      Tutorials (Learning)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#how-to-guides-tasks" class="md-nav__link">
-    <span class="md-ellipsis">
-      How-to Guides (Tasks)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reference-information" class="md-nav__link">
-    <span class="md-ellipsis">
-      Reference (Information)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explanation-understanding" class="md-nav__link">
-    <span class="md-ellipsis">
-      Explanation (Understanding)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#common-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      Common Commands
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#links" class="md-nav__link">
-    <span class="md-ellipsis">
-      Links
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -429,7 +293,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/getting-started/" class="md-nav__link">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
         
   
   
@@ -452,7 +316,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/first-query/" class="md-nav__link">
+      <a href="../../tutorials/first-query/" class="md-nav__link">
         
   
   
@@ -479,8 +343,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -491,13 +357,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -513,7 +377,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             How-to Guides
@@ -527,7 +391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/choose-provider/" class="md-nav__link">
+      <a href="../choose-provider/" class="md-nav__link">
         
   
   
@@ -550,7 +414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/templates/" class="md-nav__link">
+      <a href="../templates/" class="md-nav__link">
         
   
   
@@ -570,10 +434,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="how-to/cache/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -584,6 +470,200 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-caching-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How Caching Works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-makes-a-cache-hit" class="md-nav__link">
+    <span class="md-ellipsis">
+      What Makes a Cache Hit?
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#view-cached-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      View Cached Results
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="View Cached Results">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#detailed-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      Detailed View
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filter-by-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filter by Provider
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limit-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limit Results
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      Search Cache
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search Cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#search-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Search Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browse-cache-interactive-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      Browse Cache (Interactive Browser)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bypass-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bypass Cache
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clear-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      Clear Cache
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clear-specific-cache-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Clear Specific Cache Files
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-if-result-is-cached" class="md-nav__link">
+    <span class="md-ellipsis">
+      Check If Result Is Cached
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cache File Format
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#custom-cache-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Cache Location
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disable-caching-entirely" class="md-nav__link">
+    <span class="md-ellipsis">
+      Disable Caching Entirely
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tips
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      See Also
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -596,7 +676,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/browse-cache/" class="md-nav__link">
+      <a href="../browse-cache/" class="md-nav__link">
         
   
   
@@ -619,7 +699,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/proxies/" class="md-nav__link">
+      <a href="../proxies/" class="md-nav__link">
         
   
   
@@ -642,7 +722,7 @@
   
   
     <li class="md-nav__item">
-      <a href="how-to/faq/" class="md-nav__link">
+      <a href="../faq/" class="md-nav__link">
         
   
   
@@ -717,7 +797,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/cli/" class="md-nav__link">
+      <a href="../../reference/cli/" class="md-nav__link">
         
   
   
@@ -740,7 +820,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/providers/" class="md-nav__link">
+      <a href="../../reference/providers/" class="md-nav__link">
         
   
   
@@ -763,7 +843,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/models/" class="md-nav__link">
+      <a href="../../reference/models/" class="md-nav__link">
         
   
   
@@ -786,7 +866,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/cache/" class="md-nav__link">
+      <a href="../../reference/cache/" class="md-nav__link">
         
   
   
@@ -809,7 +889,7 @@
   
   
     <li class="md-nav__item">
-      <a href="reference/configuration/" class="md-nav__link">
+      <a href="../../reference/configuration/" class="md-nav__link">
         
   
   
@@ -884,7 +964,7 @@
   
   
     <li class="md-nav__item">
-      <a href="explanation/providers/" class="md-nav__link">
+      <a href="../../explanation/providers/" class="md-nav__link">
         
   
   
@@ -907,7 +987,7 @@
   
   
     <li class="md-nav__item">
-      <a href="explanation/architecture/" class="md-nav__link">
+      <a href="../../explanation/architecture/" class="md-nav__link">
         
   
   
@@ -957,73 +1037,55 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#how-caching-works" class="md-nav__link">
     <span class="md-ellipsis">
-      Quick Start
+      How Caching Works
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#what-makes-a-cache-hit" class="md-nav__link">
     <span class="md-ellipsis">
-      Features
+      What Makes a Cache Hit?
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#supported-providers" class="md-nav__link">
+  <a href="#view-cached-results" class="md-nav__link">
     <span class="md-ellipsis">
-      Supported Providers
+      View Cached Results
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Documentation
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Documentation">
+    <nav class="md-nav" aria-label="View Cached Results">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#tutorials-learning" class="md-nav__link">
+  <a href="#detailed-view" class="md-nav__link">
     <span class="md-ellipsis">
-      Tutorials (Learning)
+      Detailed View
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#how-to-guides-tasks" class="md-nav__link">
+  <a href="#filter-by-provider" class="md-nav__link">
     <span class="md-ellipsis">
-      How-to Guides (Tasks)
+      Filter by Provider
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#reference-information" class="md-nav__link">
+  <a href="#limit-results" class="md-nav__link">
     <span class="md-ellipsis">
-      Reference (Information)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#explanation-understanding" class="md-nav__link">
-    <span class="md-ellipsis">
-      Explanation (Understanding)
+      Limit Results
     </span>
   </a>
   
@@ -1035,18 +1097,114 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-commands" class="md-nav__link">
+  <a href="#search-cache" class="md-nav__link">
     <span class="md-ellipsis">
-      Common Commands
+      Search Cache
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search Cache">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#search-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Search Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#browse-cache-interactive-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      Browse Cache (Interactive Browser)
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#links" class="md-nav__link">
+  <a href="#bypass-cache" class="md-nav__link">
     <span class="md-ellipsis">
-      Links
+      Bypass Cache
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clear-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      Clear Cache
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clear-specific-cache-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Clear Specific Cache Files
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-if-result-is-cached" class="md-nav__link">
+    <span class="md-ellipsis">
+      Check If Result Is Cached
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cache File Format
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#custom-cache-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Cache Location
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disable-caching-entirely" class="md-nav__link">
+    <span class="md-ellipsis">
+      Disable Caching Entirely
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tips
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      See Also
     </span>
   </a>
   
@@ -1071,119 +1229,160 @@
   
 
 
-<h1 id="deep-research-client">deep-research-client</h1>
-<p>A CLI tool for AI-powered deep research across multiple providers.</p>
-<h2 id="quick-start">Quick Start</h2>
-<pre><code class="language-bash"># Install
-pip install deep-research-client
-
-# Set up an API key (e.g., Perplexity)
-export PERPLEXITY_API_KEY=&quot;your-key&quot;
-
-# Run a research query
-deep-research-client research &quot;Research the human CFAP300 gene including molecular function, disease associations, and evolutionary conservation&quot;
+<h1 id="how-to-manage-cache">How to Manage Cache</h1>
+<p>The client caches all research results to avoid expensive re-queries.</p>
+<h2 id="how-caching-works">How Caching Works</h2>
+<ul>
+<li><strong>Location</strong>: <code>~/.deep_research_cache/</code></li>
+<li><strong>Persistence</strong>: Cache never expires (manual clearing only)</li>
+<li><strong>Key components</strong>: provider, query, model, and provider parameters</li>
+</ul>
+<p>When you run the same query twice, the second call returns instantly from cache.</p>
+<h2 id="what-makes-a-cache-hit">What Makes a Cache Hit?</h2>
+<p>A cached result is returned only when <strong>all</strong> of these match exactly:</p>
+<ol>
+<li><strong>Provider</strong> - same provider (e.g., <code>perplexity</code>)</li>
+<li><strong>Query</strong> - identical query text (case-sensitive)</li>
+<li><strong>Model</strong> - same model (or both unspecified)</li>
+<li><strong>Provider parameters</strong> - same parameters (or both unspecified)</li>
+</ol>
+<p>This means:</p>
+<pre><code class="language-bash"># These are DIFFERENT cache entries:
+deep-research-client research &quot;Research TP53 gene&quot; --provider perplexity
+deep-research-client research &quot;Research TP53 gene&quot; --provider openai
+deep-research-client research &quot;Research TP53 gene&quot; --provider perplexity --model sonar
+deep-research-client research &quot;research TP53 gene&quot; --provider perplexity  # lowercase 'r'
 </code></pre>
-<p>Or run without installation:</p>
-<pre><code class="language-bash">uvx deep-research-client research &quot;Analyze recent advances in solid-state battery technology for electric vehicles, focusing on materials science breakthroughs since 2023&quot;
+<p>For full details on the cache key algorithm, see <a href="../../reference/cache/">Cache Reference</a>.</p>
+<h2 id="view-cached-results">View Cached Results</h2>
+<p>List all cached queries with metadata:</p>
+<pre><code class="language-bash">deep-research-client list-cache
 </code></pre>
-<h2 id="features">Features</h2>
-<ul>
-<li><strong>Multiple Providers</strong>: OpenAI, Perplexity, Edison, Consensus, Cyberian</li>
-<li><strong>Smart Caching</strong>: Avoid expensive re-queries</li>
-<li><strong>Templates</strong>: Create reusable research queries with variables</li>
-<li><strong>Model Selection</strong>: Choose speed vs comprehensiveness</li>
-<li><strong>Citations</strong>: All results include source references</li>
-</ul>
-<h2 id="supported-providers">Supported Providers</h2>
-<table>
-<thead>
-<tr>
-<th>Provider</th>
-<th>Best For</th>
-<th>Speed</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><a href="reference/providers/#openai-deep-research">OpenAI</a></td>
-<td>Comprehensive reports</td>
-<td>Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#perplexity-ai">Perplexity</a></td>
-<td>General web research</td>
-<td>Fast-Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#edison-scientific-falcon">Edison</a></td>
-<td>Scientific literature</td>
-<td>Slow</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#consensus">Consensus</a></td>
-<td>Academic papers</td>
-<td>Fast</td>
-</tr>
-<tr>
-<td><a href="reference/providers/#cyberian-agent-based">Cyberian</a></td>
-<td>Agent-based deep research</td>
-<td>Very Slow</td>
-</tr>
-</tbody>
-</table>
-<h2 id="documentation">Documentation</h2>
-<p>This documentation follows the <a href="https://diataxis.fr/">Diátaxis</a> framework:</p>
-<h3 id="tutorials-learning">Tutorials (Learning)</h3>
-<p>Step-by-step guides for getting started:</p>
-<ul>
-<li><a href="tutorials/getting-started/">Getting Started</a> - Installation and setup</li>
-<li><a href="tutorials/first-query/">Your First Query</a> - Run your first research</li>
-</ul>
-<h3 id="how-to-guides-tasks">How-to Guides (Tasks)</h3>
-<p>Solve specific problems:</p>
-<ul>
-<li><a href="how-to/choose-provider/">Choose a Provider</a> - Pick the right provider</li>
-<li><a href="how-to/templates/">Use Templates</a> - Create reusable queries</li>
-<li><a href="how-to/cache/">Manage Cache</a> - Control caching behavior</li>
-<li><a href="how-to/proxies/">Use Proxies</a> - Route through CBORG or custom endpoints</li>
-</ul>
-<h3 id="reference-information">Reference (Information)</h3>
-<p>Technical details:</p>
-<ul>
-<li><a href="reference/cli/">CLI Reference</a> - All commands and options</li>
-<li><a href="reference/providers/">Providers</a> - Provider specifications</li>
-<li><a href="reference/models/">Models</a> - Available models</li>
-<li><a href="reference/configuration/">Configuration</a> - All config options</li>
-</ul>
-<h3 id="explanation-understanding">Explanation (Understanding)</h3>
-<p>Background and concepts:</p>
-<ul>
-<li><a href="explanation/providers/">Provider Comparison</a> - How providers differ</li>
-<li><a href="explanation/architecture/">Architecture</a> - How the tool works</li>
-</ul>
-<h2 id="common-commands">Common Commands</h2>
-<pre><code class="language-bash"># Research with default provider
-deep-research-client research &quot;Review the current evidence on microplastics in human tissue and potential health implications&quot;
+<p>Output shows provider, size, and date for each entry:</p>
+<pre><code>Found 42 cached files (15.2MB) in ~/.deep_research_cache/:
 
-# Use specific provider for scientific literature
-deep-research-client research &quot;Summarize mechanisms of ferroptosis in cancer therapy&quot; --provider edison
-
-# Save comprehensive report to file
-deep-research-client research &quot;Analyze the state of nuclear fusion research including ITER progress and private sector developments&quot; --output fusion-report.md
-
-# List available providers
-deep-research-client providers
-
-# List available models
-deep-research-client models
-
-# Check cache
-deep-research-client list-cache
+  [openai] openai-what-is-crispr-gene-a1b2c3d4.json (75.3KB, 2025-12-13 00:06)
+  [perplexity] perplexity-gene-research-for-func-82faf01b.json (53.6KB, 2025-12-12 07:13)
+  [falcon] falcon-gene-research-for-func-646a20c3.json (34.1KB, 2025-12-04 10:39)
 </code></pre>
-<h2 id="links">Links</h2>
+<h3 id="detailed-view">Detailed View</h3>
+<p>Show full metadata including query, model, duration, and citation count:</p>
+<pre><code class="language-bash">deep-research-client list-cache --detailed
+</code></pre>
+<pre><code>  [openai] openai-gene-research-for-functional-a-0ed516e3.json
+    Modified: 2025-12-13 00:06  Size: 75.3KB
+    Query: # Gene Research for Functional Annotation...
+    Model: o3-deep-research-2025-06-26
+    Duration: 1007.8s
+    Citations: 100
+</code></pre>
+<h3 id="filter-by-provider">Filter by Provider</h3>
+<pre><code class="language-bash">deep-research-client list-cache --provider perplexity
+deep-research-client list-cache -p openai
+</code></pre>
+<h3 id="limit-results">Limit Results</h3>
+<pre><code class="language-bash">deep-research-client list-cache --limit 10
+deep-research-client list-cache -n 5
+</code></pre>
+<h2 id="search-cache">Search Cache</h2>
+<p>Find cached results by keyword (searches both queries and content):</p>
+<pre><code class="language-bash">deep-research-client search-cache &quot;BRCA1&quot;
+</code></pre>
+<p>Output shows matching files with context snippets:</p>
+<pre><code>Found 8 cached files matching 'BRCA1':
+
+  [perplexity] perplexity-gene-set-enrichment-7b968613.json (71.8KB, 2025-10-19) [match in: query, content]
+      [query] ...list of genes from human. ## Gene Set TP53 BRCA1 BRCA2 PTEN RB1...
+      [content] ...enrichment analysis on five genes: TP53, BRCA1, BRCA2, PTEN, and RB1...
+</code></pre>
+<h3 id="search-options">Search Options</h3>
+<pre><code class="language-bash"># More context around matches (default: 60 chars)
+deep-research-client search-cache &quot;CRISPR&quot; --context 100
+
+# More snippets per match (default: 3)
+deep-research-client search-cache &quot;mutation&quot; --max-snippets 5
+
+# Only search in query text, not content
+deep-research-client search-cache &quot;gene&quot; --query-only
+
+# Hide snippets (just show matching files)
+deep-research-client search-cache &quot;protein&quot; --no-snippets
+
+# Detailed metadata with snippets
+deep-research-client search-cache &quot;kinase&quot; --detailed
+</code></pre>
+<h2 id="browse-cache-interactive-browser">Browse Cache (Interactive Browser)</h2>
+<p>Generate a standalone HTML browser for exploring cached results:</p>
+<pre><code class="language-bash"># Install browser dependency
+pip install deep-research-client[browser]
+
+# Generate browser
+deep-research-client browse-cache ./my-browser
+
+# Open in browser
+open ./my-browser/index.html
+</code></pre>
+<p>This creates a faceted browser with filters for provider, model, date, and keywords, plus individual HTML pages for each research result.</p>
+<p>For full documentation including custom templates, hosting options, and workflow examples, see <a href="../browse-cache/">Browse Cache</a></p>
+<h2 id="bypass-cache">Bypass Cache</h2>
+<p>Skip the cache for a fresh result:</p>
+<pre><code class="language-bash">deep-research-client research &quot;What is CRISPR?&quot; --no-cache
+</code></pre>
+<p>This still saves the result to cache for future queries.</p>
+<h2 id="clear-cache">Clear Cache</h2>
+<p>Remove all cached results:</p>
+<pre><code class="language-bash">deep-research-client clear-cache
+</code></pre>
+<h2 id="clear-specific-cache-files">Clear Specific Cache Files</h2>
+<p>Navigate to the cache directory and remove specific files:</p>
+<pre><code class="language-bash">ls ~/.deep_research_cache/
+rm ~/.deep_research_cache/openai-specific-query*.json
+</code></pre>
+<h2 id="check-if-result-is-cached">Check If Result Is Cached</h2>
+<p>The output frontmatter shows cache status:</p>
+<pre><code class="language-yaml">---
+provider: perplexity
+cached: true    # &lt;-- This result came from cache
+---
+</code></pre>
+<h2 id="cache-file-format">Cache File Format</h2>
+<p>Each cache file is JSON:</p>
+<pre><code class="language-json">{
+  &quot;markdown&quot;: &quot;# Research Report\n...&quot;,
+  &quot;citations&quot;: [&quot;Citation 1&quot;, &quot;Citation 2&quot;],
+  &quot;provider&quot;: &quot;openai&quot;,
+  &quot;model&quot;: &quot;o3-deep-research-2025-06-26&quot;,
+  &quot;query&quot;: &quot;original query text&quot;
+}
+</code></pre>
+<h2 id="custom-cache-location">Custom Cache Location</h2>
+<p>In Python, configure a custom cache directory:</p>
+<pre><code class="language-python">from deep_research_client import DeepResearchClient, CacheConfig
+
+cache_config = CacheConfig(
+    enabled=True,
+    directory=&quot;./project_cache&quot;
+)
+
+client = DeepResearchClient(cache_config=cache_config)
+</code></pre>
+<h2 id="disable-caching-entirely">Disable Caching Entirely</h2>
+<p>In Python:</p>
+<pre><code class="language-python">from deep_research_client import DeepResearchClient, CacheConfig
+
+cache_config = CacheConfig(enabled=False)
+client = DeepResearchClient(cache_config=cache_config)
+</code></pre>
+<h2 id="tips">Tips</h2>
 <ul>
-<li><a href="https://github.com/ai4curation/deep-research-client">GitHub Repository</a></li>
-<li><a href="https://pypi.org/project/deep-research-client/">PyPI Package</a></li>
+<li><strong>Don't clear cache unnecessarily</strong> - Deep research queries are expensive</li>
+<li><strong>Different models = different cache entries</strong> - Changing models creates new cache entries</li>
+<li><strong>Templates expand before caching</strong> - The expanded query is cached, not the template</li>
+</ul>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../../reference/cache/">Cache Reference</a> - Cache key algorithm and data model</li>
+<li><a href="../../reference/configuration/">Configuration Reference</a> - CacheConfig options</li>
 </ul>
 
 
@@ -1235,10 +1434,10 @@ deep-research-client list-cache
     
     
       
-      <script id="__config" type="application/json">{"base": ".", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.f55a23d4.min.js"></script>
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
       
     
   </body>

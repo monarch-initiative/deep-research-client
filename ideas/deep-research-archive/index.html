@@ -1,0 +1,2307 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/ideas/deep-research-archive/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+    
+    
+      
+        <title>DARMA: Deep Agentic Research Metadata Archive - deep-research-client</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
+    
+      <link rel="stylesheet" href="../../css/jupyter-cells.css">
+    
+      <link rel="stylesheet" href="../../css/pandas-dataframe.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#darma-deep-agentic-research-metadata-archive" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deep-research-client
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DARMA: Deep Agentic Research Metadata Archive
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deep-research-client
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Tutorials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Tutorials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/first-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Your First Query
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    How-to Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            How-to Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/choose-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Choose a Provider
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Templates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/browse-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/proxies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Proxies
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FAQ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Reference
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Providers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Explanation
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Explanation
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Provider Comparison
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Executive Summary
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background-and-motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Background and Motivation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Background and Motivation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Problem
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-case-for-dedicated-ai-research-archives" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Case for Dedicated AI Research Archives
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#existing-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      Existing Platforms
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Existing Platforms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aixiv-deep-dive" class="md-nav__link">
+    <span class="md-ellipsis">
+      aiXiv Deep Dive
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-publishing-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      Related Publishing Models
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-darma" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why DARMA?
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Design Principles
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      Architecture
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#repository-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repository Structure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#id-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      ID Format
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Model
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#result-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      Result Object
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#submission-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      Submission Metadata
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evaluation-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Object
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Criteria
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation Criteria">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aggregate-scores" class="md-nav__link">
+    <span class="md-ellipsis">
+      Aggregate Scores
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflows
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-individual-submission-via-github-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Individual Submission via GitHub Issue
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-command-line-submission" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Command-Line Submission
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-bulk-ingest-from-feeders" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Bulk Ingest from Feeders
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-evaluation-submission" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Evaluation Submission
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#static-site-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Static Site Features
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Static Site Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#browse" class="md-nav__link">
+    <span class="md-ellipsis">
+      Browse
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      Search
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#result-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      Result Page
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leaderboards" class="md-nav__link">
+    <span class="md-ellipsis">
+      Leaderboards
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#schema-synchronization-with-drc" class="md-nav__link">
+    <span class="md-ellipsis">
+      Schema Synchronization with drc
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-other-platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      Comparison with Other Platforms
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Comparison with Other Platforms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-differentiators" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key Differentiators
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#potential-synergies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Potential Synergies
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-and-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Export and Integration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Export and Integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#huggingface-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      HuggingFace Datasets
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zenodo-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Zenodo Integration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      Export Pipeline
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-integrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Future Integrations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      Roadmap
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-mvp-github-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 1: MVP (GitHub-only)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-automation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 2: Automation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-community-evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 3: Community &amp; Evaluation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-archival-journal-like-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 4: Archival &amp; Journal-like Features
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Open Questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      References
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="References">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#primary-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Primary Sources
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      Platforms
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Related Infrastructure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      Further Reading
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="darma-deep-agentic-research-metadata-archive">DARMA: Deep Agentic Research Metadata Archive</h1>
+<p><strong>Status:</strong> Brainstorming / Proposal
+<strong>Date:</strong> 2025-12-14
+<strong>Authors:</strong> Chris Mungall, Claude</p>
+<h2 id="executive-summary">Executive Summary</h2>
+<p>DARMA (Deep Agentic Research Metadata Archive) is a proposed community-driven archive for deep research outputs that serves dual purposes:</p>
+<ol>
+<li><strong>Shared Cache</strong>: A centralized repository of deep research results, avoiding duplicate expensive queries across labs and institutions</li>
+<li><strong>Prototype AI Research Journal</strong>: A transparent, evaluation-driven publication venue for AI-generated research with full provenance</li>
+</ol>
+<p>The infrastructure is intentionally lightweight: GitHub repositories, static pages, and issue-based workflows. It leverages the existing <code>deep-research-client</code> (drc) data model and can ingest from pre-existing research repositories.</p>
+<h2 id="background-and-motivation">Background and Motivation</h2>
+<h3 id="the-problem">The Problem</h3>
+<p>AI-generated research content is rapidly emerging as a significant contributor to scientific knowledge. Tools like OpenAI Deep Research, Perplexity, Edison Scientific, and others can synthesize vast bodies of literature into coherent summaries. However:</p>
+<ul>
+<li><strong>Duplication</strong>: Multiple researchers run identical or similar queries, wasting compute and API costs</li>
+<li><strong>No shared infrastructure</strong>: Results live in personal caches, not discoverable by others</li>
+<li><strong>Quality uncertainty</strong>: No systematic way to evaluate or compare AI research outputs</li>
+<li><strong>Provenance gaps</strong>: Traditional publishing infrastructure assumes human authorship</li>
+</ul>
+<h3 id="the-case-for-dedicated-ai-research-archives">The Case for Dedicated AI Research Archives</h3>
+<p>As Martin Monperrus argues in <a href="https://www.monperrus.net/martin/preprint-servers-of-AI-generated-papers">"Preprint Servers for AI Generated Papers"</a>, the scientific community faces a critical infrastructure gap. Current preprint servers actively reject AI as a legitimate research contributor:</p>
+<blockquote>
+<p>"We need an AI preprint server that explicitly accepts AI-authored work... without proper venues, valuable AI-generated insights may be dismissed or lost."</p>
+</blockquote>
+<p>Major platforms enforce restrictive policies:
+- <strong>arXiv</strong> now requires peer-review documentation for review articles due to AI generation concerns
+- <strong>bioRxiv/medRxiv</strong> prohibit listing AI systems as authors
+- <strong>SSRN</strong> rejects content "completely or mostly generated" by LLMs
+- <strong>OSF Preprints</strong> has similar restrictions</p>
+<p>The consequence is a binary choice: either AI-generated research is lost entirely, or it infiltrates traditional servers without proper disclosure, "eroding the current human-to-human scholarly communication system."</p>
+<p>Monperrus identifies the key requirements for AI research infrastructure:
+1. <strong>Detailed metadata</strong>: AI system specifications, model details, degree of human involvement
+2. <strong>Clear separation</strong>: Distinguish AI-generated from human-written research
+3. <strong>Transparency</strong>: Treat AI as a legitimate contributor while ensuring complete provenance
+4. <strong>Trusted operation</strong>: Ideally operated by established organizations for credibility</p>
+<h3 id="existing-platforms">Existing Platforms</h3>
+<p>Several platforms have emerged to address this gap (surveyed by <a href="https://www.monperrus.net/martin/preprint-servers-of-AI-generated-papers">Monperrus 2025</a>, with updates):</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Launch</th>
+<th>Description</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><a href="https://aixiv.science">aiXiv</a></strong></td>
+<td>2025</td>
+<td>"Preprint server for AI Scientists and Robot Scientists"</td>
+<td>Live; open source (<a href="https://github.com/aixiv-org/aiXiv">GitHub</a>)</td>
+</tr>
+<tr>
+<td><strong><a href="http://ai.vixra.org">ai.vixra.org</a></strong></td>
+<td>March 2025</td>
+<td>Archives AI-assisted articles with minimal gatekeeping</td>
+<td>Live; operated by Scientific God Inc.</td>
+</tr>
+<tr>
+<td><strong><a href="https://rxiverse.com">rxiVerse</a></strong></td>
+<td>July 2025</td>
+<td>Similar to ai.vixra.org; $19 submission fee</td>
+<td>Live; operated by Scientific God Inc.</td>
+</tr>
+<tr>
+<td><strong><a href="https://ai-archive.io">AI Archive</a></strong></td>
+<td>Fall 2025</td>
+<td>Publishes AI-generated papers and reviews; API-first</td>
+<td>Live; custom platform</td>
+</tr>
+<tr>
+<td><strong>AgentRxiv</strong></td>
+<td>2025 (proposed)</td>
+<td>Framework for agent-to-agent scientific communication</td>
+<td>Conceptual</td>
+</tr>
+</tbody>
+</table>
+<h4 id="aixiv-deep-dive">aiXiv Deep Dive</h4>
+<p><a href="https://github.com/aixiv-org/aiXiv">aiXiv</a> is the most technically mature open-source option, worth examining in detail:</p>
+<p><strong>Architecture:</strong>
+- Frontend: React 18 + Tailwind CSS + Radix UI
+- Backend: FastAPI + PostgreSQL + AWS S3 (<a href="https://github.com/aixiv-org/aixiv-core">aixiv-core</a>)
+- Auth: Clerk
+- License: MIT</p>
+<p><strong>Data Model</strong> (from <code>aixiv-core</code>):</p>
+<pre><code class="language-sql">submissions (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(220),
+  agent_authors TEXT[],           -- Array of AI agent identifiers
+  corresponding_author VARCHAR(120),
+  category VARCHAR(100)[],
+  keywords VARCHAR(100)[],
+  license VARCHAR(50),
+  abstract TEXT,
+  s3_url TEXT,                    -- PDF storage
+  uploaded_by VARCHAR(64),
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+</code></pre>
+<p><strong>Key Features:</strong>
+- <strong>Dual-track review</strong>: Papers (editor-led peer review) vs Proposals (community validation with mentors)
+- <strong>Auto-agents ecosystem</strong>: Custom AI agents for discovery, quality assessment, statistical analysis
+- <strong>API-first</strong>: Bearer token auth, endpoints for search, submit, reviews, agent registration
+- <strong>DOI assignment</strong> and version control</p>
+<p><strong>Reported Stats:</strong> 15,420+ papers, 3,280+ proposals, 892+ active agents, 8,650+ reviews</p>
+<p><strong>Limitations for our use case:</strong>
+- Custom platform infrastructure (not Git-native)
+- Focused on full papers, not granular research queries
+- No structured evaluation criteria schema
+- Limited integration with research tools like drc</p>
+<p><strong>Limitations of existing platforms generally:</strong>
+- Custom infrastructure with platform risk (except aiXiv which is open source)
+- Minimal structured evaluation frameworks
+- Limited integration with existing research tools
+- Varying levels of metadata rigor
+- Most lack community governance models</p>
+<h3 id="related-publishing-models">Related Publishing Models</h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Description</th>
+<th>Relevance to DARMA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><a href="https://www.micropublication.org/">Micropublications</a></strong></td>
+<td>Single-observation peer-reviewed papers</td>
+<td>Granularity model; one result = one publication</td>
+</tr>
+<tr>
+<td><strong><a href="https://nanopub.net/">Nanopublications</a></strong></td>
+<td>Machine-readable RDF assertions with provenance</td>
+<td>Structured claims; but complex infrastructure</td>
+</tr>
+<tr>
+<td><strong>Overlay journals</strong></td>
+<td>Curation layer over preprints</td>
+<td>Model for "highlights" feature</td>
+</tr>
+</tbody>
+</table>
+<h3 id="why-darma">Why DARMA?</h3>
+<p>DARMA aims to fill the gap with a pragmatic, GitHub-native approach that:</p>
+<ol>
+<li><strong>Starts immediately</strong> with minimal infrastructure overhead</li>
+<li><strong>Leverages existing tools</strong> (drc data model, GitHub Actions, static sites)</li>
+<li><strong>Emphasizes evaluation</strong> via community and agent review</li>
+<li><strong>Maintains full provenance</strong> per Monperrus's requirements</li>
+<li><strong>Operates transparently</strong> with open governance</li>
+<li><strong>Avoids platform lock-in</strong> through standard formats and Git-based storage</li>
+</ol>
+<h3 id="design-principles">Design Principles</h3>
+<p>Drawing from the evolving landscape of AI in scientific publishing:</p>
+<table>
+<thead>
+<tr>
+<th>Principle</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Transparency</strong></td>
+<td>Full provenance: query, provider, model, params, timestamps</td>
+</tr>
+<tr>
+<td><strong>Reproducibility</strong></td>
+<td>Store enough metadata to re-run queries</td>
+</tr>
+<tr>
+<td><strong>Human accountability</strong></td>
+<td>Every submission has a human supervisor/submitter</td>
+</tr>
+<tr>
+<td><strong>Machine-native</strong></td>
+<td>Structured YAML/JSON, not just PDFs</td>
+</tr>
+<tr>
+<td><strong>Granularity</strong></td>
+<td>One query = one result = one citable unit</td>
+</tr>
+<tr>
+<td><strong>Immutability</strong></td>
+<td>Results don't change; evaluations accumulate separately</td>
+</tr>
+<tr>
+<td><strong>Community evaluation</strong></td>
+<td>Quality assessments by humans and agents</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture</h2>
+<h3 id="repository-structure">Repository Structure</h3>
+<pre><code>darma/
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── submit-result.yml      # Submit new DR result
+│   │   └── submit-evaluation.yml  # Evaluate an existing result
+│   └── workflows/
+│       ├── validate-submission.yml
+│       ├── sync-feeders.yml       # Pull from ai-gene-review, dismech, etc.
+│       └── build-site.yml         # Rebuild static pages
+│
+├── results/                       # ResearchResult objects (immutable)
+│   └── YYYY/MM/
+│       ├── {provider}-{slug}-{hash8}.yaml
+│       └── {provider}-{slug}-{hash8}.md
+│
+├── submissions/                   # Ingestion metadata (who submitted, how)
+│   └── YYYY/MM/
+│       └── {provider}-{slug}-{hash8}.yaml
+│
+├── evaluations/                   # Evals pointing to results
+│   └── YYYY/MM/
+│       └── eval-{result-id}-{NNN}.yaml
+│
+├── schema/                        # Validation schemas
+│   ├── research_result.yaml       # Synced with drc
+│   ├── submission.yaml
+│   └── evaluation.yaml
+│
+├── feeders.yaml                   # Config for auto-sync sources
+│
+└── site/                          # Generated static site
+    ├── index.html
+    ├── browse/
+    ├── search/
+    └── result/{id}/
+</code></pre>
+<h3 id="id-format">ID Format</h3>
+<p>Reuses the drc cache key format:</p>
+<pre><code>{provider}-{slugified-query}-{hash8}
+
+Examples:
+  perplexity-crispr-mechanisms-a1b2c3d4
+  openai-tp53-gene-function-f7e8d9c0
+  edison-autophagy-cancer-therapy-12345678
+</code></pre>
+<p>Full canonical reference includes the date path:</p>
+<pre><code>results/2025/12/perplexity-crispr-mechanisms-a1b2c3d4
+</code></pre>
+<p>For citations:</p>
+<pre><code>DARMA:2025/12/perplexity-crispr-mechanisms-a1b2c3d4
+</code></pre>
+<h2 id="data-model">Data Model</h2>
+<h3 id="result-object">Result Object</h3>
+<p>The archived result is exactly the drc <code>ResearchResult</code> model - no DARMA-specific extensions. This keeps the two projects in sync and allows seamless ingestion from drc caches.</p>
+<pre><code class="language-yaml"># results/2025/12/perplexity-crispr-mechanisms-a1b2c3d4.yaml
+
+# Core fields (required)
+markdown: |
+  # CRISPR Mechanisms in Human Cells
+  ...
+citations:
+  - https://doi.org/10.1038/...
+  - https://pubmed.ncbi.nlm.nih.gov/...
+provider: perplexity
+query: &quot;Research CRISPR mechanisms in human cells&quot;
+cached: false
+
+# Publication-style metadata
+title: &quot;CRISPR Mechanisms in Human Cells&quot;
+abstract: &quot;This report synthesizes current understanding of...&quot;
+keywords:
+  - CRISPR
+  - Cas9
+  - gene editing
+  - human cells
+query_metadata:
+  author: Chris Mungall
+  contributors: []
+
+# Timing information
+start_time: 2025-12-14T10:25:00
+end_time: 2025-12-14T10:27:25
+duration_seconds: 145.2
+
+# Provider details
+model: sonar-deep-research
+provider_config:
+  timeout: 600
+  max_retries: 3
+
+# Template info (if used)
+template_file: null
+template_variables: null
+</code></pre>
+<h3 id="submission-metadata">Submission Metadata</h3>
+<p>Tracks provenance of how the result entered DARMA, without modifying the result itself:</p>
+<pre><code class="language-yaml"># submissions/2025/12/perplexity-crispr-mechanisms-a1b2c3d4.yaml
+
+result_id: perplexity-crispr-mechanisms-a1b2c3d4
+submitted: 2025-12-14T12:00:00Z
+
+submitter:
+  name: Chris Mungall
+  orcid: 0000-0002-6601-2165
+  github: cmungall
+
+source:
+  type: drc_cache          # drc_cache | feeder | manual | issue
+  feeder_repo: null        # e.g., monarch-initiative/ai-gene-review
+  original_path: ~/.deep_research_cache/perplexity-crispr-mechanisms-a1b2c3d4.json
+  issue_number: null       # if submitted via GitHub issue
+
+content_hash: sha256:abc123...  # for deduplication
+license: CC-BY-4.0
+</code></pre>
+<h3 id="evaluation-object">Evaluation Object</h3>
+<p>Evaluations point to results (not vice versa), keeping results immutable:</p>
+<pre><code class="language-yaml"># evaluations/2025/12/eval-perplexity-crispr-mechanisms-a1b2c3d4-001.yaml
+
+id: eval-perplexity-crispr-mechanisms-a1b2c3d4-001
+result_id: perplexity-crispr-mechanisms-a1b2c3d4
+result_path: results/2025/12/perplexity-crispr-mechanisms-a1b2c3d4.yaml
+
+submitted: 2025-12-14T14:00:00Z
+
+evaluator:
+  type: human              # human | agent
+  name: Jane Doe
+  orcid: 0000-0001-2345-6789
+  github: janedoe
+  # For agent evaluators:
+  # agent_type: claude
+  # agent_model: claude-3-opus
+  # agent_version: 2025-01-01
+
+criteria:
+  factual_accuracy:
+    score: 0.85
+    evidence: &quot;Verified 17/20 claims against primary sources&quot;
+
+  citation_quality:
+    score: 0.90
+    evidence: &quot;Citations are relevant and accessible; 22/23 URLs resolve&quot;
+
+  comprehensiveness:
+    score: 0.75
+    evidence: &quot;Missing recent work on base editing (2024)&quot;
+
+  hallucination_check:
+    score: 0.95
+    evidence: &quot;One minor hallucinated statistic identified in section 3.2&quot;
+
+  bias_assessment:
+    score: 0.80
+    evidence: &quot;Slight over-representation of US-based research&quot;
+
+overall_recommendation: accept_with_notes  # accept | accept_with_notes | revise | reject
+notes: |
+  High quality synthesis. Would benefit from coverage of
+  base editing advances. Minor factual correction needed
+  in section 3.2.
+</code></pre>
+<h2 id="evaluation-criteria">Evaluation Criteria</h2>
+<p>Inspired by DeepEval and LLM-as-judge patterns:</p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Description</th>
+<th>Evaluator Types</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Factual Accuracy</strong></td>
+<td>Claims match cited sources</td>
+<td>Human, LLM-as-judge</td>
+</tr>
+<tr>
+<td><strong>Citation Quality</strong></td>
+<td>Sources are relevant, accessible, reputable</td>
+<td>Human, automated URL checks</td>
+</tr>
+<tr>
+<td><strong>Comprehensiveness</strong></td>
+<td>Covers key aspects of the topic</td>
+<td>Human, domain expert</td>
+</tr>
+<tr>
+<td><strong>Hallucination Check</strong></td>
+<td>No fabricated facts or citations</td>
+<td>LLM-as-judge, human</td>
+</tr>
+<tr>
+<td><strong>Bias Assessment</strong></td>
+<td>Balanced coverage, no systematic skew</td>
+<td>Human</td>
+</tr>
+<tr>
+<td><strong>Recency</strong></td>
+<td>Uses recent literature where relevant</td>
+<td>Automated date extraction</td>
+</tr>
+<tr>
+<td><strong>Clarity</strong></td>
+<td>Well-organized, readable</td>
+<td>Human, LLM</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aggregate-scores">Aggregate Scores</h3>
+<p>Computed at query/build time by scanning evaluations:</p>
+<pre><code class="language-python">def get_result_with_evals(result_id: str) -&gt; dict:
+    result = load_yaml(f&quot;results/{year}/{month}/{result_id}.yaml&quot;)
+
+    # Find all evals pointing to this result
+    evals = glob(f&quot;evaluations/**/*{result_id}*.yaml&quot;)
+
+    # Compute aggregates
+    scores = defaultdict(list)
+    for eval_file in evals:
+        eval_data = load_yaml(eval_file)
+        for criterion, data in eval_data['criteria'].items():
+            scores[criterion].append(data['score'])
+
+    # Inject for display (not persisted to result file)
+    result['_computed'] = {
+        'evaluation_count': len(evals),
+        'aggregate_scores': {k: mean(v) for k, v in scores.items()},
+        'evaluations': [load_yaml(e) for e in evals]
+    }
+    return result
+</code></pre>
+<p>Benefits of this approach:
+- Results are <strong>immutable</strong> after submission
+- Evaluations can accumulate without touching result files
+- No merge conflicts or churn on popular results
+- Easy to regenerate aggregates</p>
+<h2 id="workflows">Workflows</h2>
+<h3 id="1-individual-submission-via-github-issue">1. Individual Submission via GitHub Issue</h3>
+<pre><code>User opens issue using &quot;Submit Result&quot; template
+  │
+  ├─ Pastes: YAML content or path to drc cache file
+  ├─ Fills in: submitter info, license
+  │
+  ▼
+GitHub Action validates against schema
+  │
+  ▼
+Creates files:
+  ├─ results/YYYY/MM/{id}.yaml
+  ├─ results/YYYY/MM/{id}.md
+  └─ submissions/YYYY/MM/{id}.yaml
+  │
+  ▼
+Closes issue with link to result page
+</code></pre>
+<h3 id="2-command-line-submission">2. Command-Line Submission</h3>
+<pre><code class="language-bash"># User runs drc, result cached locally
+deep-research-client research &quot;CRISPR mechanisms&quot; --provider perplexity
+
+# Submit to DARMA
+darma submit ~/.deep_research_cache/perplexity-crispr-mechanisms-a1b2c3d4.json \
+  --submitter &quot;Chris Mungall&quot; \
+  --orcid &quot;0000-0002-6601-2165&quot;
+</code></pre>
+<h3 id="3-bulk-ingest-from-feeders">3. Bulk Ingest from Feeders</h3>
+<pre><code class="language-yaml"># feeders.yaml
+feeders:
+  - name: ai-gene-review
+    repo: monarch-initiative/ai-gene-review
+    path: results/
+    format: drc
+
+  - name: dismech
+    repo: monarch-initiative/dismech
+    path: research_outputs/
+    format: drc
+</code></pre>
+<p>Sync workflow:</p>
+<pre><code>GitHub Action runs daily (or on-demand)
+  │
+  ▼
+For each feeder repo:
+  ├─ Fetch new results not already in DARMA
+  ├─ Check content_hash for deduplication
+  └─ Create result + submission files
+      └─ source.type = feeder name
+</code></pre>
+<h3 id="4-evaluation-submission">4. Evaluation Submission</h3>
+<pre><code class="language-bash">darma evaluate perplexity-crispr-mechanisms-a1b2c3d4 \
+  --evaluator &quot;Jane Doe&quot; \
+  --orcid &quot;0000-0001-2345-6789&quot; \
+  --scores factual_accuracy=0.85 citation_quality=0.90 \
+  --notes &quot;Good synthesis, minor issues in section 3&quot;
+</code></pre>
+<p>Or via GitHub issue template.</p>
+<h2 id="static-site-features">Static Site Features</h2>
+<p>Built with mkdocs-material or similar:</p>
+<h3 id="browse">Browse</h3>
+<ul>
+<li>By date, domain, provider, model</li>
+<li>Filter by aggregate scores</li>
+<li>Show evaluation status (unevaluated, evaluated, contested)</li>
+</ul>
+<h3 id="search">Search</h3>
+<ul>
+<li>Full-text search of content</li>
+<li>Filter by metadata fields</li>
+<li>(Future: semantic search)</li>
+</ul>
+<h3 id="result-page">Result Page</h3>
+<ul>
+<li>Full markdown render</li>
+<li>Provenance sidebar (provider, model, timing)</li>
+<li>Citations list with link validation status</li>
+<li>Evaluation scores with expandable evidence</li>
+<li>"Cite this" button (BibTeX, RIS)</li>
+<li>"Re-run with drc" command snippet</li>
+</ul>
+<h3 id="leaderboards">Leaderboards</h3>
+<ul>
+<li>Top contributors</li>
+<li>Most evaluated results</li>
+<li>Highest quality by domain</li>
+<li>Provider/model comparisons</li>
+</ul>
+<h2 id="schema-synchronization-with-drc">Schema Synchronization with drc</h2>
+<p>Options for keeping schemas in sync:</p>
+<p><strong>Option A: DARMA imports from drc</strong></p>
+<pre><code class="language-yaml"># darma/schema/research_result.yaml
+$ref: https://raw.githubusercontent.com/.../deep-research-client/main/schema/research_result.yaml
+</code></pre>
+<p><strong>Option B: Shared schema repository</strong></p>
+<pre><code>monarch-initiative/research-schemas/
+├── research_result.yaml
+├── evaluation.yaml
+└── ...
+</code></pre>
+<p><strong>Option C: Periodic copy with drift detection</strong> (simplest to start)
+- GitHub Action periodically copies schema from drc
+- Alerts on changes for manual review</p>
+<h2 id="comparison-with-other-platforms">Comparison with Other Platforms</h2>
+<p>Based on the landscape surveyed by <a href="https://www.monperrus.net/martin/preprint-servers-of-AI-generated-papers">Monperrus (2025)</a>, with additional research:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>aiXiv</th>
+<th>ai.vixra.org</th>
+<th>AI Archive</th>
+<th>arXiv</th>
+<th>DARMA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accepts AI research</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Limited</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Infrastructure</td>
+<td>FastAPI+S3</td>
+<td>Custom</td>
+<td>Custom</td>
+<td>Custom</td>
+<td>GitHub-native</td>
+</tr>
+<tr>
+<td>Submission cost</td>
+<td>Free</td>
+<td>Free</td>
+<td>Free</td>
+<td>Free</td>
+<td>Free</td>
+</tr>
+<tr>
+<td>Barrier to entry</td>
+<td>Account</td>
+<td>Low</td>
+<td>Account</td>
+<td>Endorsement</td>
+<td>GitHub account</td>
+</tr>
+<tr>
+<td>AI metadata depth</td>
+<td>Basic (<code>agent_authors[]</code>)</td>
+<td>Basic</td>
+<td>Detailed</td>
+<td>N/A</td>
+<td>Full provenance</td>
+</tr>
+<tr>
+<td>Evaluation system</td>
+<td>Auto-agents</td>
+<td>None</td>
+<td>AI + human</td>
+<td>External</td>
+<td>Community + agent</td>
+</tr>
+<tr>
+<td>Quality assurance</td>
+<td>Dual-track review</td>
+<td>Minimal</td>
+<td>Automated</td>
+<td>Peer review</td>
+<td>Schema + evals</td>
+</tr>
+<tr>
+<td>Open source</td>
+<td><strong>Yes (MIT)</strong></td>
+<td>No</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Content granularity</td>
+<td>Full papers</td>
+<td>Papers</td>
+<td>Papers</td>
+<td>Papers</td>
+<td>Query-level results</td>
+</tr>
+<tr>
+<td>Integration w/ tools</td>
+<td>API</td>
+<td>None</td>
+<td>API</td>
+<td>None</td>
+<td>drc + Git</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>OPENAGS org</td>
+<td>Private</td>
+<td>Private</td>
+<td>Cornell</td>
+<td>Community</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-differentiators">Key Differentiators</h3>
+<p><strong>DARMA vs aiXiv:</strong>
+| Aspect | aiXiv | DARMA |
+|--------|-------|-------|
+| Unit of publication | Full papers/proposals | Individual research queries |
+| Data model | Generic submissions | drc <code>ResearchResult</code> with full provenance |
+| Storage | PostgreSQL + S3 | Git (YAML/MD files) |
+| Reproducibility | PDF storage | Query + params = re-runnable |
+| Evaluation schema | Unstructured | DeepEval-inspired criteria |
+| Integration | Standalone platform | drc ecosystem, feeder repos |</p>
+<p><strong>Per Monperrus's requirements:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>How DARMA Addresses It</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Detailed metadata</strong></td>
+<td>Full drc <code>ResearchResult</code>: provider, model, params, timing, template info</td>
+</tr>
+<tr>
+<td><strong>Clear separation</strong></td>
+<td>Dedicated archive; no mixing with human-only research</td>
+</tr>
+<tr>
+<td><strong>Transparency</strong></td>
+<td>Open repo, immutable results, evaluation history</td>
+</tr>
+<tr>
+<td><strong>Trusted operation</strong></td>
+<td>Community governance; potential for institutional adoption</td>
+</tr>
+</tbody>
+</table>
+<h3 id="potential-synergies">Potential Synergies</h3>
+<p>DARMA and aiXiv could be complementary:
+- <strong>aiXiv</strong>: Full AI-generated papers and proposals
+- <strong>DARMA</strong>: Granular deep research queries that might feed into larger papers
+- Cross-posting: DARMA results could be cited in aiXiv papers
+- Shared evaluation: Agent evaluators could work across both platforms</p>
+<h2 id="export-and-integration">Export and Integration</h2>
+<h3 id="huggingface-datasets">HuggingFace Datasets</h3>
+<p>DARMA's structured format (results + evaluations) makes it ideal for export to HuggingFace as training/evaluation datasets for research AI systems.</p>
+<p><strong>Use cases:</strong>
+- <strong>LLM fine-tuning</strong>: High-quality research syntheses as training data
+- <strong>Evaluation benchmarks</strong>: Results with human/agent evals become ground truth for assessing new models
+- <strong>RAG corpora</strong>: Curated, evaluated research for retrieval-augmented generation</p>
+<p><strong>Export format:</strong></p>
+<pre><code class="language-python"># Example HuggingFace dataset structure
+{
+    &quot;id&quot;: &quot;perplexity-crispr-mechanisms-a1b2c3d4&quot;,
+    &quot;query&quot;: &quot;Research CRISPR mechanisms in human cells&quot;,
+    &quot;provider&quot;: &quot;perplexity&quot;,
+    &quot;model&quot;: &quot;sonar-deep-research&quot;,
+    &quot;markdown&quot;: &quot;# CRISPR Mechanisms...&quot;,
+    &quot;citations&quot;: [&quot;https://doi.org/...&quot;, ...],
+
+    # Evaluation data (key for ML training)
+    &quot;eval_factual_accuracy&quot;: 0.85,
+    &quot;eval_citation_quality&quot;: 0.90,
+    &quot;eval_comprehensiveness&quot;: 0.75,
+    &quot;eval_count&quot;: 3,
+    &quot;human_eval_count&quot;: 2,
+    &quot;agent_eval_count&quot;: 1,
+
+    # Metadata
+    &quot;domain&quot;: &quot;molecular_biology&quot;,
+    &quot;keywords&quot;: [&quot;CRISPR&quot;, &quot;Cas9&quot;, &quot;gene editing&quot;],
+    &quot;timestamp&quot;: &quot;2025-12-14T10:25:00Z&quot;
+}
+</code></pre>
+<p><strong>Potential dataset variants:</strong>
+| Dataset | Description | Use Case |
+|---------|-------------|----------|
+| <code>darma/full</code> | All results with evals | General training |
+| <code>darma/high-quality</code> | Results with avg eval score &gt; 0.8 | Fine-tuning on quality |
+| <code>darma/human-evaluated</code> | Only human-evaluated results | Ground truth benchmarks |
+| <code>darma/by-domain</code> | Domain-specific subsets | Specialized models |
+| <code>darma/eval-pairs</code> | (result, evaluation) pairs | Training evaluation models |</p>
+<p><strong>Automation:</strong></p>
+<pre><code class="language-yaml"># .github/workflows/export-huggingface.yml
+# Runs weekly or on-demand
+- Aggregate all results + evaluations
+- Compute aggregate scores
+- Filter by quality thresholds
+- Push to huggingface.co/datasets/darma/research-results
+</code></pre>
+<h3 id="zenodo-integration">Zenodo Integration</h3>
+<p>For long-term archival and DOI minting, DARMA can export collections to Zenodo.</p>
+<p><strong>Export triggers:</strong>
+- <strong>Periodic snapshots</strong>: Monthly/quarterly archive of all new results
+- <strong>Curated collections</strong>: Thematic collections (e.g., "AI in Drug Discovery 2025")
+- <strong>Milestone releases</strong>: Version-tagged releases (v1.0, v2.0)</p>
+<p><strong>Zenodo metadata mapping:</strong></p>
+<pre><code class="language-yaml"># Example Zenodo deposit
+title: &quot;DARMA Collection: Molecular Biology Q4 2025&quot;
+description: &quot;Curated deep research results on molecular biology topics&quot;
+creators:
+  - name: &quot;DARMA Community&quot;
+    affiliation: &quot;DARMA Archive&quot;
+upload_type: &quot;dataset&quot;
+publication_date: &quot;2025-12-31&quot;
+keywords: [&quot;AI research&quot;, &quot;deep research&quot;, &quot;molecular biology&quot;]
+license: &quot;cc-by-4.0&quot;
+communities:
+  - identifier: &quot;darma&quot;
+related_identifiers:
+  - identifier: &quot;https://github.com/darma-archive/darma&quot;
+    relation: &quot;isSupplementTo&quot;
+    scheme: &quot;url&quot;
+</code></pre>
+<p><strong>Collection types:</strong>
+| Collection | Trigger | DOI Scope |
+|------------|---------|-----------|
+| <strong>Snapshots</strong> | Quarterly | One DOI per quarter |
+| <strong>Thematic</strong> | Manual curation | One DOI per collection |
+| <strong>Individual</strong> | High-impact results | One DOI per result (optional) |</p>
+<p><strong>Benefits:</strong>
+- <strong>Citability</strong>: DOIs for academic citation
+- <strong>Preservation</strong>: Long-term archival independent of GitHub
+- <strong>Discoverability</strong>: Indexed in OpenAIRE, DataCite, Google Dataset Search
+- <strong>Versioning</strong>: Zenodo handles version DOIs automatically</p>
+<h3 id="export-pipeline">Export Pipeline</h3>
+<pre><code>DARMA (GitHub)
+     │
+     ├──→ HuggingFace (weekly)
+     │      └── Training datasets with evals
+     │
+     ├──→ Zenodo (quarterly + manual)
+     │      └── Archived collections with DOIs
+     │
+     └──→ Static site (on push)
+            └── Browse/search interface
+</code></pre>
+<h3 id="future-integrations">Future Integrations</h3>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Purpose</th>
+<th>Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>HuggingFace</strong></td>
+<td>ML datasets, model training</td>
+<td>High</td>
+</tr>
+<tr>
+<td><strong>Zenodo</strong></td>
+<td>DOIs, long-term archival</td>
+<td>High</td>
+</tr>
+<tr>
+<td><strong>ORCID</strong></td>
+<td>Contributor attribution</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td><strong>OpenAlex</strong></td>
+<td>Academic graph integration</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td><strong>Wikidata</strong></td>
+<td>Linked data, knowledge graph</td>
+<td>Low</td>
+</tr>
+<tr>
+<td><strong>IPFS</strong></td>
+<td>Decentralized backup</td>
+<td>Low</td>
+</tr>
+</tbody>
+</table>
+<h2 id="roadmap">Roadmap</h2>
+<h3 id="phase-1-mvp-github-only">Phase 1: MVP (GitHub-only)</h3>
+<ul>
+<li>[ ] Repository setup with issue templates</li>
+<li>[ ] YAML schema definitions (synced with drc <code>ResearchResult</code>)</li>
+<li>[ ] GitHub Actions for validation</li>
+<li>[ ] Basic mkdocs site</li>
+<li>[ ] Manual submission workflow</li>
+</ul>
+<h3 id="phase-2-automation">Phase 2: Automation</h3>
+<ul>
+<li>[ ] <code>darma</code> CLI tool</li>
+<li>[ ] drc integration: <code>--submit-to-darma</code> flag</li>
+<li>[ ] Feeder sync automation (ai-gene-review, dismech)</li>
+<li>[ ] Automated citation URL validation</li>
+<li>[ ] HuggingFace export pipeline (weekly sync)</li>
+</ul>
+<h3 id="phase-3-community-evaluation">Phase 3: Community &amp; Evaluation</h3>
+<ul>
+<li>[ ] Agent evaluation bots (LLM-as-judge)</li>
+<li>[ ] Human evaluation via GitHub issues</li>
+<li>[ ] Reputation/contribution tracking</li>
+<li>[ ] Domain-specific collections</li>
+<li>[ ] Cross-referencing between results</li>
+<li>[ ] HuggingFace dataset variants (high-quality, by-domain, eval-pairs)</li>
+</ul>
+<h3 id="phase-4-archival-journal-like-features">Phase 4: Archival &amp; Journal-like Features</h3>
+<ul>
+<li>[ ] Zenodo integration for quarterly snapshots</li>
+<li>[ ] DOI minting for curated collections</li>
+<li>[ ] Editorial curation for "highlights"</li>
+<li>[ ] Periodic digests/newsletters</li>
+<li>[ ] Integration with ORCID</li>
+<li>[ ] OpenAlex integration for academic graph</li>
+</ul>
+<h2 id="open-questions">Open Questions</h2>
+<ol>
+<li><strong>Versioning</strong>: How to handle updates to results?</li>
+<li>Option A: Immutable - new query = new result</li>
+<li>
+<p>Option B: Versioned with history</p>
+</li>
+<li>
+<p><strong>Quality threshold</strong>: Auto-accept all submissions, or require minimum evaluation?</p>
+</li>
+<li>
+<p><strong>Agent evaluators</strong>: Which LLM-as-judge patterns? How to distinguish agent vs human evals in aggregates?</p>
+</li>
+<li>
+<p><strong>Near-duplicates</strong>: Same query, different models - treat as separate or linked?</p>
+</li>
+<li>
+<p><strong>Negative results</strong>: Include "query failed" or "no useful results" entries?</p>
+</li>
+<li>
+<p><strong>Licensing</strong>: Default CC-BY-4.0, or submitter choice?</p>
+</li>
+<li>
+<p><strong>Governance</strong>: Who can merge PRs? Community maintainers model?</p>
+</li>
+</ol>
+<h2 id="references">References</h2>
+<h3 id="primary-sources">Primary Sources</h3>
+<ul>
+<li>
+<p><strong>Monperrus, M. (2025).</strong> <a href="https://www.monperrus.net/martin/preprint-servers-of-AI-generated-papers">"Preprint Servers for AI Generated Papers"</a>. Personal blog. <em>Key reference for the landscape of AI research archives and requirements.</em></p>
+</li>
+<li>
+<p><strong>Moons, P. et al. (2025).</strong> "Google's AI co-scientist and OpenAI's deep research: new partners in health research?" <a href="https://academic.oup.com/eurjcn/article/24/5/800/8205996">Eur. J. Cardiovasc. Nurs. 24(5): 800-807</a>. <em>Overview of AI research tools and publishing implications.</em></p>
+</li>
+</ul>
+<h3 id="platforms">Platforms</h3>
+<ul>
+<li><a href="https://aixiv.science">aiXiv</a> - Open-source preprint server for AI scientists (<a href="https://github.com/aixiv-org/aiXiv">GitHub</a>, <a href="https://github.com/aixiv-org/aixiv-core">backend</a>)</li>
+<li><a href="https://ai-archive.io">AI Archive</a> - Publishing platform for AI agents (Fall 2025)</li>
+<li><a href="http://ai.vixra.org">ai.vixra.org</a> - AI-assisted article archive (March 2025)</li>
+<li><a href="https://rxiverse.com">rxiVerse</a> - AI preprint server with submission fees (July 2025)</li>
+</ul>
+<h3 id="related-infrastructure">Related Infrastructure</h3>
+<ul>
+<li><a href="https://github.com/monarch-initiative/deep-research-client">deep-research-client</a> - The underlying research client; provides data model</li>
+<li><a href="https://www.micropublication.org/">Micropublications</a> - Single-observation peer-reviewed publishing</li>
+<li><a href="https://nanopub.net/">Nanopublications</a> - Machine-readable scientific assertions</li>
+<li><a href="https://github.com/confident-ai/deepeval">DeepEval</a> - LLM evaluation framework</li>
+</ul>
+<h3 id="further-reading">Further Reading</h3>
+<ul>
+<li>Lee, J. &amp; Cho, K. (2023). "Defining the Boundaries of AI Use in Scientific Writing: A Comparative Review of Editorial Policies." <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC12170296/">J. Korean Med. Sci. 40(e187)</a></li>
+<li>COPE, ICMJE, WAME guidelines on AI in scholarly publishing</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -29,12 +29,14 @@ dependencies = [
 cyberian = [
     "cyberian>=0.2.0",
 ]
+# NOTE: browser extra removed - linkml-browser is not on PyPI
+# Install manually: uv pip install "linkml-browser @ git+https://github.com/linkml/linkml-browser.git"
+
+[dependency-groups]
 browser = [
     "linkml-browser @ git+https://github.com/linkml/linkml-browser.git",
     "markdown>=3.5.0",
 ]
-
-[dependency-groups]
 dev = [
     "mypy>=1.17.1",
     "ruff>=0.4.8",

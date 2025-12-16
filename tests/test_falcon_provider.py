@@ -3,6 +3,9 @@
 import pytest
 from datetime import datetime
 
+# Skip all tests in this module if edison_client is not installed
+pytest.importorskip("edison_client")
+
 from deep_research_client.providers.falcon import FalconProvider
 from deep_research_client.models import ProviderConfig
 

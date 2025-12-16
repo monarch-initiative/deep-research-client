@@ -85,6 +85,12 @@ def research(
     base_url: Annotated[Optional[str], typer.Option("--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
     use_cborg: Annotated[bool, typer.Option("--use-cborg", help="Use CBORG proxy (Berkeley Lab's AI Portal at api.cborg.lbl.gov)")] = False,
     api_key_env: Annotated[Optional[str], typer.Option("--api-key-env", help="Environment variable name to use for API key (e.g., 'CBORG_API_KEY')")] = None,
+    # Publication-style metadata options
+    title: Annotated[Optional[str], typer.Option("--title", help="Title for the research report")] = None,
+    abstract: Annotated[Optional[str], typer.Option("--abstract", help="Abstract or summary for the research")] = None,
+    keyword: Annotated[Optional[List[str]], typer.Option("--keyword", help="Keyword/tag for the research (can be used multiple times)")] = None,
+    author: Annotated[Optional[str], typer.Option("--author", help="Primary author of the research")] = None,
+    contributor: Annotated[Optional[List[str]], typer.Option("--contributor", help="Contributor to the research (can be used multiple times)")] = None,
 ):
     """Perform deep research on a query.
 
@@ -239,12 +245,27 @@ def research(
         logger.info(f"Available providers: {', '.join(available_providers)}")
         logger.info(f"Using: {available_providers[0]}")
 
+    # Build publication metadata if any provided
+    metadata: Optional[dict] = None
+    if title or abstract or keyword or author or contributor:
+        metadata = {}
+        if title:
+            metadata['title'] = title
+        if abstract:
+            metadata['abstract'] = abstract
+        if keyword:
+            metadata['keywords'] = keyword
+        if author:
+            metadata['author'] = author
+        if contributor:
+            metadata['contributors'] = contributor
+
     logger.info("Researching...")
 
     try:
         # Perform research
         logger.debug(f"Starting research with query: {query[:100]}...")
-        result = client.research(query, provider, template_info, model, provider_params)
+        result = client.research(query, provider, template_info, model, provider_params, metadata)
 
         # Show cache status
         if result.cached:
@@ -390,20 +411,482 @@ def clear_cache():
     logger.info(f"Cleared {count} cached files")
 
 
+def _format_size(size_bytes: int) -> str:
+    """Format byte size as human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f}KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f}MB"
+
+
+def _format_cache_entry(info: dict, detailed: bool = False, show_query: bool = True) -> str:
+    """Format a cache entry for display."""
+    from datetime import datetime
+
+    lines = []
+
+    # Basic line: filename with provider tag
+    provider = info.get("provider", "?")
+    name = info["name"]
+
+    # Format modified time
+    modified_ts = info.get("modified", 0)
+    modified_dt = datetime.fromtimestamp(modified_ts)
+    modified_str = modified_dt.strftime("%Y-%m-%d %H:%M")
+
+    size_str = _format_size(info.get("size_bytes", 0))
+
+    if detailed:
+        lines.append(f"  [{provider}] {name}")
+        lines.append(f"    Modified: {modified_str}  Size: {size_str}")
+
+        if show_query:
+            query = info.get("query", "")
+            if query:
+                # Truncate long queries
+                if len(query) > 100:
+                    query = query[:100] + "..."
+                lines.append(f"    Query: {query}")
+
+        model = info.get("model")
+        if model:
+            lines.append(f"    Model: {model}")
+
+        duration = info.get("duration_seconds")
+        if duration:
+            lines.append(f"    Duration: {duration:.1f}s")
+
+        citation_count = info.get("citation_count", 0)
+        if citation_count:
+            lines.append(f"    Citations: {citation_count}")
+    else:
+        # Compact format: [provider] filename (size, date)
+        lines.append(f"  [{provider}] {name} ({size_str}, {modified_str})")
+
+    return "\n".join(lines)
+
+
 @app.command()
-def list_cache():
-    """List cached research files."""
+def list_cache(
+    detailed: Annotated[bool, typer.Option("--detailed", "-d", help="Show detailed metadata for each entry")] = False,
+    provider_filter: Annotated[Optional[str], typer.Option("--provider", "-p", help="Filter by provider name")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Limit number of results")] = 0,
+):
+    """List cached research files with metadata.
+
+    \b
+    Examples:
+      deep-research-client list-cache                    # List all cached files
+      deep-research-client list-cache --detailed         # Show detailed metadata
+      deep-research-client list-cache --provider openai  # Filter by provider
+      deep-research-client list-cache -n 10              # Show only last 10 entries
+    """
     logger.debug("Listing cached files")
     client = DeepResearchClient()
-    cached_files = client.list_cached_files()
+    cache_info = client.get_cache_info()
 
-    if not cached_files:
+    if not cache_info:
         logger.info("No cached files found")
         return
 
-    logger.info(f"Found {len(cached_files)} cached files in ~/.deep_research_cache/:")
-    for file_info in cached_files:
-        typer.echo(f"  {file_info['name']}")
+    # Apply provider filter
+    if provider_filter:
+        cache_info = [c for c in cache_info if c.get("provider", "").lower() == provider_filter.lower()]
+        if not cache_info:
+            logger.info(f"No cached files found for provider: {provider_filter}")
+            return
+
+    # Apply limit
+    if limit > 0:
+        cache_info = cache_info[:limit]
+
+    # Calculate total size
+    total_size = sum(c.get("size_bytes", 0) for c in cache_info)
+
+    typer.echo(f"Found {len(cache_info)} cached files ({_format_size(total_size)}) in ~/.deep_research_cache/:")
+    typer.echo()
+
+    for info in cache_info:
+        typer.echo(_format_cache_entry(info, detailed=detailed))
+
+    if not detailed:
+        typer.echo()
+        typer.echo("Use --detailed for more metadata")
+
+
+@app.command()
+def search_cache(
+    keyword: Annotated[str, typer.Argument(help="Keyword to search for in queries and content")],
+    detailed: Annotated[bool, typer.Option("--detailed", "-d", help="Show detailed metadata for each match")] = False,
+    query_only: Annotated[bool, typer.Option("--query-only", "-q", help="Only search in queries, not content")] = False,
+    context: Annotated[int, typer.Option("--context", "-c", help="Characters of context around matches")] = 60,
+    max_snippets: Annotated[int, typer.Option("--max-snippets", "-m", help="Maximum snippets to show per match")] = 3,
+    no_snippets: Annotated[bool, typer.Option("--no-snippets", help="Hide match snippets")] = False,
+):
+    """Search cached research files by keyword.
+
+    Searches in both queries and content (markdown) by default.
+    Shows context snippets around each match.
+
+    \b
+    Examples:
+      deep-research-client search-cache "BRCA1"              # Find entries with snippets
+      deep-research-client search-cache "gene" --detailed    # Show detailed matches
+      deep-research-client search-cache "AI" --query-only    # Only search query text
+      deep-research-client search-cache "CRISPR" -c 100      # More context around matches
+      deep-research-client search-cache "mutation" -m 5      # Show up to 5 snippets
+    """
+    logger.debug(f"Searching cache for: {keyword}")
+    client = DeepResearchClient()
+    matches = client.search_cache(keyword, context_chars=context, max_snippets=max_snippets)
+
+    if not matches:
+        logger.info(f"No cached files found matching: {keyword}")
+        return
+
+    # Filter to query-only matches if requested
+    if query_only:
+        matches = [m for m in matches if m.get("match_in_query", False)]
+        if not matches:
+            logger.info(f"No queries found matching: {keyword}")
+            return
+
+    typer.echo(f"Found {len(matches)} cached files matching '{keyword}':")
+    typer.echo()
+
+    for info in matches:
+        # Show where the match was found
+        match_locations = []
+        if info.get("match_in_query"):
+            match_locations.append("query")
+        if info.get("match_in_content"):
+            match_locations.append("content")
+        match_str = f" [match in: {', '.join(match_locations)}]"
+
+        typer.echo(_format_cache_entry(info, detailed=detailed) + match_str)
+
+        # Show snippets unless disabled
+        if not no_snippets:
+            query_snippets = info.get("query_snippets", [])
+            content_snippets = info.get("content_snippets", [])
+
+            if query_snippets:
+                for snippet in query_snippets:
+                    typer.echo(f"      [query] {snippet}")
+
+            if content_snippets:
+                for snippet in content_snippets:
+                    typer.echo(f"      [content] {snippet}")
+
+            if query_snippets or content_snippets:
+                typer.echo()  # Blank line between entries with snippets
+
+
+# Default schema for browse-cache command
+BROWSER_SCHEMA = {
+    "title": "Deep Research Cache Browser",
+    "description": "Browse and filter cached research results",
+    "searchPlaceholder": "Search queries...",
+    "searchableFields": ["title", "query_preview", "keywords"],
+    "facets": [
+        {
+            "field": "provider",
+            "label": "Provider",
+            "type": "string",
+            "sortBy": "count"
+        },
+        {
+            "field": "model",
+            "label": "Model",
+            "type": "string",
+            "sortBy": "count"
+        },
+        {
+            "field": "title",
+            "label": "Title",
+            "type": "string",
+            "sortBy": "count"
+        },
+        {
+            "field": "citation_count",
+            "label": "Citations",
+            "type": "integer",
+            "sortBy": "count"
+        },
+        {
+            "field": "word_count",
+            "label": "Word Count",
+            "type": "integer",
+            "sortBy": "count"
+        },
+        {
+            "field": "keywords",
+            "label": "Keywords",
+            "type": "array",
+            "sortBy": "count"
+        },
+        {
+            "field": "template_file",
+            "label": "Template",
+            "type": "string",
+            "sortBy": "count"
+        },
+        {
+            "field": "date",
+            "label": "Date",
+            "type": "string",
+            "sortBy": "alphabetical"
+        },
+    ],
+    "displayFields": [
+        {"field": "title", "label": "Title", "type": "string"},
+        {"field": "query_preview", "label": "Query", "type": "string"},
+        {"field": "provider", "label": "Provider", "type": "string"},
+        {"field": "model", "label": "Model", "type": "string"},
+        {"field": "template_file", "label": "Template", "type": "string"},
+        {"field": "date", "label": "Date", "type": "string"},
+        {"field": "size_kb", "label": "Size (KB)", "type": "number"},
+        {"field": "citation_count", "label": "Citations", "type": "integer"},
+        {"field": "word_count", "label": "Words", "type": "integer"},
+        {"field": "keywords", "label": "Keywords", "type": "array"},
+    ]
+}
+
+
+def _inject_url_handling(index_html_path: Path) -> None:
+    """Inject URL type handling into the generated linkml-browser index.html.
+
+    linkml-browser handles 'curie' type but not 'url' type for links.
+    This post-processes the HTML to add URL handling after the curie handling.
+    """
+    content = index_html_path.read_text(encoding='utf-8')
+
+    # Find the curie handling code and add URL handling after it
+    curie_handling = """if (fieldConfig.type === 'curie' && value.includes(':')) {
+                                // Create hyperlink for any CURIE (Compact URI)
+                                const curieUrl = `https://bioregistry.io/${value}`;
+                                displayValue = `<a href="${curieUrl}" target="_blank" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${displayValue}</a>`;
+                            }"""
+
+    url_handling = """if (fieldConfig.type === 'curie' && value.includes(':')) {
+                                // Create hyperlink for any CURIE (Compact URI)
+                                const curieUrl = `https://bioregistry.io/${value}`;
+                                displayValue = `<a href="${curieUrl}" target="_blank" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${displayValue}</a>`;
+                            }
+
+                            // Handle URL type fields as clickable links
+                            if (fieldConfig.type === 'url' && value) {
+                                displayValue = `<a href="${value}" target="_self" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${fieldConfig.label}</a>`;
+                            }"""
+
+    if curie_handling in content:
+        content = content.replace(curie_handling, url_handling)
+        index_html_path.write_text(content, encoding='utf-8')
+
+
+def _generate_individual_pages(
+    data: list[dict],
+    output_dir: Path,
+    template_path: Optional[Path] = None
+) -> int:
+    """Generate individual HTML pages for each cache entry.
+
+    Returns number of pages generated.
+    """
+    import markdown as md_lib
+    from jinja2 import Environment, FileSystemLoader, PackageLoader
+
+    # Setup Jinja2 environment
+    if template_path and template_path.exists():
+        env = Environment(loader=FileSystemLoader(template_path.parent))
+        template = env.get_template(template_path.name)
+    else:
+        # Use built-in template
+        env = Environment(loader=PackageLoader('deep_research_client', 'templates'))
+        template = env.get_template('research_result.html.j2')
+
+    # Setup markdown converter
+    md_converter = md_lib.Markdown(extensions=[
+        'extra',        # Tables, footnotes, etc.
+        'codehilite',   # Syntax highlighting
+        'toc',          # Table of contents
+        'sane_lists',   # Better list handling
+    ])
+
+    pages_dir = output_dir / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for entry in data:
+        if "markdown" not in entry:
+            continue
+
+        # Convert markdown to HTML
+        md_converter.reset()
+        content_html = md_converter.convert(entry["markdown"])
+
+        # Render template
+        html_content = template.render(
+            id=entry.get("id", ""),
+            title=entry.get("title", ""),
+            query_preview=entry.get("query_preview", ""),
+            provider=entry.get("provider", "unknown"),
+            model=entry.get("model", "default"),
+            date=entry.get("date", ""),
+            duration_seconds=entry.get("duration_seconds"),
+            citation_count=entry.get("citation_count", 0),
+            keywords=entry.get("keywords", []),
+            author=entry.get("author", ""),
+            filename=entry.get("filename", ""),
+            content_html=content_html,
+            citations=entry.get("citations", []),
+            template_variables=entry.get("template_variables", {}),
+            template_file=entry.get("template_file", ""),
+            provider_config=entry.get("provider_config", {}),
+        )
+
+        # Write HTML file
+        page_file = pages_dir / f"{entry['id']}.html"
+        page_file.write_text(html_content, encoding='utf-8')
+        count += 1
+
+    return count
+
+
+@app.command()
+def browse_cache(
+    output_dir: Annotated[Path, typer.Argument(help="Output directory for browser files")],
+    title: Annotated[Optional[str], typer.Option("--title", "-t", help="Browser title")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Browser description")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing directory")] = False,
+    export_only: Annotated[bool, typer.Option("--export-only", help="Only export JSON data, don't generate browser")] = False,
+    no_pages: Annotated[bool, typer.Option("--no-pages", help="Skip generating individual HTML pages")] = False,
+    template: Annotated[Optional[Path], typer.Option("--template", help="Custom Jinja2 template for individual pages")] = None,
+):
+    """Generate a faceted browser from cached research results.
+
+    Requires the 'browser' optional dependency: pip install deep-research-client[browser]
+
+    Creates a standalone HTML browser with facets for provider, model, keywords, etc.
+    Also generates individual HTML pages for each research result (unless --no-pages).
+
+    \b
+    Examples:
+      deep-research-client browse-cache ./browser           # Generate browser + pages
+      deep-research-client browse-cache ./browser -f        # Overwrite existing
+      deep-research-client browse-cache ./browser -t "My Research"  # Custom title
+      deep-research-client browse-cache ./browser --no-pages  # Skip individual pages
+      deep-research-client browse-cache ./data --export-only  # Just export JSON
+    """
+    import json as json_module
+
+    logger.debug("Exporting cache for browser")
+    client = DeepResearchClient()
+
+    # Include content if we're generating pages
+    include_content = not no_pages
+    data = client.export_cache_for_browser(include_content=include_content)
+
+    if not data:
+        logger.error("No cached files found to browse")
+        raise typer.Exit(1)
+
+    logger.info(f"Found {len(data)} cached research entries")
+
+    # Handle export-only mode
+    if export_only:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        data_file = output_dir / "cache_data.json"
+        schema_file = output_dir / "schema.json"
+
+        # Add href links to data (pages will be in pages/ subdirectory)
+        for entry in data:
+            entry["href"] = f"pages/{entry['id']}.html"
+            # Remove full content from export (too large)
+            entry.pop("markdown", None)
+            entry.pop("citations", None)
+
+        # Write data
+        with open(data_file, 'w', encoding='utf-8') as f:
+            json_module.dump(data, f, indent=2)
+        logger.info(f"Data exported to: {data_file}")
+
+        # Write schema with href in display fields
+        schema = BROWSER_SCHEMA.copy()
+        if title:
+            schema["title"] = title
+        if description:
+            schema["description"] = description
+
+        with open(schema_file, 'w', encoding='utf-8') as f:
+            json_module.dump(schema, f, indent=2)
+        logger.info(f"Schema exported to: {schema_file}")
+
+        typer.echo(f"Exported {len(data)} entries to {output_dir}/")
+        typer.echo("Use 'linkml-browser deploy' to generate browser from these files")
+        return
+
+    # Check for dependencies
+    try:
+        from linkml_browser import BrowserGenerator  # type: ignore[import-untyped,import-not-found]
+        import markdown as md_lib  # noqa: F401
+    except ImportError as e:
+        missing = str(e).split("'")[1] if "'" in str(e) else "linkml-browser or markdown"
+        logger.error(f"{missing} not installed. Install with:")
+        logger.error("  pip install deep-research-client[browser]")
+        logger.error("  # or: uv add deep-research-client[browser]")
+        raise typer.Exit(1)
+
+    # Check if output directory exists
+    if output_dir.exists() and not force:
+        logger.error(f"Output directory exists: {output_dir}")
+        logger.error("Use --force to overwrite")
+        raise typer.Exit(1)
+
+    # Add href links to data for browser
+    for entry in data:
+        entry["href"] = f"pages/{entry['id']}.html"
+
+    # Prepare schema with href link
+    schema = BROWSER_SCHEMA.copy()
+    if title:
+        schema["title"] = title
+    if description:
+        schema["description"] = description
+
+    # Add href to display fields (as first field for clickable link)
+    href_field = {"field": "href", "label": "View", "type": "url"}
+    schema["displayFields"] = [href_field] + list(schema["displayFields"])
+
+    # Generate browser first (it clears the directory with force=True)
+    # We need to generate pages after this, so save the content first
+    logger.info("Generating browser...")
+
+    # Create browser data without full content (too large for JS)
+    browser_data = []
+    for entry in data:
+        browser_entry = {k: v for k, v in entry.items() if k not in ("markdown", "citations")}
+        browser_data.append(browser_entry)
+
+    generator = BrowserGenerator(browser_data, schema)
+    generator.generate(output_dir=output_dir, force=force)
+
+    # Post-process index.html to add URL handling for clickable links
+    _inject_url_handling(output_dir / "index.html")
+
+    # Now generate individual HTML pages (after browser, so pages/ survives)
+    pages_count = 0
+    if not no_pages:
+        logger.info("Generating individual pages...")
+        pages_count = _generate_individual_pages(data, output_dir, template)
+        logger.info(f"Generated {pages_count} individual pages")
+
+    typer.echo(f"Browser generated at: {output_dir}/")
+    if pages_count > 0:
+        typer.echo(f"Generated {pages_count} individual pages in {output_dir}/pages/")
+    typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
 @app.command()

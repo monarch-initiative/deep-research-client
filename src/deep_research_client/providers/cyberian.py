@@ -20,6 +20,10 @@ from ..model_cards import ProviderModelCards, create_cyberian_model_cards
 
 logger = logging.getLogger(__name__)
 
+# Default timeout for cyberian workflows (30 minutes)
+# Deep research with agent workflows takes significantly longer than API calls
+CYBERIAN_DEFAULT_TIMEOUT = 1800
+
 
 class CyberianProvider(ResearchProvider):
     """Provider that uses cyberian agent workflows for research.
@@ -186,7 +190,7 @@ class CyberianProvider(ResearchProvider):
         runner = TaskRunner(
             host="localhost",
             port=self.params.port or 3284,
-            timeout=self.config.timeout or 600,
+            timeout=self.config.timeout or CYBERIAN_DEFAULT_TIMEOUT,
             lifecycle_mode="reuse",  # Keep server running for workflow
             agent_type=self.agent_type,
             skip_permissions=self.skip_permissions,

@@ -77,7 +77,7 @@ def test_provider_config_defaults():
     assert config.name == "test"
     assert config.api_key is None
     assert config.enabled is True
-    assert config.timeout == 600
+    assert config.timeout is None  # Provider-specific default
     assert config.max_retries == 3
 
 

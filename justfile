@@ -45,9 +45,9 @@ test-nokeys:
 pytest:
   uv run pytest
 
-# include integration tests
+# include integration tests (all tests, no marker filtering)
 pytest-integration:
-	$(RUN) pytest -m ""
+  uv run pytest -m ""
 
 doctest:
   uv run pytest  --doctest-modules src

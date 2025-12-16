@@ -2,13 +2,11 @@
 site_name: "deep-research-client"
 theme:
   name: material
-  # palette:
-  #  scheme: slate
-  #  primary: cyan
   features:
     - content.tabs.link
-
-# for adding extra css/js see https://www.mkdocs.org/user-guide/customizing-your-theme/
+    - content.code.copy
+    - navigation.sections
+    - navigation.expand
 
 plugins:
   - search
@@ -16,13 +14,29 @@ plugins:
       execute: false
   - mermaid2:
       version: 11.4.1
-  
-#watch:
-#  - src/deep_research_client/schema
 
 nav:
   - Home: index.md
-  
+  - Tutorials:
+    - Getting Started: tutorials/getting-started.md
+    - Your First Query: tutorials/first-query.md
+  - How-to Guides:
+    - Choose a Provider: how-to/choose-provider.md
+    - Use Templates: how-to/templates.md
+    - Manage Cache: how-to/cache.md
+    - Browse Cache: how-to/browse-cache.md
+    - Use Proxies: how-to/proxies.md
+    - FAQ: how-to/faq.md
+  - Reference:
+    - CLI Reference: reference/cli.md
+    - Providers: reference/providers.md
+    - Models: reference/models.md
+    - Cache: reference/cache.md
+    - Configuration: reference/configuration.md
+  - Explanation:
+    - Provider Comparison: explanation/providers.md
+    - Architecture: explanation/architecture.md
+
 exclude_docs: |
   /templates-linkml/
 

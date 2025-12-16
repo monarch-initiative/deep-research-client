@@ -58,12 +58,12 @@ class OpenAIProvider(ResearchProvider):
         http_client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=30.0,
-                read=self.config.timeout,
+                read=self.config.timeout or 600,
                 write=30.0,
                 pool=30.0,
             )
         )
-        logger.debug(f"HTTP client configured with timeout: {self.config.timeout}s")
+        logger.debug(f"HTTP client configured with timeout: {self.config.timeout or 600}s")
 
         # Build OpenAI client kwargs
         client_kwargs: Dict[str, Any] = {

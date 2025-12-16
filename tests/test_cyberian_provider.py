@@ -20,7 +20,7 @@ class TestCyberianProvider:
             name="cyberian",
             api_key=None,  # Cyberian doesn't need API key
             enabled=True,
-            timeout=600
+            # timeout defaults to None, provider uses CYBERIAN_DEFAULT_TIMEOUT (1800s)
         )
 
     def test_provider_initialization(self):

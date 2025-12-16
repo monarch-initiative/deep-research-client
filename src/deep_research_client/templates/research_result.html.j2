@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title or query_preview[:60] }}...</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .metadata {
+            background: #e8f4f8;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+        }
+        .metadata dl {
+            margin: 0;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 16px;
+        }
+        .metadata dt {
+            font-weight: 600;
+            color: #555;
+        }
+        .metadata dd {
+            margin: 0;
+        }
+        .tag {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-right: 4px;
+        }
+        .content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #2c3e50;
+            margin-top: 24px;
+            margin-bottom: 16px;
+        }
+        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        h2 { border-bottom: 1px solid #ecf0f1; padding-bottom: 8px; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+        blockquote {
+            border-left: 4px solid #3498db;
+            margin-left: 0;
+            padding-left: 20px;
+            color: #555;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #3498db;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .citations {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .citations h2 {
+            margin-top: 0;
+            border-bottom: none;
+        }
+        .citations ol {
+            padding-left: 20px;
+        }
+        .citations li {
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+        .template-vars {
+            background: #f0f7f0;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+        .template-vars h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #155724;
+            font-size: 1em;
+            border-bottom: none;
+        }
+        .template-vars dl {
+            margin: 0;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 12px;
+            font-size: 0.9em;
+        }
+        .template-vars dt {
+            font-weight: 600;
+            color: #155724;
+        }
+        .template-vars dd {
+            margin: 0;
+            color: #333;
+            word-break: break-word;
+        }
+        .template-file {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #666;
+        }
+        .provider-config {
+            background: #f0f0f7;
+            border: 1px solid #c3c3e6;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }
+        .provider-config h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #3d3d7a;
+            font-size: 1em;
+            border-bottom: none;
+        }
+        .provider-config dl {
+            margin: 0;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 12px;
+            font-size: 0.9em;
+        }
+        .provider-config dt {
+            font-weight: 600;
+            color: #3d3d7a;
+        }
+        .provider-config dd {
+            margin: 0;
+            color: #333;
+            word-break: break-word;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <a href="index.html">&larr; Back to Browser</a>
+    </nav>
+
+    <div class="metadata">
+        <dl>
+            <dt>ID</dt>
+            <dd><code>{{ id }}</code></dd>
+            {% if title %}
+            <dt>Title</dt>
+            <dd>{{ title }}</dd>
+            {% endif %}
+            <dt>Provider</dt>
+            <dd><span class="tag">{{ provider }}</span></dd>
+            <dt>Model</dt>
+            <dd>{{ model or 'default' }}</dd>
+            <dt>Date</dt>
+            <dd>{{ date }}</dd>
+            <dt>Duration</dt>
+            <dd>{{ "%.1f"|format(duration_seconds or 0) }}s</dd>
+            <dt>Citations</dt>
+            <dd>{{ citation_count }}</dd>
+            {% if keywords %}
+            <dt>Keywords</dt>
+            <dd>{% for kw in keywords %}<span class="tag">{{ kw }}</span>{% endfor %}</dd>
+            {% endif %}
+            {% if author %}
+            <dt>Author</dt>
+            <dd>{{ author }}</dd>
+            {% endif %}
+        </dl>
+    </div>
+
+    {% if template_variables or template_file %}
+    <div class="template-vars">
+        <h3>Template Information</h3>
+        <dl>
+            {% if template_file %}
+            <dt>Template</dt>
+            <dd class="template-file">{{ template_file }}</dd>
+            {% endif %}
+            {% for key, value in template_variables.items() %}
+            <dt>{{ key }}</dt>
+            <dd>{{ value }}</dd>
+            {% endfor %}
+        </dl>
+    </div>
+    {% endif %}
+
+    {% if provider_config %}
+    <div class="provider-config">
+        <h3>Provider Configuration</h3>
+        <dl>
+            {% for key, value in provider_config.items() %}
+            <dt>{{ key }}</dt>
+            <dd>{% if value is mapping %}{{ value | tojson }}{% else %}{{ value }}{% endif %}</dd>
+            {% endfor %}
+        </dl>
+    </div>
+    {% endif %}
+
+    <div class="content">
+        {{ content_html | safe }}
+    </div>
+
+    {% if citations %}
+    <div class="citations">
+        <h2>Citations ({{ citations|length }})</h2>
+        <ol>
+            {% for citation in citations %}
+            <li>{{ citation }}</li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+
+    <footer>
+        <small>Generated from {{ filename }} | Provider: {{ provider }} | {{ date }}</small>
+    </footer>
+</body>
+</html>

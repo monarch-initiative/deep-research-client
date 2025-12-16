@@ -89,7 +89,7 @@ class PerplexityProvider(ResearchProvider):
 
         try:
             logger.debug(f"Making API request to Perplexity (model: {self.model})")
-            async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.config.timeout or 600) as client:
                 response = await client.post(
                     self.api_url,
                     json=payload,

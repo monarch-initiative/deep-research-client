@@ -11,7 +11,7 @@ authors = [
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 readme = "README.md"
-requires-python = ">=3.11,<4.0"
+requires-python = ">=3.12,<4.0"
 dynamic = ["version"]
 
 dependencies = [
@@ -27,7 +27,11 @@ dependencies = [
 
 [project.optional-dependencies]
 cyberian = [
-    "cyberian>=0.1.0",
+    "cyberian>=0.2.0",
+]
+browser = [
+    "linkml-browser @ git+https://github.com/linkml/linkml-browser.git",
+    "markdown>=3.5.0",
 ]
 
 [dependency-groups]
@@ -40,6 +44,7 @@ dev = [
     "mknotebooks>= 0.8.0",
     "pytest>=6.0.0",
     "pytest-asyncio>=0.23.0",
+    "types-Markdown>=3.5.0",
 ]
 
 [project.scripts]
@@ -49,11 +54,15 @@ deep-research-client = "deep_research_client.cli:main"
 # See https://hatch.pypa.io/latest/config/build/#file-selection for how to
 # explicitly include files other than default into the build distributions.
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/deep_research_client"]
-# Include all files in workflows directory (including .yaml files)
+# Include all files in workflows and templates directories
 include = [
   "src/deep_research_client/workflows/*.yaml",
+  "src/deep_research_client/templates/*.j2",
 ]
 
 [tool.hatch.version]
@@ -66,6 +75,7 @@ style = "pep440"
 fallback-version = "0.0.0"
 
 # Ref.: https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
+# NOTE: pytest.ini takes precedence - marker config is defined there
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

@@ -24,11 +24,25 @@ class ResultFormatter:
             Formatted markdown with frontmatter
         """
         # Build frontmatter metadata
-        metadata: Dict[str, Any] = {
-            "provider": result.provider,
-            "model": result.model,
-            "cached": result.cached,
-        }
+        metadata: Dict[str, Any] = {}
+
+        # Publication-style metadata first (like a real publication)
+        if result.title:
+            metadata["title"] = result.title
+        if result.abstract:
+            metadata["abstract"] = result.abstract
+        if result.keywords:
+            metadata["keywords"] = result.keywords
+        if result.query_metadata:
+            if result.query_metadata.author:
+                metadata["author"] = result.query_metadata.author
+            if result.query_metadata.contributors:
+                metadata["contributors"] = result.query_metadata.contributors
+
+        # Provider and execution metadata
+        metadata["provider"] = result.provider
+        metadata["model"] = result.model
+        metadata["cached"] = result.cached
 
         # Add timing information
         if result.start_time:
@@ -51,6 +65,17 @@ class ResultFormatter:
         # Add citation count
         if result.citations:
             metadata["citation_count"] = len(result.citations)
+
+        # Add edit history if present
+        if result.edit_history:
+            metadata["edit_history"] = [
+                {
+                    "author": entry.author,
+                    "date": entry.date.isoformat(),
+                    "summary": entry.summary
+                }
+                for entry in result.edit_history
+            ]
 
         # Convert metadata to YAML frontmatter
         frontmatter_yaml = yaml.dump(metadata, default_flow_style=False, sort_keys=False)

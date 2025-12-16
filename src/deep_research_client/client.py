@@ -4,10 +4,10 @@ import asyncio
 import os
 import time
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Optional, List
 
 from .cache import CacheManager
-from .models import ResearchResult, ProviderConfig, CacheConfig
+from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
 from .providers.openai import OpenAIProvider
 from .providers.falcon import FalconProvider
@@ -167,7 +167,15 @@ class DeepResearchClient:
         provider_class = type(base_provider)
         return provider_class(config, params)
 
-    def research(self, query: str, provider: Optional[str] = None, template_info: Optional[dict] = None, model: Optional[str] = None, provider_params: Optional[dict] = None) -> ResearchResult:
+    def research(
+        self,
+        query: str,
+        provider: Optional[str] = None,
+        template_info: Optional[dict] = None,
+        model: Optional[str] = None,
+        provider_params: Optional[dict] = None,
+        metadata: Optional[dict] = None
+    ) -> ResearchResult:
         """Perform research on the given query.
 
         Args:
@@ -176,6 +184,7 @@ class DeepResearchClient:
             template_info: Template information if query was generated from template
             model: Model to use for the provider (overrides provider default)
             provider_params: Provider-specific parameters
+            metadata: Publication-style metadata (title, abstract, keywords, author, contributors)
 
         Returns:
             ResearchResult with markdown content and citations
@@ -183,9 +192,17 @@ class DeepResearchClient:
         Raises:
             ValueError: If no providers are available or specified provider not found
         """
-        return asyncio.run(self.aresearch(query, provider, template_info, model, provider_params))
+        return asyncio.run(self.aresearch(query, provider, template_info, model, provider_params, metadata))
 
-    async def aresearch(self, query: str, provider: Optional[str] = None, template_info: Optional[dict] = None, model: Optional[str] = None, provider_params: Optional[dict] = None) -> ResearchResult:
+    async def aresearch(
+        self,
+        query: str,
+        provider: Optional[str] = None,
+        template_info: Optional[dict] = None,
+        model: Optional[str] = None,
+        provider_params: Optional[dict] = None,
+        metadata: Optional[dict] = None
+    ) -> ResearchResult:
         """Async version of research method."""
         start_time = datetime.now()
         start_timestamp = time.time()
@@ -239,6 +256,20 @@ class DeepResearchClient:
             result.template_file = template_info.get('template_file')
             result.template_variables = template_info.get('template_variables')
 
+        # Add publication-style metadata if provided
+        if metadata:
+            if 'title' in metadata:
+                result.title = metadata['title']
+            if 'abstract' in metadata:
+                result.abstract = metadata['abstract']
+            if 'keywords' in metadata:
+                result.keywords = metadata['keywords']
+            if 'author' in metadata or 'contributors' in metadata:
+                result.query_metadata = QueryMetadata(
+                    author=metadata.get('author'),
+                    contributors=metadata.get('contributors', [])
+                )
+
         # Add provider configuration
         result.model = getattr(research_provider, 'model', None)
         result.provider_config = {
@@ -270,3 +301,35 @@ class DeepResearchClient:
         """List all cached files with human-readable names."""
         cache_files = self.cache.list_cache_files()
         return [{"path": str(f), "name": f.name} for f in cache_files]
+
+    def get_cache_info(self) -> list[dict[str, Any]]:
+        """Get detailed info for all cached files.
+
+        Returns list of dicts with metadata including query, provider,
+        model, timing info, and file stats.
+        """
+        return self.cache.get_cache_info()
+
+    def search_cache(self, keyword: str, context_chars: int = 60, max_snippets: int = 3) -> list[dict[str, Any]]:
+        """Search cached files for keyword in query or content.
+
+        Args:
+            keyword: Case-insensitive keyword to search for
+            context_chars: Characters of context around matches
+            max_snippets: Maximum snippets per field
+
+        Returns:
+            List of cache info dicts that match the keyword
+        """
+        return self.cache.search_cache(keyword, context_chars, max_snippets)
+
+    def export_cache_for_browser(self, include_content: bool = False) -> list[dict[str, Any]]:
+        """Export cache data in format suitable for linkml-browser.
+
+        Args:
+            include_content: If True, include full markdown and citations
+
+        Returns:
+            List of dicts with standardized fields for faceted browsing
+        """
+        return self.cache.export_for_browser(include_content=include_content)

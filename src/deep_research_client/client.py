@@ -264,7 +264,14 @@ class DeepResearchClient:
                 result.abstract = metadata['abstract']
             if 'keywords' in metadata:
                 result.keywords = metadata['keywords']
-            if 'author' in metadata or 'contributors' in metadata:
+            # Handle query_metadata (nested structure) or author/contributors (flat structure for backward compatibility)
+            if 'query_metadata' in metadata:
+                query_meta = metadata['query_metadata']
+                result.query_metadata = QueryMetadata(
+                    author=query_meta.get('author'),
+                    contributors=query_meta.get('contributors', [])
+                )
+            elif 'author' in metadata or 'contributors' in metadata:
                 result.query_metadata = QueryMetadata(
                     author=metadata.get('author'),
                     contributors=metadata.get('contributors', [])

@@ -255,10 +255,14 @@ def research(
             metadata['abstract'] = abstract
         if keyword:
             metadata['keywords'] = keyword
-        if author:
-            metadata['author'] = author
-        if contributor:
-            metadata['contributors'] = contributor
+        # Nest author and contributors under 'query_metadata'
+        if author or contributor:
+            query_metadata = {}
+            if author:
+                query_metadata['author'] = author
+            if contributor:
+                query_metadata['contributors'] = contributor
+            metadata['query_metadata'] = query_metadata
 
     logger.info("Researching...")
 

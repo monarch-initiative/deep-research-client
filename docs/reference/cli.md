@@ -317,6 +317,79 @@ output_dir/
 
 ---
 
+### browse-files
+
+Generate a standalone HTML browser from markdown research files.
+
+```bash
+deep-research-client browse-files [OPTIONS] SOURCES... -o OUTPUT_DIR
+```
+
+Requires the `browser` optional dependency:
+```bash
+pip install deep-research-client[browser]
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `SOURCES...` | One or more directories or files to include |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output, -o PATH` | Output directory for browser files (required) |
+| `--pattern, -p TEXT` | Glob pattern for finding files in directories (default: `**/*.md`) |
+| `--title, -t TEXT` | Browser title |
+| `--description TEXT` | Browser description |
+| `--force, -f` | Overwrite existing directory |
+| `--export-only` | Only export JSON data, don't generate browser |
+| `--no-pages` | Skip generating individual HTML pages |
+| `--template PATH` | Custom Jinja2 template for individual pages |
+
+#### Examples
+
+```bash
+# Browse all markdown files in a directory
+deep-research-client browse-files ./research-outputs -o ./browser
+
+# Use a specific glob pattern
+deep-research-client browse-files ./docs -o ./browser -p "*.md"
+
+# Browse a single file
+deep-research-client browse-files ./my-research.md -o ./browser
+
+# Multiple sources (directories and files)
+deep-research-client browse-files ./dir1 ./dir2 ./extra.md -o ./browser
+
+# Recursively find files matching pattern
+deep-research-client browse-files ./notes -o ./browser -p "research/**/*.md"
+
+# Export JSON only
+deep-research-client browse-files ./research -o ./data --export-only
+
+# Custom title
+deep-research-client browse-files ./research -o ./browser -t "Research Archive"
+```
+
+#### Output
+
+Same structure as `browse-cache`:
+
+```
+output_dir/
+├── index.html      # Faceted browser
+├── data.js         # Browser data
+├── schema.js       # Browser schema
+└── pages/          # Individual result pages
+    ├── file1.html
+    └── ...
+```
+
+---
+
 ### clear-cache
 
 Clear all cached research results.

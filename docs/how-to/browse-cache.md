@@ -273,5 +273,6 @@ deep-research-client browse-cache ./browser --no-pages
 
 ## See Also
 
+- [Browse Files](browse-files.md) - Browse markdown files instead of cache
 - [Manage Cache](cache.md) - List, search, and manage cached results
 - [CLI Reference](../reference/cli.md#browse-cache) - Complete command reference

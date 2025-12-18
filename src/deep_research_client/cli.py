@@ -1063,6 +1063,165 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo(f"{indent}  {card.description[:100]}{'...' if len(card.description) > 100 else ''}")
 
 
+@app.command()
+def browse_files(
+    sources: Annotated[List[Path], typer.Argument(help="Directories or files to include")],
+    output_dir: Annotated[Path, typer.Option("--output", "-o", help="Output directory for browser files")],
+    pattern: Annotated[str, typer.Option("--pattern", "-p", help="Glob pattern for finding files in directories")] = "**/*.md",
+    title: Annotated[Optional[str], typer.Option("--title", "-t", help="Browser title")] = None,
+    description: Annotated[Optional[str], typer.Option("--description", help="Browser description")] = None,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing directory")] = False,
+    export_only: Annotated[bool, typer.Option("--export-only", help="Only export JSON data, don't generate browser")] = False,
+    no_pages: Annotated[bool, typer.Option("--no-pages", help="Skip generating individual HTML pages")] = False,
+    template: Annotated[Optional[Path], typer.Option("--template", help="Custom Jinja2 template for individual pages")] = None,
+    verbose: Annotated[int, typer.Option("-v", "--verbose", count=True, help="Increase verbosity (-v, -vv, -vvv)")] = 0,
+):
+    """Generate a faceted browser from markdown research files.
+
+    Unlike browse-cache (which uses cached JSON files), this command parses
+    markdown files with YAML frontmatter - the output format from 'research' command.
+
+    Requires the 'browser' optional dependency: pip install deep-research-client[browser]
+
+    \b
+    Examples:
+      # Browse all markdown files in a directory
+      deep-research-client browse-files ./research-outputs -o ./browser
+
+      # Use a specific glob pattern
+      deep-research-client browse-files ./docs -o ./browser -p "*.md"
+
+      # Browse a single file
+      deep-research-client browse-files ./my-research.md -o ./browser
+
+      # Multiple sources (directories and files)
+      deep-research-client browse-files ./dir1 ./dir2 ./extra.md -o ./browser
+
+      # Recursively find files matching pattern
+      deep-research-client browse-files ./notes -o ./browser -p "research/**/*.md"
+    """
+    import json as json_module
+    from .markdown_parser import parse_markdown_files
+
+    setup_logging(verbose)
+
+    # Collect files from all sources
+    all_files: List[Path] = []
+    for source in sources:
+        if source.is_file():
+            if source.suffix.lower() == '.md':
+                all_files.append(source)
+                logger.info(f"Added file: {source}")
+            else:
+                logger.warning(f"Skipping non-markdown file: {source}")
+        elif source.is_dir():
+            found = list(source.glob(pattern))
+            logger.info(f"Found {len(found)} files in {source} with pattern '{pattern}'")
+            all_files.extend(found)
+        else:
+            logger.warning(f"Source not found, skipping: {source}")
+
+    if not all_files:
+        logger.error("No markdown files found")
+        raise typer.Exit(1)
+
+    logger.info(f"Processing {len(all_files)} markdown files")
+    data = parse_markdown_files(files=all_files, include_content=not no_pages)
+
+    # Handle export-only mode
+    if export_only:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        data_file = output_dir / "files_data.json"
+        schema_file = output_dir / "schema.json"
+
+        # Add href links to data (pages will be in pages/ subdirectory)
+        for entry in data:
+            entry["href"] = f"pages/{entry['id']}.html"
+            # Remove full content from export (too large)
+            entry.pop("markdown", None)
+            entry.pop("citations", None)
+            entry.pop("source_path", None)
+
+        # Write data
+        with open(data_file, 'w', encoding='utf-8') as f:
+            json_module.dump(data, f, indent=2)
+        logger.info(f"Data exported to: {data_file}")
+
+        # Write schema
+        schema = BROWSER_SCHEMA.copy()
+        if title:
+            schema["title"] = title
+        if description:
+            schema["description"] = description
+
+        with open(schema_file, 'w', encoding='utf-8') as f:
+            json_module.dump(schema, f, indent=2)
+        logger.info(f"Schema exported to: {schema_file}")
+
+        typer.echo(f"Exported {len(data)} entries to {output_dir}/")
+        typer.echo("Use 'linkml-browser deploy' to generate browser from these files")
+        return
+
+    # Check for dependencies
+    try:
+        from linkml_browser import BrowserGenerator  # type: ignore[import-untyped,import-not-found]
+        import markdown as md_lib  # noqa: F401
+    except ImportError as e:
+        missing = str(e).split("'")[1] if "'" in str(e) else "linkml-browser or markdown"
+        logger.error(f"{missing} not installed. Install with:")
+        logger.error("  pip install deep-research-client[browser]")
+        logger.error("  # or: uv add deep-research-client[browser]")
+        raise typer.Exit(1)
+
+    # Check if output directory exists
+    if output_dir.exists() and not force:
+        logger.error(f"Output directory exists: {output_dir}")
+        logger.error("Use --force to overwrite")
+        raise typer.Exit(1)
+
+    # Add href links to data for browser
+    for entry in data:
+        entry["href"] = f"pages/{entry['id']}.html"
+
+    # Prepare schema with href link
+    schema = BROWSER_SCHEMA.copy()
+    if title:
+        schema["title"] = title
+    if description:
+        schema["description"] = description
+
+    # Add href to display fields (as first field for clickable link)
+    href_field = {"field": "href", "label": "View", "type": "url"}
+    schema["displayFields"] = [href_field] + list(schema["displayFields"])
+
+    # Generate browser first (it clears the directory with force=True)
+    logger.info("Generating browser...")
+
+    # Create browser data without full content (too large for JS)
+    browser_data = []
+    for entry in data:
+        browser_entry = {k: v for k, v in entry.items() if k not in ("markdown", "citations", "source_path")}
+        browser_data.append(browser_entry)
+
+    generator = BrowserGenerator(browser_data, schema)
+    generator.generate(output_dir=output_dir, force=force)
+
+    # Post-process index.html to add URL handling for clickable links
+    _inject_url_handling(output_dir / "index.html")
+
+    # Now generate individual HTML pages (after browser, so pages/ survives)
+    pages_count = 0
+    if not no_pages:
+        logger.info("Generating individual pages...")
+        pages_count = _generate_individual_pages(data, output_dir, template)
+        logger.info(f"Generated {pages_count} individual pages")
+
+    typer.echo(f"Browser generated at: {output_dir}/")
+    if pages_count > 0:
+        typer.echo(f"Generated {pages_count} individual pages in {output_dir}/pages/")
+    typer.echo(f"Open {output_dir}/index.html in a browser to view")
+
+
 def main():
     """Main entry point for the CLI."""
     app()

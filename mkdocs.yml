@@ -25,6 +25,7 @@ nav:
     - Use Templates: how-to/templates.md
     - Manage Cache: how-to/cache.md
     - Browse Cache: how-to/browse-cache.md
+    - Browse Files: how-to/browse-files.md
     - Use Proxies: how-to/proxies.md
     - FAQ: how-to/faq.md
   - Reference:

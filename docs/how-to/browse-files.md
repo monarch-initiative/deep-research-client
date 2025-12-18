@@ -252,7 +252,7 @@ Check your pattern and directory:
 ls ./research/**/*.md
 
 # Try a simpler pattern
-deep-research-client browse-files ./research ./browser -p "*.md"
+deep-research-client browse-files ./research -o ./browser -p "*.md"
 ```
 
 ### Missing Metadata

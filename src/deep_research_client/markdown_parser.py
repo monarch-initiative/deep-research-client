@@ -85,8 +85,8 @@ def extract_sections(body: str) -> dict[str, str]:
         'citations': ''
     }
 
-    # Pattern to match ## Section headers
-    section_pattern = re.compile(r'^##\s+(\w+)\s*$', re.MULTILINE)
+    # Pattern to match ## Section headers (allow any header text)
+    section_pattern = re.compile(r'^##\s+([^\n]+?)\s*$', re.MULTILINE)
 
     matches = list(section_pattern.finditer(body))
 

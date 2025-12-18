@@ -2,70 +2,74 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/explanation/architecture/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/explanation/providers/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/browse-cache/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
+    </url>
+    <url>
+         <loc>https://ai4curation.github.io/deep-research-client/how-to/browse-files/</loc>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/cache/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/choose-provider/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/faq/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/proxies/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/how-to/templates/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/ideas/deep-research-archive/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/reference/cache/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/reference/cli/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/reference/configuration/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/reference/models/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/reference/providers/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/tutorials/first-query/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
     <url>
          <loc>https://ai4curation.github.io/deep-research-client/tutorials/getting-started/</loc>
-         <lastmod>2025-12-16</lastmod>
+         <lastmod>2025-12-18</lastmod>
     </url>
 </urlset>

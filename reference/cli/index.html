@@ -483,6 +483,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/browse-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Files
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../how-to/proxies/" class="md-nav__link">
         
   
@@ -871,6 +894,57 @@
         
           <li class="md-nav__item">
   <a href="#output" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browse-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      browse-files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="browse-files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arguments_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arguments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Options
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output_1" class="md-nav__link">
     <span class="md-ellipsis">
       Output
     </span>
@@ -1410,6 +1484,57 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#browse-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      browse-files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="browse-files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arguments_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Arguments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Options
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#clear-cache" class="md-nav__link">
     <span class="md-ellipsis">
       clear-cache
@@ -1900,6 +2025,104 @@ deep-research-client browse-cache ./browser --template my-template.j2
 ├── schema.js       # Browser schema
 └── pages/          # Individual result pages
     ├── openai-xxx.html
+    └── ...
+</code></pre>
+<hr />
+<h3 id="browse-files">browse-files</h3>
+<p>Generate a standalone HTML browser from markdown research files.</p>
+<pre><code class="language-bash">deep-research-client browse-files [OPTIONS] SOURCES... -o OUTPUT_DIR
+</code></pre>
+<p>Requires the <code>browser</code> optional dependency:</p>
+<pre><code class="language-bash">pip install deep-research-client[browser]
+</code></pre>
+<h4 id="arguments_3">Arguments</h4>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SOURCES...</code></td>
+<td>One or more directories or files to include</td>
+</tr>
+</tbody>
+</table>
+<h4 id="options_6">Options</h4>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output, -o PATH</code></td>
+<td>Output directory for browser files (required)</td>
+</tr>
+<tr>
+<td><code>--pattern, -p TEXT</code></td>
+<td>Glob pattern for finding files in directories (default: <code>**/*.md</code>)</td>
+</tr>
+<tr>
+<td><code>--title, -t TEXT</code></td>
+<td>Browser title</td>
+</tr>
+<tr>
+<td><code>--description TEXT</code></td>
+<td>Browser description</td>
+</tr>
+<tr>
+<td><code>--force, -f</code></td>
+<td>Overwrite existing directory</td>
+</tr>
+<tr>
+<td><code>--export-only</code></td>
+<td>Only export JSON data, don't generate browser</td>
+</tr>
+<tr>
+<td><code>--no-pages</code></td>
+<td>Skip generating individual HTML pages</td>
+</tr>
+<tr>
+<td><code>--template PATH</code></td>
+<td>Custom Jinja2 template for individual pages</td>
+</tr>
+</tbody>
+</table>
+<h4 id="examples_6">Examples</h4>
+<pre><code class="language-bash"># Browse all markdown files in a directory
+deep-research-client browse-files ./research-outputs -o ./browser
+
+# Use a specific glob pattern
+deep-research-client browse-files ./docs -o ./browser -p &quot;*.md&quot;
+
+# Browse a single file
+deep-research-client browse-files ./my-research.md -o ./browser
+
+# Multiple sources (directories and files)
+deep-research-client browse-files ./dir1 ./dir2 ./extra.md -o ./browser
+
+# Recursively find files matching pattern
+deep-research-client browse-files ./notes -o ./browser -p &quot;research/**/*.md&quot;
+
+# Export JSON only
+deep-research-client browse-files ./research -o ./data --export-only
+
+# Custom title
+deep-research-client browse-files ./research -o ./browser -t &quot;Research Archive&quot;
+</code></pre>
+<h4 id="output_1">Output</h4>
+<p>Same structure as <code>browse-cache</code>:</p>
+<pre><code>output_dir/
+├── index.html      # Faceted browser
+├── data.js         # Browser data
+├── schema.js       # Browser schema
+└── pages/          # Individual result pages
+    ├── file1.html
     └── ...
 </code></pre>
 <hr />

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/drc-logo.png" alt="deep-research-client logo" width="200">
+</p>
+
 # deep-research-client
 
 A CLI tool for AI-powered deep research across multiple providers.

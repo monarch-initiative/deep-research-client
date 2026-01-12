@@ -37,6 +37,7 @@ nav:
   - Explanation:
     - Provider Comparison: explanation/providers.md
     - Architecture: explanation/architecture.md
+    - Ralph Wiggum Tries Research: explanation/ralph-wiggum-deep-research.md
 
 exclude_docs: |
   /templates-linkml/

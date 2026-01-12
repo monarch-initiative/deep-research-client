@@ -93,7 +93,7 @@ Or via the Python API:
 from deep_research_client import DeepResearchClient
 
 client = DeepResearchClient()
-result = await client.research(
+result = client.research(
     "What are the molecular mechanisms of autophagy in neurodegeneration?",
     provider="cyberian"
 )

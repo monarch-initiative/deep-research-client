@@ -22,6 +22,7 @@ nav:
     - Your First Query: tutorials/first-query.md
   - How-to Guides:
     - Choose a Provider: how-to/choose-provider.md
+    - Use Cyberian + Codex: how-to/use-cyberian-codex.md
     - Use Templates: how-to/templates.md
     - Manage Cache: how-to/cache.md
     - Browse Cache: how-to/browse-cache.md

@@ -46,10 +46,12 @@ class TestCyberianProvider:
         provider = CyberianProvider(self.config)
         assert provider.get_default_model() == "deep-research"
 
+    @pytest.mark.integration
     def test_provider_availability_with_cyberian_installed(self):
-        """Test provider availability when cyberian is installed."""
-        # Since cyberian is actually installed in the test environment,
-        # this should return True
+        """Test provider availability when cyberian and agentapi are installed.
+
+        Marked as integration test since it requires agentapi in PATH.
+        """
         provider = CyberianProvider(self.config)
         result = provider.is_available()
         assert result is True

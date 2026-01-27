@@ -46,9 +46,16 @@ class CyberianProvider(ResearchProvider):
         self.workflow_file = self.params.workflow_file or self._default_workflow_path()
         self.agent_type = self.params.agent_type or "claude"
         self.skip_permissions = self.params.skip_permissions
+        self.manage_server = self.params.manage_server
 
         logger.debug(f"Initializing Cyberian provider with workflow: {self.workflow_file}")
         logger.debug(f"Agent type: {self.agent_type}")
+        if self.agent_type.lower() == "codex" and self.manage_server:
+            logger.warning(
+                "Codex startup can take longer than other agents; if you see "
+                "server readiness timeouts, increase the startup wait or run "
+                "agentapi manually and set manage_server=false."
+            )
 
     def _default_workflow_path(self) -> str:
         """Get default path to deep-research.yaml workflow.
@@ -122,8 +129,18 @@ class CyberianProvider(ResearchProvider):
         if not self.is_available():
             raise ValueError("Cyberian provider not available (cyberian not installed)")
 
+        workdir_base = self.params.workdir_base
+        if workdir_base:
+            base_path = Path(workdir_base)
+            base_path.mkdir(parents=True, exist_ok=True)
+            if not base_path.is_dir():
+                raise ValueError(f"workdir_base is not a directory: {workdir_base}")
+
         # Create temporary working directory
-        with tempfile.TemporaryDirectory(prefix="cyberian_research_") as workdir:
+        with tempfile.TemporaryDirectory(
+            prefix="cyberian_research_",
+            dir=workdir_base
+        ) as workdir:
             logger.debug(f"Created workdir: {workdir}")
 
             try:
@@ -194,22 +211,33 @@ class CyberianProvider(ResearchProvider):
             lifecycle_mode="reuse",  # Keep server running for workflow
             agent_type=self.agent_type,
             skip_permissions=self.skip_permissions,
-            directory=workdir
+            directory=workdir,
+            max_iterations=self.params.max_iterations
         )
 
-        # Start the agent server
-        logger.info(f"Starting {self.agent_type} agent server on port {self.params.port or 3284}...")
-        runner._start_server()
+        if self.manage_server:
+            # Start the agent server
+            logger.info(f"Starting {self.agent_type} agent server on port {self.params.port or 3284}...")
+            runner._start_server()
 
-        try:
-            # Run the workflow
+            try:
+                # Run the workflow
+                logger.info("Executing cyberian workflow...")
+                runner.run_task(task, context)
+                logger.info("Workflow execution completed")
+            finally:
+                # Always stop the server when done
+                logger.info("Stopping agent server...")
+                runner._stop_server()
+        else:
+            logger.info(
+                "Using existing agentapi server at "
+                f"{runner.base_url}; deep-research-client will not manage lifecycle."
+            )
+            runner._wait_for_server_ready()
             logger.info("Executing cyberian workflow...")
             runner.run_task(task, context)
             logger.info("Workflow execution completed")
-        finally:
-            # Always stop the server when done
-            logger.info("Stopping agent server...")
-            runner._stop_server()
 
     def _read_report(self, workdir: str) -> str:
         """Read the REPORT.md file from workdir.

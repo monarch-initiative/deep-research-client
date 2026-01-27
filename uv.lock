@@ -550,7 +550,7 @@ wheels = [
 
 [[package]]
 name = "cyberian"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -560,9 +560,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/dc/ef945be594d35c1e29fde5aebae730e8435ad6d7c2c3959822907966515e/cyberian-0.2.1.tar.gz", hash = "sha256:61dc04c0f651b6c7d44b761aa49fec516ff414fe7e26240846484a9efb9fda1c", size = 398716 }
+sdist = { url = "https://files.pythonhosted.org/packages/95/09/84a9b0a143e1bb0016a51a49d2cccbb80b9c08a2dc76a9674ded22575015/cyberian-0.2.2.tar.gz", hash = "sha256:636d4a6d05535b830f850f5f1607f3b6c5bcfc10445cb90c02af6cd3b1b899ce", size = 508877 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/19/a8dfcc99bb9e981b1c2184eafed8a04bfdb29ff5392b348b7f874bf718f7/cyberian-0.2.1-py3-none-any.whl", hash = "sha256:adbd040fdf9f19faa4fee713b477838f9fa73dee7153cda891291e8b41f9c84c", size = 33361 },
+    { url = "https://files.pythonhosted.org/packages/e0/09/a3394e2fb94b2cee3c12705f811a2daa478a62af2a77c378ec51542daac9/cyberian-0.2.2-py3-none-any.whl", hash = "sha256:71d6db5842da20c25add103afe3d89aecdb65ede8674ff469219ba54bff74236", size = 39661 },
 ]
 
 [[package]]
@@ -600,6 +600,7 @@ name = "deep-research-client"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
+    { name = "cyberian" },
     { name = "edison-client" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -610,15 +611,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-browser = [
-    { name = "linkml-browser" },
-    { name = "markdown" },
-]
 cyberian = [
     { name = "cyberian" },
 ]
 
 [package.dev-dependencies]
+browser = [
+    { name = "linkml-browser" },
+    { name = "markdown" },
+]
 dev = [
     { name = "jupyter" },
     { name = "mkdocs-material" },
@@ -634,20 +635,23 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=23.0.0" },
-    { name = "cyberian", marker = "extra == 'cyberian'", specifier = ">=0.2.0" },
+    { name = "cyberian", specifier = ">=0.2.2" },
+    { name = "cyberian", marker = "extra == 'cyberian'", specifier = ">=0.2.2" },
     { name = "edison-client", specifier = ">=0.7.7.dev70" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "linkml-browser", marker = "extra == 'browser'", git = "https://github.com/linkml/linkml-browser.git" },
-    { name = "markdown", marker = "extra == 'browser'", specifier = ">=3.5.0" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
-provides-extras = ["browser", "cyberian"]
+provides-extras = ["cyberian"]
 
 [package.metadata.requires-dev]
+browser = [
+    { name = "linkml-browser", git = "https://github.com/linkml/linkml-browser.git" },
+    { name = "markdown", specifier = ">=3.5.0" },
+]
 dev = [
     { name = "jupyter", specifier = ">=1.0.0" },
     { name = "mkdocs-material", specifier = ">=8.2.8" },

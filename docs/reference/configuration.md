@@ -169,13 +169,27 @@ params = FalconParams(
 from deep_research_client.provider_params import CyberianParams
 
 params = CyberianParams(
-    agent_type="claude",       # claude, aider, cursor, goose
+    agent_type="claude",       # claude, aider, cursor, goose, codex
     workflow_file=None,        # Custom workflow YAML
     port=3284,                 # agentapi port
     skip_permissions=True,
-    sources="academic papers"
+    manage_server=True,
+    sources="academic papers",
+    workdir_base=None,
+    max_iterations=None,       # Limit loop iterations (requires cyberian >= 0.3.0)
 )
 ```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `agent_type` | str | `"claude"` | Agent type: claude, aider, cursor, goose, codex |
+| `workflow_file` | str | None | Custom workflow YAML file path |
+| `port` | int | 3284 | agentapi server port |
+| `skip_permissions` | bool | True | Skip agent permission checks |
+| `manage_server` | bool | True | Auto-start/stop agentapi server |
+| `sources` | str | None | Source guidance for research |
+| `workdir_base` | str | None | Base directory for workspaces |
+| `max_iterations` | int | None | Max iterations for looping tasks (requires cyberian >= 0.3.0) |
 
 ## Cache Directory Structure
 

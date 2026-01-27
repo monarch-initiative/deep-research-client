@@ -167,13 +167,19 @@ Cyberian uses local AI agents (Claude, Aider, etc.) - no separate API key needed
 from deep_research_client.provider_params import CyberianParams
 
 params = CyberianParams(
-    agent_type="claude",       # claude, aider, cursor, goose
+    agent_type="claude",       # claude, aider, cursor, goose, codex
     workflow_file=None,        # Custom workflow file
     port=3284,                 # agentapi server port
     skip_permissions=True,     # Skip permission checks
-    sources="academic papers"  # Source guidance
+    manage_server=True,        # Start/stop agentapi server (set False for external server)
+    sources="academic papers", # Source guidance
+    workdir_base=None,         # Base directory for workspaces (default: system temp)
+    max_iterations=None,       # Limit looping task iterations (requires cyberian >= 0.3.0)
 )
 ```
+
+If you want to run a pre-configured agentapi server (for example, Codex with yolo mode),
+start it manually and set `manage_server=False` so deep-research-client does not restart it.
 
 ### Characteristics
 
@@ -186,6 +192,24 @@ params = CyberianParams(
 - Comprehensive literature reviews
 - Deep technical research
 - Multi-source citation management
+
+### Testing and Iteration Control
+
+Use `max_iterations` to limit how many times looping tasks (like the `iterate` subtask) can run.
+This is passed through to cyberian's TaskRunner and requires **cyberian >= 0.3.0**.
+
+```bash
+# Limit to 2 iterations for testing
+deep-research-client research --provider cyberian "query" \
+    --param agent_type=codex \
+    --param max_iterations=2
+```
+
+This is useful for:
+
+- **Testing**: Run a quick verification without full research
+- **Cost control**: Limit agent API calls
+- **Debugging**: Inspect intermediate results after fixed iterations
 
 ---
 

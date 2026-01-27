@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/templates/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/use-cyberian-codex/">
       
       
-        <link rel="prev" href="../use-cyberian-codex/">
+        <link rel="prev" href="../choose-provider/">
       
       
-        <link rel="next" href="../cache/">
+        <link rel="next" href="../templates/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -22,7 +22,7 @@
     
     
       
-        <title>Use Templates - deep-research-client</title>
+        <title>Use Cyberian + Codex - deep-research-client</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-to-use-templates" class="md-skip">
+        <a href="#how-to-use-cyberian-with-codex" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Use Templates
+              Use Cyberian + Codex
             
           </span>
         </div>
@@ -411,29 +411,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../use-cyberian-codex/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Use Cyberian + Codex
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -451,7 +428,7 @@
   
   
   <span class="md-ellipsis">
-    Use Templates
+    Use Cyberian + Codex
     
   </span>
   
@@ -464,7 +441,7 @@
   
   
   <span class="md-ellipsis">
-    Use Templates
+    Use Cyberian + Codex
     
   </span>
   
@@ -487,28 +464,46 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#basic-template-usage" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Template Usage
+      Overview
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Basic Template Usage">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prerequisites">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#create-a-template-file" class="md-nav__link">
+  <a href="#1-install-deep-research-client-with-cyberian" class="md-nav__link">
     <span class="md-ellipsis">
-      Create a Template File
+      1. Install deep-research-client with cyberian
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#use-the-template" class="md-nav__link">
+  <a href="#2-install-agentapi" class="md-nav__link">
     <span class="md-ellipsis">
-      Use the Template
+      2. Install agentapi
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-install-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Install Codex
     </span>
   </a>
   
@@ -520,28 +515,28 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#template-formats" class="md-nav__link">
+  <a href="#basic-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Template Formats
+      Basic Usage
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Template Formats">
+    <nav class="md-nav" aria-label="Basic Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#f-string-templates-simple" class="md-nav__link">
+  <a href="#simple-query" class="md-nav__link">
     <span class="md-ellipsis">
-      F-String Templates (Simple)
+      Simple Query
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#jinja2-templates-advanced" class="md-nav__link">
+  <a href="#with-output-file" class="md-nav__link">
     <span class="md-ellipsis">
-      Jinja2 Templates (Advanced)
+      With Output File
     </span>
   </a>
   
@@ -553,55 +548,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#jinja2-detection" class="md-nav__link">
+  <a href="#configuration-options" class="md-nav__link">
     <span class="md-ellipsis">
-      Jinja2 Detection
+      Configuration Options
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#useful-jinja2-features" class="md-nav__link">
-    <span class="md-ellipsis">
-      Useful Jinja2 Features
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Useful Jinja2 Features">
+    <nav class="md-nav" aria-label="Configuration Options">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#conditionals" class="md-nav__link">
+  <a href="#using-workdir_base-for-trusted-workspace" class="md-nav__link">
     <span class="md-ellipsis">
-      Conditionals
+      Using workdir_base for Trusted Workspace
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#loops" class="md-nav__link">
+  <a href="#limiting-iterations" class="md-nav__link">
     <span class="md-ellipsis">
-      Loops
+      Limiting Iterations
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#default-values" class="md-nav__link">
+  <a href="#custom-port" class="md-nav__link">
     <span class="md-ellipsis">
-      Default Values
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      Filters
+      Custom Port
     </span>
   </a>
   
@@ -613,28 +590,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-templates" class="md-nav__link">
+  <a href="#advanced-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Example Templates
+      Advanced Usage
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Example Templates">
+    <nav class="md-nav" aria-label="Advanced Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gene-research-template" class="md-nav__link">
+  <a href="#using-an-external-agentapi-server" class="md-nav__link">
     <span class="md-ellipsis">
-      Gene Research Template
+      Using an External agentapi Server
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#drug-research-template" class="md-nav__link">
+  <a href="#running-parallel-queries" class="md-nav__link">
     <span class="md-ellipsis">
-      Drug Research Template
+      Running Parallel Queries
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-claude-instead-of-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Claude Instead of Codex
     </span>
   </a>
   
@@ -646,11 +632,26 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#template-output-metadata" class="md-nav__link">
+  <a href="#workflow-customization" class="md-nav__link">
     <span class="md-ellipsis">
-      Template Output Metadata
+      Workflow Customization
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Workflow Customization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-a-custom-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using a Custom Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -665,27 +666,36 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#missing-variables-error" class="md-nav__link">
+  <a href="#agentapi-not-found-in-path" class="md-nav__link">
     <span class="md-ellipsis">
-      Missing Variables Error
+      "agentapi not found in PATH"
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#wrong-format-detection" class="md-nav__link">
+  <a href="#codex-startup-can-take-longer" class="md-nav__link">
     <span class="md-ellipsis">
-      Wrong Format Detection
+      "Codex startup can take longer"
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#syntax-errors" class="md-nav__link">
+  <a href="#connection-refused" class="md-nav__link">
     <span class="md-ellipsis">
-      Syntax Errors
+      Connection Refused
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#research-takes-too-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      Research Takes Too Long
     </span>
   </a>
   
@@ -693,6 +703,15 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-other-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Comparison with Other Providers
+    </span>
+  </a>
   
 </li>
       
@@ -709,6 +728,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Templates
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1151,28 +1193,46 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#basic-template-usage" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Template Usage
+      Overview
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Basic Template Usage">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Prerequisites">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#create-a-template-file" class="md-nav__link">
+  <a href="#1-install-deep-research-client-with-cyberian" class="md-nav__link">
     <span class="md-ellipsis">
-      Create a Template File
+      1. Install deep-research-client with cyberian
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#use-the-template" class="md-nav__link">
+  <a href="#2-install-agentapi" class="md-nav__link">
     <span class="md-ellipsis">
-      Use the Template
+      2. Install agentapi
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-install-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Install Codex
     </span>
   </a>
   
@@ -1184,28 +1244,28 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#template-formats" class="md-nav__link">
+  <a href="#basic-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Template Formats
+      Basic Usage
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Template Formats">
+    <nav class="md-nav" aria-label="Basic Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#f-string-templates-simple" class="md-nav__link">
+  <a href="#simple-query" class="md-nav__link">
     <span class="md-ellipsis">
-      F-String Templates (Simple)
+      Simple Query
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#jinja2-templates-advanced" class="md-nav__link">
+  <a href="#with-output-file" class="md-nav__link">
     <span class="md-ellipsis">
-      Jinja2 Templates (Advanced)
+      With Output File
     </span>
   </a>
   
@@ -1217,55 +1277,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#jinja2-detection" class="md-nav__link">
+  <a href="#configuration-options" class="md-nav__link">
     <span class="md-ellipsis">
-      Jinja2 Detection
+      Configuration Options
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#useful-jinja2-features" class="md-nav__link">
-    <span class="md-ellipsis">
-      Useful Jinja2 Features
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Useful Jinja2 Features">
+    <nav class="md-nav" aria-label="Configuration Options">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#conditionals" class="md-nav__link">
+  <a href="#using-workdir_base-for-trusted-workspace" class="md-nav__link">
     <span class="md-ellipsis">
-      Conditionals
+      Using workdir_base for Trusted Workspace
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#loops" class="md-nav__link">
+  <a href="#limiting-iterations" class="md-nav__link">
     <span class="md-ellipsis">
-      Loops
+      Limiting Iterations
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#default-values" class="md-nav__link">
+  <a href="#custom-port" class="md-nav__link">
     <span class="md-ellipsis">
-      Default Values
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      Filters
+      Custom Port
     </span>
   </a>
   
@@ -1277,28 +1319,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example-templates" class="md-nav__link">
+  <a href="#advanced-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Example Templates
+      Advanced Usage
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Example Templates">
+    <nav class="md-nav" aria-label="Advanced Usage">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gene-research-template" class="md-nav__link">
+  <a href="#using-an-external-agentapi-server" class="md-nav__link">
     <span class="md-ellipsis">
-      Gene Research Template
+      Using an External agentapi Server
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#drug-research-template" class="md-nav__link">
+  <a href="#running-parallel-queries" class="md-nav__link">
     <span class="md-ellipsis">
-      Drug Research Template
+      Running Parallel Queries
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-claude-instead-of-codex" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using Claude Instead of Codex
     </span>
   </a>
   
@@ -1310,11 +1361,26 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#template-output-metadata" class="md-nav__link">
+  <a href="#workflow-customization" class="md-nav__link">
     <span class="md-ellipsis">
-      Template Output Metadata
+      Workflow Customization
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Workflow Customization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-a-custom-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using a Custom Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1329,27 +1395,36 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#missing-variables-error" class="md-nav__link">
+  <a href="#agentapi-not-found-in-path" class="md-nav__link">
     <span class="md-ellipsis">
-      Missing Variables Error
+      "agentapi not found in PATH"
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#wrong-format-detection" class="md-nav__link">
+  <a href="#codex-startup-can-take-longer" class="md-nav__link">
     <span class="md-ellipsis">
-      Wrong Format Detection
+      "Codex startup can take longer"
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#syntax-errors" class="md-nav__link">
+  <a href="#connection-refused" class="md-nav__link">
     <span class="md-ellipsis">
-      Syntax Errors
+      Connection Refused
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#research-takes-too-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      Research Takes Too Long
     </span>
   </a>
   
@@ -1357,6 +1432,15 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-other-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Comparison with Other Providers
+    </span>
+  </a>
   
 </li>
       
@@ -1388,175 +1472,231 @@
   
 
 
-<h1 id="how-to-use-templates">How to Use Templates</h1>
-<p>Templates let you create reusable research queries with variable substitution.</p>
-<h2 id="basic-template-usage">Basic Template Usage</h2>
-<h3 id="create-a-template-file">Create a Template File</h3>
-<p>Create <code>gene_research.md</code>:</p>
-<pre><code class="language-markdown">Research the {gene} gene in {organism}, focusing on:
+<h1 id="how-to-use-cyberian-with-codex">How to Use Cyberian with Codex</h1>
+<p>This guide shows how to use the Cyberian provider with OpenAI Codex for agent-based deep research.</p>
+<h2 id="overview">Overview</h2>
+<p>Cyberian is an agent-based research provider that uses AI coding assistants (like Codex or Claude) to perform iterative research tasks. Unlike API-based providers, Cyberian:</p>
+<ul>
+<li>Runs locally using agentapi to communicate with AI agents</li>
+<li>Creates files (PLAN.md, REPORT.md, citations/) in a workspace</li>
+<li>Can iterate on research, refining results over multiple passes</li>
+<li>Supports multiple agent backends (Codex, Claude, Aider, etc.)</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<h3 id="1-install-deep-research-client-with-cyberian">1. Install deep-research-client with cyberian</h3>
+<pre><code class="language-bash">pip install &quot;deep-research-client[cyberian]&quot;
+# or with uv
+uv pip install &quot;deep-research-client[cyberian]&quot;
+</code></pre>
+<h3 id="2-install-agentapi">2. Install agentapi</h3>
+<p>Cyberian uses <a href="https://github.com/coder/agentapi">agentapi</a> to communicate with AI agents:</p>
+<pre><code class="language-bash"># macOS
+brew install coder/tap/agentapi
 
-1. Molecular function
-2. Disease associations
-3. Expression patterns
+# Or download from releases
+# https://github.com/coder/agentapi/releases
 </code></pre>
-<h3 id="use-the-template">Use the Template</h3>
-<pre><code class="language-bash">deep-research-client research \
-  --template gene_research.md \
-  --var &quot;gene=TP53&quot; \
-  --var &quot;organism=human&quot;
+<h3 id="3-install-codex">3. Install Codex</h3>
+<pre><code class="language-bash">npm install -g @openai/codex
+# or
+brew install openai-codex
 </code></pre>
-<p>This sends the query:</p>
-<blockquote>
-<p>Research the TP53 gene in human, focusing on:
-1. Molecular function
-2. Disease associations
-3. Expression patterns</p>
-</blockquote>
-<h2 id="template-formats">Template Formats</h2>
-<h3 id="f-string-templates-simple">F-String Templates (Simple)</h3>
-<p>Use <code>{variable}</code> placeholders:</p>
-<pre><code class="language-markdown">Research {topic} in {context}.
-Include information about {aspect}.
+<p>Verify installation:</p>
+<pre><code class="language-bash">which agentapi  # Should show path
+which codex     # Should show path
 </code></pre>
-<h3 id="jinja2-templates-advanced">Jinja2 Templates (Advanced)</h3>
-<p>For conditionals and loops, use Jinja2 with <code>.j2</code> extension.</p>
-<p>Create <code>research.md.j2</code>:</p>
-<pre><code class="language-jinja">Research {{topic}} in {{context}}.
+<h2 id="basic-usage">Basic Usage</h2>
+<h3 id="simple-query">Simple Query</h3>
+<pre><code class="language-bash">deep-research-client research &quot;What is the function of the TP53 gene?&quot; \
+  --provider cyberian \
+  --param agent_type=codex
+</code></pre>
+<h3 id="with-output-file">With Output File</h3>
+<pre><code class="language-bash">deep-research-client research &quot;Review CRISPR base editing mechanisms&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --output crispr-review.md
+</code></pre>
+<h2 id="configuration-options">Configuration Options</h2>
+<h3 id="using-workdir_base-for-trusted-workspace">Using workdir_base for Trusted Workspace</h3>
+<p>By default, Cyberian creates temporary directories for each research task. Use <code>workdir_base</code> to place workspaces in a trusted location (useful for Codex sandbox bypass):</p>
+<pre><code class="language-bash">deep-research-client research &quot;Analyze autophagy pathways&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --param workdir_base=/path/to/trusted/workspace
+</code></pre>
+<h3 id="limiting-iterations">Limiting Iterations</h3>
+<p>Use <code>max_iterations</code> to limit how many times the research loop runs (useful for testing or cost control):</p>
+<pre><code class="language-bash"># Run at most 2 iterations
+deep-research-client research &quot;Brief overview of BRCA1&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --param max_iterations=2
+</code></pre>
+<h3 id="custom-port">Custom Port</h3>
+<p>If the default port (3284) is in use:</p>
+<pre><code class="language-bash">deep-research-client research &quot;Query here&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --param port=4000
+</code></pre>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="using-an-external-agentapi-server">Using an External agentapi Server</h3>
+<p>For debugging or custom configurations, run agentapi manually:</p>
+<pre><code class="language-bash"># Terminal 1: Start agentapi with Codex
+agentapi server codex --port 3299 -- --dangerously-bypass-approvals-and-sandbox
 
-{% if detailed %}
-Provide comprehensive analysis including:
-- Historical background
-- Current state
-- Future directions
-{% else %}
-Provide a brief overview.
-{% endif %}
+# Terminal 2: Run research with manage_server=false
+deep-research-client research &quot;Your query&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --param port=3299 \
+  --param manage_server=false
+</code></pre>
+<h3 id="running-parallel-queries">Running Parallel Queries</h3>
+<p>Run multiple research queries concurrently using different ports:</p>
+<pre><code class="language-python">import asyncio
+from deep_research_client import DeepResearchClient
+from deep_research_client.provider_params import CyberianParams
 
-{% if aspects %}
-Focus on:
-{% for aspect in aspects %}
-- {{aspect}}
-{% endfor %}
-{% endif %}
+async def parallel_research():
+    client = DeepResearchClient()
+
+    # Configure two providers with different ports
+    params1 = CyberianParams(
+        agent_type=&quot;codex&quot;,
+        port=3284,
+        workdir_base=&quot;./research/query1&quot;,
+        max_iterations=3,
+    )
+
+    params2 = CyberianParams(
+        agent_type=&quot;codex&quot;,
+        port=3285,
+        workdir_base=&quot;./research/query2&quot;,
+        max_iterations=3,
+    )
+
+    # Run concurrently
+    results = await asyncio.gather(
+        client.research_async(
+            &quot;What is the role of p53 in cancer?&quot;,
+            provider=&quot;cyberian&quot;,
+            provider_params=params1,
+        ),
+        client.research_async(
+            &quot;How does BRCA1 affect DNA repair?&quot;,
+            provider=&quot;cyberian&quot;,
+            provider_params=params2,
+        ),
+    )
+
+    for result in results:
+        print(f&quot;Query: {result.query}&quot;)
+        print(f&quot;Duration: {result.duration_seconds:.1f}s&quot;)
+        print(f&quot;Report length: {len(result.markdown)} chars&quot;)
+        print(&quot;---&quot;)
+
+asyncio.run(parallel_research())
 </code></pre>
-<p>Use it:</p>
-<pre><code class="language-bash">deep-research-client research \
-  --template research.md.j2 \
-  --var &quot;topic=quantum computing&quot; \
-  --var &quot;context=healthcare&quot; \
-  --var &quot;detailed=true&quot;
+<h3 id="using-claude-instead-of-codex">Using Claude Instead of Codex</h3>
+<pre><code class="language-bash">deep-research-client research &quot;Your query&quot; \
+  --provider cyberian \
+  --param agent_type=claude
 </code></pre>
-<h2 id="jinja2-detection">Jinja2 Detection</h2>
-<p>Templates are detected as Jinja2 based on:</p>
+<h2 id="workflow-customization">Workflow Customization</h2>
+<p>Cyberian uses YAML workflow files to define research tasks. The default <code>deep-research.yaml</code> workflow includes:</p>
 <ol>
-<li><strong>File extension</strong>: <code>.j2</code>, <code>.jinja</code>, <code>.jinja2</code></li>
-<li><strong>Frontmatter</strong>: Add <code>format: jinja</code> to <code>.md</code> files</li>
+<li>Initial search and planning</li>
+<li>Iterative refinement until quality criteria are met</li>
+<li>Final report generation with citations</li>
 </ol>
-<p>Example with frontmatter:</p>
-<pre><code class="language-markdown">---
-format: jinja
----
-Research {{gene}}{% if organism %} in {{organism}}{% endif %}.
-</code></pre>
-<h2 id="useful-jinja2-features">Useful Jinja2 Features</h2>
-<h3 id="conditionals">Conditionals</h3>
-<pre><code class="language-jinja">{% if detail_level == &quot;high&quot; %}
-Include detailed analysis.
-{% elif detail_level == &quot;medium&quot; %}
-Include moderate detail.
-{% else %}
-Keep it brief.
-{% endif %}
-</code></pre>
-<h3 id="loops">Loops</h3>
-<pre><code class="language-jinja">Topics to cover:
-{% for topic in topics %}
-- {{topic|capitalize}}
-{% endfor %}
-</code></pre>
-<h3 id="default-values">Default Values</h3>
-<pre><code class="language-jinja">Research {{gene}} in {{organism|default('human')}}.
-Since {{year|default('2020')}}, focus on recent developments.
-</code></pre>
-<h3 id="filters">Filters</h3>
-<pre><code class="language-jinja">Gene: {{gene|upper}}
-Organism: {{organism|capitalize}}
-</code></pre>
-<h2 id="example-templates">Example Templates</h2>
-<h3 id="gene-research-template">Gene Research Template</h3>
-<p><code>gene_template.md.j2</code>:</p>
-<pre><code class="language-jinja"># Research: {{gene}} Gene
-
-Research the {{gene}} gene in {{organism|default('human')}}.
-
-## Areas of Focus
-
-{% if include_function %}
-- Molecular function and mechanisms
-{% endif %}
-{% if include_disease %}
-- Disease associations and clinical relevance
-{% endif %}
-{% if include_expression %}
-- Expression patterns across tissues
-{% endif %}
-
-{% if year %}
-Emphasize discoveries from {{year}} onwards.
-{% endif %}
-</code></pre>
-<p>Usage:</p>
-<pre><code class="language-bash">deep-research-client research \
-  --template gene_template.md.j2 \
-  --var &quot;gene=BRCA1&quot; \
-  --var &quot;include_function=true&quot; \
-  --var &quot;include_disease=true&quot; \
-  --var &quot;year=2020&quot;
-</code></pre>
-<h3 id="drug-research-template">Drug Research Template</h3>
-<p><code>drug_template.md</code>:</p>
-<pre><code class="language-markdown">Research the drug {drug_name} for treating {condition}.
-
-Include:
-1. Mechanism of action
-2. Clinical trial results
-3. Side effects and contraindications
-4. Comparison with alternatives
-</code></pre>
-<p>Usage:</p>
-<pre><code class="language-bash">deep-research-client research \
-  --template drug_template.md \
-  --var &quot;drug_name=metformin&quot; \
-  --var &quot;condition=type 2 diabetes&quot;
-</code></pre>
-<h2 id="template-output-metadata">Template Output Metadata</h2>
-<p>When using templates, the output frontmatter includes template info:</p>
-<pre><code class="language-yaml">---
-provider: perplexity
-template_file: gene_template.md.j2
-template_format: jinja
-template_variables:
-  gene: BRCA1
-  organism: human
----
+<h3 id="using-a-custom-workflow">Using a Custom Workflow</h3>
+<pre><code class="language-bash">deep-research-client research &quot;Your query&quot; \
+  --provider cyberian \
+  --param agent_type=codex \
+  --param workflow_file=/path/to/custom-workflow.yaml
 </code></pre>
 <h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="missing-variables-error">Missing Variables Error</h3>
-<pre><code>Error: Template requires variables: gene, organism
-Use --var key=value for each variable
+<h3 id="agentapi-not-found-in-path">"agentapi not found in PATH"</h3>
+<p>Ensure agentapi is installed and in your PATH:</p>
+<pre><code class="language-bash">which agentapi
+# If not found, install it or add to PATH
+export PATH=&quot;$PATH:/path/to/agentapi&quot;
 </code></pre>
-<p>Solution: Provide all required variables with <code>--var</code>.</p>
-<h3 id="wrong-format-detection">Wrong Format Detection</h3>
-<p>If your Jinja2 template is parsed as f-string:</p>
-<ul>
-<li>Rename to <code>.md.j2</code> extension, or</li>
-<li>Add frontmatter: <code>format: jinja</code></li>
-</ul>
-<h3 id="syntax-errors">Syntax Errors</h3>
-<p>Jinja2 uses <code>{{variable}}</code> (double braces), not <code>{variable}</code>.</p>
+<h3 id="codex-startup-can-take-longer">"Codex startup can take longer"</h3>
+<p>Codex may take 10-30 seconds to start. If you see timeouts, either:</p>
+<ol>
+<li>Increase the timeout in provider config</li>
+<li>Use an external server with <code>manage_server=false</code></li>
+</ol>
+<h3 id="connection-refused">Connection Refused</h3>
+<p>If agentapi fails to start:</p>
+<pre><code class="language-bash"># Check if port is in use
+lsof -i :3284
+
+# Kill existing process if needed
+kill $(lsof -t -i :3284)
+</code></pre>
+<h3 id="research-takes-too-long">Research Takes Too Long</h3>
+<p>Use <code>max_iterations</code> to limit the research loop:</p>
+<pre><code class="language-bash">--param max_iterations=2
+</code></pre>
+<p>Or use a simpler workflow for quick tests.</p>
+<h2 id="comparison-with-other-providers">Comparison with Other Providers</h2>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Cyberian + Codex</th>
+<th>OpenAI Deep Research</th>
+<th>Perplexity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Speed</td>
+<td>Slow (10-30 min)</td>
+<td>Slow (5-15 min)</td>
+<td>Fast (seconds)</td>
+</tr>
+<tr>
+<td>Cost</td>
+<td>Variable</td>
+<td>High</td>
+<td>Low-Medium</td>
+</tr>
+<tr>
+<td>Depth</td>
+<td>Very thorough</td>
+<td>Thorough</td>
+<td>Variable</td>
+</tr>
+<tr>
+<td>Citations</td>
+<td>Creates files</td>
+<td>Inline</td>
+<td>Inline</td>
+</tr>
+<tr>
+<td>Offline</td>
+<td>Local execution</td>
+<td>API call</td>
+<td>API call</td>
+</tr>
+<tr>
+<td>Customizable</td>
+<td>Yes (workflows)</td>
+<td>Limited</td>
+<td>Limited</td>
+</tr>
+</tbody>
+</table>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../../reference/cli/">CLI Reference</a> - Full <code>--template</code> documentation</li>
+<li><a href="../../reference/providers/">Provider Reference</a> - Full provider documentation</li>
+<li><a href="../../reference/configuration/">Configuration Reference</a> - CyberianParams details</li>
+<li><a href="../choose-provider/">Choose a Provider</a> - Provider comparison guide</li>
 </ul>
 
 

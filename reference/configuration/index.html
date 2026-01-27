@@ -1518,13 +1518,76 @@ params = FalconParams(
 <pre><code class="language-python">from deep_research_client.provider_params import CyberianParams
 
 params = CyberianParams(
-    agent_type=&quot;claude&quot;,       # claude, aider, cursor, goose
+    agent_type=&quot;claude&quot;,       # claude, aider, cursor, goose, codex
     workflow_file=None,        # Custom workflow YAML
     port=3284,                 # agentapi port
     skip_permissions=True,
-    sources=&quot;academic papers&quot;
+    manage_server=True,
+    sources=&quot;academic papers&quot;,
+    workdir_base=None,
+    max_iterations=None,       # Limit loop iterations (requires cyberian &gt;= 0.3.0)
 )
 </code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent_type</code></td>
+<td>str</td>
+<td><code>"claude"</code></td>
+<td>Agent type: claude, aider, cursor, goose, codex</td>
+</tr>
+<tr>
+<td><code>workflow_file</code></td>
+<td>str</td>
+<td>None</td>
+<td>Custom workflow YAML file path</td>
+</tr>
+<tr>
+<td><code>port</code></td>
+<td>int</td>
+<td>3284</td>
+<td>agentapi server port</td>
+</tr>
+<tr>
+<td><code>skip_permissions</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Skip agent permission checks</td>
+</tr>
+<tr>
+<td><code>manage_server</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Auto-start/stop agentapi server</td>
+</tr>
+<tr>
+<td><code>sources</code></td>
+<td>str</td>
+<td>None</td>
+<td>Source guidance for research</td>
+</tr>
+<tr>
+<td><code>workdir_base</code></td>
+<td>str</td>
+<td>None</td>
+<td>Base directory for workspaces</td>
+</tr>
+<tr>
+<td><code>max_iterations</code></td>
+<td>int</td>
+<td>None</td>
+<td>Max iterations for looping tasks (requires cyberian &gt;= 0.3.0)</td>
+</tr>
+</tbody>
+</table>
 <h2 id="cache-directory-structure">Cache Directory Structure</h2>
 <pre><code>~/.deep_research_cache/
 ├── openai-what-is-crispr-a1b2c3d4.json

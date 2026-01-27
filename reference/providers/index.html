@@ -926,6 +926,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#testing-and-iteration-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing and Iteration Control
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1431,6 +1440,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#testing-and-iteration-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing and Iteration Control
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1692,13 +1710,18 @@ params = FalconParams(
 <pre><code class="language-python">from deep_research_client.provider_params import CyberianParams
 
 params = CyberianParams(
-    agent_type=&quot;claude&quot;,       # claude, aider, cursor, goose
+    agent_type=&quot;claude&quot;,       # claude, aider, cursor, goose, codex
     workflow_file=None,        # Custom workflow file
     port=3284,                 # agentapi server port
     skip_permissions=True,     # Skip permission checks
-    sources=&quot;academic papers&quot;  # Source guidance
+    manage_server=True,        # Start/stop agentapi server (set False for external server)
+    sources=&quot;academic papers&quot;, # Source guidance
+    workdir_base=None,         # Base directory for workspaces (default: system temp)
+    max_iterations=None,       # Limit looping task iterations (requires cyberian &gt;= 0.3.0)
 )
 </code></pre>
+<p>If you want to run a pre-configured agentapi server (for example, Codex with yolo mode),
+start it manually and set <code>manage_server=False</code> so deep-research-client does not restart it.</p>
 <h3 id="characteristics_4">Characteristics</h3>
 <ul>
 <li><strong>Cost</strong>: Variable (depends on agent)</li>
@@ -1710,6 +1733,20 @@ params = CyberianParams(
 <li>Comprehensive literature reviews</li>
 <li>Deep technical research</li>
 <li>Multi-source citation management</li>
+</ul>
+<h3 id="testing-and-iteration-control">Testing and Iteration Control</h3>
+<p>Use <code>max_iterations</code> to limit how many times looping tasks (like the <code>iterate</code> subtask) can run.
+This is passed through to cyberian's TaskRunner and requires <strong>cyberian &gt;= 0.3.0</strong>.</p>
+<pre><code class="language-bash"># Limit to 2 iterations for testing
+deep-research-client research --provider cyberian &quot;query&quot; \
+    --param agent_type=codex \
+    --param max_iterations=2
+</code></pre>
+<p>This is useful for:</p>
+<ul>
+<li><strong>Testing</strong>: Run a quick verification without full research</li>
+<li><strong>Cost control</strong>: Limit agent API calls</li>
+<li><strong>Debugging</strong>: Inspect intermediate results after fixed iterations</li>
 </ul>
 <hr />
 <h2 id="provider-detection">Provider Detection</h2>

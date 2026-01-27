@@ -1,0 +1,23 @@
+name: quick-test
+description: minimal workflow for testing - just creates a plan and brief report
+requires_workdir: true
+params:
+  query:
+    range: string
+    required: true
+  workdir:
+    required: true
+    range: string
+subtasks:
+  quick_research:
+    instructions: |
+      You are testing the deep research workflow. For {{query}}:
+
+      1. Create a brief `PLAN.md` outlining what you would research
+      2. Create a `REPORT.md` with a brief 2-3 paragraph summary based on your existing knowledge
+      3. Create a `citations/` folder with at least one dummy file
+
+      Keep all files in {{workdir}}.
+
+      This is a TEST WORKFLOW - do not perform actual web research.
+      Just demonstrate the file creation pattern.

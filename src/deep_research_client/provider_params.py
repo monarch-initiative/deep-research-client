@@ -183,7 +183,7 @@ class CyberianParams(BaseProviderParams):
     )
     agent_type: Optional[str] = Field(
         default="claude",
-        description="Type of agent to use (claude, aider, cursor, goose)"
+        description="Type of agent to use (claude, aider, cursor, goose, codex)"
     )
     port: Optional[int] = Field(
         default=3284,
@@ -193,9 +193,32 @@ class CyberianParams(BaseProviderParams):
         default=True,
         description="Skip permission checks when starting agents"
     )
+    manage_server: bool = Field(
+        default=True,
+        description=(
+            "Start/stop the agentapi server from deep-research-client. "
+            "Set false to use an already-running server (e.g., with custom flags)."
+        )
+    )
     sources: Optional[str] = Field(
         default=None,
         description="Source guidance for the research workflow"
+    )
+    workdir_base: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base directory for cyberian working dirs. "
+            "When set, workspaces are created under this path instead of system temp."
+        )
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum iterations for looping tasks (e.g., iterate subtask). "
+            "Useful for testing or limiting long-running workflows. "
+            "NOTE: Requires cyberian >= 0.3.0 to take effect."
+        )
     )
 
 

@@ -23,11 +23,13 @@ dependencies = [
   "aiofiles >= 23.0.0",
   "pyyaml >= 6.0",
   "jinja2>=3.1.6",
+  "cyberian>=0.2.2",
 ]
 
 [project.optional-dependencies]
+# cyberian extra kept for backwards compatibility (cyberian is now a main dependency)
 cyberian = [
-    "cyberian>=0.2.0",
+    "cyberian>=0.2.2",
 ]
 # NOTE: browser extra removed - linkml-browser is not on PyPI
 # Install manually: uv pip install "linkml-browser @ git+https://github.com/linkml/linkml-browser.git"
@@ -108,3 +110,7 @@ extend-exclude = [
   "src/deep_research_client/datamodel/deep_research_client_pydantic.py",
   "src/deep_research_client/datamodel/deep_research_client.py",
 ]
+
+# For local development, uncomment to use local cyberian checkout:
+# [tool.uv.sources]
+# cyberian = { path = "../cyberian" }

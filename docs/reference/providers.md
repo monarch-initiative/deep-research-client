@@ -9,6 +9,7 @@ Complete reference for all supported research providers.
 | OpenAI | `OPENAI_API_KEY` | Most comprehensive | Slow |
 | Perplexity | `PERPLEXITY_API_KEY` | Real-time web, multiple speeds | Fast-Slow |
 | Edison | `EDISON_API_KEY` | Scientific literature | Slow |
+| Asta | `ASTA_API_KEY` | Semantic Scholar-scale literature retrieval + snippets | Medium |
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 
@@ -124,6 +125,41 @@ params = FalconParams(
 - **Cost**: High
 - **Speed**: 2-5 minutes
 - **Capabilities**: Scientific literature, powered by PaperQA3
+
+---
+
+## Asta
+
+### Setup
+
+```bash
+export ASTA_API_KEY="your-key"
+```
+
+### Models
+
+| Model | Aliases | Description |
+|-------|---------|-------------|
+| `Asta Scientific Corpus Retrieval` | asta, retrieval, snippets | Retrieval-only paper and snippet lookup |
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import AstaParams
+
+params = AstaParams(
+    paper_limit=8,
+    snippet_limit=5,
+    publication_date_range="2021:",
+    venues="Nature,Science"
+)
+```
+
+### Characteristics
+
+- **Cost**: Medium to High
+- **Speed**: 30s to several minutes
+- **Capabilities**: Scientific literature retrieval, snippet search, direct evidence reporting
 
 ---
 

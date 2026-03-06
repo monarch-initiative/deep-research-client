@@ -69,6 +69,14 @@ Get your key at: [platform.openai.com/api-keys](https://platform.openai.com/api-
 export EDISON_API_KEY="your-edison-key"
 ```
 
+### Asta
+
+```bash
+export ASTA_API_KEY="your-asta-key"
+```
+
+Note: Asta is retrieval-only in this client.
+
 ### Consensus (Academic Papers)
 
 ```bash

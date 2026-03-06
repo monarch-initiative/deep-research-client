@@ -11,6 +11,7 @@ from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
 from .providers.openai import OpenAIProvider
 from .providers.falcon import FalconProvider
+from .providers.asta import AstaProvider
 from .providers.perplexity import PerplexityProvider
 from .providers.consensus import ConsensusProvider
 from .providers.mock import MockProvider
@@ -75,6 +76,16 @@ class DeepResearchClient:
             )
             self.registry.register(FalconProvider(config, None))
 
+        # Asta provider
+        asta_key = os.getenv("ASTA_API_KEY")
+        if asta_key:
+            config = ProviderConfig(
+                name="asta",
+                api_key=asta_key,
+                enabled=True,
+            )
+            self.registry.register(AstaProvider(config, None))
+
         # Perplexity provider
         perplexity_key = os.getenv("PERPLEXITY_API_KEY")
         if perplexity_key:
@@ -126,6 +137,8 @@ class DeepResearchClient:
                 provider = OpenAIProvider(config, None)
             elif name == "falcon":
                 provider = FalconProvider(config, None)
+            elif name == "asta":
+                provider = AstaProvider(config, None)
             elif name == "perplexity":
                 provider = PerplexityProvider(config, None)
             elif name == "consensus":

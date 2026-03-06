@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Perplexity AI, Consensus Academic Search, and Cyberian agent-based research.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, and Cyberian agent-based research.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Perplexity AI, Consensus, and Cyberian (agent-based)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, and Cyberian (agent-based)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -44,6 +44,9 @@ export OPENAI_API_KEY="your-openai-key"
 
 # For Edison Scientific (formerly FutureHouse Falcon)
 export EDISON_API_KEY="your-edison-key"
+
+# For Asta retrieval
+export ASTA_API_KEY="your-asta-key"
 
 # For Perplexity AI
 export PERPLEXITY_API_KEY="your-perplexity-key"
@@ -217,6 +220,20 @@ params = FalconParams(
 )
 
 result = client.research("Protein folding mechanisms", provider="falcon", provider_params=params)
+```
+
+#### Asta-Specific Parameters
+
+```python
+from deep_research_client.provider_params import AstaParams
+
+params = AstaParams(
+    paper_limit=8,
+    snippet_limit=5,
+    publication_date_range="2020:",
+)
+
+result = client.research("CRISPR off-target effects", provider="asta", provider_params=params)
 ```
 
 #### Cyberian-Specific Parameters (Agent-Based Research)

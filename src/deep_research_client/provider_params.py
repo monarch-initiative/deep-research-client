@@ -125,6 +125,45 @@ class FalconParams(BaseProviderParams):
     )
 
 
+class AstaParams(BaseProviderParams):
+    """Parameters specific to the Asta provider."""
+
+    paper_limit: int = Field(
+        default=8,
+        ge=1,
+        le=50,
+        description="Maximum number of papers to retrieve from Asta relevance search"
+    )
+    snippet_limit: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum number of evidence snippets to retrieve from Asta"
+    )
+    snippet_paper_limit: int = Field(
+        default=8,
+        ge=1,
+        le=100,
+        description="Maximum number of retrieved paper IDs to constrain snippet search"
+    )
+    paper_fields: str = Field(
+        default="title,abstract,authors,year,url,venue,journal,tldr,publicationDate",
+        description="Comma-separated Asta paper fields to request"
+    )
+    publication_date_range: str = Field(
+        default="",
+        description="Optional Asta publication date filter in <start>:<end> format"
+    )
+    venues: str = Field(
+        default="",
+        description="Optional comma-separated venue filter for Asta searches"
+    )
+    inserted_before: str = Field(
+        default="",
+        description="Optional snippet cutoff for papers inserted before YYYY[-MM[-DD]]"
+    )
+
+
 class ConsensusParams(BaseProviderParams):
     """Parameters specific to Consensus provider."""
 
@@ -227,6 +266,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
     "openai": OpenAIParams,
     "falcon": FalconParams,
+    "asta": AstaParams,
     "consensus": ConsensusParams,
     "mock": MockParams,
     "cyberian": CyberianParams,

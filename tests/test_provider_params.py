@@ -4,6 +4,7 @@ import pytest
 
 from deep_research_client.provider_params import (
     BaseProviderParams,
+    AstaParams,
     OpenAIParams,
     PerplexityParams,
     FalconParams,
@@ -135,6 +136,34 @@ def test_falcon_params_allowed_domains():
 
     # Should be accepted even if Falcon doesn't support it yet
     assert params.allowed_domains == ["wikipedia.org"]
+
+
+def test_asta_params_defaults():
+    """Test Asta-specific parameter defaults."""
+    params = AstaParams()
+
+    assert params.paper_limit == 8
+    assert params.snippet_limit == 5
+    assert params.paper_fields.startswith("title,abstract")
+
+
+def test_create_provider_params_asta():
+    """Test creating Asta params via the factory function."""
+    params = create_provider_params(
+        "asta",
+        model="Asta Scientific Corpus Retrieval",
+        provider_params={
+            "paper_limit": 4,
+            "snippet_limit": 3,
+            "publication_date_range": "2022:",
+        }
+    )
+
+    assert isinstance(params, AstaParams)
+    assert params.model == "Asta Scientific Corpus Retrieval"
+    assert params.paper_limit == 4
+    assert params.snippet_limit == 3
+    assert params.publication_date_range == "2022:"
 
 
 def test_allowed_domains_max_limit_documented():

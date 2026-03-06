@@ -16,6 +16,7 @@ from deep_research_client.model_cards import (
 from deep_research_client.providers.openai import OpenAIProvider
 from deep_research_client.providers.perplexity import PerplexityProvider
 from deep_research_client.providers.falcon import FalconProvider
+from deep_research_client.providers.asta import AstaProvider
 from deep_research_client.providers.consensus import ConsensusProvider
 
 
@@ -109,6 +110,19 @@ class TestModelCards:
         assert ModelCapability.ACADEMIC_SEARCH in consensus_card.capabilities
         assert "$6.99/month" in consensus_card.pricing_notes
 
+    def test_asta_model_cards(self):
+        """Test Asta provider model cards."""
+        cards = AstaProvider.model_cards()
+
+        assert cards.provider_name == "asta"
+        assert cards.default_model == "Asta Scientific Corpus Retrieval"
+
+        asta_card = cards.get_model_card("Asta Scientific Corpus Retrieval")
+        assert asta_card is not None
+        assert asta_card.cost_level == CostLevel.MEDIUM
+        assert ModelCapability.SCIENTIFIC_LITERATURE in asta_card.capabilities
+        assert "No synthesis step" in asta_card.limitations
+
     def test_provider_model_cards_filtering(self):
         """Test filtering capabilities of ProviderModelCards."""
         cards = PerplexityProvider.model_cards()
@@ -153,6 +167,7 @@ class TestModelCards:
         assert "openai" in all_models
         assert "perplexity" in all_models
         assert "falcon" in all_models
+        assert "asta" in all_models
         assert "consensus" in all_models
 
         # Check specific models
@@ -161,6 +176,7 @@ class TestModelCards:
         assert "sonar-deep-research" in all_models["perplexity"]
         assert "sonar-pro" in all_models["perplexity"]
         assert "sonar" in all_models["perplexity"]
+        assert "Asta Scientific Corpus Retrieval" in all_models["asta"]
 
     def test_find_models_by_cost(self):
         """Test finding models across providers by cost level."""
@@ -189,12 +205,14 @@ class TestModelCards:
         # Test academic search capability
         academic_search_models = find_models_by_capability(ModelCapability.ACADEMIC_SEARCH)
         assert "falcon" in academic_search_models
+        assert "asta" in academic_search_models
         assert "consensus" in academic_search_models
         # perplexity doesn't have dedicated academic search
 
         # Test scientific literature capability
         scientific_models = find_models_by_capability(ModelCapability.SCIENTIFIC_LITERATURE)
         assert "falcon" in scientific_models
+        assert "asta" in scientific_models
 
     def test_model_card_use_cases_and_limitations(self):
         """Test that model cards include use cases and limitations."""
@@ -321,8 +339,10 @@ class TestModelCards:
         all_aliases = list_all_aliases()
         assert "openai" in all_aliases
         assert "perplexity" in all_aliases
+        assert "asta" in all_aliases
         assert "o3" in all_aliases["openai"]
         assert "fast" in all_aliases["perplexity"]
+        assert "asta" in all_aliases["asta"]
 
     def test_provider_alias_resolution_in_constructor(self):
         """Test that providers resolve aliases in their constructors."""
@@ -360,6 +380,11 @@ class TestModelCards:
         # Falcon
         falcon_cards = FalconProvider.model_cards()
         for card in falcon_cards.models.values():
+            assert len(card.aliases) > 0, f"Model {card.name} should have aliases"
+
+        # Asta
+        asta_cards = AstaProvider.model_cards()
+        for card in asta_cards.models.values():
             assert len(card.aliases) > 0, f"Model {card.name} should have aliases"
 
         # Consensus

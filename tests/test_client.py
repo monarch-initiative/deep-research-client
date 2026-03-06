@@ -71,6 +71,18 @@ def test_provider_setup_from_config():
     DeepResearchClient._setup_providers_from_config = original_init
 
 
+def test_asta_provider_setup_from_env():
+    """Asta should auto-register when its API key is present."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(
+        os.environ,
+        {"ASTA_API_KEY": "asta-key"},
+        clear=True,
+    ):
+        client = DeepResearchClient(cache_config=cache_config)
+        assert "asta" in client.get_available_providers()
+
+
 async def test_research_with_mock_provider():
     """Test research functionality with mock provider."""
     # Create client with disabled cache to avoid file system interactions

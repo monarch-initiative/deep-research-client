@@ -129,19 +129,19 @@ class AstaParams(BaseProviderParams):
     """Parameters specific to the Asta provider."""
 
     paper_limit: int = Field(
-        default=8,
+        default=20,
         ge=1,
         le=50,
         description="Maximum number of papers to retrieve from Asta relevance search"
     )
     snippet_limit: int = Field(
-        default=5,
+        default=20,
         ge=1,
         le=20,
         description="Maximum number of evidence snippets to retrieve from Asta"
     )
     snippet_paper_limit: int = Field(
-        default=8,
+        default=20,
         ge=1,
         le=100,
         description="Maximum number of retrieved paper IDs to constrain snippet search"

@@ -265,6 +265,32 @@ done
 | AIMultiple | Claude, ChatGPT, Grok | Side-by-side | Qualitative comparison |
 | God of Prompt | Perplexity vs OpenAI | Direct comparison | Perplexity cheaper/faster, OpenAI deeper |
 
+#### 8. OpenScholar + ScholarQABench (Asai et al., Nov 2024)
+- **Paper**: [arXiv:2411.14199](https://arxiv.org/abs/2411.14199) — 70 citations
+- **System**: RAG over 45M open-access papers
+- **Key finding**: GPT-4o hallucinates citations 78-90%; OpenScholar matches expert citation accuracy
+- **Expert preference**: OpenScholar-GPT4o preferred over expert-written responses 70% of the time
+
+#### 9. Answer Engine Evaluation / AEE (Venkit et al., Oct 2024)
+- **Paper**: [arXiv:2410.22349](https://arxiv.org/abs/2410.22349) — 19 citations
+- **Systems**: Perplexity, Bing Copilot, You.com
+- **Key findings**: Citation accuracy: You 68.3%, Bing 65.8%, **Perplexity 49.0%**; 23-32% unsupported statements
+- **Novel**: Includes UX/interaction metrics (hovering, clicking under contradictions)
+
+#### 10. DeepScholar-Bench (Patel et al., Aug 2025)
+- **Paper**: [arXiv:2508.20033](https://arxiv.org/abs/2508.20033) — 12 citations
+- **7 metrics**: Organization, Nugget Coverage, Relevance Rate, Document Importance, Reference Coverage, Citation Precision, Claim Coverage
+- **Key finding**: No system scored >0.19 across all metrics
+
+#### 11. LiveDRBench (Java et al., Aug 2025)
+- **Paper**: [arXiv:2508.04183](https://arxiv.org/abs/2508.04183) — 16 citations
+- **Evaluated**: OpenAI/Perplexity/Google deep research
+- **Metrics**: Claim-level modified precision/recall; OpenAI highest average F1: 0.55
+
+#### 12. Evaluating Verifiability in Generative Search Engines (Liu et al., 2023)
+- **Paper**: [arXiv:2304.09848](https://arxiv.org/abs/2304.09848) — **345 citations** (seminal work)
+- Foundational paper on citation precision/recall in generative search
+
 ### Known Cost/Speed Trade-offs (from literature)
 
 | Provider | Typical Latency | Citations per Report | Monthly Cost |
@@ -272,7 +298,21 @@ done
 | Perplexity Deep Research | ~3 min | ~50 | $20/mo |
 | OpenAI Deep Research | 7-20 min | ~20 | $200/mo |
 | Perplexity sonar-pro | seconds | ~10-15 | API pricing |
-| Edison/PaperQA | 5-15 min | ~14.5 papers/query | API pricing |
+| Edison/PaperQA | 5-25 min | ~14.5 papers/query | API pricing |
+
+### Three-Tier Benchmark Framework (from Edison research)
+
+**Tier A: Literature-grounded QA/synthesis (scientific PDFs)**
+- LitQA/LitQA2 (PaperQA): correctness + DOI recall + refusal option
+- ScholarQABench (OpenScholar): multi-domain synthesis + citation accuracy + expert preference
+
+**Tier B: Web deep-research (multi-step browsing + synthesis)**
+- DRB (Bosse et al.): frozen web corpus (RetroSearch), trace analysis
+- DeepResearch Bench (Du et al.): RACE/FACT metrics
+- LiveDRBench (Java et al.): claim-level F1
+
+**Tier C: Generative search engines ("answer engines")**
+- AEE (Venkit et al.): user-perceived limitations → measurable metrics
 
 ### Gaps Our Paper Can Fill
 
@@ -282,6 +322,7 @@ done
 4. **No comparison including Edison/Falcon** alongside commercial deep research tools
 5. **No analysis using identical queries** sent simultaneously to all providers
 6. **drc provides unique infrastructure**: same query → multiple providers → structured comparison
+7. **No paper evaluates the same tool (PaperQA) alongside the web-scale tools** it was designed to surpass
 
 ## Paper Structure (Draft Outline)
 

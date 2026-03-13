@@ -9,7 +9,7 @@ Complete reference for all supported research providers.
 | OpenAI | `OPENAI_API_KEY` | Most comprehensive | Slow |
 | Perplexity | `PERPLEXITY_API_KEY` | Real-time web, multiple speeds | Fast-Slow |
 | Edison | `EDISON_API_KEY` | Scientific literature | Slow |
-| Asta | `ASTA_API_KEY` | Semantic Scholar-scale literature retrieval + snippets | Medium |
+| Asta | `ASTA_API_KEY` | Semantic Scholar-scale literature retrieval + snippets | Fast |
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 
@@ -157,8 +157,8 @@ params = AstaParams(
 
 ### Characteristics
 
-- **Cost**: Medium to High
-- **Speed**: 30s to several minutes
+- **Cost**: Free
+- **Speed**: Usually a few seconds
 - **Capabilities**: Scientific literature retrieval, snippet search, direct evidence reporting
 
 ---

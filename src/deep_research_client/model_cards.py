@@ -372,15 +372,15 @@ def create_asta_model_cards() -> ProviderModelCards:
             "Semantic Scholar-backed literature retrieval using Asta's paper search "
             "and snippet search tools, returned directly without synthesis."
         ),
-        cost_level=CostLevel.MEDIUM,
-        time_estimate=TimeEstimate.MEDIUM,
+        cost_level=CostLevel.LOW,
+        time_estimate=TimeEstimate.FAST,
         capabilities=[
             ModelCapability.ACADEMIC_SEARCH,
             ModelCapability.SCIENTIFIC_LITERATURE,
             ModelCapability.CITATION_TRACKING
         ],
         aliases=["asta", "retrieval", "snippets"],
-        pricing_notes="Retrieval-only provider using the Asta MCP service",
+        pricing_notes="Free retrieval-only provider using the Asta MCP service",
         use_cases=[
             "Literature discovery",
             "Passage-level evidence lookup",

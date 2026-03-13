@@ -119,8 +119,10 @@ class TestModelCards:
 
         asta_card = cards.get_model_card("Asta Scientific Corpus Retrieval")
         assert asta_card is not None
-        assert asta_card.cost_level == CostLevel.MEDIUM
+        assert asta_card.cost_level == CostLevel.LOW
+        assert asta_card.time_estimate == TimeEstimate.FAST
         assert ModelCapability.SCIENTIFIC_LITERATURE in asta_card.capabilities
+        assert "Free retrieval-only provider" in asta_card.pricing_notes
         assert "No synthesis step" in asta_card.limitations
 
     def test_provider_model_cards_filtering(self):

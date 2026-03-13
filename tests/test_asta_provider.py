@@ -1,15 +1,21 @@
 """Tests for the Asta provider."""
 
+import os
+
+import pytest
+
 from deep_research_client.models import ProviderConfig
 from deep_research_client.providers.asta import AstaProvider
 
 
 def test_asta_provider_availability_uses_api_key_only():
     """Asta should be available when its API key is configured."""
-    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key", enabled=True))
+    provider = AstaProvider(ProviderConfig(
+        name="asta", api_key="asta-key", enabled=True))
     assert provider.is_available() is True
 
-    unavailable = AstaProvider(ProviderConfig(name="asta", api_key=None, enabled=True))
+    unavailable = AstaProvider(ProviderConfig(
+        name="asta", api_key=None, enabled=True))
     assert unavailable.is_available() is False
 
 
@@ -103,7 +109,8 @@ def test_format_research_report_lists_papers_and_snippets():
         {"result": [{"paperId": "paper-1", "title": "A Paper", "year": 2024}]}
     )
     snippets = provider._normalize_snippets(
-        {"result": [{"snippet": "Evidence excerpt", "paperId": "paper-1", "title": "A Paper"}]}
+        {"result": [{"snippet": "Evidence excerpt",
+                     "paperId": "paper-1", "title": "A Paper"}]}
     )
 
     report = provider._format_research_report("test query", papers, snippets)
@@ -113,3 +120,30 @@ def test_format_research_report_lists_papers_and_snippets():
     assert "### [1] A Paper" in report
     assert "### Snippet 1: A Paper" in report
     assert "Evidence excerpt" in report
+
+
+@pytest.mark.integration
+async def test_asta_research_integration():
+    """Asta integration test against the live MCP endpoint."""
+    api_key = os.getenv("ASTA_API_KEY")
+    if not api_key:
+        pytest.skip("ASTA_API_KEY not set")
+
+    provider = AstaProvider(
+        ProviderConfig(
+            name="asta",
+            api_key=api_key,
+            enabled=True,
+            timeout=300,
+        )
+    )
+
+    result = await provider.research("hyperlipidemia")
+
+    assert result.provider == "asta"
+    assert result.query == "hyperlipidemia"
+    assert result.markdown.startswith(
+        "# Asta Literature Retrieval: hyperlipidemia")
+    assert "## Relevant Papers" in result.markdown
+    assert "## Evidence Snippets" in result.markdown
+    assert len(result.citations) > 0

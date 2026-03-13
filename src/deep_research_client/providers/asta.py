@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 from uuid import uuid4
@@ -59,8 +60,10 @@ class AstaProvider(ResearchProvider):
 
         logger.debug(f"Initializing Asta provider with mode: {self.model}")
         if config.api_key:
-            key_preview = config.api_key[:8] + "..." if len(config.api_key) > 8 else "***"
-            logger.debug(f"Asta API key configured (starts with: {key_preview})")
+            key_preview = config.api_key[:8] + \
+                "..." if len(config.api_key) > 8 else "***"
+            logger.debug(
+                f"Asta API key configured (starts with: {key_preview})")
 
     def get_default_model(self) -> str:
         """Get the fixed retrieval mode label."""
@@ -74,10 +77,12 @@ class AstaProvider(ResearchProvider):
     async def research(self, query: str) -> ResearchResult:
         """Retrieve papers and snippets from Asta and format them as markdown."""
         logger.info(f"Starting Asta retrieval query (mode: {self.model})")
-        logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
+        logger.debug(
+            f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"Asta provider not available (API key: {bool(self.config.api_key)})")
+            raise ValueError(
+                f"Asta provider not available (API key: {bool(self.config.api_key)})")
 
         timeout_seconds = self.config.timeout or 180
         async with httpx.AsyncClient(
@@ -90,6 +95,8 @@ class AstaProvider(ResearchProvider):
         ) as http_client:
             papers = await self._search_papers(http_client, query)
             snippets = await self._search_snippets(http_client, query, papers)
+            papers = await self._enrich_snippet_source_papers(http_client, papers, snippets)
+            papers = self._merge_snippet_source_papers(papers, snippets)
 
         logger.info(
             "Asta retrieval completed with %s papers and %s snippets",
@@ -126,23 +133,84 @@ class AstaProvider(ResearchProvider):
         papers: list[AstaPaper],
     ) -> list[AstaSnippet]:
         """Retrieve evidence snippets from Asta."""
-        paper_ids = ",".join(
-            paper.paper_id
-            for paper in papers[: self.params.snippet_paper_limit]
-            if paper.paper_id
-        )
         payload = await self._call_tool(
             http_client,
             "snippet_search",
-            {
-                "query": query,
-                "limit": self.params.snippet_limit,
-                "venues": self.params.venues,
-                "paper_ids": paper_ids,
-                "inserted_before": self.params.inserted_before,
-            },
+            self._build_snippet_search_arguments(query, papers),
         )
         return self._normalize_snippets(payload)
+
+    async def _enrich_snippet_source_papers(
+        self,
+        http_client: httpx.AsyncClient,
+        papers: list[AstaPaper],
+        snippets: list[AstaSnippet],
+    ) -> list[AstaPaper]:
+        """Fetch fuller paper metadata for snippet-only corpus IDs."""
+        batch_identifiers = self._build_snippet_source_batch_identifiers(
+            papers, snippets)
+        if not batch_identifiers:
+            return papers
+
+        payload = await self._call_tool(
+            http_client,
+            "get_paper_batch",
+            {
+                "ids": batch_identifiers,
+                "fields": self.params.paper_fields,
+            },
+        )
+        enriched_papers = self._normalize_papers(payload)
+        return self._merge_paper_lists(papers, enriched_papers)
+
+    def _build_snippet_search_arguments(
+        self,
+        query: str,
+        papers: list[AstaPaper],
+    ) -> dict[str, Any]:
+        """Build snippet search arguments."""
+        arguments: dict[str, Any] = {
+            "query": query,
+            "limit": self.params.snippet_limit,
+            "venues": self.params.venues,
+            "inserted_before": self.params.inserted_before,
+        }
+
+        if self.params.restrict_snippets_to_papers:
+            paper_ids = ",".join(
+                paper.paper_id
+                for paper in papers[: self.params.snippet_paper_limit]
+                if paper.paper_id
+            )
+            arguments["paper_ids"] = paper_ids
+
+        return arguments
+
+    def _build_snippet_source_batch_identifiers(
+        self,
+        papers: list[AstaPaper],
+        snippets: list[AstaSnippet],
+    ) -> list[str]:
+        """Build batch lookup identifiers for snippet-only sources with corpus IDs."""
+        known_ids = {paper.paper_id for paper in papers if paper.paper_id}
+        known_titles = {self._normalize_title(
+            paper.title) for paper in papers if paper.title}
+        identifiers: list[str] = []
+        seen_identifiers: set[str] = set()
+
+        for snippet in snippets:
+            normalized_title = self._normalize_title(snippet.title)
+            if (snippet.paper_id and snippet.paper_id in known_ids) or normalized_title in known_titles:
+                continue
+
+            identifier = self._format_batch_paper_identifier(snippet.paper_id)
+            if not identifier or identifier in seen_identifiers:
+                continue
+
+            seen_identifiers.add(identifier)
+            identifiers.append(identifier)
+
+        return identifiers
 
     async def _call_tool(
         self,
@@ -151,7 +219,8 @@ class AstaProvider(ResearchProvider):
         arguments: dict[str, Any],
     ) -> Any:
         """Call an Asta MCP tool and return the normalized payload."""
-        logger.debug("Calling Asta tool %s with arguments: %s", tool_name, arguments)
+        logger.debug("Calling Asta tool %s with arguments: %s",
+                     tool_name, arguments)
 
         response = await http_client.post(
             self.config.base_url or ASTA_MCP_URL,
@@ -174,7 +243,8 @@ class AstaProvider(ResearchProvider):
 
         payload = self._extract_rpc_payload(response.text)
         if "error" in payload:
-            raise ValueError(f"Asta MCP error calling {tool_name}: {payload['error']}")
+            raise ValueError(
+                f"Asta MCP error calling {tool_name}: {payload['error']}")
 
         result = payload.get("result", {})
         if result.get("isError"):
@@ -207,7 +277,8 @@ class AstaProvider(ResearchProvider):
             payloads.append(json.loads(candidate))
 
         if not payloads:
-            raise ValueError(f"Unable to parse Asta MCP response: {response_text[:200]}")
+            raise ValueError(
+                f"Unable to parse Asta MCP response: {response_text[:200]}")
         return payloads[-1]
 
     def _extract_tool_payload(self, result: dict[str, Any]) -> Any:
@@ -251,13 +322,16 @@ class AstaProvider(ResearchProvider):
                 AstaPaper(
                     paper_id=paper_id,
                     title=title,
-                    authors=self._extract_author_names(paper_data.get("authors")),
+                    authors=self._extract_author_names(
+                        paper_data.get("authors")),
                     abstract=str(paper_data.get("abstract") or ""),
                     year=self._coerce_int(paper_data.get("year")),
                     venue=str(paper_data.get("venue") or ""),
-                    journal=self._extract_journal_name(paper_data.get("journal")),
+                    journal=self._extract_journal_name(
+                        paper_data.get("journal")),
                     url=str(paper_data.get("url") or ""),
-                    publication_date=str(paper_data.get("publicationDate") or ""),
+                    publication_date=str(
+                        paper_data.get("publicationDate") or ""),
                     tldr=self._extract_tldr_text(paper_data.get("tldr")),
                     raw=paper_data,
                 )
@@ -272,8 +346,13 @@ class AstaProvider(ResearchProvider):
             if not isinstance(paper_info, dict):
                 paper_info = snippet_data
 
+            snippet_info = snippet_data.get("snippet")
+            if not isinstance(snippet_info, dict):
+                snippet_info = snippet_data
+
             snippet_text = (
-                snippet_data.get("snippet")
+                snippet_info.get("text")
+                or snippet_data.get("snippet")
                 or snippet_data.get("text")
                 or snippet_data.get("passage")
                 or snippet_data.get("content")
@@ -286,15 +365,21 @@ class AstaProvider(ResearchProvider):
                         snippet_data.get("paperId")
                         or snippet_data.get("paper_id")
                         or paper_info.get("paperId")
+                        or paper_info.get("corpusId")
                         or ""
                     ),
-                    title=str(snippet_data.get("title") or paper_info.get("title") or "Untitled"),
+                    title=str(snippet_data.get("title")
+                              or paper_info.get("title") or "Untitled"),
                     authors=self._extract_author_names(
-                        snippet_data.get("authors") or paper_info.get("authors")
+                        snippet_data.get(
+                            "authors") or paper_info.get("authors")
                     ),
-                    year=self._coerce_int(snippet_data.get("year") or paper_info.get("year")),
-                    url=str(snippet_data.get("url") or paper_info.get("url") or ""),
-                    score=self._coerce_float(snippet_data.get("score") or snippet_data.get("relevance")),
+                    year=self._coerce_int(snippet_data.get(
+                        "year") or paper_info.get("year")),
+                    url=str(snippet_data.get("url")
+                            or paper_info.get("url") or ""),
+                    score=self._coerce_float(snippet_data.get(
+                        "score") or snippet_data.get("relevance")),
                     raw=snippet_data,
                 )
             )
@@ -304,8 +389,16 @@ class AstaProvider(ResearchProvider):
     def _coerce_result_list(self, payload: Any) -> list[dict[str, Any]]:
         """Coerce Asta tool output into a list of dicts."""
         if isinstance(payload, dict):
+            nested_result = payload.get("result")
+            if isinstance(nested_result, dict):
+                if isinstance(nested_result.get("data"), list):
+                    return [item for item in nested_result["data"] if isinstance(item, dict)]
+                if isinstance(nested_result.get("items"), list):
+                    return [item for item in nested_result["items"] if isinstance(item, dict)]
             if isinstance(payload.get("result"), list):
                 return [item for item in payload["result"] if isinstance(item, dict)]
+            if isinstance(payload.get("data"), list):
+                return [item for item in payload["data"] if isinstance(item, dict)]
             if isinstance(payload.get("results"), list):
                 return [item for item in payload["results"] if isinstance(item, dict)]
             if isinstance(payload.get("snippets"), list):
@@ -340,8 +433,11 @@ class AstaProvider(ResearchProvider):
         if not papers:
             lines.append("No papers were retrieved for this query.")
         else:
+            grouped_snippets, unmatched_snippets = self._group_snippets_by_paper(
+                papers, snippets)
             for index, paper in enumerate(papers, start=1):
-                author_str = ", ".join(paper.authors[:5]) if paper.authors else "Unknown authors"
+                author_str = ", ".join(
+                    paper.authors[:5]) if paper.authors else "Unknown authors"
                 if len(paper.authors) > 5:
                     author_str += " et al."
                 venue = paper.journal or paper.venue or "Unknown venue"
@@ -355,27 +451,40 @@ class AstaProvider(ResearchProvider):
                         f"- Paper ID: {paper.paper_id or 'Unknown'}",
                         f"- URL: {paper.url or 'N/A'}",
                         f"- Summary: {self._truncate(summary, 500)}",
-                        "",
                     ]
                 )
+                paper_snippets = grouped_snippets.get(index - 1, [])
+                if paper_snippets:
+                    lines.extend(["- Evidence snippets:"])
+                    for snippet_index, snippet in enumerate(paper_snippets, start=1):
+                        score_line = f" (score: {snippet.score:.3f})" if snippet.score is not None else ""
+                        lines.extend(
+                            [
+                                f"  - Snippet {snippet_index}{score_line}",
+                                self._quote_block(
+                                    snippet.snippet, indent="    "),
+                            ]
+                        )
+                lines.append("")
 
-        lines.extend(["## Evidence Snippets", ""])
+            if unmatched_snippets:
+                lines.extend(["## Additional Snippet Sources", ""])
+                for index, snippet in enumerate(unmatched_snippets, start=1):
+                    score_line = f" (score: {snippet.score:.3f})" if snippet.score is not None else ""
+                    lines.extend(
+                        [
+                            f"### Snippet Source {index}: {snippet.title or 'Untitled'}{score_line}",
+                            f"- Paper ID: {snippet.paper_id or 'Unknown'}",
+                            f"- Year: {snippet.year or 'Unknown'}",
+                            f"- URL: {snippet.url or 'N/A'}",
+                            "",
+                            self._quote_block(snippet.snippet),
+                            "",
+                        ]
+                    )
         if not snippets:
-            lines.append("No snippets were retrieved for this query.")
-        else:
-            for index, snippet in enumerate(snippets, start=1):
-                score_line = f" (score: {snippet.score:.3f})" if snippet.score is not None else ""
-                lines.extend(
-                    [
-                        f"### Snippet {index}: {snippet.title or 'Untitled'}{score_line}",
-                        f"- Paper ID: {snippet.paper_id or 'Unknown'}",
-                        f"- Year: {snippet.year or 'Unknown'}",
-                        f"- URL: {snippet.url or 'N/A'}",
-                        "",
-                        f"> {self._quote_block(snippet.snippet)}",
-                        "",
-                    ]
-                )
+            lines.extend(["## Evidence Snippets", "",
+                         "No snippets were retrieved for this query."])
 
         lines.extend(
             [
@@ -387,13 +496,108 @@ class AstaProvider(ResearchProvider):
         )
         return "\n".join(lines)
 
+    def _group_snippets_by_paper(
+        self,
+        papers: list[AstaPaper],
+        snippets: list[AstaSnippet],
+    ) -> tuple[dict[int, list[AstaSnippet]], list[AstaSnippet]]:
+        """Group snippets under their most likely source paper."""
+        grouped: dict[int, list[AstaSnippet]] = {
+            index: [] for index in range(len(papers))}
+        unmatched: list[AstaSnippet] = []
+
+        title_to_index = {
+            self._normalize_title(paper.title): index
+            for index, paper in enumerate(papers)
+            if paper.title
+        }
+        id_to_index = {
+            str(paper.paper_id): index
+            for index, paper in enumerate(papers)
+            if paper.paper_id
+        }
+
+        for snippet in snippets:
+            matched_index: Optional[int] = None
+            if snippet.paper_id and snippet.paper_id in id_to_index:
+                matched_index = id_to_index[snippet.paper_id]
+            else:
+                normalized_title = self._normalize_title(snippet.title)
+                if normalized_title in title_to_index:
+                    matched_index = title_to_index[normalized_title]
+
+            if matched_index is None:
+                unmatched.append(snippet)
+            else:
+                grouped[matched_index].append(snippet)
+
+        return grouped, unmatched
+
+    def _merge_snippet_source_papers(
+        self,
+        papers: list[AstaPaper],
+        snippets: list[AstaSnippet],
+    ) -> list[AstaPaper]:
+        """Add snippet-only source papers so their snippets can be grouped under them."""
+        merged = list(papers)
+        known_ids = {paper.paper_id for paper in merged if paper.paper_id}
+        known_titles = {self._normalize_title(
+            paper.title) for paper in merged if paper.title}
+
+        for snippet in snippets:
+            normalized_title = self._normalize_title(snippet.title)
+            if (snippet.paper_id and snippet.paper_id in known_ids) or normalized_title in known_titles:
+                continue
+
+            merged.append(
+                AstaPaper(
+                    paper_id=snippet.paper_id,
+                    title=snippet.title or "Untitled",
+                    authors=snippet.authors,
+                    year=snippet.year,
+                    url=snippet.url,
+                    raw=snippet.raw,
+                )
+            )
+            if snippet.paper_id:
+                known_ids.add(snippet.paper_id)
+            if normalized_title:
+                known_titles.add(normalized_title)
+
+        return merged
+
+    def _merge_paper_lists(
+        self,
+        papers: list[AstaPaper],
+        additional_papers: list[AstaPaper],
+    ) -> list[AstaPaper]:
+        """Merge paper lists without duplicating the same source."""
+        merged = list(papers)
+        known_ids = {paper.paper_id for paper in merged if paper.paper_id}
+        known_titles = {self._normalize_title(
+            paper.title) for paper in merged if paper.title}
+
+        for paper in additional_papers:
+            normalized_title = self._normalize_title(paper.title)
+            if (paper.paper_id and paper.paper_id in known_ids) or normalized_title in known_titles:
+                continue
+
+            merged.append(paper)
+            if paper.paper_id:
+                known_ids.add(paper.paper_id)
+            if normalized_title:
+                known_titles.add(normalized_title)
+
+        return merged
+
     def _format_citations(self, papers: list[AstaPaper]) -> list[str]:
         """Format normalized papers into citation strings."""
         citations: list[str] = []
         seen: set[str] = set()
 
         for paper in papers:
-            author_str = ", ".join(paper.authors[:5]) if paper.authors else "Unknown authors"
+            author_str = ", ".join(
+                paper.authors[:5]) if paper.authors else "Unknown authors"
             if len(paper.authors) > 5:
                 author_str += " et al."
 
@@ -450,9 +654,24 @@ class AstaProvider(ResearchProvider):
             return text
         return text[: limit - 3].rstrip() + "..."
 
-    def _quote_block(self, text: str) -> str:
+    def _quote_block(self, text: str, indent: str = "") -> str:
         """Convert multi-line text to a markdown quote block."""
-        return "\n> ".join(line.strip() for line in text.splitlines() if line.strip())
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return "\n".join(f"{indent}> {line}" for line in lines)
+
+    def _normalize_title(self, title: str) -> str:
+        """Normalize titles for grouping snippets with source papers."""
+        return re.sub(r"[^a-z0-9]+", " ", title.casefold()).strip()
+
+    def _format_batch_paper_identifier(self, paper_id: str) -> str:
+        """Convert a snippet paper identifier into a get_paper_batch identifier."""
+        if not paper_id:
+            return ""
+        if ":" in paper_id:
+            return paper_id
+        if paper_id.isdigit():
+            return f"CorpusId:{paper_id}"
+        return ""
 
     def _coerce_int(self, value: Any) -> Optional[int]:
         """Coerce a value to an integer when possible."""

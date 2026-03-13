@@ -6,6 +6,7 @@ import os
 
 from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
 from deep_research_client.providers import ResearchProvider
+from deep_research_client.providers.asta import AstaProvider
 
 
 class MockProvider(ResearchProvider):
@@ -83,6 +84,23 @@ def test_asta_provider_setup_from_env():
         assert "asta" in client.get_available_providers()
 
 
+def test_asta_cache_params_include_version_tag():
+    """Asta cache keys should include a version tag to invalidate stale entries."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = AstaProvider(ProviderConfig(
+        name="asta", api_key="asta-key", enabled=True))
+    cache_params = client._get_cache_provider_params(
+        provider, {"paper_limit": 20})
+
+    assert cache_params == {
+        "paper_limit": 20,
+        "_cache_version": "snippet-v2",
+    }
+
+
 async def test_research_with_mock_provider():
     """Test research functionality with mock provider."""
     # Create client with disabled cache to avoid file system interactions
@@ -92,7 +110,8 @@ async def test_research_with_mock_provider():
         client = DeepResearchClient(cache_config=cache_config)
 
         # Add mock provider
-        provider_config = ProviderConfig(name="mock", api_key="test-key", enabled=True)
+        provider_config = ProviderConfig(
+            name="mock", api_key="test-key", enabled=True)
         mock_provider = MockProvider(provider_config)
         client.registry.register(mock_provider)
 
@@ -116,7 +135,8 @@ def test_research_sync():
         client = DeepResearchClient(cache_config=cache_config)
 
         # Add mock provider
-        provider_config = ProviderConfig(name="mock", api_key="test-key", enabled=True)
+        provider_config = ProviderConfig(
+            name="mock", api_key="test-key", enabled=True)
         mock_provider = MockProvider(provider_config)
         client.registry.register(mock_provider)
 
@@ -147,8 +167,10 @@ def test_research_specific_provider():
         client = DeepResearchClient(cache_config=cache_config)
 
         # Add mock providers
-        provider1_config = ProviderConfig(name="provider1", api_key="key1", enabled=True)
-        provider2_config = ProviderConfig(name="provider2", api_key="key2", enabled=True)
+        provider1_config = ProviderConfig(
+            name="provider1", api_key="key1", enabled=True)
+        provider2_config = ProviderConfig(
+            name="provider2", api_key="key2", enabled=True)
 
         mock_provider1 = MockProvider(provider1_config)
         mock_provider2 = MockProvider(provider2_config)
@@ -169,7 +191,8 @@ def test_research_invalid_provider():
         client = DeepResearchClient(cache_config=cache_config)
 
         # Add one mock provider
-        provider_config = ProviderConfig(name="mock", api_key="test-key", enabled=True)
+        provider_config = ProviderConfig(
+            name="mock", api_key="test-key", enabled=True)
         mock_provider = MockProvider(provider_config)
         client.registry.register(mock_provider)
 
@@ -188,8 +211,10 @@ def test_get_available_providers():
         assert len(client.get_available_providers()) == 0
 
         # Add providers
-        provider1_config = ProviderConfig(name="provider1", api_key="key1", enabled=True)
-        provider2_config = ProviderConfig(name="provider2", api_key=None, enabled=True)  # No API key
+        provider1_config = ProviderConfig(
+            name="provider1", api_key="key1", enabled=True)
+        provider2_config = ProviderConfig(
+            name="provider2", api_key=None, enabled=True)  # No API key
 
         mock_provider1 = MockProvider(provider1_config)
         mock_provider2 = MockProvider(provider2_config)

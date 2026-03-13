@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 class BaseProviderParams(BaseModel):
     """Base provider parameters that all providers can accept."""
 
-    model: Optional[str] = Field(default=None, description="Model to use for this provider")
+    model: Optional[str] = Field(
+        default=None, description="Model to use for this provider")
     system_prompt: Optional[str] = Field(
         default=None,
         description="Custom system prompt to override the default research prompt"
@@ -145,6 +146,13 @@ class AstaParams(BaseProviderParams):
         ge=1,
         le=100,
         description="Maximum number of retrieved paper IDs to constrain snippet search"
+    )
+    restrict_snippets_to_papers: bool = Field(
+        default=False,
+        description=(
+            "When true, restrict snippet search to the initially retrieved papers. "
+            "Leave false to search the broader corpus and avoid excluding snippet-only sources."
+        )
     )
     paper_fields: str = Field(
         default="title,abstract,authors,year,url,venue,journal,tldr,publicationDate",
@@ -287,7 +295,8 @@ def get_provider_params_class(provider_name: str) -> type[BaseProviderParams]:
     """
     params_class = PROVIDER_PARAMS_REGISTRY.get(provider_name)
     if not params_class:
-        raise ValueError(f"No parameter model found for provider: {provider_name}")
+        raise ValueError(
+            f"No parameter model found for provider: {provider_name}")
     return params_class
 
 

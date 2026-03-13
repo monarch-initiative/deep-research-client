@@ -14,7 +14,8 @@ from deep_research_client.provider_params import (
 
 def test_base_params_allowed_domains():
     """Test that BaseProviderParams includes allowed_domains."""
-    params = BaseProviderParams(allowed_domains=["wikipedia.org", "github.com"])
+    params = BaseProviderParams(
+        allowed_domains=["wikipedia.org", "github.com"])
 
     assert params.allowed_domains == ["wikipedia.org", "github.com"]
 
@@ -32,7 +33,8 @@ def test_openai_params_allowed_domains():
         allowed_domains=["pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
     )
 
-    assert params.allowed_domains == ["pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
+    assert params.allowed_domains == [
+        "pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
     assert params.temperature == 0.1  # Default value
 
 
@@ -142,8 +144,9 @@ def test_asta_params_defaults():
     """Test Asta-specific parameter defaults."""
     params = AstaParams()
 
-    assert params.paper_limit == 8
-    assert params.snippet_limit == 5
+    assert params.paper_limit == 20
+    assert params.snippet_limit == 20
+    assert params.restrict_snippets_to_papers is False
     assert params.paper_fields.startswith("title,abstract")
 
 
@@ -179,4 +182,5 @@ def test_perplexity_sync_preserves_denylist():
     params = PerplexityParams(allowed_domains=["github.com"])
 
     # search_domain_filter should be pure allowlist
-    assert all(not domain.startswith("-") for domain in params.search_domain_filter)
+    assert all(not domain.startswith("-")
+               for domain in params.search_domain_filter)

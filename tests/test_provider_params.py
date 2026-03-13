@@ -4,6 +4,7 @@ import pytest
 
 from deep_research_client.provider_params import (
     BaseProviderParams,
+    AstaParams,
     OpenAIParams,
     PerplexityParams,
     FalconParams,
@@ -13,7 +14,8 @@ from deep_research_client.provider_params import (
 
 def test_base_params_allowed_domains():
     """Test that BaseProviderParams includes allowed_domains."""
-    params = BaseProviderParams(allowed_domains=["wikipedia.org", "github.com"])
+    params = BaseProviderParams(
+        allowed_domains=["wikipedia.org", "github.com"])
 
     assert params.allowed_domains == ["wikipedia.org", "github.com"]
 
@@ -31,7 +33,8 @@ def test_openai_params_allowed_domains():
         allowed_domains=["pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
     )
 
-    assert params.allowed_domains == ["pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
+    assert params.allowed_domains == [
+        "pubmed.ncbi.nlm.nih.gov", "clinicaltrials.gov"]
     assert params.temperature == 0.1  # Default value
 
 
@@ -137,6 +140,36 @@ def test_falcon_params_allowed_domains():
     assert params.allowed_domains == ["wikipedia.org"]
 
 
+def test_asta_params_defaults():
+    """Test Asta-specific parameter defaults."""
+    params = AstaParams()
+
+    assert params.paper_limit == 50
+    assert params.snippet_limit == 20
+    assert params.snippet_paper_limit == 50
+    assert params.restrict_snippets_to_papers is False
+    assert params.paper_fields.startswith("title,abstract")
+
+
+def test_create_provider_params_asta():
+    """Test creating Asta params via the factory function."""
+    params = create_provider_params(
+        "asta",
+        model="Asta Scientific Corpus Retrieval",
+        provider_params={
+            "paper_limit": 4,
+            "snippet_limit": 3,
+            "publication_date_range": "2022:",
+        }
+    )
+
+    assert isinstance(params, AstaParams)
+    assert params.model == "Asta Scientific Corpus Retrieval"
+    assert params.paper_limit == 4
+    assert params.snippet_limit == 3
+    assert params.publication_date_range == "2022:"
+
+
 def test_allowed_domains_max_limit_documented():
     """Test that documentation mentions 20 domain limit."""
     # Check that the field description mentions the limit
@@ -150,4 +183,5 @@ def test_perplexity_sync_preserves_denylist():
     params = PerplexityParams(allowed_domains=["github.com"])
 
     # search_domain_filter should be pure allowlist
-    assert all(not domain.startswith("-") for domain in params.search_domain_filter)
+    assert all(not domain.startswith("-")
+               for domain in params.search_domain_filter)

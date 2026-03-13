@@ -73,7 +73,7 @@ def main_callback(
 @app.command()
 def research(
     query: Annotated[Optional[str], typer.Argument(help="Research query or question (not needed if using --template)")] = None,
-    provider: Annotated[Optional[str], typer.Option(help="Specific provider to use (openai, falcon, perplexity, consensus, mock)")] = None,
+    provider: Annotated[Optional[str], typer.Option(help="Specific provider to use (openai, falcon, asta, perplexity, consensus, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(help="Model to use for the provider (overrides provider default)")] = None,
     output: Annotated[Optional[Path], typer.Option(help="Output file path (prints to stdout if not provided)")] = None,
     no_cache: Annotated[bool, typer.Option("--no-cache", help="Disable caching")] = False,
@@ -262,6 +262,7 @@ def research(
         logger.error("No research providers available. Please set API keys:")
         logger.error("  - OPENAI_API_KEY for OpenAI Deep Research")
         logger.error("  - EDISON_API_KEY for Edison Scientific")
+        logger.error("  - ASTA_API_KEY for Asta")
         logger.error("  - PERPLEXITY_API_KEY for Perplexity AI")
         raise typer.Exit(1)
 
@@ -377,6 +378,7 @@ def providers(
             env_vars = {
                 "openai": "OPENAI_API_KEY",
                 "falcon": "EDISON_API_KEY",
+                "asta": "ASTA_API_KEY",
                 "perplexity": "PERPLEXITY_API_KEY",
                 "consensus": "CONSENSUS_API_KEY",
                 "mock": "ENABLE_MOCK_PROVIDER=true"
@@ -423,6 +425,7 @@ def providers(
         logger.error("No providers available. Please set API keys:")
         typer.echo("  - OPENAI_API_KEY for OpenAI Deep Research")
         typer.echo("  - EDISON_API_KEY for Edison Scientific")
+        typer.echo("  - ASTA_API_KEY for Asta")
         typer.echo("  - PERPLEXITY_API_KEY for Perplexity AI")
         typer.echo("  - CONSENSUS_API_KEY for Consensus")
         typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")

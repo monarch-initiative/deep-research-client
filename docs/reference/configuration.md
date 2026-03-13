@@ -10,6 +10,7 @@ Reference for all configuration options.
 |----------|----------|----------|
 | `OPENAI_API_KEY` | OpenAI Deep Research | For OpenAI |
 | `EDISON_API_KEY` | Edison Scientific | For Edison |
+| `ASTA_API_KEY` | Asta | For Asta retrieval |
 | `PERPLEXITY_API_KEY` | Perplexity AI | For Perplexity |
 | `CONSENSUS_API_KEY` | Consensus | For Consensus |
 | `CBORG_API_KEY` | CBORG Proxy | For CBORG |
@@ -21,6 +22,7 @@ Reference for all configuration options.
 export OPENAI_API_KEY="sk-..."
 export PERPLEXITY_API_KEY="pplx-..."
 export EDISON_API_KEY="..."
+export ASTA_API_KEY="..."
 export CONSENSUS_API_KEY="..."
 ```
 
@@ -160,6 +162,18 @@ from deep_research_client.provider_params import FalconParams
 params = FalconParams(
     temperature=0.1,
     max_tokens=8000
+)
+```
+
+### AstaParams
+
+```python
+from deep_research_client.provider_params import AstaParams
+
+params = AstaParams(
+    paper_limit=50,
+    snippet_limit=20,
+    publication_date_range="2021:",
 )
 ```
 

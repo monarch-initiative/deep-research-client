@@ -37,3 +37,16 @@ def test_research_rejects_conflicting_query_sources(tmp_path):
     assert result.exit_code == 1
     combined_output = result.stdout + result.stderr
     assert "Provide the query either as an argument or via --input-file" in combined_output
+
+
+def test_providers_asta_shows_required_credentials():
+    """CLI should explain that Asta needs its retrieval credential."""
+    result = runner.invoke(
+        app,
+        ["providers", "--provider", "asta"],
+        env={},
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert "Provider: asta - Not available" in result.stdout
+    assert "ASTA_API_KEY" in result.stdout

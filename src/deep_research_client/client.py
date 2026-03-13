@@ -11,6 +11,7 @@ from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
 from .providers.openai import OpenAIProvider
 from .providers.falcon import FalconProvider
+from .providers.asta import AstaProvider
 from .providers.perplexity import PerplexityProvider
 from .providers.consensus import ConsensusProvider
 from .providers.mock import MockProvider
@@ -75,6 +76,16 @@ class DeepResearchClient:
             )
             self.registry.register(FalconProvider(config, None))
 
+        # Asta provider
+        asta_key = os.getenv("ASTA_API_KEY")
+        if asta_key:
+            config = ProviderConfig(
+                name="asta",
+                api_key=asta_key,
+                enabled=True,
+            )
+            self.registry.register(AstaProvider(config, None))
+
         # Perplexity provider
         perplexity_key = os.getenv("PERPLEXITY_API_KEY")
         if perplexity_key:
@@ -126,6 +137,8 @@ class DeepResearchClient:
                 provider = OpenAIProvider(config, None)
             elif name == "falcon":
                 provider = FalconProvider(config, None)
+            elif name == "asta":
+                provider = AstaProvider(config, None)
             elif name == "perplexity":
                 provider = PerplexityProvider(config, None)
             elif name == "consensus":
@@ -166,6 +179,21 @@ class DeepResearchClient:
         # Get provider class and create instance
         provider_class = type(base_provider)
         return provider_class(config, params)
+
+    def _get_cache_provider_params(
+        self,
+        research_provider: 'ResearchProvider',
+        provider_params: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Build effective cache parameters, including provider-specific cache busting."""
+        effective_params = dict(provider_params or {})
+
+        # Asta response parsing and paper metadata changed after initial release;
+        # keep stale cache entries from shadowing current live results.
+        if research_provider.name == "asta":
+            effective_params["_cache_version"] = "snippet-v5"
+
+        return effective_params or None
 
     def research(
         self,
@@ -233,7 +261,8 @@ class DeepResearchClient:
                 research_provider = base_provider
 
         # Check cache first
-        cached_result = await self.cache.get(query, research_provider.name, model, provider_params)
+        cache_provider_params = self._get_cache_provider_params(research_provider, provider_params)
+        cached_result = await self.cache.get(query, research_provider.name, model, cache_provider_params)
         if cached_result:
             # Update timing for cached results
             end_time = datetime.now()
@@ -285,7 +314,7 @@ class DeepResearchClient:
                 result.provider_config['parameters'] = params_dict
 
         # Cache the result
-        await self.cache.set(query, research_provider.name, result, model, provider_params)
+        await self.cache.set(query, research_provider.name, result, model, cache_provider_params)
 
         return result
 

@@ -362,6 +362,47 @@ def create_falcon_model_cards() -> ProviderModelCards:
     )
 
 
+def create_asta_model_cards() -> ProviderModelCards:
+    """Create model cards for Asta retrieval."""
+
+    asta_retrieval = ModelCard(
+        name="Asta Scientific Corpus Retrieval",
+        display_name="Asta Scientific Corpus Retrieval",
+        description=(
+            "Semantic Scholar-backed literature retrieval using Asta's paper search "
+            "and snippet search tools, returned directly without synthesis."
+        ),
+        cost_level=CostLevel.LOW,
+        time_estimate=TimeEstimate.FAST,
+        capabilities=[
+            ModelCapability.ACADEMIC_SEARCH,
+            ModelCapability.SCIENTIFIC_LITERATURE,
+            ModelCapability.CITATION_TRACKING
+        ],
+        aliases=["asta", "retrieval", "snippets"],
+        pricing_notes="Free retrieval-only provider using the Asta MCP service",
+        use_cases=[
+            "Literature discovery",
+            "Passage-level evidence lookup",
+            "Paper triage before downstream analysis",
+            "Scientific corpus exploration"
+        ],
+        limitations=[
+            "No synthesis step",
+            "Scientific literature only",
+            "Report content mirrors retrieved evidence"
+        ]
+    )
+
+    return ProviderModelCards(
+        provider_name="asta",
+        default_model="Asta Scientific Corpus Retrieval",
+        models={
+            "Asta Scientific Corpus Retrieval": asta_retrieval,
+        }
+    )
+
+
 def create_consensus_model_cards() -> ProviderModelCards:
     """Create model cards for Consensus provider."""
 
@@ -410,6 +451,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openai": create_openai_model_cards(),
     "perplexity": create_perplexity_model_cards(),
     "falcon": create_falcon_model_cards(),
+    "asta": create_asta_model_cards(),
     "consensus": create_consensus_model_cards()
 }
 

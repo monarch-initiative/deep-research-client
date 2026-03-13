@@ -12,6 +12,7 @@ Complete reference for all available models.
 | Perplexity | sonar-pro | pro, sp | Medium | Medium | 200K |
 | Perplexity | sonar | basic, fast, s | Low | Fast | 100K |
 | Edison | Edison Scientific Literature | falcon, edison | High | Slow | - |
+| Asta | Asta Scientific Corpus Retrieval | asta, retrieval, snippets | Low | Fast | - |
 | Consensus | Consensus Academic Search | consensus, c | Low | Fast | - |
 
 ## Using Model Aliases

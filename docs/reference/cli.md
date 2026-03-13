@@ -408,6 +408,7 @@ Removes all files from `~/.deep_research_cache/`.
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key |
 | `EDISON_API_KEY` | Edison | Edison Scientific API key |
+| `ASTA_API_KEY` | Asta | Asta retrieval API key |
 | `PERPLEXITY_API_KEY` | Perplexity | Perplexity AI API key |
 | `CONSENSUS_API_KEY` | Consensus | Consensus API key |
 | `CBORG_API_KEY` | CBORG | CBORG proxy API key |

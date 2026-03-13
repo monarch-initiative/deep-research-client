@@ -890,6 +890,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#astaparams" class="md-nav__link">
+    <span class="md-ellipsis">
+      AstaParams
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cyberianparams" class="md-nav__link">
     <span class="md-ellipsis">
       CyberianParams
@@ -1236,6 +1245,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#astaparams" class="md-nav__link">
+    <span class="md-ellipsis">
+      AstaParams
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cyberianparams" class="md-nav__link">
     <span class="md-ellipsis">
       CyberianParams
@@ -1340,6 +1358,11 @@
 <td>For Edison</td>
 </tr>
 <tr>
+<td><code>ASTA_API_KEY</code></td>
+<td>Asta</td>
+<td>For Asta retrieval</td>
+</tr>
+<tr>
 <td><code>PERPLEXITY_API_KEY</code></td>
 <td>Perplexity AI</td>
 <td>For Perplexity</td>
@@ -1361,6 +1384,7 @@
 export OPENAI_API_KEY=&quot;sk-...&quot;
 export PERPLEXITY_API_KEY=&quot;pplx-...&quot;
 export EDISON_API_KEY=&quot;...&quot;
+export ASTA_API_KEY=&quot;...&quot;
 export CONSENSUS_API_KEY=&quot;...&quot;
 </code></pre>
 <h2 id="python-configuration">Python Configuration</h2>
@@ -1535,6 +1559,15 @@ params = PerplexityParams(
 params = FalconParams(
     temperature=0.1,
     max_tokens=8000
+)
+</code></pre>
+<h3 id="astaparams">AstaParams</h3>
+<pre><code class="language-python">from deep_research_client.provider_params import AstaParams
+
+params = AstaParams(
+    paper_limit=50,
+    snippet_limit=20,
+    publication_date_range=&quot;2021:&quot;,
 )
 </code></pre>
 <h3 id="cyberianparams">CyberianParams</h3>

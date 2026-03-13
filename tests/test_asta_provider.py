@@ -73,6 +73,7 @@ def test_normalize_papers_and_citations():
 
     assert len(papers) == 1
     assert papers[0].paper_id == "paper-1"
+    assert papers[0].corpus_id == ""
     assert papers[0].authors == ["Author One", "Author Two"]
     assert papers[0].tldr == "Important finding."
     assert papers[0].doi == "10.1000/test-doi"
@@ -190,8 +191,49 @@ def test_format_research_report_lists_papers_and_snippets():
     assert "## Evidence Snippets" not in report
 
 
-def test_group_snippets_by_title_when_ids_differ():
-    """Snippets should still group with papers when title matches but IDs differ."""
+def test_group_snippets_by_corpus_id_when_search_result_has_matching_external_id():
+    """Snippets should group by corpus ID when the paper result exposes that ID."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+    papers = provider._normalize_papers(
+        {
+            "result": [
+                {
+                    "paperId": "paper-1",
+                    "title": "Pathophysiology of Antiphospholipid Syndrome",
+                    "externalIds": {"CorpusId": "244402730"},
+                }
+            ]
+        }
+    )
+    snippets = provider._normalize_snippets(
+        {
+            "result": {
+                "data": [
+                    {
+                        "score": 1.2,
+                        "paper": {
+                            "corpusId": "244402730",
+                            "title": "Pathophysiology of Antiphospholipid Syndrome",
+                            "authors": ["D. Green"],
+                        },
+                        "snippet": {
+                            "text": "Pathophysiology of Antiphospholipid Syndrome",
+                        },
+                    }
+                ]
+            }
+        }
+    )
+
+    grouped, unmatched = provider._group_snippets_by_paper(papers, snippets)
+
+    assert len(grouped[0]) == 1
+    assert grouped[0][0].paper_id == "244402730"
+    assert unmatched == []
+
+
+def test_group_snippets_does_not_fallback_to_title_when_ids_conflict():
+    """Snippets with their own source ID should stay unmatched if no paper ID matches."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
     papers = provider._normalize_papers(
         {"result": [{"paperId": "paper-1",
@@ -219,9 +261,9 @@ def test_group_snippets_by_title_when_ids_differ():
 
     grouped, unmatched = provider._group_snippets_by_paper(papers, snippets)
 
-    assert len(grouped[0]) == 1
-    assert grouped[0][0].paper_id == "244402730"
-    assert unmatched == []
+    assert grouped[0] == []
+    assert len(unmatched) == 1
+    assert unmatched[0].paper_id == "244402730"
 
 
 def test_build_snippet_search_arguments_defaults_to_global_search():
@@ -267,7 +309,15 @@ def test_build_snippet_source_batch_identifiers_targets_snippet_only_corpus_ids(
     """Only snippet-only corpus IDs should be queued for batch enrichment."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
     papers = provider._normalize_papers(
-        {"result": [{"paperId": "paper-1", "title": "Known Paper"}]}
+        {
+            "result": [
+                {
+                    "paperId": "paper-1",
+                    "title": "Known Paper",
+                    "externalIds": {"CorpusId": "111"},
+                }
+            ]
+        }
     )
     snippets = provider._normalize_snippets(
         {
@@ -305,6 +355,42 @@ def test_build_snippet_source_batch_identifiers_targets_snippet_only_corpus_ids(
     assert identifiers == ["CorpusId:244402730"]
 
 
+def test_build_snippet_source_batch_identifiers_ignores_title_collision_with_distinct_ids():
+    """A title match alone should not suppress enrichment for a distinct snippet source."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+    papers = provider._normalize_papers(
+        {
+            "result": [
+                {
+                    "paperId": "paper-1",
+                    "title": "Shared Title",
+                    "externalIds": {"CorpusId": "111"},
+                }
+            ]
+        }
+    )
+    snippets = provider._normalize_snippets(
+        {
+            "result": {
+                "data": [
+                    {
+                        "paper": {
+                            "corpusId": "222",
+                            "title": "Shared Title",
+                        },
+                        "snippet": {"text": "Distinct source"},
+                    }
+                ]
+            }
+        }
+    )
+
+    identifiers = provider._build_snippet_source_batch_identifiers(
+        papers, snippets)
+
+    assert identifiers == ["CorpusId:222"]
+
+
 def test_merge_snippet_source_papers_adds_snippet_only_sources():
     """Snippet-only sources should be added to the paper list for grouping."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
@@ -335,24 +421,39 @@ def test_merge_snippet_source_papers_adds_snippet_only_sources():
 
     assert len(merged) == 2
     assert merged[1].paper_id == "paper-2"
+    assert merged[1].corpus_id == "paper-2"
     assert merged[1].title == "B Paper"
 
 
-def test_merge_paper_lists_skips_duplicate_titles():
-    """Enriched papers should not duplicate sources already present by title."""
+def test_merge_paper_lists_keeps_distinct_sources_with_same_title():
+    """Different identifiers should not be collapsed just because the title matches."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
     papers = provider._normalize_papers(
-        {"result": [{"paperId": "paper-1",
-                     "title": "Pathophysiology of Antiphospholipid Syndrome"}]}
+        {
+            "result": [
+                {
+                    "paperId": "paper-1",
+                    "title": "Pathophysiology of Antiphospholipid Syndrome",
+                    "externalIds": {"CorpusId": "111"},
+                }
+            ]
+        }
     )
     additional = provider._normalize_papers(
-        {"result": [{"paperId": "paper-2",
-                     "title": "Pathophysiology of Antiphospholipid Syndrome"}]}
+        {
+            "result": [
+                {
+                    "paperId": "paper-2",
+                    "title": "Pathophysiology of Antiphospholipid Syndrome",
+                    "externalIds": {"CorpusId": "222"},
+                }
+            ]
+        }
     )
 
     merged = provider._merge_paper_lists(papers, additional)
 
-    assert len(merged) == 1
+    assert len(merged) == 2
 
 
 def test_quote_block_preserves_indentation_for_multiline_snippets():

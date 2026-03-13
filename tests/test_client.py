@@ -97,7 +97,7 @@ def test_asta_cache_params_include_version_tag():
 
     assert cache_params == {
         "paper_limit": 20,
-        "_cache_version": "snippet-v4",
+        "_cache_version": "snippet-v5",
     }
 
 

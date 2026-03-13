@@ -25,6 +25,7 @@ class AstaPaper:
 
     paper_id: str
     title: str
+    corpus_id: str = ""
     authors: list[str] = field(default_factory=list)
     abstract: str = ""
     year: Optional[int] = None
@@ -197,15 +198,12 @@ class AstaProvider(ResearchProvider):
         snippets: list[AstaSnippet],
     ) -> list[str]:
         """Build batch lookup identifiers for snippet-only sources with corpus IDs."""
-        known_ids = {paper.paper_id for paper in papers if paper.paper_id}
-        known_titles = {self._normalize_title(
-            paper.title) for paper in papers if paper.title}
+        known_source_ids = self._paper_source_identifiers(papers)
         identifiers: list[str] = []
         seen_identifiers: set[str] = set()
 
         for snippet in snippets:
-            normalized_title = self._normalize_title(snippet.title)
-            if (snippet.paper_id and snippet.paper_id in known_ids) or normalized_title in known_titles:
+            if snippet.paper_id and snippet.paper_id in known_source_ids:
                 continue
 
             identifier = self._format_batch_paper_identifier(snippet.paper_id)
@@ -316,18 +314,22 @@ class AstaProvider(ResearchProvider):
         """Normalize Asta paper results into a consistent structure."""
         papers: list[AstaPaper] = []
         for paper_data in self._coerce_result_list(payload):
+            external_ids = paper_data.get("externalIds")
             paper_id = str(
                 paper_data.get("paperId")
                 or paper_data.get("paper_id")
                 or paper_data.get("corpusId")
                 or ""
             )
+            corpus_id = self._extract_external_id(external_ids, "CorpusId") or str(
+                paper_data.get("corpusId") or ""
+            )
             title = str(paper_data.get("title") or "Untitled")
-            external_ids = paper_data.get("externalIds")
             papers.append(
                 AstaPaper(
                     paper_id=paper_id,
                     title=title,
+                    corpus_id=corpus_id,
                     authors=self._extract_author_names(
                         paper_data.get("authors")),
                     abstract=str(paper_data.get("abstract") or ""),
@@ -533,25 +535,24 @@ class AstaProvider(ResearchProvider):
             index: [] for index in range(len(papers))}
         unmatched: list[AstaSnippet] = []
 
-        title_to_index = {
-            self._normalize_title(paper.title): index
-            for index, paper in enumerate(papers)
-            if paper.title
-        }
-        id_to_index = {
-            str(paper.paper_id): index
-            for index, paper in enumerate(papers)
-            if paper.paper_id
-        }
+        title_to_indexes: dict[str, list[int]] = {}
+        id_to_index: dict[str, int] = {}
+        for index, paper in enumerate(papers):
+            for identifier in self._paper_identifiers(paper):
+                id_to_index[identifier] = index
+            normalized_title = self._normalize_title(paper.title)
+            if normalized_title:
+                title_to_indexes.setdefault(normalized_title, []).append(index)
 
         for snippet in snippets:
             matched_index: Optional[int] = None
             if snippet.paper_id and snippet.paper_id in id_to_index:
                 matched_index = id_to_index[snippet.paper_id]
-            else:
+            elif not snippet.paper_id:
                 normalized_title = self._normalize_title(snippet.title)
-                if normalized_title in title_to_index:
-                    matched_index = title_to_index[normalized_title]
+                title_matches = title_to_indexes.get(normalized_title, [])
+                if len(title_matches) == 1:
+                    matched_index = title_matches[0]
 
             if matched_index is None:
                 unmatched.append(snippet)
@@ -567,19 +568,22 @@ class AstaProvider(ResearchProvider):
     ) -> list[AstaPaper]:
         """Add snippet-only source papers so their snippets can be grouped under them."""
         merged = list(papers)
-        known_ids = {paper.paper_id for paper in merged if paper.paper_id}
-        known_titles = {self._normalize_title(
-            paper.title) for paper in merged if paper.title}
+        known_source_ids = self._paper_source_identifiers(merged)
+        known_titles = self._untethered_titles(merged)
 
         for snippet in snippets:
             normalized_title = self._normalize_title(snippet.title)
-            if (snippet.paper_id and snippet.paper_id in known_ids) or normalized_title in known_titles:
+            if snippet.paper_id:
+                if snippet.paper_id in known_source_ids:
+                    continue
+            elif normalized_title in known_titles:
                 continue
 
             merged.append(
                 AstaPaper(
                     paper_id=snippet.paper_id,
                     title=snippet.title or "Untitled",
+                    corpus_id=snippet.paper_id,
                     authors=snippet.authors,
                     year=snippet.year,
                     url=snippet.url,
@@ -587,8 +591,8 @@ class AstaProvider(ResearchProvider):
                 )
             )
             if snippet.paper_id:
-                known_ids.add(snippet.paper_id)
-            if normalized_title:
+                known_source_ids.add(snippet.paper_id)
+            elif normalized_title:
                 known_titles.add(normalized_title)
 
         return merged
@@ -600,19 +604,23 @@ class AstaProvider(ResearchProvider):
     ) -> list[AstaPaper]:
         """Merge paper lists without duplicating the same source."""
         merged = list(papers)
-        known_ids = {paper.paper_id for paper in merged if paper.paper_id}
-        known_titles = {self._normalize_title(
-            paper.title) for paper in merged if paper.title}
+        known_identifiers = self._paper_source_identifiers(merged)
+        known_titles = self._untethered_titles(merged)
 
         for paper in additional_papers:
+            paper_identifiers = self._paper_identifiers(paper)
             normalized_title = self._normalize_title(paper.title)
-            if (paper.paper_id and paper.paper_id in known_ids) or normalized_title in known_titles:
+            if paper_identifiers and any(
+                identifier in known_identifiers for identifier in paper_identifiers
+            ):
+                continue
+
+            if not paper_identifiers and normalized_title in known_titles:
                 continue
 
             merged.append(paper)
-            if paper.paper_id:
-                known_ids.add(paper.paper_id)
-            if normalized_title:
+            known_identifiers.update(paper_identifiers)
+            if not paper_identifiers and normalized_title:
                 known_titles.add(normalized_title)
 
         return merged
@@ -699,6 +707,30 @@ class AstaProvider(ResearchProvider):
     def _normalize_title(self, title: str) -> str:
         """Normalize titles for grouping snippets with source papers."""
         return re.sub(r"[^a-z0-9]+", " ", title.casefold()).strip()
+
+    def _paper_identifiers(self, paper: AstaPaper) -> set[str]:
+        """Return all stable identifiers known for a paper."""
+        identifiers: set[str] = set()
+        if paper.paper_id:
+            identifiers.add(paper.paper_id)
+        if paper.corpus_id:
+            identifiers.add(paper.corpus_id)
+        return identifiers
+
+    def _paper_source_identifiers(self, papers: list[AstaPaper]) -> set[str]:
+        """Return stable identifiers across a paper list."""
+        identifiers: set[str] = set()
+        for paper in papers:
+            identifiers.update(self._paper_identifiers(paper))
+        return identifiers
+
+    def _untethered_titles(self, papers: list[AstaPaper]) -> set[str]:
+        """Return normalized titles only for papers without stable identifiers."""
+        return {
+            self._normalize_title(paper.title)
+            for paper in papers
+            if paper.title and not self._paper_identifiers(paper)
+        }
 
     def _format_batch_paper_identifier(self, paper_id: str) -> str:
         """Convert a snippet paper identifier into a get_paper_batch identifier."""

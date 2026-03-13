@@ -33,6 +33,9 @@ class AstaPaper:
     url: str = ""
     publication_date: str = ""
     tldr: str = ""
+    doi: str = ""
+    pmid: str = ""
+    pmcid: str = ""
     citation_count: Optional[int] = None
     influential_citation_count: Optional[int] = None
     raw: dict[str, Any] = field(default_factory=dict)
@@ -320,6 +323,7 @@ class AstaProvider(ResearchProvider):
                 or ""
             )
             title = str(paper_data.get("title") or "Untitled")
+            external_ids = paper_data.get("externalIds")
             papers.append(
                 AstaPaper(
                     paper_id=paper_id,
@@ -335,6 +339,9 @@ class AstaProvider(ResearchProvider):
                     publication_date=str(
                         paper_data.get("publicationDate") or ""),
                     tldr=self._extract_tldr_text(paper_data.get("tldr")),
+                    doi=self._extract_external_id(external_ids, "DOI"),
+                    pmid=self._extract_external_id(external_ids, "PubMed", "PMID"),
+                    pmcid=self._extract_external_id(external_ids, "PMCID", "PubMedCentral"),
                     citation_count=self._coerce_int(
                         paper_data.get("citationCount")
                         or paper_data.get("citation_count")
@@ -458,10 +465,15 @@ class AstaProvider(ResearchProvider):
                         f"- Authors: {author_str}",
                         f"- Year: {paper.year or 'Unknown'}",
                         f"- Venue: {venue}",
-                        f"- Paper ID: {paper.paper_id or 'Unknown'}",
                         f"- URL: {paper.url or 'N/A'}",
                     ]
                 )
+                if paper.doi:
+                    lines.append(f"- DOI: {paper.doi}")
+                if paper.pmid:
+                    lines.append(f"- PMID: {paper.pmid}")
+                if paper.pmcid:
+                    lines.append(f"- PMCID: {paper.pmcid}")
                 if paper.citation_count is not None:
                     lines.append(f"- Citations: {paper.citation_count}")
                 if paper.influential_citation_count is not None:
@@ -490,7 +502,6 @@ class AstaProvider(ResearchProvider):
                     lines.extend(
                         [
                             f"### Snippet Source {index}: {snippet.title or 'Untitled'}{score_line}",
-                            f"- Paper ID: {snippet.paper_id or 'Unknown'}",
                             f"- Year: {snippet.year or 'Unknown'}",
                             f"- URL: {snippet.url or 'N/A'}",
                             "",
@@ -662,6 +673,16 @@ class AstaProvider(ResearchProvider):
             return str(tldr.get("text") or "")
         if isinstance(tldr, str):
             return tldr
+        return ""
+
+    def _extract_external_id(self, external_ids: Any, *keys: str) -> str:
+        """Extract a preferred identifier from Asta externalIds."""
+        if not isinstance(external_ids, dict):
+            return ""
+        for key in keys:
+            value = external_ids.get(key)
+            if value not in (None, ""):
+                return str(value)
         return ""
 
     def _truncate(self, text: str, limit: int) -> str:

@@ -191,7 +191,7 @@ class DeepResearchClient:
         # Asta response parsing and paper metadata changed after initial release;
         # keep stale cache entries from shadowing current live results.
         if research_provider.name == "asta":
-            effective_params["_cache_version"] = "snippet-v3"
+            effective_params["_cache_version"] = "snippet-v4"
 
         return effective_params or None
 

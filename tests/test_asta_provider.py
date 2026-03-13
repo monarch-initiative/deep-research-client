@@ -58,6 +58,11 @@ def test_normalize_papers_and_citations():
                     "year": 2024,
                     "venue": "Nature",
                     "url": "https://example.org/paper-1",
+                    "externalIds": {
+                        "DOI": "10.1000/test-doi",
+                        "PubMed": "12345678",
+                        "PMCID": "PMC123456",
+                    },
                     "tldr": {"text": "Important finding."},
                     "citationCount": 42,
                     "influentialCitationCount": 7,
@@ -70,6 +75,9 @@ def test_normalize_papers_and_citations():
     assert papers[0].paper_id == "paper-1"
     assert papers[0].authors == ["Author One", "Author Two"]
     assert papers[0].tldr == "Important finding."
+    assert papers[0].doi == "10.1000/test-doi"
+    assert papers[0].pmid == "12345678"
+    assert papers[0].pmcid == "PMC123456"
     assert papers[0].citation_count == 42
     assert papers[0].influential_citation_count == 7
 
@@ -149,6 +157,11 @@ def test_format_research_report_lists_papers_and_snippets():
                     "paperId": "paper-1",
                     "title": "A Paper",
                     "year": 2024,
+                    "externalIds": {
+                        "DOI": "10.1000/test-doi",
+                        "PubMed": "12345678",
+                        "PMCID": "PMC123456",
+                    },
                     "citationCount": 42,
                     "influentialCitationCount": 7,
                 }
@@ -165,8 +178,12 @@ def test_format_research_report_lists_papers_and_snippets():
     assert "# Asta Literature Retrieval: test query" in report
     assert "This report is retrieval-only" in report
     assert "### [1] A Paper" in report
+    assert "- DOI: 10.1000/test-doi" in report
+    assert "- PMID: 12345678" in report
+    assert "- PMCID: PMC123456" in report
     assert "- Citations: 42" in report
     assert "- Influential citations: 7" in report
+    assert "- Paper ID:" not in report
     assert "- Evidence snippets:" in report
     assert "Snippet 1" in report
     assert "Evidence excerpt" in report

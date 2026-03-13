@@ -157,7 +157,7 @@ class AstaParams(BaseProviderParams):
     paper_fields: str = Field(
         default=(
             "title,abstract,authors,year,url,venue,journal,tldr,publicationDate,"
-            "citationCount,influentialCitationCount"
+            "citationCount,influentialCitationCount,externalIds"
         ),
         description="Comma-separated Asta paper fields to request"
     )

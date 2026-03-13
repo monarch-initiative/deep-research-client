@@ -174,7 +174,6 @@ params = AstaParams(
     paper_limit=50,
     snippet_limit=20,
     publication_date_range="2021:",
-    max_output_tokens=4000
 )
 ```
 

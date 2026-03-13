@@ -180,6 +180,21 @@ class DeepResearchClient:
         provider_class = type(base_provider)
         return provider_class(config, params)
 
+    def _get_cache_provider_params(
+        self,
+        research_provider: 'ResearchProvider',
+        provider_params: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """Build effective cache parameters, including provider-specific cache busting."""
+        effective_params = dict(provider_params or {})
+
+        # Asta response parsing changed after initial release; keep stale zero-snippet
+        # cache entries from shadowing current live results.
+        if research_provider.name == "asta":
+            effective_params["_cache_version"] = "snippet-v2"
+
+        return effective_params or None
+
     def research(
         self,
         query: str,
@@ -246,7 +261,8 @@ class DeepResearchClient:
                 research_provider = base_provider
 
         # Check cache first
-        cached_result = await self.cache.get(query, research_provider.name, model, provider_params)
+        cache_provider_params = self._get_cache_provider_params(research_provider, provider_params)
+        cached_result = await self.cache.get(query, research_provider.name, model, cache_provider_params)
         if cached_result:
             # Update timing for cached results
             end_time = datetime.now()
@@ -298,7 +314,7 @@ class DeepResearchClient:
                 result.provider_config['parameters'] = params_dict
 
         # Cache the result
-        await self.cache.set(query, research_provider.name, result, model, provider_params)
+        await self.cache.set(query, research_provider.name, result, model, cache_provider_params)
 
         return result
 

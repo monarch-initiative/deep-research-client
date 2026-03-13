@@ -144,8 +144,9 @@ def test_asta_params_defaults():
     """Test Asta-specific parameter defaults."""
     params = AstaParams()
 
-    assert params.paper_limit == 20
+    assert params.paper_limit == 50
     assert params.snippet_limit == 20
+    assert params.snippet_paper_limit == 50
     assert params.restrict_snippets_to_papers is False
     assert params.paper_fields.startswith("title,abstract")
 

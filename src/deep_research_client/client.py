@@ -188,10 +188,10 @@ class DeepResearchClient:
         """Build effective cache parameters, including provider-specific cache busting."""
         effective_params = dict(provider_params or {})
 
-        # Asta response parsing changed after initial release; keep stale zero-snippet
-        # cache entries from shadowing current live results.
+        # Asta response parsing and paper metadata changed after initial release;
+        # keep stale cache entries from shadowing current live results.
         if research_provider.name == "asta":
-            effective_params["_cache_version"] = "snippet-v2"
+            effective_params["_cache_version"] = "snippet-v3"
 
         return effective_params or None
 

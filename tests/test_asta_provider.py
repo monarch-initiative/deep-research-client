@@ -59,6 +59,8 @@ def test_normalize_papers_and_citations():
                     "venue": "Nature",
                     "url": "https://example.org/paper-1",
                     "tldr": {"text": "Important finding."},
+                    "citationCount": 42,
+                    "influentialCitationCount": 7,
                 }
             ]
         }
@@ -68,6 +70,8 @@ def test_normalize_papers_and_citations():
     assert papers[0].paper_id == "paper-1"
     assert papers[0].authors == ["Author One", "Author Two"]
     assert papers[0].tldr == "Important finding."
+    assert papers[0].citation_count == 42
+    assert papers[0].influential_citation_count == 7
 
     citations = provider._format_citations(papers)
     assert citations == [
@@ -139,7 +143,17 @@ def test_format_research_report_lists_papers_and_snippets():
     """The retrieval report should expose numbered papers and snippet evidence."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
     papers = provider._normalize_papers(
-        {"result": [{"paperId": "paper-1", "title": "A Paper", "year": 2024}]}
+        {
+            "result": [
+                {
+                    "paperId": "paper-1",
+                    "title": "A Paper",
+                    "year": 2024,
+                    "citationCount": 42,
+                    "influentialCitationCount": 7,
+                }
+            ]
+        }
     )
     snippets = provider._normalize_snippets(
         {"result": [{"snippet": "Evidence excerpt",
@@ -151,6 +165,8 @@ def test_format_research_report_lists_papers_and_snippets():
     assert "# Asta Literature Retrieval: test query" in report
     assert "This report is retrieval-only" in report
     assert "### [1] A Paper" in report
+    assert "- Citations: 42" in report
+    assert "- Influential citations: 7" in report
     assert "- Evidence snippets:" in report
     assert "Snippet 1" in report
     assert "Evidence excerpt" in report

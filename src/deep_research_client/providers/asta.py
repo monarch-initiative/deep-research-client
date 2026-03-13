@@ -33,6 +33,8 @@ class AstaPaper:
     url: str = ""
     publication_date: str = ""
     tldr: str = ""
+    citation_count: Optional[int] = None
+    influential_citation_count: Optional[int] = None
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -333,6 +335,14 @@ class AstaProvider(ResearchProvider):
                     publication_date=str(
                         paper_data.get("publicationDate") or ""),
                     tldr=self._extract_tldr_text(paper_data.get("tldr")),
+                    citation_count=self._coerce_int(
+                        paper_data.get("citationCount")
+                        or paper_data.get("citation_count")
+                    ),
+                    influential_citation_count=self._coerce_int(
+                        paper_data.get("influentialCitationCount")
+                        or paper_data.get("influential_citation_count")
+                    ),
                     raw=paper_data,
                 )
             )
@@ -450,9 +460,15 @@ class AstaProvider(ResearchProvider):
                         f"- Venue: {venue}",
                         f"- Paper ID: {paper.paper_id or 'Unknown'}",
                         f"- URL: {paper.url or 'N/A'}",
-                        f"- Summary: {self._truncate(summary, 500)}",
                     ]
                 )
+                if paper.citation_count is not None:
+                    lines.append(f"- Citations: {paper.citation_count}")
+                if paper.influential_citation_count is not None:
+                    lines.append(
+                        f"- Influential citations: {paper.influential_citation_count}"
+                    )
+                lines.append(f"- Summary: {self._truncate(summary, 500)}")
                 paper_snippets = grouped_snippets.get(index - 1, [])
                 if paper_snippets:
                     lines.extend(["- Evidence snippets:"])

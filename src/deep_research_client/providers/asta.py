@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -17,6 +18,7 @@ from ..provider_params import AstaParams
 logger = logging.getLogger(__name__)
 
 ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
+MAX_COERCED_INT_ABS = (2 ** 63) - 1
 
 
 @dataclass
@@ -188,7 +190,8 @@ class AstaProvider(ResearchProvider):
                 for paper in papers[: self.params.snippet_paper_limit]
                 if paper.paper_id
             )
-            arguments["paper_ids"] = paper_ids
+            if paper_ids:
+                arguments["paper_ids"] = paper_ids
 
         return arguments
 
@@ -280,6 +283,7 @@ class AstaProvider(ResearchProvider):
             payloads.append(json.loads(candidate))
 
         if not payloads:
+            logger.debug("Full unparseable Asta MCP response: %s", response_text)
             raise ValueError(
                 f"Unable to parse Asta MCP response: {response_text[:200]}")
         return payloads[-1]
@@ -747,15 +751,21 @@ class AstaProvider(ResearchProvider):
         if value in (None, ""):
             return None
         try:
-            return int(value)
-        except (TypeError, ValueError):
+            coerced = int(value)
+        except (TypeError, ValueError, OverflowError):
             return None
+        if abs(coerced) > MAX_COERCED_INT_ABS:
+            return None
+        return coerced
 
     def _coerce_float(self, value: Any) -> Optional[float]:
         """Coerce a value to a float when possible."""
         if value in (None, ""):
             return None
         try:
-            return float(value)
-        except (TypeError, ValueError):
+            coerced = float(value)
+        except (TypeError, ValueError, OverflowError):
             return None
+        if not math.isfinite(coerced):
+            return None
+        return coerced

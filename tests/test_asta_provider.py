@@ -294,6 +294,19 @@ def test_build_snippet_search_arguments_can_restrict_to_papers():
     assert arguments["paper_ids"] == "paper-1"
 
 
+def test_build_snippet_search_arguments_omits_empty_paper_ids():
+    """Restricting snippet search should not send an empty paper_ids string."""
+    provider = AstaProvider(
+        ProviderConfig(name="asta", api_key="asta-key"),
+        AstaParams(restrict_snippets_to_papers=True),
+    )
+
+    arguments = provider._build_snippet_search_arguments("test query", [])
+
+    assert arguments["query"] == "test query"
+    assert "paper_ids" not in arguments
+
+
 def test_format_batch_paper_identifier_supports_corpus_ids():
     """Batch paper lookup should prefix raw corpus IDs and preserve explicit prefixes."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
@@ -463,6 +476,25 @@ def test_quote_block_preserves_indentation_for_multiline_snippets():
     quoted = provider._quote_block("First line\nSecond line", indent="    ")
 
     assert quoted == "    > First line\n    > Second line"
+
+
+def test_coerce_int_rejects_infinite_and_out_of_bounds_values():
+    """Integer coercion should reject infinities and implausibly large values."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+
+    assert provider._coerce_int(float("inf")) is None
+    assert provider._coerce_int(2 ** 80) is None
+    assert provider._coerce_int("42") == 42
+
+
+def test_coerce_float_rejects_non_finite_values():
+    """Float coercion should reject NaN and infinities."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+
+    assert provider._coerce_float(float("inf")) is None
+    assert provider._coerce_float(float("-inf")) is None
+    assert provider._coerce_float(float("nan")) is None
+    assert provider._coerce_float("3.14") == pytest.approx(3.14)
 
 
 @pytest.mark.integration

@@ -6,7 +6,11 @@ import pytest
 
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import AstaParams
-from deep_research_client.providers.asta import AstaProvider
+from deep_research_client.providers.asta import (
+    ASTA_QUERY_MAX_CHARS,
+    ASTA_REPORT_QUERY_MAX_CHARS,
+    AstaProvider,
+)
 
 
 def test_asta_provider_availability_uses_api_key_only():
@@ -305,6 +309,57 @@ def test_build_snippet_search_arguments_omits_empty_paper_ids():
 
     assert arguments["query"] == "test query"
     assert "paper_ids" not in arguments
+
+
+def test_sanitize_query_text_strips_markdown_template_noise():
+    """Markdown-heavy prompts should collapse into a plain-text retrieval query."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+    query = """# Disease Pathophysiology Research Template
+
+## Target Disease
+- **Disease Name:** Contact Dermatitis
+- **MONDO ID:**  (if available)
+- **Category:** Complex
+
+## Research Objectives
+
+Please provide a comprehensive research report on the pathophysiology of **Contact Dermatitis**.
+Focus on the molecular and cellular mechanisms underlying disease progression.
+"""
+
+    sanitized = provider._sanitize_query_text(query)
+
+    assert "Contact Dermatitis" in sanitized
+    assert "pathophysiology" in sanitized
+    assert "*" not in sanitized
+    assert "#" not in sanitized
+    assert "\n" not in sanitized
+    assert len(sanitized) <= ASTA_QUERY_MAX_CHARS
+
+
+def test_prepare_query_text_truncates_search_and_display_queries():
+    """Long Markdown queries should be capped for Asta search and report titles."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+    repeated_detail = "Mechanistic detail about Contact Dermatitis. " * 40
+    query = f"""---
+provider: asta
+---
+
+# Disease Template
+- **Disease Name:** Contact Dermatitis
+- **Category:** Complex
+
+{repeated_detail}
+"""
+
+    search_query, display_query = provider._prepare_query_text(query)
+
+    assert "provider: asta" not in search_query
+    assert search_query.startswith(
+        "Disease Template Disease Name: Contact Dermatitis")
+    assert len(search_query) <= ASTA_QUERY_MAX_CHARS
+    assert len(display_query) <= ASTA_REPORT_QUERY_MAX_CHARS
+    assert display_query.endswith("...")
 
 
 def test_format_batch_paper_identifier_supports_corpus_ids():

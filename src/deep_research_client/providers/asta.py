@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
 MAX_COERCED_INT_ABS = (2 ** 63) - 1
+ASTA_QUERY_MAX_CHARS = 500
+ASTA_REPORT_QUERY_MAX_CHARS = 120
 
 
 @dataclass
@@ -92,6 +94,14 @@ class AstaProvider(ResearchProvider):
             raise ValueError(
                 f"Asta provider not available (API key: {bool(self.config.api_key)})")
 
+        search_query, display_query = self._prepare_query_text(query)
+        if search_query != query.strip():
+            logger.debug(
+                "Sanitized Asta query from %s to %s characters",
+                len(query),
+                len(search_query),
+            )
+
         timeout_seconds = self.config.timeout or 180
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -101,8 +111,9 @@ class AstaProvider(ResearchProvider):
                 pool=30.0,
             )
         ) as http_client:
-            papers = await self._search_papers(http_client, query)
-            snippets = await self._search_snippets(http_client, query, papers)
+            papers = await self._search_papers(http_client, search_query)
+            snippets = await self._search_snippets(
+                http_client, search_query, papers)
             papers = await self._enrich_snippet_source_papers(http_client, papers, snippets)
             papers = self._merge_snippet_source_papers(papers, snippets)
 
@@ -113,7 +124,8 @@ class AstaProvider(ResearchProvider):
         )
 
         return ResearchResult(
-            markdown=self._format_research_report(query, papers, snippets),
+            markdown=self._format_research_report(
+                display_query, papers, snippets),
             citations=self._format_citations(papers),
             provider=self.name,
             query=query,
@@ -194,6 +206,74 @@ class AstaProvider(ResearchProvider):
                 arguments["paper_ids"] = paper_ids
 
         return arguments
+
+    def _prepare_query_text(self, query: str) -> tuple[str, str]:
+        """Convert user input into a retrieval-friendly query and display label."""
+        search_query = self._sanitize_query_text(query)
+        display_query = self._truncate(
+            search_query, ASTA_REPORT_QUERY_MAX_CHARS)
+        return search_query, display_query
+
+    def _sanitize_query_text(self, query: str) -> str:
+        """Strip Markdown-heavy prompt formatting into plain text for Asta.
+
+        >>> provider = AstaProvider(ProviderConfig(name="asta", api_key="test"))
+        >>> provider._sanitize_query_text("# Query\\n- **Disease Name:** Contact Dermatitis")
+        'Query Disease Name: Contact Dermatitis'
+        """
+        cleaned_lines: list[str] = []
+        seen_lines: set[str] = set()
+        for raw_line in self._strip_frontmatter(query).splitlines():
+            cleaned = self._sanitize_query_line(raw_line)
+            if not cleaned:
+                continue
+            normalized = cleaned.casefold()
+            if normalized in seen_lines:
+                continue
+            seen_lines.add(normalized)
+            cleaned_lines.append(cleaned)
+
+        cleaned_query = " ".join(cleaned_lines)
+        cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
+        if not cleaned_query:
+            cleaned_query = re.sub(r"\s+", " ", query).strip()
+        if not cleaned_query:
+            raise ValueError("Asta query is empty after sanitization")
+
+        return self._truncate_at_word_boundary(cleaned_query, ASTA_QUERY_MAX_CHARS)
+
+    def _sanitize_query_line(self, line: str) -> str:
+        """Normalize a single Markdown line into plain text."""
+        stripped = line.strip()
+        if not stripped or stripped.startswith("```"):
+            return ""
+
+        stripped = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", stripped)
+        stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
+        stripped = re.sub(r"`([^`]*)`", r"\1", stripped)
+        stripped = re.sub(r"^#{1,6}\s*", "", stripped)
+        stripped = re.sub(r"^\s{0,3}>\s?", "", stripped)
+        stripped = re.sub(r"^\s{0,3}(?:[-*+]|\d+\.)\s+", "", stripped)
+        stripped = stripped.replace("**", "")
+        stripped = stripped.replace("__", "")
+        stripped = stripped.replace("*", "")
+        stripped = stripped.replace("`", "")
+        stripped = stripped.replace("|", " ")
+        stripped = re.sub(r"\s+", " ", stripped)
+        return stripped.strip(" \t:-")
+
+    def _strip_frontmatter(self, text: str) -> str:
+        """Remove leading Markdown frontmatter from a query if present."""
+        lines = text.splitlines()
+        if not lines or lines[0].strip() != "---":
+            return text
+
+        closing_index = 1
+        while closing_index < len(lines) and lines[closing_index].strip() != "---":
+            closing_index += 1
+        if closing_index >= len(lines):
+            return text
+        return "\n".join(lines[closing_index + 1:])
 
     def _build_snippet_source_batch_identifiers(
         self,
@@ -283,7 +363,8 @@ class AstaProvider(ResearchProvider):
             payloads.append(json.loads(candidate))
 
         if not payloads:
-            logger.debug("Full unparseable Asta MCP response: %s", response_text)
+            logger.debug(
+                "Full unparseable Asta MCP response: %s", response_text)
             raise ValueError(
                 f"Unable to parse Asta MCP response: {response_text[:200]}")
         return payloads[-1]
@@ -346,8 +427,10 @@ class AstaProvider(ResearchProvider):
                         paper_data.get("publicationDate") or ""),
                     tldr=self._extract_tldr_text(paper_data.get("tldr")),
                     doi=self._extract_external_id(external_ids, "DOI"),
-                    pmid=self._extract_external_id(external_ids, "PubMed", "PMID"),
-                    pmcid=self._extract_external_id(external_ids, "PMCID", "PubMedCentral"),
+                    pmid=self._extract_external_id(
+                        external_ids, "PubMed", "PMID"),
+                    pmcid=self._extract_external_id(
+                        external_ids, "PMCID", "PubMedCentral"),
                     citation_count=self._coerce_int(
                         paper_data.get("citationCount")
                         or paper_data.get("citation_count")
@@ -702,6 +785,17 @@ class AstaProvider(ResearchProvider):
         if len(text) <= limit:
             return text
         return text[: limit - 3].rstrip() + "..."
+
+    def _truncate_at_word_boundary(self, text: str, limit: int) -> str:
+        """Truncate text near a word boundary while preserving search signal."""
+        if len(text) <= limit:
+            return text
+
+        truncated = text[:limit].rstrip()
+        last_space = truncated.rfind(" ")
+        if last_space >= limit // 2:
+            truncated = truncated[:last_space]
+        return truncated.rstrip(" ,;:")
 
     def _quote_block(self, text: str, indent: str = "") -> str:
         """Convert multi-line text to a markdown quote block."""

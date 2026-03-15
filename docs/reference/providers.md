@@ -148,6 +148,7 @@ export ASTA_API_KEY="your-key"
 from deep_research_client.provider_params import AstaParams
 
 params = AstaParams(
+    query_char_limit=500,
     paper_limit=50,
     snippet_limit=20,
     publication_date_range="2021:",

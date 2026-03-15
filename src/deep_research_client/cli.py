@@ -22,7 +22,8 @@ from .model_cards import (
 # Configure logging
 logger = logging.getLogger("deep_research_client")
 
-app = typer.Typer(help="deep-research-client: Wrapper for multiple deep research tools")
+app = typer.Typer(
+    help="deep-research-client: Wrapper for multiple deep research tools")
 
 
 def setup_logging(verbosity: int) -> None:
@@ -59,12 +60,56 @@ def setup_logging(verbosity: int) -> None:
     logger.setLevel(level)
 
     if verbosity >= 2:
-        logger.debug(f"Logging configured at {logging.getLevelName(level)} level")
+        logger.debug(
+            f"Logging configured at {logging.getLevelName(level)} level")
+
+
+def _collect_noop_research_option_warnings(
+    provider: str,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    use_cborg: bool = False,
+    api_key_env: Optional[str] = None,
+) -> list[str]:
+    """Collect warnings for CLI options that are accepted but ineffective.
+
+    Args:
+        provider: The resolved provider name for the research request
+        model: Optional model override from CLI
+        base_url: Optional custom endpoint override
+        use_cborg: Whether the CBORG shortcut was requested
+        api_key_env: Optional environment variable override for proxy API keys
+
+    Returns:
+        List of warning strings to emit to the user
+    """
+    warnings: list[str] = []
+
+    if provider == "asta":
+        if model:
+            warnings.append(
+                "Provider 'asta' ignores --model; Asta always uses its fixed retrieval mode."
+            )
+        if base_url:
+            warnings.append(
+                "Provider 'asta' ignores --base-url; custom OpenAI-compatible endpoints do not apply to Asta."
+            )
+        if use_cborg:
+            warnings.append(
+                "Provider 'asta' ignores --use-cborg; CBORG only applies to the OpenAI provider."
+            )
+        if api_key_env:
+            warnings.append(
+                "Provider 'asta' ignores --api-key-env; Asta reads its credential from ASTA_API_KEY."
+            )
+
+    return warnings
 
 
 @app.callback()
 def main_callback(
-    verbose: Annotated[int, typer.Option("--verbose", "-v", count=True, help="Increase verbosity (-v, -vv, -vvv)")] = 0,
+    verbose: Annotated[int, typer.Option(
+        "--verbose", "-v", count=True, help="Increase verbosity (-v, -vv, -vvv)")] = 0,
 ):
     """Global options for all commands."""
     setup_logging(verbose)
@@ -72,26 +117,45 @@ def main_callback(
 
 @app.command()
 def research(
-    query: Annotated[Optional[str], typer.Argument(help="Research query or question (not needed if using --template)")] = None,
-    provider: Annotated[Optional[str], typer.Option(help="Specific provider to use (openai, falcon, asta, perplexity, consensus, mock)")] = None,
-    model: Annotated[Optional[str], typer.Option(help="Model to use for the provider (overrides provider default)")] = None,
-    output: Annotated[Optional[Path], typer.Option(help="Output file path (prints to stdout if not provided)")] = None,
-    no_cache: Annotated[bool, typer.Option("--no-cache", help="Disable caching")] = False,
-    separate_citations: Annotated[Optional[Path], typer.Option("--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
-    cache_dir: Annotated[Optional[Path], typer.Option("--cache-dir", help="Override cache directory (default: ~/.deep_research_cache)")] = None,
-    template: Annotated[Optional[Path], typer.Option(help="Template file with {variable} placeholders")] = None,
-    input_file: Annotated[Optional[Path], typer.Option("--input-file", "-f", help="Read the research query from a text/markdown file")] = None,
-    var: Annotated[Optional[List[str]], typer.Option(help="Template variable as 'key=value' (can be used multiple times)")] = None,
-    param: Annotated[Optional[List[str]], typer.Option(help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
-    base_url: Annotated[Optional[str], typer.Option("--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
-    use_cborg: Annotated[bool, typer.Option("--use-cborg", help="Use CBORG proxy (Berkeley Lab's AI Portal at api.cborg.lbl.gov)")] = False,
-    api_key_env: Annotated[Optional[str], typer.Option("--api-key-env", help="Environment variable name to use for API key (e.g., 'CBORG_API_KEY')")] = None,
+    query: Annotated[Optional[str], typer.Argument(
+        help="Research query or question (not needed if using --template)")] = None,
+    provider: Annotated[Optional[str], typer.Option(
+        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, mock)")] = None,
+    model: Annotated[Optional[str], typer.Option(
+        help="Model to use for the provider (overrides provider default)")] = None,
+    output: Annotated[Optional[Path], typer.Option(
+        help="Output file path (prints to stdout if not provided)")] = None,
+    no_cache: Annotated[bool, typer.Option(
+        "--no-cache", help="Disable caching")] = False,
+    separate_citations: Annotated[Optional[Path], typer.Option(
+        "--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Override cache directory (default: ~/.deep_research_cache)")] = None,
+    template: Annotated[Optional[Path], typer.Option(
+        help="Template file with {variable} placeholders")] = None,
+    input_file: Annotated[Optional[Path], typer.Option(
+        "--input-file", "-f", help="Read the research query from a text/markdown file")] = None,
+    var: Annotated[Optional[List[str]], typer.Option(
+        help="Template variable as 'key=value' (can be used multiple times)")] = None,
+    param: Annotated[Optional[List[str]], typer.Option(
+        help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
+    base_url: Annotated[Optional[str], typer.Option(
+        "--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
+    use_cborg: Annotated[bool, typer.Option(
+        "--use-cborg", help="Use CBORG proxy (Berkeley Lab's AI Portal at api.cborg.lbl.gov)")] = False,
+    api_key_env: Annotated[Optional[str], typer.Option(
+        "--api-key-env", help="Environment variable name to use for API key (e.g., 'CBORG_API_KEY')")] = None,
     # Publication-style metadata options
-    title: Annotated[Optional[str], typer.Option("--title", help="Title for the research report")] = None,
-    abstract: Annotated[Optional[str], typer.Option("--abstract", help="Abstract or summary for the research")] = None,
-    keyword: Annotated[Optional[List[str]], typer.Option("--keyword", help="Keyword/tag for the research (can be used multiple times)")] = None,
-    author: Annotated[Optional[str], typer.Option("--author", help="Primary author of the research")] = None,
-    contributor: Annotated[Optional[List[str]], typer.Option("--contributor", help="Contributor to the research (can be used multiple times)")] = None,
+    title: Annotated[Optional[str], typer.Option(
+        "--title", help="Title for the research report")] = None,
+    abstract: Annotated[Optional[str], typer.Option(
+        "--abstract", help="Abstract or summary for the research")] = None,
+    keyword: Annotated[Optional[List[str]], typer.Option(
+        "--keyword", help="Keyword/tag for the research (can be used multiple times)")] = None,
+    author: Annotated[Optional[str], typer.Option(
+        "--author", help="Primary author of the research")] = None,
+    contributor: Annotated[Optional[List[str]], typer.Option(
+        "--contributor", help="Contributor to the research (can be used multiple times)")] = None,
 ):
     """Perform deep research on a query.
 
@@ -138,7 +202,8 @@ def research(
             logger.error("Cannot combine --input-file with --template")
             raise typer.Exit(1)
         if query:
-            logger.error("Provide the query either as an argument or via --input-file, not both")
+            logger.error(
+                "Provide the query either as an argument or via --input-file, not both")
             raise typer.Exit(1)
 
         try:
@@ -163,7 +228,8 @@ def research(
     if template:
         try:
             # Validate template variables first
-            is_valid, error_msg = processor.validate_template_variables(template, var)
+            is_valid, error_msg = processor.validate_template_variables(
+                template, var)
             if not is_valid:
                 logger.error(f"Template error: {error_msg}")
                 if error_msg and "requires variables" in error_msg:
@@ -171,11 +237,13 @@ def research(
                 raise typer.Exit(1)
 
             # Process the template
-            query, template_info = processor.process_template_file(template, var)
+            query, template_info = processor.process_template_file(
+                template, var)
 
             logger.info(f"Using template: {template.name}")
             if template_info['template_variables']:
-                var_str = ', '.join(f"{k}={v}" for k, v in template_info['template_variables'].items())
+                var_str = ', '.join(
+                    f"{k}={v}" for k, v in template_info['template_variables'].items())
                 logger.info(f"Variables: {var_str}")
 
         except (FileNotFoundError, ValueError) as e:
@@ -192,7 +260,8 @@ def research(
         try:
             for param_str in param:
                 if '=' not in param_str:
-                    raise ValueError(f"Invalid parameter format: '{param_str}'. Use 'key=value'")
+                    raise ValueError(
+                        f"Invalid parameter format: '{param_str}'. Use 'key=value'")
                 key, value = param_str.split('=', 1)
                 provider_params[key.strip()] = value.strip()
             logger.debug(f"Parsed provider parameters: {provider_params}")
@@ -234,7 +303,8 @@ def research(
         if proxy_api_key_env:
             api_key = os.getenv(proxy_api_key_env)
             if not api_key:
-                logger.error(f"Environment variable {proxy_api_key_env} not set")
+                logger.error(
+                    f"Environment variable {proxy_api_key_env} not set")
                 raise typer.Exit(1)
             logger.debug(f"Using API key from {proxy_api_key_env}")
         else:
@@ -254,7 +324,8 @@ def research(
 
     # Initialize client
     logger.debug("Initializing DeepResearchClient")
-    client = DeepResearchClient(cache_config=cache_config, provider_configs=provider_configs)
+    client = DeepResearchClient(
+        cache_config=cache_config, provider_configs=provider_configs)
 
     # Check if any providers are available
     available_providers = client.get_available_providers()
@@ -269,12 +340,23 @@ def research(
     # Show available providers
     if provider:
         if provider not in available_providers:
-            logger.error(f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
+            logger.error(
+                f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
             raise typer.Exit(1)
         logger.info(f"Using provider: {provider}")
     else:
         logger.info(f"Available providers: {', '.join(available_providers)}")
         logger.info(f"Using: {available_providers[0]}")
+
+    selected_provider = provider or available_providers[0]
+    for warning in _collect_noop_research_option_warnings(
+        selected_provider,
+        model=model,
+        base_url=base_url,
+        use_cborg=use_cborg,
+        api_key_env=api_key_env,
+    ):
+        logger.warning(warning)
 
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
@@ -296,7 +378,8 @@ def research(
     try:
         # Perform research
         logger.debug(f"Starting research with query: {query[:100]}...")
-        result = client.research(query, provider, template_info, model, provider_params, metadata)
+        result = client.research(
+            query, provider, template_info, model, provider_params, metadata)
 
         # Show cache status
         if result.cached:
@@ -309,7 +392,8 @@ def research(
 
         # Format output using processor
         logger.debug("Formatting research result")
-        output_content = processor.format_research_result(result, separate_citations=should_separate_citations)
+        output_content = processor.format_research_result(
+            result, separate_citations=should_separate_citations)
 
         # Output result
         if output:
@@ -325,7 +409,8 @@ def research(
                     citations_output = output.with_suffix('.citations.md')
 
                 citations_content = processor.format_citations_only(result)
-                citations_output.write_text(citations_content, encoding='utf-8')
+                citations_output.write_text(
+                    citations_content, encoding='utf-8')
                 logger.info(f"Citations saved to: {citations_output}")
 
             # Show citation count
@@ -352,8 +437,10 @@ def research(
 
 @app.command()
 def providers(
-    show_params: Annotated[bool, typer.Option("--show-params", help="Show available parameters for each provider")] = False,
-    provider: Annotated[Optional[str], typer.Option(help="Show details for specific provider only")] = None,
+    show_params: Annotated[bool, typer.Option(
+        "--show-params", help="Show available parameters for each provider")] = False,
+    provider: Annotated[Optional[str], typer.Option(
+        help="Show details for specific provider only")] = None,
 ):
     """List available research providers and their parameters."""
     from .provider_params import PROVIDER_PARAMS_REGISTRY
@@ -366,7 +453,8 @@ def providers(
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
             logger.error(f"Unknown provider: {provider}")
-            logger.error(f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
+            logger.error(
+                f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
             raise typer.Exit(1)
 
         is_available = provider in available
@@ -401,7 +489,8 @@ def providers(
             else:
                 default_str = f"(default: {default_val})"
 
-            typer.echo(f"  --param {field_name}=VALUE  {field_info.description} {default_str}")
+            typer.echo(
+                f"  --param {field_name}=VALUE  {field_info.description} {default_str}")
 
         return
 
@@ -420,7 +509,8 @@ def providers(
                     for field_name, field_info in params_class.model_fields.items():
                         if field_name == "model":
                             continue
-                        typer.echo(f"    {field_name}: {field_info.description}")
+                        typer.echo(
+                            f"    {field_name}: {field_info.description}")
     else:
         logger.error("No providers available. Please set API keys:")
         typer.echo("  - OPENAI_API_KEY for OpenAI Deep Research")
@@ -431,8 +521,10 @@ def providers(
         typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")
 
     if not show_params and not provider:
-        typer.echo("\nUse --show-params to see available parameters for each provider")
-        typer.echo("Use --provider <name> to see detailed info for a specific provider")
+        typer.echo(
+            "\nUse --show-params to see available parameters for each provider")
+        typer.echo(
+            "Use --provider <name> to see detailed info for a specific provider")
 
 
 @app.command()
@@ -503,9 +595,12 @@ def _format_cache_entry(info: dict, detailed: bool = False, show_query: bool = T
 
 @app.command()
 def list_cache(
-    detailed: Annotated[bool, typer.Option("--detailed", "-d", help="Show detailed metadata for each entry")] = False,
-    provider_filter: Annotated[Optional[str], typer.Option("--provider", "-p", help="Filter by provider name")] = None,
-    limit: Annotated[int, typer.Option("--limit", "-n", help="Limit number of results")] = 0,
+    detailed: Annotated[bool, typer.Option(
+        "--detailed", "-d", help="Show detailed metadata for each entry")] = False,
+    provider_filter: Annotated[Optional[str], typer.Option(
+        "--provider", "-p", help="Filter by provider name")] = None,
+    limit: Annotated[int, typer.Option(
+        "--limit", "-n", help="Limit number of results")] = 0,
 ):
     """List cached research files with metadata.
 
@@ -526,9 +621,11 @@ def list_cache(
 
     # Apply provider filter
     if provider_filter:
-        cache_info = [c for c in cache_info if c.get("provider", "").lower() == provider_filter.lower()]
+        cache_info = [c for c in cache_info if c.get(
+            "provider", "").lower() == provider_filter.lower()]
         if not cache_info:
-            logger.info(f"No cached files found for provider: {provider_filter}")
+            logger.info(
+                f"No cached files found for provider: {provider_filter}")
             return
 
     # Apply limit
@@ -538,7 +635,8 @@ def list_cache(
     # Calculate total size
     total_size = sum(c.get("size_bytes", 0) for c in cache_info)
 
-    typer.echo(f"Found {len(cache_info)} cached files ({_format_size(total_size)}) in ~/.deep_research_cache/:")
+    typer.echo(
+        f"Found {len(cache_info)} cached files ({_format_size(total_size)}) in ~/.deep_research_cache/:")
     typer.echo()
 
     for info in cache_info:
@@ -552,11 +650,16 @@ def list_cache(
 @app.command()
 def search_cache(
     keyword: Annotated[str, typer.Argument(help="Keyword to search for in queries and content")],
-    detailed: Annotated[bool, typer.Option("--detailed", "-d", help="Show detailed metadata for each match")] = False,
-    query_only: Annotated[bool, typer.Option("--query-only", "-q", help="Only search in queries, not content")] = False,
-    context: Annotated[int, typer.Option("--context", "-c", help="Characters of context around matches")] = 60,
-    max_snippets: Annotated[int, typer.Option("--max-snippets", "-m", help="Maximum snippets to show per match")] = 3,
-    no_snippets: Annotated[bool, typer.Option("--no-snippets", help="Hide match snippets")] = False,
+    detailed: Annotated[bool, typer.Option(
+        "--detailed", "-d", help="Show detailed metadata for each match")] = False,
+    query_only: Annotated[bool, typer.Option(
+        "--query-only", "-q", help="Only search in queries, not content")] = False,
+    context: Annotated[int, typer.Option(
+        "--context", "-c", help="Characters of context around matches")] = 60,
+    max_snippets: Annotated[int, typer.Option(
+        "--max-snippets", "-m", help="Maximum snippets to show per match")] = 3,
+    no_snippets: Annotated[bool, typer.Option(
+        "--no-snippets", help="Hide match snippets")] = False,
 ):
     """Search cached research files by keyword.
 
@@ -573,7 +676,8 @@ def search_cache(
     """
     logger.debug(f"Searching cache for: {keyword}")
     client = DeepResearchClient()
-    matches = client.search_cache(keyword, context_chars=context, max_snippets=max_snippets)
+    matches = client.search_cache(
+        keyword, context_chars=context, max_snippets=max_snippets)
 
     if not matches:
         logger.info(f"No cached files found matching: {keyword}")
@@ -737,7 +841,8 @@ def _generate_individual_pages(
         template = env.get_template(template_path.name)
     else:
         # Use built-in template
-        env = Environment(loader=PackageLoader('deep_research_client', 'templates'))
+        env = Environment(loader=PackageLoader(
+            'deep_research_client', 'templates'))
         template = env.get_template('research_result.html.j2')
 
     # Setup markdown converter
@@ -791,12 +896,18 @@ def _generate_individual_pages(
 @app.command()
 def browse_cache(
     output_dir: Annotated[Path, typer.Argument(help="Output directory for browser files")],
-    title: Annotated[Optional[str], typer.Option("--title", "-t", help="Browser title")] = None,
-    description: Annotated[Optional[str], typer.Option("--description", "-d", help="Browser description")] = None,
-    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing directory")] = False,
-    export_only: Annotated[bool, typer.Option("--export-only", help="Only export JSON data, don't generate browser")] = False,
-    no_pages: Annotated[bool, typer.Option("--no-pages", help="Skip generating individual HTML pages")] = False,
-    template: Annotated[Optional[Path], typer.Option("--template", help="Custom Jinja2 template for individual pages")] = None,
+    title: Annotated[Optional[str], typer.Option(
+        "--title", "-t", help="Browser title")] = None,
+    description: Annotated[Optional[str], typer.Option(
+        "--description", "-d", help="Browser description")] = None,
+    force: Annotated[bool, typer.Option(
+        "--force", "-f", help="Overwrite existing directory")] = False,
+    export_only: Annotated[bool, typer.Option(
+        "--export-only", help="Only export JSON data, don't generate browser")] = False,
+    no_pages: Annotated[bool, typer.Option(
+        "--no-pages", help="Skip generating individual HTML pages")] = False,
+    template: Annotated[Optional[Path], typer.Option(
+        "--template", help="Custom Jinja2 template for individual pages")] = None,
 ):
     """Generate a faceted browser from cached research results.
 
@@ -858,15 +969,18 @@ def browse_cache(
         logger.info(f"Schema exported to: {schema_file}")
 
         typer.echo(f"Exported {len(data)} entries to {output_dir}/")
-        typer.echo("Use 'linkml-browser deploy' to generate browser from these files")
+        typer.echo(
+            "Use 'linkml-browser deploy' to generate browser from these files")
         return
 
     # Check for dependencies
     try:
-        from linkml_browser import BrowserGenerator  # type: ignore[import-untyped,import-not-found]
+        # type: ignore[import-untyped,import-not-found]
+        from linkml_browser import BrowserGenerator
         import markdown as md_lib  # noqa: F401
     except ImportError as e:
-        missing = str(e).split("'")[1] if "'" in str(e) else "linkml-browser or markdown"
+        missing = str(e).split("'")[1] if "'" in str(
+            e) else "linkml-browser or markdown"
         logger.error(f"{missing} not installed. Install with:")
         logger.error("  pip install deep-research-client[browser]")
         logger.error("  # or: uv add deep-research-client[browser]")
@@ -900,7 +1014,8 @@ def browse_cache(
     # Create browser data without full content (too large for JS)
     browser_data = []
     for entry in data:
-        browser_entry = {k: v for k, v in entry.items() if k not in ("markdown", "citations")}
+        browser_entry = {k: v for k, v in entry.items(
+        ) if k not in ("markdown", "citations")}
         browser_data.append(browser_entry)
 
     generator = BrowserGenerator(browser_data, schema)
@@ -918,16 +1033,21 @@ def browse_cache(
 
     typer.echo(f"Browser generated at: {output_dir}/")
     if pages_count > 0:
-        typer.echo(f"Generated {pages_count} individual pages in {output_dir}/pages/")
+        typer.echo(
+            f"Generated {pages_count} individual pages in {output_dir}/pages/")
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
 @app.command()
 def models(
-    provider: Annotated[Optional[str], typer.Option(help="Show models for specific provider")] = None,
-    cost: Annotated[Optional[str], typer.Option(help="Filter by cost level (low, medium, high, very_high)")] = None,
-    capability: Annotated[Optional[str], typer.Option(help="Filter by capability (web_search, academic_search, etc.)")] = None,
-    detailed: Annotated[bool, typer.Option("--detailed", help="Show detailed model information")] = False
+    provider: Annotated[Optional[str], typer.Option(
+        help="Show models for specific provider")] = None,
+    cost: Annotated[Optional[str], typer.Option(
+        help="Filter by cost level (low, medium, high, very_high)")] = None,
+    capability: Annotated[Optional[str], typer.Option(
+        help="Filter by capability (web_search, academic_search, etc.)")] = None,
+    detailed: Annotated[bool, typer.Option(
+        "--detailed", help="Show detailed model information")] = False
 ):
     """Show available models and their characteristics.
 
@@ -958,7 +1078,8 @@ def models(
         try:
             cost_level = CostLevel(cost.lower())
         except ValueError:
-            logger.error(f"Invalid cost level '{cost}'. Use: low, medium, high, very_high")
+            logger.error(
+                f"Invalid cost level '{cost}'. Use: low, medium, high, very_high")
             raise typer.Exit(1)
 
         logger.debug(f"Filtering models by cost level: {cost_level}")
@@ -981,7 +1102,8 @@ def models(
         try:
             cap = ModelCapability(capability.lower())
         except ValueError:
-            logger.error(f"Invalid capability '{capability}'. Use: web_search, academic_search, scientific_literature, etc.")
+            logger.error(
+                f"Invalid capability '{capability}'. Use: web_search, academic_search, scientific_literature, etc.")
             raise typer.Exit(1)
 
         logger.debug(f"Filtering models by capability: {cap}")
@@ -990,7 +1112,8 @@ def models(
             logger.info(f"No models found with capability: {capability}")
             return
 
-        typer.echo(f"**{capability.upper().replace('_', ' ')}** Capable Models")
+        typer.echo(
+            f"**{capability.upper().replace('_', ' ')}** Capable Models")
         typer.echo()
 
         for provider_name, model_cards_list in models_by_cap.items():
@@ -1010,7 +1133,8 @@ def models(
             cards = get_provider_model_cards(provider_name)
             if not cards:
                 continue
-            typer.echo(f"**{provider_name.upper()}** (Default: {cards.default_model}):")
+            typer.echo(
+                f"**{provider_name.upper()}** (Default: {cards.default_model}):")
 
             for model_name in model_names:
                 maybe_card = cards.get_model_card(model_name)
@@ -1047,7 +1171,8 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo(f"{indent}  Speed: {time_icon} {card.time_estimate}")
 
         if card.capabilities:
-            caps = ", ".join([cap.replace("_", " ").title() for cap in card.capabilities])
+            caps = ", ".join([cap.replace("_", " ").title()
+                             for cap in card.capabilities])
             typer.echo(f"{indent}  Capabilities: {caps}")
 
         if card.context_window:
@@ -1062,22 +1187,32 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo()
     else:
         aliases_str = f" ({', '.join(card.aliases)})" if card.aliases else ""
-        typer.echo(f"{indent}**{card.display_name}**{aliases_str} {cost_icon} {time_icon}")
-        typer.echo(f"{indent}  {card.description[:100]}{'...' if len(card.description) > 100 else ''}")
+        typer.echo(
+            f"{indent}**{card.display_name}**{aliases_str} {cost_icon} {time_icon}")
+        typer.echo(
+            f"{indent}  {card.description[:100]}{'...' if len(card.description) > 100 else ''}")
 
 
 @app.command()
 def browse_files(
     sources: Annotated[List[Path], typer.Argument(help="Directories or files to include")],
     output_dir: Annotated[Path, typer.Option("--output", "-o", help="Output directory for browser files")],
-    pattern: Annotated[str, typer.Option("--pattern", "-p", help="Glob pattern for finding files in directories")] = "**/*.md",
-    title: Annotated[Optional[str], typer.Option("--title", "-t", help="Browser title")] = None,
-    description: Annotated[Optional[str], typer.Option("--description", help="Browser description")] = None,
-    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite existing directory")] = False,
-    export_only: Annotated[bool, typer.Option("--export-only", help="Only export JSON data, don't generate browser")] = False,
-    no_pages: Annotated[bool, typer.Option("--no-pages", help="Skip generating individual HTML pages")] = False,
-    template: Annotated[Optional[Path], typer.Option("--template", help="Custom Jinja2 template for individual pages")] = None,
-    verbose: Annotated[int, typer.Option("-v", "--verbose", count=True, help="Increase verbosity (-v, -vv, -vvv)")] = 0,
+    pattern: Annotated[str, typer.Option(
+        "--pattern", "-p", help="Glob pattern for finding files in directories")] = "**/*.md",
+    title: Annotated[Optional[str], typer.Option(
+        "--title", "-t", help="Browser title")] = None,
+    description: Annotated[Optional[str], typer.Option(
+        "--description", help="Browser description")] = None,
+    force: Annotated[bool, typer.Option(
+        "--force", "-f", help="Overwrite existing directory")] = False,
+    export_only: Annotated[bool, typer.Option(
+        "--export-only", help="Only export JSON data, don't generate browser")] = False,
+    no_pages: Annotated[bool, typer.Option(
+        "--no-pages", help="Skip generating individual HTML pages")] = False,
+    template: Annotated[Optional[Path], typer.Option(
+        "--template", help="Custom Jinja2 template for individual pages")] = None,
+    verbose: Annotated[int, typer.Option(
+        "-v", "--verbose", count=True, help="Increase verbosity (-v, -vv, -vvv)")] = 0,
 ):
     """Generate a faceted browser from markdown research files.
 
@@ -1119,7 +1254,8 @@ def browse_files(
                 logger.warning(f"Skipping non-markdown file: {source}")
         elif source.is_dir():
             found = list(source.glob(pattern))
-            logger.info(f"Found {len(found)} files in {source} with pattern '{pattern}'")
+            logger.info(
+                f"Found {len(found)} files in {source} with pattern '{pattern}'")
             all_files.extend(found)
         else:
             logger.warning(f"Source not found, skipping: {source}")
@@ -1162,15 +1298,18 @@ def browse_files(
         logger.info(f"Schema exported to: {schema_file}")
 
         typer.echo(f"Exported {len(data)} entries to {output_dir}/")
-        typer.echo("Use 'linkml-browser deploy' to generate browser from these files")
+        typer.echo(
+            "Use 'linkml-browser deploy' to generate browser from these files")
         return
 
     # Check for dependencies
     try:
-        from linkml_browser import BrowserGenerator  # type: ignore[import-untyped,import-not-found]
+        # type: ignore[import-untyped,import-not-found]
+        from linkml_browser import BrowserGenerator
         import markdown as md_lib  # noqa: F401
     except ImportError as e:
-        missing = str(e).split("'")[1] if "'" in str(e) else "linkml-browser or markdown"
+        missing = str(e).split("'")[1] if "'" in str(
+            e) else "linkml-browser or markdown"
         logger.error(f"{missing} not installed. Install with:")
         logger.error("  pip install deep-research-client[browser]")
         logger.error("  # or: uv add deep-research-client[browser]")
@@ -1203,7 +1342,8 @@ def browse_files(
     # Create browser data without full content (too large for JS)
     browser_data = []
     for entry in data:
-        browser_entry = {k: v for k, v in entry.items() if k not in ("markdown", "citations", "source_path")}
+        browser_entry = {k: v for k, v in entry.items() if k not in (
+            "markdown", "citations", "source_path")}
         browser_data.append(browser_entry)
 
     generator = BrowserGenerator(browser_data, schema)
@@ -1221,7 +1361,8 @@ def browse_files(
 
     typer.echo(f"Browser generated at: {output_dir}/")
     if pages_count > 0:
-        typer.echo(f"Generated {pages_count} individual pages in {output_dir}/pages/")
+        typer.echo(
+            f"Generated {pages_count} individual pages in {output_dir}/pages/")
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 

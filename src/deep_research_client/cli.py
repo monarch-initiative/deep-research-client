@@ -1,5 +1,6 @@
 """CLI interface for deep-research-client."""
 
+from dataclasses import dataclass
 import logging
 import os
 import typer
@@ -104,6 +105,71 @@ def _collect_noop_research_option_warnings(
             )
 
     return warnings
+
+
+@dataclass
+class _EffectiveResearchOptions:
+    """CLI research options after provider-specific no-op pruning."""
+
+    provider_hint: Optional[str]
+    model: Optional[str]
+    base_url: Optional[str]
+    use_cborg: bool
+    api_key_env: Optional[str]
+    warnings: list[str]
+
+
+def _resolve_provider_hint(
+    provider: Optional[str],
+    cache_config,
+) -> Optional[str]:
+    """Resolve the provider that would be used before proxy overrides are applied."""
+    if provider:
+        return provider
+
+    preliminary_client = DeepResearchClient(cache_config=cache_config)
+    available = preliminary_client.get_available_providers()
+    if available:
+        return available[0]
+    return None
+
+
+def _effective_research_options(
+    provider: Optional[str],
+    model: Optional[str],
+    base_url: Optional[str],
+    use_cborg: bool,
+    api_key_env: Optional[str],
+    cache_config,
+) -> _EffectiveResearchOptions:
+    """Discard provider-specific no-op options before request setup."""
+    provider_hint = _resolve_provider_hint(provider, cache_config)
+    warnings = _collect_noop_research_option_warnings(
+        provider_hint or "",
+        model=model,
+        base_url=base_url,
+        use_cborg=use_cborg,
+        api_key_env=api_key_env,
+    )
+
+    if provider_hint == "asta":
+        return _EffectiveResearchOptions(
+            provider_hint=provider_hint,
+            model=None,
+            base_url=None,
+            use_cborg=False,
+            api_key_env=None,
+            warnings=warnings,
+        )
+
+    return _EffectiveResearchOptions(
+        provider_hint=provider_hint,
+        model=model,
+        base_url=base_url,
+        use_cborg=use_cborg,
+        api_key_env=api_key_env,
+        warnings=warnings,
+    )
 
 
 @app.callback()
@@ -275,21 +341,30 @@ def research(
         cache_config.directory = str(cache_dir)
         logger.debug(f"Using custom cache directory: {cache_dir}")
 
+    effective_options = _effective_research_options(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        use_cborg=use_cborg,
+        api_key_env=api_key_env,
+        cache_config=cache_config,
+    )
+
     # Handle proxy/endpoint configuration
     proxy_base_url = None
-    proxy_api_key_env = api_key_env
+    proxy_api_key_env = effective_options.api_key_env
 
     # --use-cborg is a shortcut for CBORG configuration
-    if use_cborg:
-        if base_url:
+    if effective_options.use_cborg:
+        if effective_options.base_url:
             logger.warning("--use-cborg overrides --base-url")
         proxy_base_url = "https://api.cborg.lbl.gov"
         # Default to CBORG_API_KEY if no specific env var is provided
         if not proxy_api_key_env:
             proxy_api_key_env = "CBORG_API_KEY"
         logger.info(f"Using CBORG proxy at {proxy_base_url}")
-    elif base_url:
-        proxy_base_url = base_url
+    elif effective_options.base_url:
+        proxy_base_url = effective_options.base_url
         logger.info(f"Using custom endpoint at {proxy_base_url}")
 
     # Build provider configs if proxy settings are specified
@@ -348,14 +423,7 @@ def research(
         logger.info(f"Available providers: {', '.join(available_providers)}")
         logger.info(f"Using: {available_providers[0]}")
 
-    selected_provider = provider or available_providers[0]
-    for warning in _collect_noop_research_option_warnings(
-        selected_provider,
-        model=model,
-        base_url=base_url,
-        use_cborg=use_cborg,
-        api_key_env=api_key_env,
-    ):
+    for warning in effective_options.warnings:
         logger.warning(warning)
 
     # Build publication metadata if any provided
@@ -379,7 +447,13 @@ def research(
         # Perform research
         logger.debug(f"Starting research with query: {query[:100]}...")
         result = client.research(
-            query, provider, template_info, model, provider_params, metadata)
+            query,
+            provider,
+            template_info,
+            effective_options.model,
+            provider_params,
+            metadata,
+        )
 
         # Show cache status
         if result.cached:
@@ -975,8 +1049,7 @@ def browse_cache(
 
     # Check for dependencies
     try:
-        # type: ignore[import-untyped,import-not-found]
-        from linkml_browser import BrowserGenerator
+        from linkml_browser import BrowserGenerator  # type: ignore[import-untyped,import-not-found]
         import markdown as md_lib  # noqa: F401
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(

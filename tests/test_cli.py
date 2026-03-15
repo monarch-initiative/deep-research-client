@@ -1,11 +1,18 @@
 """Tests for CLI behaviors."""
 
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-from deep_research_client.cli import app, _collect_noop_research_option_warnings
+from deep_research_client.cli import (
+    app,
+    _collect_noop_research_option_warnings,
+    _effective_research_options,
+)
+from deep_research_client.models import CacheConfig
 
 
 runner = CliRunner(mix_stderr=False)
@@ -81,6 +88,55 @@ def test_collect_noop_research_option_warnings_for_asta():
     assert any("--api-key-env" in warning for warning in warnings)
 
 
+def test_effective_research_options_discards_asta_noops_when_provider_is_explicit():
+    """Explicit Asta provider selection should discard irrelevant CLI options."""
+    options = _effective_research_options(
+        provider="asta",
+        model="custom-model",
+        base_url="https://example.org",
+        use_cborg=True,
+        api_key_env="CUSTOM_KEY",
+        cache_config=CacheConfig(enabled=False),
+    )
+
+    assert options.provider_hint == "asta"
+    assert options.model is None
+    assert options.base_url is None
+    assert options.use_cborg is False
+    assert options.api_key_env is None
+    assert len(options.warnings) == 4
+
+
+def test_effective_research_options_discards_asta_noops_when_asta_is_auto_selected():
+    """If Asta would be auto-selected, no-op CLI options should still be pruned."""
+    with patch.dict(
+        os.environ,
+        {
+            "ASTA_API_KEY": "asta-key",
+            "OPENAI_API_KEY": "",
+            "EDISON_API_KEY": "",
+            "PERPLEXITY_API_KEY": "",
+            "CONSENSUS_API_KEY": "",
+        },
+        clear=True,
+    ):
+        options = _effective_research_options(
+            provider=None,
+            model="custom-model",
+            base_url="https://example.org",
+            use_cborg=True,
+            api_key_env="CUSTOM_KEY",
+            cache_config=CacheConfig(enabled=False),
+        )
+
+    assert options.provider_hint == "asta"
+    assert options.model is None
+    assert options.base_url is None
+    assert options.use_cborg is False
+    assert options.api_key_env is None
+    assert len(options.warnings) == 4
+
+
 @pytest.mark.integration
 def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_path):
     """Asta CLI should warn on --model but still honor output formatting options."""
@@ -96,17 +152,25 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
             "asta",
             "--model",
             "ignored-model",
+            "--base-url",
+            "https://example.org",
+            "--use-cborg",
+            "--api-key-env",
+            "IGNORED_KEY",
             "--output",
             str(output_path),
             "--separate-citations",
             str(citations_path),
         ],
-        env={"ASTA_API_KEY": _load_asta_api_key()},
+        env={"ASTA_API_KEY": _load_asta_api_key(), "IGNORED_KEY": ""},
     )
 
     assert result.exit_code == 0, result.stderr
     combined_output = result.stdout + result.stderr
     assert "ignores --model" in combined_output
+    assert "ignores --base-url" in combined_output
+    assert "ignores --use-cborg" in combined_output
+    assert "ignores --api-key-env" in combined_output
     assert output_path.exists()
     assert citations_path.exists()
     assert "## Citations" not in output_path.read_text(encoding="utf-8")

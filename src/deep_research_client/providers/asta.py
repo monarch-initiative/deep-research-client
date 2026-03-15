@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
 MAX_COERCED_INT_ABS = (2 ** 63) - 1
-ASTA_QUERY_MAX_CHARS = 500
 ASTA_REPORT_QUERY_MAX_CHARS = 120
 
 
@@ -240,7 +239,10 @@ class AstaProvider(ResearchProvider):
         if not cleaned_query:
             raise ValueError("Asta query is empty after sanitization")
 
-        return self._truncate_at_word_boundary(cleaned_query, ASTA_QUERY_MAX_CHARS)
+        return self._truncate_at_word_boundary(
+            cleaned_query,
+            self.params.query_char_limit,
+        )
 
     def _sanitize_query_line(self, line: str) -> str:
         """Normalize a single Markdown line into plain text."""

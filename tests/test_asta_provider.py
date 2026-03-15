@@ -354,6 +354,16 @@ def test_sanitize_query_text_strips_markdown_template_noise(
     assert len(sanitized) <= AstaParams().query_char_limit
 
 
+def test_sanitize_query_line_collapses_nested_markdown_prefixes():
+    """Nested Markdown prefixes should reduce to the underlying plain text."""
+    provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
+
+    sanitized = provider._sanitize_query_line(
+        "> - **Disease Name:** `Contact Dermatitis`")
+
+    assert sanitized == "Disease Name: Contact Dermatitis"
+
+
 def test_prepare_query_text_truncates_search_and_display_queries():
     """Long Markdown queries should be capped for Asta search and report titles."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))

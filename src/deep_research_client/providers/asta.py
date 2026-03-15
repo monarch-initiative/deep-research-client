@@ -21,6 +21,22 @@ ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
 MAX_COERCED_INT_ABS = (2 ** 63) - 1
 ASTA_REPORT_QUERY_MAX_CHARS = 120
 
+# Keep Markdown image alt text while dropping the linked asset target.
+MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
+# Keep Markdown link labels while dropping their destinations.
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+# Preserve inline code contents but remove the surrounding backticks.
+INLINE_CODE_RE = re.compile(r"`([^`]*)`")
+# Strip one leading Markdown structural prefix at a time so nested forms such as
+# "> - item" collapse fully into plain text.
+LEADING_MARKDOWN_PREFIX_RE = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s*|>\s?|(?:[-*+]|\d+\.)\s+)"
+)
+# Remove simple emphasis markers after links/code have been normalized.
+INLINE_MARKER_RE = re.compile(r"\*\*|__|`|\*")
+# Collapse repeated whitespace introduced by Markdown cleanup.
+WHITESPACE_RE = re.compile(r"\s+")
+
 
 @dataclass
 class AstaPaper:
@@ -230,11 +246,11 @@ class AstaProvider(ResearchProvider):
             cleaned_lines.append(cleaned)
 
         cleaned_query = " ".join(cleaned_lines)
-        cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
+        cleaned_query = WHITESPACE_RE.sub(" ", cleaned_query).strip()
         if not cleaned_query:
             logger.warning(
                 "Query became empty after sanitization, using original")
-            cleaned_query = re.sub(r"\s+", " ", query).strip()
+            cleaned_query = WHITESPACE_RE.sub(" ", query).strip()
         if not cleaned_query:
             raise ValueError("Asta query is empty after sanitization")
 
@@ -249,18 +265,17 @@ class AstaProvider(ResearchProvider):
         if not stripped or stripped.startswith("```"):
             return ""
 
-        stripped = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", stripped)
-        stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
-        stripped = re.sub(r"`([^`]*)`", r"\1", stripped)
-        stripped = re.sub(r"^#{1,6}\s*", "", stripped)
-        stripped = re.sub(r"^\s{0,3}>\s?", "", stripped)
-        stripped = re.sub(r"^\s{0,3}(?:[-*+]|\d+\.)\s+", "", stripped)
-        stripped = stripped.replace("**", "")
-        stripped = stripped.replace("__", "")
-        stripped = stripped.replace("*", "")
-        stripped = stripped.replace("`", "")
+        stripped = MARKDOWN_IMAGE_RE.sub(r"\1", stripped)
+        stripped = MARKDOWN_LINK_RE.sub(r"\1", stripped)
+        stripped = INLINE_CODE_RE.sub(r"\1", stripped)
+        while True:
+            updated = LEADING_MARKDOWN_PREFIX_RE.sub("", stripped)
+            if updated == stripped:
+                break
+            stripped = updated
+        stripped = INLINE_MARKER_RE.sub("", stripped)
         stripped = stripped.replace("|", " ")
-        stripped = re.sub(r"\s+", " ", stripped)
+        stripped = WHITESPACE_RE.sub(" ", stripped)
         return stripped.strip(" \t:-")
 
     def _strip_frontmatter(self, text: str) -> str:

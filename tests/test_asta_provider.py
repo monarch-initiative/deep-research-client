@@ -1,16 +1,44 @@
 """Tests for the Asta provider."""
 
 import os
+from pathlib import Path
 
 import pytest
 
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import AstaParams
 from deep_research_client.providers.asta import (
-    ASTA_QUERY_MAX_CHARS,
     ASTA_REPORT_QUERY_MAX_CHARS,
     AstaProvider,
 )
+
+TEST_INPUT_DIR = Path(__file__).resolve().parent / "input"
+
+
+def _load_test_input(filename: str) -> str:
+    """Load a text fixture from tests/input."""
+    return (TEST_INPUT_DIR / filename).read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def issue_30_markdown_query() -> str:
+    """Markdown-heavy query fixture from issue #30."""
+    return _load_test_input("issue_30_markdown_query.md")
+
+
+def _load_asta_api_key() -> str:
+    """Load the Asta API key from env or the repo-local helper file."""
+    api_key = os.getenv("ASTA_API_KEY", "").strip()
+    if api_key:
+        return api_key
+
+    key_path = Path(__file__).resolve().parents[1] / "asta_key"
+    if key_path.exists():
+        file_key = key_path.read_text(encoding="utf-8").strip()
+        if file_key:
+            return file_key
+
+    pytest.skip("ASTA_API_KEY not set and asta_key file not present")
 
 
 def test_asta_provider_availability_uses_api_key_only():
@@ -311,30 +339,19 @@ def test_build_snippet_search_arguments_omits_empty_paper_ids():
     assert "paper_ids" not in arguments
 
 
-def test_sanitize_query_text_strips_markdown_template_noise():
+def test_sanitize_query_text_strips_markdown_template_noise(
+    issue_30_markdown_query: str,
+):
     """Markdown-heavy prompts should collapse into a plain-text retrieval query."""
     provider = AstaProvider(ProviderConfig(name="asta", api_key="asta-key"))
-    query = """# Disease Pathophysiology Research Template
-
-## Target Disease
-- **Disease Name:** Contact Dermatitis
-- **MONDO ID:**  (if available)
-- **Category:** Complex
-
-## Research Objectives
-
-Please provide a comprehensive research report on the pathophysiology of **Contact Dermatitis**.
-Focus on the molecular and cellular mechanisms underlying disease progression.
-"""
-
-    sanitized = provider._sanitize_query_text(query)
+    sanitized = provider._sanitize_query_text(issue_30_markdown_query)
 
     assert "Contact Dermatitis" in sanitized
     assert "pathophysiology" in sanitized
     assert "*" not in sanitized
     assert "#" not in sanitized
     assert "\n" not in sanitized
-    assert len(sanitized) <= ASTA_QUERY_MAX_CHARS
+    assert len(sanitized) <= AstaParams().query_char_limit
 
 
 def test_prepare_query_text_truncates_search_and_display_queries():
@@ -357,8 +374,24 @@ provider: asta
     assert "provider: asta" not in search_query
     assert search_query.startswith(
         "Disease Template Disease Name: Contact Dermatitis")
-    assert len(search_query) <= ASTA_QUERY_MAX_CHARS
+    assert len(search_query) <= provider.params.query_char_limit
     assert len(display_query) <= ASTA_REPORT_QUERY_MAX_CHARS
+    assert display_query.endswith("...")
+
+
+def test_prepare_query_text_respects_custom_query_char_limit(
+    issue_30_markdown_query: str,
+):
+    """Asta sanitization should honor the configured query character limit."""
+    provider = AstaProvider(
+        ProviderConfig(name="asta", api_key="asta-key"),
+        AstaParams(query_char_limit=140),
+    )
+    query = issue_30_markdown_query + ("\nMechanistic detail. " * 40)
+
+    search_query, display_query = provider._prepare_query_text(query)
+
+    assert len(search_query) <= 140
     assert display_query.endswith("...")
 
 
@@ -553,11 +586,32 @@ def test_coerce_float_rejects_non_finite_values():
 
 
 @pytest.mark.integration
-async def test_asta_research_integration():
+@pytest.mark.parametrize(
+    ("query", "fixture_name", "params"),
+    [
+        ("hyperlipidemia", None, None),
+        (None, "issue_30_markdown_query", None),
+        (
+            None,
+            "issue_30_markdown_query",
+            AstaParams(query_char_limit=300),
+        ),
+    ],
+)
+async def test_asta_research_integration(
+    query: str | None,
+    fixture_name: str | None,
+    params: AstaParams | None,
+    request: pytest.FixtureRequest,
+):
     """Asta integration test against the live MCP endpoint."""
-    api_key = os.getenv("ASTA_API_KEY")
-    if not api_key:
-        pytest.skip("ASTA_API_KEY not set")
+    api_key = _load_asta_api_key()
+    resolved_query = request.getfixturevalue(
+        fixture_name) if fixture_name else query
+    if resolved_query is None:
+        raise AssertionError("Integration test query fixture did not resolve")
+    if params is not None and fixture_name == "issue_30_markdown_query":
+        resolved_query += "\nMechanistic detail about Contact Dermatitis. " * 60
 
     provider = AstaProvider(
         ProviderConfig(
@@ -565,15 +619,18 @@ async def test_asta_research_integration():
             api_key=api_key,
             enabled=True,
             timeout=300,
-        )
+        ),
+        params,
     )
 
-    result = await provider.research("hyperlipidemia")
+    _, display_query = provider._prepare_query_text(resolved_query)
+    result = await provider.research(resolved_query)
 
     assert result.provider == "asta"
-    assert result.query == "hyperlipidemia"
+    assert result.query == resolved_query
     assert result.markdown.startswith(
-        "# Asta Literature Retrieval: hyperlipidemia")
+        f"# Asta Literature Retrieval: {display_query}"
+    )
     assert "## Relevant Papers" in result.markdown
     assert "Evidence snippets:" in result.markdown or "## Additional Snippet Sources" in result.markdown
     assert len(result.citations) > 0

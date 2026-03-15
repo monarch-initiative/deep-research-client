@@ -129,6 +129,16 @@ class FalconParams(BaseProviderParams):
 class AstaParams(BaseProviderParams):
     """Parameters specific to the Asta provider."""
 
+    query_char_limit: int = Field(
+        default=500,
+        ge=50,
+        le=5000,
+        description=(
+            "Maximum number of characters to send to Asta after Markdown sanitization. "
+            "Longer queries are truncated near a word boundary."
+        )
+    )
+
     paper_limit: int = Field(
         default=50,
         ge=1,

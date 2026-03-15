@@ -19,6 +19,23 @@ logger = logging.getLogger(__name__)
 
 ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
 MAX_COERCED_INT_ABS = (2 ** 63) - 1
+ASTA_REPORT_QUERY_MAX_CHARS = 120
+
+# Keep Markdown image alt text while dropping the linked asset target.
+MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
+# Keep Markdown link labels while dropping their destinations.
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+# Preserve inline code contents but remove the surrounding backticks.
+INLINE_CODE_RE = re.compile(r"`([^`]*)`")
+# Strip one leading Markdown structural prefix at a time so nested forms such as
+# "> - item" collapse fully into plain text.
+LEADING_MARKDOWN_PREFIX_RE = re.compile(
+    r"^\s{0,3}(?:#{1,6}\s*|>\s?|(?:[-*+]|\d+\.)\s+)"
+)
+# Remove simple emphasis markers after links/code have been normalized.
+INLINE_MARKER_RE = re.compile(r"\*\*|__|`|\*")
+# Collapse repeated whitespace introduced by Markdown cleanup.
+WHITESPACE_RE = re.compile(r"\s+")
 
 
 @dataclass
@@ -92,6 +109,11 @@ class AstaProvider(ResearchProvider):
             raise ValueError(
                 f"Asta provider not available (API key: {bool(self.config.api_key)})")
 
+        search_query, display_query = self._prepare_query_text(query)
+        if search_query != query.strip():
+            logger.debug("Query sanitized: %d -> %d chars",
+                         len(query), len(search_query))
+
         timeout_seconds = self.config.timeout or 180
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -101,8 +123,9 @@ class AstaProvider(ResearchProvider):
                 pool=30.0,
             )
         ) as http_client:
-            papers = await self._search_papers(http_client, query)
-            snippets = await self._search_snippets(http_client, query, papers)
+            papers = await self._search_papers(http_client, search_query)
+            snippets = await self._search_snippets(
+                http_client, search_query, papers)
             papers = await self._enrich_snippet_source_papers(http_client, papers, snippets)
             papers = self._merge_snippet_source_papers(papers, snippets)
 
@@ -113,7 +136,8 @@ class AstaProvider(ResearchProvider):
         )
 
         return ResearchResult(
-            markdown=self._format_research_report(query, papers, snippets),
+            markdown=self._format_research_report(
+                display_query, papers, snippets),
             citations=self._format_citations(papers),
             provider=self.name,
             query=query,
@@ -194,6 +218,78 @@ class AstaProvider(ResearchProvider):
                 arguments["paper_ids"] = paper_ids
 
         return arguments
+
+    def _prepare_query_text(self, query: str) -> tuple[str, str]:
+        """Convert user input into a retrieval-friendly query and display label."""
+        search_query = self._sanitize_query_text(query)
+        display_query = self._truncate(
+            search_query, ASTA_REPORT_QUERY_MAX_CHARS)
+        return search_query, display_query
+
+    def _sanitize_query_text(self, query: str) -> str:
+        """Strip Markdown-heavy prompt formatting into plain text for Asta.
+
+        >>> provider = AstaProvider(ProviderConfig(name="asta", api_key="test"))
+        >>> provider._sanitize_query_text("# Query\\n- **Disease Name:** Contact Dermatitis")
+        'Query Disease Name: Contact Dermatitis'
+        """
+        cleaned_lines: list[str] = []
+        seen_lines: set[str] = set()
+        for raw_line in self._strip_frontmatter(query).splitlines():
+            cleaned = self._sanitize_query_line(raw_line)
+            if not cleaned:
+                continue
+            normalized = cleaned.casefold()
+            if normalized in seen_lines:
+                continue
+            seen_lines.add(normalized)
+            cleaned_lines.append(cleaned)
+
+        cleaned_query = " ".join(cleaned_lines)
+        cleaned_query = WHITESPACE_RE.sub(" ", cleaned_query).strip()
+        if not cleaned_query:
+            logger.warning(
+                "Query became empty after sanitization, using original")
+            cleaned_query = WHITESPACE_RE.sub(" ", query).strip()
+        if not cleaned_query:
+            raise ValueError("Asta query is empty after sanitization")
+
+        return self._truncate_at_word_boundary(
+            cleaned_query,
+            self.params.query_char_limit,
+        )
+
+    def _sanitize_query_line(self, line: str) -> str:
+        """Normalize a single Markdown line into plain text."""
+        stripped = line.strip()
+        if not stripped or stripped.startswith("```"):
+            return ""
+
+        stripped = MARKDOWN_IMAGE_RE.sub(r"\1", stripped)
+        stripped = MARKDOWN_LINK_RE.sub(r"\1", stripped)
+        stripped = INLINE_CODE_RE.sub(r"\1", stripped)
+        while True:
+            updated = LEADING_MARKDOWN_PREFIX_RE.sub("", stripped)
+            if updated == stripped:
+                break
+            stripped = updated
+        stripped = INLINE_MARKER_RE.sub("", stripped)
+        stripped = stripped.replace("|", " ")
+        stripped = WHITESPACE_RE.sub(" ", stripped)
+        return stripped.strip(" \t:-")
+
+    def _strip_frontmatter(self, text: str) -> str:
+        """Remove leading Markdown frontmatter from a query if present."""
+        lines = text.splitlines()
+        if not lines or lines[0].strip() != "---":
+            return text
+
+        closing_index = 1
+        while closing_index < len(lines) and lines[closing_index].strip() != "---":
+            closing_index += 1
+        if closing_index >= len(lines):
+            return text
+        return "\n".join(lines[closing_index + 1:])
 
     def _build_snippet_source_batch_identifiers(
         self,
@@ -283,7 +379,8 @@ class AstaProvider(ResearchProvider):
             payloads.append(json.loads(candidate))
 
         if not payloads:
-            logger.debug("Full unparseable Asta MCP response: %s", response_text)
+            logger.debug(
+                "Full unparseable Asta MCP response: %s", response_text)
             raise ValueError(
                 f"Unable to parse Asta MCP response: {response_text[:200]}")
         return payloads[-1]
@@ -346,8 +443,10 @@ class AstaProvider(ResearchProvider):
                         paper_data.get("publicationDate") or ""),
                     tldr=self._extract_tldr_text(paper_data.get("tldr")),
                     doi=self._extract_external_id(external_ids, "DOI"),
-                    pmid=self._extract_external_id(external_ids, "PubMed", "PMID"),
-                    pmcid=self._extract_external_id(external_ids, "PMCID", "PubMedCentral"),
+                    pmid=self._extract_external_id(
+                        external_ids, "PubMed", "PMID"),
+                    pmcid=self._extract_external_id(
+                        external_ids, "PMCID", "PubMedCentral"),
                     citation_count=self._coerce_int(
                         paper_data.get("citationCount")
                         or paper_data.get("citation_count")
@@ -702,6 +801,17 @@ class AstaProvider(ResearchProvider):
         if len(text) <= limit:
             return text
         return text[: limit - 3].rstrip() + "..."
+
+    def _truncate_at_word_boundary(self, text: str, limit: int) -> str:
+        """Truncate text near a word boundary while preserving search signal."""
+        if len(text) <= limit:
+            return text
+
+        truncated = text[:limit].rstrip()
+        last_space = truncated.rfind(" ")
+        if last_space >= limit // 2:
+            truncated = truncated[:last_space]
+        return truncated.rstrip(" ,;:")
 
     def _quote_block(self, text: str, indent: str = "") -> str:
         """Convert multi-line text to a markdown quote block."""

@@ -144,6 +144,7 @@ def test_asta_params_defaults():
     """Test Asta-specific parameter defaults."""
     params = AstaParams()
 
+    assert params.query_char_limit == 500
     assert params.paper_limit == 50
     assert params.snippet_limit == 20
     assert params.snippet_paper_limit == 50
@@ -157,6 +158,7 @@ def test_create_provider_params_asta():
         "asta",
         model="Asta Scientific Corpus Retrieval",
         provider_params={
+            "query_char_limit": 750,
             "paper_limit": 4,
             "snippet_limit": 3,
             "publication_date_range": "2022:",
@@ -165,6 +167,7 @@ def test_create_provider_params_asta():
 
     assert isinstance(params, AstaParams)
     assert params.model == "Asta Scientific Corpus Retrieval"
+    assert params.query_char_limit == 750
     assert params.paper_limit == 4
     assert params.snippet_limit == 3
     assert params.publication_date_range == "2022:"
@@ -174,7 +177,8 @@ def test_allowed_domains_max_limit_documented():
     """Test that documentation mentions 20 domain limit."""
     # Check that the field description mentions the limit
     field_info = BaseProviderParams.model_fields["allowed_domains"]
-    assert "20" in field_info.description or "max" in field_info.description.lower()
+    description = field_info.description or ""
+    assert "20" in description or "max" in description.lower()
 
 
 def test_perplexity_sync_preserves_denylist():

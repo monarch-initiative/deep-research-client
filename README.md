@@ -59,6 +59,8 @@ pip install deep-research-client[cyberian]
 # Cyberian uses your local AI agents (Claude, etc.) - no separate API key needed
 ```
 
+Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
+
 ### Command Line Usage
 
 ```bash
@@ -224,10 +226,13 @@ result = client.research("Protein folding mechanisms", provider="falcon", provid
 
 #### Asta-Specific Parameters
 
+The Asta provider sanitizes inputs before sending them to the Asta endpoint. In practice, that means Markdown formatting, frontmatter, bullets, and similar prompt scaffolding are stripped out, and the resulting plain-text query is truncated near a word boundary to `query_char_limit`. This is intentional: Asta works best with compact retrieval queries, not full deep-research prompt templates.
+
 ```python
 from deep_research_client.provider_params import AstaParams
 
 params = AstaParams(
+    query_char_limit=500,
     paper_limit=50,
     snippet_limit=20,
     publication_date_range="2020:",

@@ -95,11 +95,8 @@ class AstaProvider(ResearchProvider):
 
         search_query, display_query = self._prepare_query_text(query)
         if search_query != query.strip():
-            logger.debug(
-                "Sanitized Asta query from %s to %s characters",
-                len(query),
-                len(search_query),
-            )
+            logger.debug("Query sanitized: %d -> %d chars",
+                         len(query), len(search_query))
 
         timeout_seconds = self.config.timeout or 180
         async with httpx.AsyncClient(
@@ -235,6 +232,8 @@ class AstaProvider(ResearchProvider):
         cleaned_query = " ".join(cleaned_lines)
         cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
         if not cleaned_query:
+            logger.warning(
+                "Query became empty after sanitization, using original")
             cleaned_query = re.sub(r"\s+", " ", query).strip()
         if not cleaned_query:
             raise ValueError("Asta query is empty after sanitization")

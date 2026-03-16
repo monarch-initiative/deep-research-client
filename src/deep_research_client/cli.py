@@ -1222,6 +1222,190 @@ def browse_files(
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
+# ---------------------------------------------------------------------------
+# Evaluation commands
+# ---------------------------------------------------------------------------
+
+eval_app = typer.Typer(help="Evaluate deep research tools against curated ground truth")
+app.add_typer(eval_app, name="eval")
+
+
+@eval_app.command("load-ground-truth")
+def eval_load_ground_truth(
+    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
+    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
+    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
+    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
+    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities to load")] = None,
+):
+    """Load and display ground truth entities from dismech and/or ai-gene-review.
+
+    \b
+    Examples:
+        deep-research-client eval load-ground-truth --dismech-dir /path/to/dismech/kb/disorders
+        deep-research-client eval load-ground-truth --entity-file /path/to/Achondroplasia.yaml
+        deep-research-client eval load-ground-truth --gene-review-dir /path/to/genes/human --max 5
+    """
+    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
+
+    config = EvalConfig(
+        dismech_dir=dismech_dir,
+        gene_review_dir=gene_review_dir,
+        entity_files=list(entity_file or []),
+        entity_names=list(entity_name or []),
+        max_entities=max_entities,
+    )
+    entities = load_entities(config)
+    if not entities:
+        typer.echo("No entities loaded. Check your paths.")
+        raise typer.Exit(1)
+
+    tasks = generate_all_tasks(entities)
+
+    typer.echo(f"\nLoaded {len(entities)} entities, generated {len(tasks)} evaluation tasks:\n")
+    for entity in entities:
+        typer.echo(f"  {entity.entity_type.upper()}: {entity.name} ({entity.entity_id})")
+        typer.echo(f"    Claims: {len(entity.claims)}, References: {len(entity.all_references)}")
+        entity_tasks = [t for t in tasks if t.ground_truth_entity_id == entity.entity_id]
+        for t in entity_tasks:
+            typer.echo(f"    Task: {t.task_type.value} -> {t.query[:80]}...")
+    typer.echo()
+
+
+@eval_app.command("generate-tasks")
+def eval_generate_tasks(
+    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
+    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
+    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
+    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
+    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities")] = None,
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for tasks (JSON)")] = None,
+):
+    """Generate evaluation tasks as JSON for use in scoring pipelines.
+
+    \b
+    Examples:
+        deep-research-client eval generate-tasks --entity-file Achondroplasia.yaml -o tasks.json
+    """
+    import json as json_mod
+    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
+
+    config = EvalConfig(
+        dismech_dir=dismech_dir,
+        gene_review_dir=gene_review_dir,
+        entity_files=list(entity_file or []),
+        entity_names=list(entity_name or []),
+        max_entities=max_entities,
+    )
+    entities = load_entities(config)
+    tasks = generate_all_tasks(entities)
+
+    tasks_json = [t.model_dump(mode="json") for t in tasks]
+
+    if output:
+        output.write_text(json_mod.dumps(tasks_json, indent=2))
+        typer.echo(f"Wrote {len(tasks)} tasks to {output}")
+    else:
+        typer.echo(json_mod.dumps(tasks_json, indent=2))
+
+
+@eval_app.command("score")
+def eval_score(
+    report: Annotated[Path, typer.Argument(help="Markdown file with DR output to score")],
+    entity_file: Annotated[Path, typer.Option("--entity-file", help="Ground truth YAML file")],
+    provider_name: Annotated[str, typer.Option("--provider", help="Name of the DR provider that generated the report")] = "unknown",
+    task_type: Annotated[Optional[str], typer.Option("--task-type", help="Task type filter (disease_mechanism, gene_function, etc.)")] = None,
+    no_fact: Annotated[bool, typer.Option("--no-fact", help="Skip FACT scoring")] = False,
+    no_recall: Annotated[bool, typer.Option("--no-recall", help="Skip claim recall scoring")] = False,
+    no_race: Annotated[bool, typer.Option("--no-race", help="Skip RACE scoring")] = False,
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for results (JSON)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option("--llm-base-url", help="Base URL for LLM judge API")] = None,
+    llm_api_key_env: Annotated[str, typer.Option("--llm-api-key-env", help="Env var for LLM judge API key")] = "OPENAI_API_KEY",
+    llm_model: Annotated[str, typer.Option("--llm-model", help="Model for LLM judge")] = "gpt-4o-mini",
+):
+    """Score a deep research report against ground truth.
+
+    \b
+    Examples:
+        deep-research-client eval score report.md --entity-file Achondroplasia.yaml --provider falcon
+        deep-research-client eval score report.md --entity-file BRCA1-ai-review.yaml --no-race
+    """
+    import asyncio
+    import json as json_mod
+    from openai import AsyncOpenAI
+    from .evaluation.runner import (
+        EvalConfig, load_entities, generate_all_tasks, parse_dr_output, score_output,
+    )
+    from .evaluation.models import TaskType
+
+    # Load ground truth and generate tasks
+    config = EvalConfig(
+        entity_files=[entity_file],
+        run_fact=not no_fact,
+        run_claim_recall=not no_recall,
+        run_race=not no_race,
+    )
+    entities = load_entities(config)
+    if not entities:
+        typer.echo("No entities loaded from the ground truth file.")
+        raise typer.Exit(1)
+
+    tasks = generate_all_tasks(entities)
+    if task_type:
+        try:
+            tt = TaskType(task_type)
+            tasks = [t for t in tasks if t.task_type == tt]
+        except ValueError:
+            typer.echo(f"Unknown task type: {task_type}. Valid: {[t.value for t in TaskType]}")
+            raise typer.Exit(1)
+
+    if not tasks:
+        typer.echo("No evaluation tasks generated for the given entity/task-type.")
+        raise typer.Exit(1)
+
+    # Read the report
+    markdown_text = report.read_text()
+
+    # Set up LLM judge client
+    api_key = os.environ.get(llm_api_key_env, "")
+    if not api_key:
+        typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail.")
+    llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
+
+    async def _run():
+        results = []
+        for eval_task in tasks:
+            dr_output = parse_dr_output(eval_task, markdown_text, provider_name)
+            result = await score_output(dr_output, eval_task, llm_client, config)
+            results.append(result)
+        return results
+
+    results = asyncio.run(_run())
+
+    # Display results
+    for r in results:
+        typer.echo(f"\n{'='*60}")
+        typer.echo(f"Task: {r.task_id} | Provider: {r.provider}")
+        if r.fact_score:
+            typer.echo(f"  FACT: accuracy={r.fact_score.citation_accuracy:.2f}, "
+                       f"effective_citations={r.fact_score.effective_citations}/{r.fact_score.total_citations}")
+        if r.claim_recall_score:
+            typer.echo(f"  Claim Recall: {r.claim_recall_score.claim_recall:.2f} "
+                       f"({r.claim_recall_score.matched_claims}/{r.claim_recall_score.total_ground_truth_claims})")
+        if r.race_score:
+            typer.echo(f"  RACE: overall={r.race_score.overall_score:.2f}")
+            for d in r.race_score.dimensions:
+                typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
+        if r.error:
+            typer.echo(f"  Errors: {r.error}")
+
+    # Save JSON output
+    if output:
+        results_json = [r.model_dump(mode="json") for r in results]
+        output.write_text(json_mod.dumps(results_json, indent=2))
+        typer.echo(f"\nResults written to {output}")
+
+
 def main():
     """Main entry point for the CLI."""
     app()

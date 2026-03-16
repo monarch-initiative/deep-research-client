@@ -334,6 +334,159 @@ class RACEScore(BaseModel):
         return sum(d.normalized_score for d in self.dimensions) / len(self.dimensions)
 
 
+# ---------------------------------------------------------------------------
+# Intrinsic (LLM-free) scoring models
+# ---------------------------------------------------------------------------
+
+
+class CitationExistence(BaseModel):
+    """Result of checking whether a single citation resolves to a real paper.
+
+    >>> c = CitationExistence(citation_id="PMID:7913883", exists=True, title="Mutations in FGFR3...")
+    >>> c.exists
+    True
+    """
+
+    citation_id: str = Field(..., description="Normalized citation ID (PMID:xxx or DOI:xxx)")
+    exists: bool = Field(..., description="Whether the citation resolves to a real paper")
+    title: Optional[str] = Field(default=None, description="Paper title if retrieved")
+    year: Optional[int] = Field(default=None, description="Publication year if retrieved")
+    error: Optional[str] = Field(default=None, description="Error if lookup failed")
+
+
+class CitationVerifiabilityScore(BaseModel):
+    """Aggregate score for citation existence checking.
+
+    >>> s = CitationVerifiabilityScore(total_citations=5, verified_exist=4, verifiability=0.8)
+    >>> s.verifiability
+    0.8
+    """
+
+    total_citations: int = Field(..., description="Total unique citations checked")
+    verified_exist: int = Field(..., description="Citations that resolve to real papers")
+    verifiability: float = Field(..., description="Fraction of citations that are real (verified_exist / total)")
+    year_distribution: dict[int, int] = Field(default_factory=dict, description="Publication year -> count")
+    median_year: Optional[int] = Field(default=None, description="Median publication year")
+    citations: list[CitationExistence] = Field(default_factory=list, description="Per-citation results")
+
+
+class CitationAlignmentResult(BaseModel):
+    """Result of checking whether a cited paper's title aligns with the claim.
+
+    >>> r = CitationAlignmentResult(
+    ...     citation_id="PMID:7913883",
+    ...     claim_text="FGFR3 mutations cause achondroplasia",
+    ...     paper_title="Mutations in FGFR3 cause achondroplasia",
+    ...     aligned=True,
+    ...     shared_terms=["FGFR3", "mutations", "achondroplasia"],
+    ... )
+    >>> r.aligned
+    True
+    """
+
+    citation_id: str
+    claim_text: str
+    paper_title: str
+    aligned: bool = Field(..., description="Whether paper title shares key biomedical terms with claim")
+    shared_terms: list[str] = Field(default_factory=list, description="Key terms shared between claim and title")
+    term_overlap_score: float = Field(default=0.0, description="Jaccard-like overlap of key terms")
+
+
+class CitationAlignmentScore(BaseModel):
+    """Aggregate citation-claim alignment score.
+
+    >>> s = CitationAlignmentScore(total_checked=10, aligned_count=7, alignment_rate=0.7)
+    >>> s.alignment_rate
+    0.7
+    """
+
+    total_checked: int
+    aligned_count: int
+    alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")
+    results: list[CitationAlignmentResult] = Field(default_factory=list)
+
+
+class FactualSpotCheck(BaseModel):
+    """Result of verifying a single extractable fact against a known value.
+
+    >>> f = FactualSpotCheck(
+    ...     fact_name="chromosome_location",
+    ...     expected="17q21.31",
+    ...     found_in_report="17q21",
+    ...     correct=True,
+    ... )
+    >>> f.correct
+    True
+    """
+
+    fact_name: str = Field(..., description="Name of the fact being checked")
+    expected: str = Field(..., description="Known correct value")
+    found_in_report: Optional[str] = Field(default=None, description="Value found in DR output, if any")
+    correct: Optional[bool] = Field(default=None, description="Whether report value matches expected")
+    present: bool = Field(default=False, description="Whether the fact is mentioned at all")
+
+
+class FactualSpotCheckScore(BaseModel):
+    """Aggregate score for factual spot checks.
+
+    >>> s = FactualSpotCheckScore(total_checks=5, present_count=4, correct_count=3, presence_rate=0.8, accuracy_rate=0.75)
+    >>> s.accuracy_rate
+    0.75
+    """
+
+    total_checks: int
+    present_count: int = Field(..., description="Facts mentioned in the report")
+    correct_count: int = Field(..., description="Facts correctly stated")
+    presence_rate: float = Field(..., description="present / total")
+    accuracy_rate: float = Field(..., description="correct / present (accuracy of stated facts)")
+    checks: list[FactualSpotCheck] = Field(default_factory=list)
+
+
+class TopicCoverage(BaseModel):
+    """Whether a specific expected topic/section is covered in the report.
+
+    >>> t = TopicCoverage(topic="DNA repair", covered=True, evidence_snippet="BRCA1 plays a role in DNA repair")
+    >>> t.covered
+    True
+    """
+
+    topic: str
+    covered: bool
+    evidence_snippet: Optional[str] = Field(default=None, description="Brief text from report demonstrating coverage")
+    keywords_found: list[str] = Field(default_factory=list)
+
+
+class TopicCoverageScore(BaseModel):
+    """Aggregate topic coverage score.
+
+    >>> s = TopicCoverageScore(total_topics=5, covered_count=4, coverage_rate=0.8)
+    >>> s.coverage_rate
+    0.8
+    """
+
+    total_topics: int
+    covered_count: int
+    coverage_rate: float
+    topics: list[TopicCoverage] = Field(default_factory=list)
+
+
+class IntrinsicScore(BaseModel):
+    """Collection of all LLM-free intrinsic quality scores.
+
+    These scores verify properties of the DR output without needing
+    an LLM judge or ground truth reference overlap.
+
+    >>> s = IntrinsicScore()
+    >>> s.citation_verifiability is None
+    True
+    """
+
+    citation_verifiability: Optional[CitationVerifiabilityScore] = None
+    citation_alignment: Optional[CitationAlignmentScore] = None
+    factual_spot_checks: Optional[FactualSpotCheckScore] = None
+    topic_coverage: Optional[TopicCoverageScore] = None
+
+
 class EvalResult(BaseModel):
     """Complete evaluation result for a single task + provider combination.
 
@@ -348,5 +501,6 @@ class EvalResult(BaseModel):
     fact_score: Optional[FACTScore] = None
     claim_recall_score: Optional[ClaimRecallScore] = None
     race_score: Optional[RACEScore] = None
+    intrinsic_score: Optional[IntrinsicScore] = None
     duration_seconds: Optional[float] = None
     error: Optional[str] = None

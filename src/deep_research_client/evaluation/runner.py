@@ -23,6 +23,7 @@ from .scorers import (
     extract_citations_from_markdown,
     score_claim_recall,
     score_fact,
+    score_intrinsic,
     score_race,
 )
 from .tasks import generate_tasks
@@ -42,6 +43,8 @@ class EvalConfig:
     run_fact: bool = True
     run_claim_recall: bool = True
     run_race: bool = True
+    run_intrinsic: bool = True
+    gene_symbol: str | None = None
 
 
 def load_entities(config: EvalConfig) -> list[GroundTruthEntity]:
@@ -197,5 +200,33 @@ async def score_output(
             result.error += f"; RACE error: {e}"
         else:
             result.error = f"RACE error: {e}"
+
+    try:
+        if config.run_intrinsic:
+            result.intrinsic_score = await score_intrinsic(
+                dr_output, task,
+                gene_symbol=config.gene_symbol,
+                pubmed_client=pubmed_client,
+            )
+            if result.intrinsic_score.citation_verifiability:
+                cv = result.intrinsic_score.citation_verifiability
+                logger.info(
+                    "Citation verifiability for %s/%s: %.2f (%d/%d exist)",
+                    task.task_id, dr_output.provider,
+                    cv.verifiability, cv.verified_exist, cv.total_citations,
+                )
+            if result.intrinsic_score.topic_coverage:
+                tc = result.intrinsic_score.topic_coverage
+                logger.info(
+                    "Topic coverage for %s/%s: %.2f (%d/%d topics)",
+                    task.task_id, dr_output.provider,
+                    tc.coverage_rate, tc.covered_count, tc.total_topics,
+                )
+    except Exception as e:
+        logger.error("Intrinsic scoring failed for %s: %s", task.task_id, e)
+        if result.error:
+            result.error += f"; Intrinsic error: {e}"
+        else:
+            result.error = f"Intrinsic error: {e}"
 
     return result

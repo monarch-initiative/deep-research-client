@@ -772,7 +772,7 @@ _GENE_SPOT_CHECKS: dict[str, list[tuple[str, str, str]]] = {
 }
 
 # Generic checks that apply to any gene
-_GENERIC_GENE_SPOT_CHECKS = [
+_GENERIC_GENE_SPOT_CHECKS: list[tuple[str, str | None, str | None]] = [
     ("has_gene_symbol", None, None),  # Special: just checks gene name is mentioned
     ("has_protein_function", r"\b(catalytic|binding|signaling|kinase|ligase|transferase|receptor)\b", "any enzymatic/binding term"),
     ("has_cellular_location", r"\b(nucleus|cytoplasm|membrane|mitochondria|endoplasmic|golgi)\b", "any subcellular location"),
@@ -844,21 +844,21 @@ def score_factual_spot_checks(
         ))
 
     # Generic checks for any gene
-    for fact_name, pattern, expected in _GENERIC_GENE_SPOT_CHECKS:
-        if fact_name == "has_gene_symbol" and gene_symbol:
+    for gen_name, gen_pattern, gen_expected in _GENERIC_GENE_SPOT_CHECKS:
+        if gen_name == "has_gene_symbol" and gene_symbol:
             present = gene_symbol.upper() in text.upper()
             checks.append(FactualSpotCheck(
-                fact_name=fact_name,
+                fact_name=gen_name,
                 expected=gene_symbol,
                 found_in_report=gene_symbol if present else None,
                 correct=present,
                 present=present,
             ))
-        elif pattern:
-            match = re.search(pattern, text, re.IGNORECASE)
+        elif gen_pattern:
+            match = re.search(gen_pattern, text, re.IGNORECASE)
             checks.append(FactualSpotCheck(
-                fact_name=fact_name,
-                expected=expected or "",
+                fact_name=gen_name,
+                expected=gen_expected or "",
                 found_in_report=match.group(0) if match else None,
                 correct=match is not None,
                 present=match is not None,

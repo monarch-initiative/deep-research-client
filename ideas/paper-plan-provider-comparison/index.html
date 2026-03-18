@@ -1,0 +1,2167 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/ideas/paper-plan-provider-comparison/">
+      
+      
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+    
+    
+      
+        <title>Paper Plan: Comparative Evaluation of Deep Research Tools - deep-research-client</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
+    
+      <link rel="stylesheet" href="../../css/jupyter-cells.css">
+    
+      <link rel="stylesheet" href="../../css/pandas-dataframe.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#paper-plan-comparative-evaluation-of-deep-research-tools" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deep-research-client
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Paper Plan: Comparative Evaluation of Deep Research Tools
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deep-research-client
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Tutorials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Tutorials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/first-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Your First Query
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    How-to Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            How-to Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/choose-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Choose a Provider
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/use-cyberian-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Cyberian + Codex
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Templates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/browse-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/browse-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Files
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/proxies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Proxies
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FAQ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Reference
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Providers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Explanation
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Explanation
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Provider Comparison
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/ralph-wiggum-deep-research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ralph Wiggum Tries Research
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#working-title" class="md-nav__link">
+    <span class="md-ellipsis">
+      Working Title
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Motivation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Research Questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#providers-under-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      Providers Under Comparison
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Framework
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Evaluation Framework">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dimension-1-citation-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 1: Citation Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-2-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 2: Depth
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-3-breadth" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 3: Breadth
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-4-accuracy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 4: Accuracy
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-5-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 5: Completeness
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-6-report-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 6: Report Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dimension-7-operational" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dimension 7: Operational
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-study-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Proposed Study Design
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Proposed Study Design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-set-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Query Set Design
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-complexity-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Query Complexity Levels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evaluation-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Protocol
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#statistical-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      Statistical Analysis
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-collection-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Collection Infrastructure
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Collection Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-we-already-have-from-drc" class="md-nav__link">
+    <span class="md-ellipsis">
+      What We Already Have (from drc)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-we-need-to-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      What We Need to Build
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-work-literature-review-from-web-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      Related Work (Literature Review from Web Search)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Related Work (Literature Review from Web Search)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-benchmarks-and-evaluation-frameworks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key Benchmarks and Evaluation Frameworks
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Key Benchmarks and Evaluation Frameworks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-deepresearch-bench-drb-drb-ii" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. DeepResearch Bench (DRB / DRB II)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-draco-benchmark-perplexity-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. DRACO Benchmark (Perplexity Research)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-paperqa-paperqa2-futurehouse" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. PaperQA / PaperQA2 (FutureHouse)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-paperarena" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. PaperArena
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-sciarena" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. SciArena
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-search-arena-lm-arena" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Search Arena / LM Arena
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-standard-benchmarks-used-for-deep-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Standard Benchmarks Used for Deep Research
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#evaluation-frameworks-for-llm-systems-general" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation Frameworks for LLM Systems (General)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#published-head-to-head-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      Published Head-to-Head Comparisons
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Published Head-to-Head Comparisons">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#8-openscholar-scholarqabench-asai-et-al-nov-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. OpenScholar + ScholarQABench (Asai et al., Nov 2024)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-answer-engine-evaluation-aee-venkit-et-al-oct-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Answer Engine Evaluation / AEE (Venkit et al., Oct 2024)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-deepscholar-bench-patel-et-al-aug-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. DeepScholar-Bench (Patel et al., Aug 2025)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-livedrbench-java-et-al-aug-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. LiveDRBench (Java et al., Aug 2025)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-evaluating-verifiability-in-generative-search-engines-liu-et-al-2023" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Evaluating Verifiability in Generative Search Engines (Liu et al., 2023)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-costspeed-trade-offs-from-literature" class="md-nav__link">
+    <span class="md-ellipsis">
+      Known Cost/Speed Trade-offs (from literature)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#three-tier-benchmark-framework-from-edison-research" class="md-nav__link">
+    <span class="md-ellipsis">
+      Three-Tier Benchmark Framework (from Edison research)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gaps-our-paper-can-fill" class="md-nav__link">
+    <span class="md-ellipsis">
+      Gaps Our Paper Can Fill
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paper-structure-draft-outline" class="md-nav__link">
+    <span class="md-ellipsis">
+      Paper Structure (Draft Outline)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Requirements
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#data-we-need-to-collect-not-in-repo-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data We Need to Collect (not in repo yet)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection-to-darma" class="md-nav__link">
+    <span class="md-ellipsis">
+      Connection to DARMA
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#target-venues" class="md-nav__link">
+    <span class="md-ellipsis">
+      Target Venues
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next Steps
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="paper-plan-comparative-evaluation-of-deep-research-tools">Paper Plan: Comparative Evaluation of Deep Research Tools</h1>
+<p><strong>Status:</strong> Planning
+<strong>Date:</strong> 2026-03-09
+<strong>Authors:</strong> TBD</p>
+<h2 id="working-title">Working Title</h2>
+<p>"Benchmarking Agentic Deep Research: A Comparative Evaluation of AI-Powered Literature Synthesis Tools"</p>
+<p>Alternative titles:
+- "How Deep is Deep Research? Evaluating AI Research Agents Across Multiple Dimensions"
+- "deep-research-client: A Unified Framework for Comparing AI Research Providers"</p>
+<h2 id="motivation">Motivation</h2>
+<p>AI-powered "deep research" tools have rapidly emerged as alternatives to traditional literature
+search and synthesis. Tools like OpenAI Deep Research, Perplexity, FutureHouse Edison/PaperQA3,
+and Consensus each take different approaches — from web-augmented LLM reasoning to specialized
+scientific literature agents. Yet there is <strong>no standardized evaluation framework</strong> for comparing
+these tools, and <strong>no published head-to-head comparisons</strong> across multiple dimensions.</p>
+<p>The <code>deep-research-client</code> (drc) provides a unique vantage point: a unified API wrapper that can
+send identical queries to multiple providers and collect structured results with timing, citation,
+and metadata information. This makes systematic comparison feasible.</p>
+<h2 id="research-questions">Research Questions</h2>
+<ol>
+<li><strong>How do deep research providers differ in output quality</strong> across dimensions of accuracy,
+   completeness, citation quality, and report structure?</li>
+<li><strong>What are the cost/latency/quality trade-offs</strong> between providers and model tiers?</li>
+<li><strong>Does domain matter?</strong> How do providers compare on biomedical vs. general science vs.
+   non-scientific topics?</li>
+<li><strong>Can we define a reusable evaluation framework</strong> for benchmarking deep research tools?</li>
+</ol>
+<h2 id="providers-under-comparison">Providers Under Comparison</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>API Model(s)</th>
+<th>Source Type</th>
+<th>Depth Tier</th>
+<th>Cost Tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OpenAI</strong></td>
+<td>o3-deep-research, o4-mini-deep-research</td>
+<td>Web + code interpreter</td>
+<td>Deep / Medium</td>
+<td>Very High / Medium</td>
+</tr>
+<tr>
+<td><strong>Perplexity</strong></td>
+<td>sonar-deep-research, sonar-pro, sonar</td>
+<td>Real-time web</td>
+<td>Deep / Medium / Fast</td>
+<td>High / Medium / Low</td>
+</tr>
+<tr>
+<td><strong>Edison (FutureHouse)</strong></td>
+<td>PaperQA3</td>
+<td>Scientific literature (full text)</td>
+<td>Deep</td>
+<td>High</td>
+</tr>
+<tr>
+<td><strong>Consensus</strong></td>
+<td>Academic Search API</td>
+<td>Peer-reviewed papers only</td>
+<td>Fast</td>
+<td>Low</td>
+</tr>
+<tr>
+<td><strong>Cyberian</strong></td>
+<td>Agent-based (Claude/Aider)</td>
+<td>Multi-source, iterative</td>
+<td>Very Deep</td>
+<td>Variable</td>
+</tr>
+</tbody>
+</table>
+<h2 id="evaluation-framework">Evaluation Framework</h2>
+<h3 id="dimension-1-citation-quality">Dimension 1: Citation Quality</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Citation count</strong></td>
+<td>Number of unique references</td>
+<td>Automated count from <code>ResearchResult.citations</code></td>
+</tr>
+<tr>
+<td><strong>Citation accuracy</strong></td>
+<td>Do citations actually support claims?</td>
+<td>Human evaluation (spot-check) + LLM-as-judge</td>
+</tr>
+<tr>
+<td><strong>Source diversity</strong></td>
+<td>Mix of source types (journals, preprints, web, etc.)</td>
+<td>Automated classification</td>
+</tr>
+<tr>
+<td><strong>Source recency</strong></td>
+<td>Publication dates of cited works</td>
+<td>Automated date extraction</td>
+</tr>
+<tr>
+<td><strong>URL validity</strong></td>
+<td>Do citation URLs resolve?</td>
+<td>Automated HTTP checks</td>
+</tr>
+<tr>
+<td><strong>DOI coverage</strong></td>
+<td>Fraction of citations with DOIs</td>
+<td>Automated regex extraction</td>
+</tr>
+<tr>
+<td><strong>Hallucinated citations</strong></td>
+<td>Citations that don't exist</td>
+<td>Manual verification + CrossRef/PubMed lookup</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-2-depth">Dimension 2: Depth</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Report length</strong></td>
+<td>Word count, section count</td>
+<td>Automated</td>
+</tr>
+<tr>
+<td><strong>Subtopic coverage</strong></td>
+<td>Number of distinct subtopics addressed</td>
+<td>Human evaluation against reference outline</td>
+</tr>
+<tr>
+<td><strong>Mechanistic detail</strong></td>
+<td>Level of mechanistic/technical detail</td>
+<td>Human Likert scale (1-5)</td>
+</tr>
+<tr>
+<td><strong>Evidence synthesis</strong></td>
+<td>Integration across sources vs. serial summarizing</td>
+<td>Human evaluation</td>
+</tr>
+<tr>
+<td><strong>Contradiction handling</strong></td>
+<td>Does the report note conflicting evidence?</td>
+<td>Human evaluation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-3-breadth">Dimension 3: Breadth</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Perspective diversity</strong></td>
+<td>Multiple viewpoints, schools of thought</td>
+<td>Human evaluation</td>
+</tr>
+<tr>
+<td><strong>Cross-disciplinary reach</strong></td>
+<td>References from multiple fields</td>
+<td>Automated journal classification</td>
+</tr>
+<tr>
+<td><strong>Geographic diversity</strong></td>
+<td>Research from different countries/regions</td>
+<td>Metadata analysis</td>
+</tr>
+<tr>
+<td><strong>Temporal breadth</strong></td>
+<td>Coverage of historical vs. recent work</td>
+<td>Citation date range analysis</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-4-accuracy">Dimension 4: Accuracy</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Factual correctness</strong></td>
+<td>Claims verified against sources</td>
+<td>Human spot-check (sample of claims)</td>
+</tr>
+<tr>
+<td><strong>Hallucination rate</strong></td>
+<td>Fabricated facts, statistics, or citations</td>
+<td>Human + LLM-as-judge</td>
+</tr>
+<tr>
+<td><strong>Numerical accuracy</strong></td>
+<td>Correct reporting of statistics/numbers</td>
+<td>Human verification</td>
+</tr>
+<tr>
+<td><strong>Attribution accuracy</strong></td>
+<td>Claims correctly attributed to sources</td>
+<td>Human verification</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-5-completeness">Dimension 5: Completeness</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Key finding recall</strong></td>
+<td>Fraction of known key findings captured</td>
+<td>Human evaluation against gold standard</td>
+</tr>
+<tr>
+<td><strong>Gap identification</strong></td>
+<td>Does the report note knowledge gaps?</td>
+<td>Human evaluation</td>
+</tr>
+<tr>
+<td><strong>Methodological coverage</strong></td>
+<td>Are methods/approaches described?</td>
+<td>Human evaluation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-6-report-quality">Dimension 6: Report Quality</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Structure</strong></td>
+<td>Logical organization, headings, sections</td>
+<td>Human + automated markdown analysis</td>
+</tr>
+<tr>
+<td><strong>Coherence</strong></td>
+<td>Logical flow between sections</td>
+<td>Human Likert scale</td>
+</tr>
+<tr>
+<td><strong>Readability</strong></td>
+<td>Clarity of writing</td>
+<td>Automated readability scores + human</td>
+</tr>
+<tr>
+<td><strong>Actionability</strong></td>
+<td>Can a researcher act on the information?</td>
+<td>Human evaluation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dimension-7-operational">Dimension 7: Operational</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Measurement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Latency</strong></td>
+<td>Time to completion</td>
+<td><code>ResearchResult.duration_seconds</code></td>
+</tr>
+<tr>
+<td><strong>Cost per query</strong></td>
+<td>API cost</td>
+<td>Provider billing data</td>
+</tr>
+<tr>
+<td><strong>Reliability</strong></td>
+<td>Success rate, error rate</td>
+<td>Automated tracking</td>
+</tr>
+<tr>
+<td><strong>Reproducibility</strong></td>
+<td>Consistency across runs of same query</td>
+<td>Multiple runs, similarity scoring</td>
+</tr>
+</tbody>
+</table>
+<h2 id="proposed-study-design">Proposed Study Design</h2>
+<h3 id="query-set-design">Query Set Design</h3>
+<p>Design a benchmark set of queries across domains and difficulty levels:</p>
+<table>
+<thead>
+<tr>
+<th>Domain</th>
+<th>Example Queries</th>
+<th>Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Biomedical</strong></td>
+<td>"Role of TP53 in cancer", "CRISPR off-target effects"</td>
+<td>10</td>
+</tr>
+<tr>
+<td><strong>General science</strong></td>
+<td>"Climate change tipping points", "Quantum error correction"</td>
+<td>10</td>
+</tr>
+<tr>
+<td><strong>Current events</strong></td>
+<td>"AI regulation in EU 2025", "mRNA vaccine developments"</td>
+<td>5</td>
+</tr>
+<tr>
+<td><strong>Interdisciplinary</strong></td>
+<td>"Microbiome and mental health", "AI in drug discovery"</td>
+<td>5</td>
+</tr>
+<tr>
+<td><strong>Niche/specialized</strong></td>
+<td>"Phenotype ontology interoperability", "Rare disease diagnostics"</td>
+<td>5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total: ~35 queries x N providers x M models = evaluation matrix</strong></p>
+<h3 id="query-complexity-levels">Query Complexity Levels</h3>
+<p>For a subset of topics, vary complexity:
+- <strong>Simple factual</strong>: "What is X?"
+- <strong>Comparative</strong>: "Compare X and Y approaches"
+- <strong>Synthetic</strong>: "What is the evidence for X causing Y?"
+- <strong>Prospective</strong>: "What are the open questions in X?"
+- <strong>Methodological</strong>: "What methods are used to study X?"</p>
+<h3 id="evaluation-protocol">Evaluation Protocol</h3>
+<ol>
+<li><strong>Automated metrics</strong> (run first):</li>
+<li>Citation count, URL validity, DOI coverage</li>
+<li>Report length, section count</li>
+<li>Latency, cost</li>
+<li>Readability scores</li>
+<li>
+<p>Citation date distribution</p>
+</li>
+<li>
+<p><strong>LLM-as-judge evaluation</strong>:</p>
+</li>
+<li>Factual accuracy spot-check (claim extraction + verification)</li>
+<li>Hallucination detection</li>
+<li>Completeness against reference key findings</li>
+<li>
+<p>Structure and coherence scoring</p>
+</li>
+<li>
+<p><strong>Human expert evaluation</strong> (subset):</p>
+</li>
+<li>Domain experts score a subset of reports</li>
+<li>Inter-annotator agreement measured</li>
+<li>Focus on dimensions where LLM-as-judge is less reliable</li>
+</ol>
+<h3 id="statistical-analysis">Statistical Analysis</h3>
+<ul>
+<li><strong>Per-dimension comparison</strong>: ANOVA or Kruskal-Wallis across providers</li>
+<li><strong>Radar/spider plots</strong>: Multi-dimensional profiles per provider</li>
+<li><strong>Cost-quality Pareto frontiers</strong>: Identify optimal cost/quality trade-offs</li>
+<li><strong>Domain interaction effects</strong>: Do provider rankings change by domain?</li>
+</ul>
+<h2 id="data-collection-infrastructure">Data Collection Infrastructure</h2>
+<p>The <code>deep-research-client</code> already provides most of what we need:</p>
+<pre><code class="language-bash"># Run same query across all providers
+for provider in openai perplexity falcon consensus; do
+  deep-research-client research \
+    --template benchmarks/query_template.md \
+    --var &quot;query=...&quot; \
+    --provider $provider \
+    --output &quot;results/${provider}/${query_id}.md&quot;
+done
+</code></pre>
+<h3 id="what-we-already-have-from-drc">What We Already Have (from drc)</h3>
+<ul>
+<li><code>ResearchResult.citations</code> — citation list</li>
+<li><code>ResearchResult.duration_seconds</code> — latency</li>
+<li><code>ResearchResult.provider</code> / <code>.model</code> — provenance</li>
+<li><code>ResearchResult.markdown</code> — full report content</li>
+<li>Caching infrastructure — avoid re-running identical queries</li>
+</ul>
+<h3 id="what-we-need-to-build">What We Need to Build</h3>
+<ul>
+<li><strong>Evaluation harness</strong>: Automated metrics computation on <code>ResearchResult</code> objects</li>
+<li><strong>LLM-as-judge pipeline</strong>: Prompt templates for each evaluation dimension</li>
+<li><strong>Gold standard annotations</strong>: Reference key findings for benchmark queries</li>
+<li><strong>Visualization</strong>: Comparison plots, radar charts, tables</li>
+<li><strong>Statistical tests</strong>: Provider comparison analysis</li>
+</ul>
+<h2 id="related-work-literature-review-from-web-search">Related Work (Literature Review from Web Search)</h2>
+<h3 id="key-benchmarks-and-evaluation-frameworks">Key Benchmarks and Evaluation Frameworks</h3>
+<h4 id="1-deepresearch-bench-drb-drb-ii">1. DeepResearch Bench (DRB / DRB II)</h4>
+<ul>
+<li><strong>Source</strong>: <a href="https://github.com/Ayanami0730/deep_research_bench">Ayanami0730/deep_research_bench</a></li>
+<li><strong>Scope</strong>: 100 PhD-level research tasks across 22 fields</li>
+<li><strong>DRB II</strong> (Feb 2026): 9,430 fine-grained binary rubrics covering information recall, analysis, and presentation</li>
+<li><strong>Two evaluation methodologies</strong>:</li>
+<li><strong>RACE</strong> (Reference-based Adaptive Criteria-driven Evaluation): Evaluates report quality across
+    Comprehensiveness, Insight/Depth, Instruction-Following, Readability with dynamic weights</li>
+<li><strong>FACT</strong> (Framework for Factual Abundance and Citation Trustworthiness): Extracts factual claims,
+    verifies source support, calculates Citation Accuracy and Effective Citations</li>
+<li><strong>Leaderboard</strong> (Feb 2026): Qianfan-DeepResearch Pro (#1), Tavily Research, CellCog.ai, Salesforce Enterprise</li>
+<li><strong>Relevance</strong>: Most directly comparable to our evaluation goals; we should align with or extend RACE/FACT</li>
+</ul>
+<h4 id="2-draco-benchmark-perplexity-research">2. DRACO Benchmark (Perplexity Research)</h4>
+<ul>
+<li><strong>Source</strong>: <a href="https://research.perplexity.ai/articles/evaluating-deep-research-performance-in-the-wild-with-the-draco-benchmark">Perplexity Research</a></li>
+<li><strong>Scope</strong>: 100 anonymized, open-ended, objectively evaluable tasks</li>
+<li><strong>Dimensions</strong>: Factual accuracy, breadth/depth/completeness, presentation quality/objectivity, citation quality</li>
+<li><strong>Systems evaluated</strong>: Perplexity Deep Research, OpenAI Deep Research (o3, o4-mini), Gemini Deep Research, Claude Opus</li>
+<li><strong>Note</strong>: Created by Perplexity — potential conflict of interest, but methodology is useful</li>
+</ul>
+<h4 id="3-paperqa-paperqa2-futurehouse">3. PaperQA / PaperQA2 (FutureHouse)</h4>
+<ul>
+<li><strong>Paper</strong>: Skarlinski et al. (2024) "Language agents achieve superhuman synthesis of scientific knowledge" <a href="https://arxiv.org/abs/2409.13740">arXiv:2409.13740</a></li>
+<li><strong>Benchmarks introduced</strong>: LitQA, LitQA2 — requiring retrieval and synthesis from full-text papers</li>
+<li><strong>Key result</strong>: PaperQA2 matches or exceeds subject matter experts on LitQA2 (precision 85.2%, accuracy 66.0%)</li>
+<li><strong>ContraCrow</strong>: Automated contradiction detection (2.34 contradictions/paper, 70% validated by experts)</li>
+<li><strong>Relevance</strong>: Edison/Falcon in our client is based on this; LitQA2 is a gold standard for scientific QA</li>
+</ul>
+<h4 id="4-paperarena">4. PaperArena</h4>
+<ul>
+<li><strong>Paper</strong>: Wang et al. (2025) <a href="https://arxiv.org/html/2510.10909v2">arXiv:2510.10909</a></li>
+<li><strong>Scope</strong>: 784 questions evaluating tool-augmented agentic reasoning on scientific literature</li>
+<li><strong>Metrics</strong>: Correctness (LLM-as-judge), Reasoning Steps (tool invocations), Reasoning Efficiency</li>
+<li><strong>Capabilities tested</strong>: Multi-step reasoning, multi-modal understanding, cross-document integration, database interfacing</li>
+<li><strong>Key finding</strong>: Even Gemini 2.5 Pro achieves only 38.78% accuracy vs 83.5% for human PhD experts</li>
+</ul>
+<h4 id="5-sciarena">5. SciArena</h4>
+<ul>
+<li><strong>Paper</strong>: Zhao et al. (2025) <a href="https://arxiv.org/abs/2507.01001">arXiv:2507.01001</a> — NeurIPS 2025 Spotlight</li>
+<li><strong>Design</strong>: Community-driven evaluation via researcher voting (like Chatbot Arena for science)</li>
+<li><strong>Scope</strong>: 47 foundation models, 20,000+ human votes</li>
+<li><strong>Focus</strong>: Open-ended scientific tasks requiring literature-grounded, long-form responses</li>
+<li><strong>Also provides</strong>: SciArena-Eval meta-benchmark for evaluating automated assessment systems</li>
+</ul>
+<h4 id="6-search-arena-lm-arena">6. Search Arena / LM Arena</h4>
+<ul>
+<li>Perplexity Sonar models rank #1-4 in Search Arena (10,000+ human preference votes, March-April 2025)</li>
+<li>Focus on current events with longer, more complex prompts</li>
+</ul>
+<h4 id="7-standard-benchmarks-used-for-deep-research">7. Standard Benchmarks Used for Deep Research</h4>
+<ul>
+<li><strong>Humanity's Last Exam</strong>: Perplexity Deep Research 21.1%, OpenAI 17.8% (26.6% in other reports)</li>
+<li><strong>SimpleQA</strong>: Perplexity Deep Research 93.9% factual accuracy</li>
+<li><strong>LitQA2</strong>: PaperQA2 66.0% accuracy, 85.2% precision</li>
+</ul>
+<h3 id="evaluation-frameworks-for-llm-systems-general">Evaluation Frameworks for LLM Systems (General)</h3>
+<ul>
+<li><strong>DeepEval</strong> (Confident AI): Open-source LLM evaluation framework — faithfulness, answer relevancy,
+  hallucination, contextual recall/precision</li>
+<li><strong>RAGAS</strong>: RAG evaluation framework (precision, recall, faithfulness)</li>
+<li><strong>LLM-as-judge</strong>: Using LLMs to evaluate LLM outputs (Zheng et al. 2023)</li>
+</ul>
+<h3 id="published-head-to-head-comparisons">Published Head-to-Head Comparisons</h3>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Tools Compared</th>
+<th>Evaluation Method</th>
+<th>Key Finding</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DRACO (Perplexity)</td>
+<td>Perplexity, OpenAI, Gemini, Claude</td>
+<td>100 tasks, 4 dimensions</td>
+<td>Perplexity competitive</td>
+</tr>
+<tr>
+<td>DRB II</td>
+<td>10+ DRAs</td>
+<td>RACE + FACT</td>
+<td>Qianfan Pro leads</td>
+</tr>
+<tr>
+<td>Gradient Flow</td>
+<td>OpenAI, Gemini, Grok, Perplexity</td>
+<td>Qualitative</td>
+<td>OpenAI leads capability</td>
+</tr>
+<tr>
+<td>Moons et al. (2025)</td>
+<td>OpenAI DR, Google AI Co-Scientist</td>
+<td>Descriptive</td>
+<td>Overview of AI in health research</td>
+</tr>
+<tr>
+<td>AIMultiple</td>
+<td>Claude, ChatGPT, Grok</td>
+<td>Side-by-side</td>
+<td>Qualitative comparison</td>
+</tr>
+<tr>
+<td>God of Prompt</td>
+<td>Perplexity vs OpenAI</td>
+<td>Direct comparison</td>
+<td>Perplexity cheaper/faster, OpenAI deeper</td>
+</tr>
+</tbody>
+</table>
+<h4 id="8-openscholar-scholarqabench-asai-et-al-nov-2024">8. OpenScholar + ScholarQABench (Asai et al., Nov 2024)</h4>
+<ul>
+<li><strong>Paper</strong>: <a href="https://arxiv.org/abs/2411.14199">arXiv:2411.14199</a> — 70 citations</li>
+<li><strong>System</strong>: RAG over 45M open-access papers</li>
+<li><strong>Key finding</strong>: GPT-4o hallucinates citations 78-90%; OpenScholar matches expert citation accuracy</li>
+<li><strong>Expert preference</strong>: OpenScholar-GPT4o preferred over expert-written responses 70% of the time</li>
+</ul>
+<h4 id="9-answer-engine-evaluation-aee-venkit-et-al-oct-2024">9. Answer Engine Evaluation / AEE (Venkit et al., Oct 2024)</h4>
+<ul>
+<li><strong>Paper</strong>: <a href="https://arxiv.org/abs/2410.22349">arXiv:2410.22349</a> — 19 citations</li>
+<li><strong>Systems</strong>: Perplexity, Bing Copilot, You.com</li>
+<li><strong>Key findings</strong>: Citation accuracy: You 68.3%, Bing 65.8%, <strong>Perplexity 49.0%</strong>; 23-32% unsupported statements</li>
+<li><strong>Novel</strong>: Includes UX/interaction metrics (hovering, clicking under contradictions)</li>
+</ul>
+<h4 id="10-deepscholar-bench-patel-et-al-aug-2025">10. DeepScholar-Bench (Patel et al., Aug 2025)</h4>
+<ul>
+<li><strong>Paper</strong>: <a href="https://arxiv.org/abs/2508.20033">arXiv:2508.20033</a> — 12 citations</li>
+<li><strong>7 metrics</strong>: Organization, Nugget Coverage, Relevance Rate, Document Importance, Reference Coverage, Citation Precision, Claim Coverage</li>
+<li><strong>Key finding</strong>: No system scored &gt;0.19 across all metrics</li>
+</ul>
+<h4 id="11-livedrbench-java-et-al-aug-2025">11. LiveDRBench (Java et al., Aug 2025)</h4>
+<ul>
+<li><strong>Paper</strong>: <a href="https://arxiv.org/abs/2508.04183">arXiv:2508.04183</a> — 16 citations</li>
+<li><strong>Evaluated</strong>: OpenAI/Perplexity/Google deep research</li>
+<li><strong>Metrics</strong>: Claim-level modified precision/recall; OpenAI highest average F1: 0.55</li>
+</ul>
+<h4 id="12-evaluating-verifiability-in-generative-search-engines-liu-et-al-2023">12. Evaluating Verifiability in Generative Search Engines (Liu et al., 2023)</h4>
+<ul>
+<li><strong>Paper</strong>: <a href="https://arxiv.org/abs/2304.09848">arXiv:2304.09848</a> — <strong>345 citations</strong> (seminal work)</li>
+<li>Foundational paper on citation precision/recall in generative search</li>
+</ul>
+<h3 id="known-costspeed-trade-offs-from-literature">Known Cost/Speed Trade-offs (from literature)</h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Typical Latency</th>
+<th>Citations per Report</th>
+<th>Monthly Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Perplexity Deep Research</td>
+<td>~3 min</td>
+<td>~50</td>
+<td>$20/mo</td>
+</tr>
+<tr>
+<td>OpenAI Deep Research</td>
+<td>7-20 min</td>
+<td>~20</td>
+<td>$200/mo</td>
+</tr>
+<tr>
+<td>Perplexity sonar-pro</td>
+<td>seconds</td>
+<td>~10-15</td>
+<td>API pricing</td>
+</tr>
+<tr>
+<td>Edison/PaperQA</td>
+<td>5-25 min</td>
+<td>~14.5 papers/query</td>
+<td>API pricing</td>
+</tr>
+</tbody>
+</table>
+<h3 id="three-tier-benchmark-framework-from-edison-research">Three-Tier Benchmark Framework (from Edison research)</h3>
+<p><strong>Tier A: Literature-grounded QA/synthesis (scientific PDFs)</strong>
+- LitQA/LitQA2 (PaperQA): correctness + DOI recall + refusal option
+- ScholarQABench (OpenScholar): multi-domain synthesis + citation accuracy + expert preference</p>
+<p><strong>Tier B: Web deep-research (multi-step browsing + synthesis)</strong>
+- DRB (Bosse et al.): frozen web corpus (RetroSearch), trace analysis
+- DeepResearch Bench (Du et al.): RACE/FACT metrics
+- LiveDRBench (Java et al.): claim-level F1</p>
+<p><strong>Tier C: Generative search engines ("answer engines")</strong>
+- AEE (Venkit et al.): user-perceived limitations → measurable metrics</p>
+<h3 id="gaps-our-paper-can-fill">Gaps Our Paper Can Fill</h3>
+<ol>
+<li><strong>No unified framework</strong> combining RACE, FACT, and domain-specific evaluation with cost analysis</li>
+<li><strong>No open-source evaluation harness</strong> that runs across commercial providers via unified API</li>
+<li><strong>Limited biomedical-specific evaluation</strong> — most benchmarks are general science</li>
+<li><strong>No comparison including Edison/Falcon</strong> alongside commercial deep research tools</li>
+<li><strong>No analysis using identical queries</strong> sent simultaneously to all providers</li>
+<li><strong>drc provides unique infrastructure</strong>: same query → multiple providers → structured comparison</li>
+<li><strong>No paper evaluates the same tool (PaperQA) alongside the web-scale tools</strong> it was designed to surpass</li>
+</ol>
+<h2 id="paper-structure-draft-outline">Paper Structure (Draft Outline)</h2>
+<ol>
+<li><strong>Introduction</strong></li>
+<li>Rise of AI deep research tools</li>
+<li>The evaluation gap</li>
+<li>
+<p>Contribution: framework + empirical comparison</p>
+</li>
+<li>
+<p><strong>Background</strong></p>
+</li>
+<li>Landscape of deep research tools (Table 1)</li>
+<li>Related evaluation frameworks</li>
+<li>
+<p>The deep-research-client as evaluation infrastructure</p>
+</li>
+<li>
+<p><strong>Evaluation Framework</strong></p>
+</li>
+<li>Seven dimensions defined above</li>
+<li>Metric definitions and measurement protocols</li>
+<li>
+<p>Automated vs. human evaluation components</p>
+</li>
+<li>
+<p><strong>Methods</strong></p>
+</li>
+<li>Query set design</li>
+<li>Provider configurations</li>
+<li>Data collection protocol</li>
+<li>
+<p>Statistical analysis plan</p>
+</li>
+<li>
+<p><strong>Results</strong></p>
+</li>
+<li>Automated metrics comparison (Table/Figure)</li>
+<li>LLM-as-judge results</li>
+<li>Human expert evaluation results</li>
+<li>Domain-specific analysis</li>
+<li>
+<p>Cost-quality trade-off analysis</p>
+</li>
+<li>
+<p><strong>Discussion</strong></p>
+</li>
+<li>Provider strengths and weaknesses</li>
+<li>When to use which tool</li>
+<li>Limitations of our evaluation</li>
+<li>
+<p>Toward a community benchmark (DARMA connection)</p>
+</li>
+<li>
+<p><strong>Conclusion</strong></p>
+</li>
+</ol>
+<h2 id="data-requirements">Data Requirements</h2>
+<h3 id="data-we-need-to-collect-not-in-repo-yet">Data We Need to Collect (not in repo yet)</h3>
+<table>
+<thead>
+<tr>
+<th>Data Type</th>
+<th>Source</th>
+<th>Format</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Benchmark query results</td>
+<td>Run drc across providers</td>
+<td>ResearchResult YAML/JSON</td>
+<td>~35 queries x 4-6 providers</td>
+</tr>
+<tr>
+<td>Automated metrics</td>
+<td>Computed from results</td>
+<td>CSV/JSON</td>
+<td>Citation counts, lengths, etc.</td>
+</tr>
+<tr>
+<td>LLM-as-judge scores</td>
+<td>Evaluation pipeline</td>
+<td>CSV/JSON</td>
+<td>Per-dimension scores</td>
+</tr>
+<tr>
+<td>Human expert scores</td>
+<td>Manual annotation</td>
+<td>CSV/JSON</td>
+<td>Subset of queries</td>
+</tr>
+<tr>
+<td>Cost data</td>
+<td>Provider billing</td>
+<td>CSV</td>
+<td>Per-query costs</td>
+</tr>
+<tr>
+<td>Gold standard key findings</td>
+<td>Expert curation</td>
+<td>Markdown/YAML</td>
+<td>Per benchmark query</td>
+</tr>
+</tbody>
+</table>
+<h3 id="connection-to-darma">Connection to DARMA</h3>
+<p>The DARMA proposal (see <code>docs/ideas/deep-research-archive.md</code>) already defines an evaluation
+object schema that aligns well with this paper's framework. The benchmark results could become
+the seed dataset for DARMA.</p>
+<h2 id="target-venues">Target Venues</h2>
+<ul>
+<li><strong>Bioinformatics / ISMB</strong> — if biomedical focus is strong</li>
+<li><strong>JCDL / SIGIR</strong> — digital libraries / information retrieval</li>
+<li><strong>NeurIPS / ICML workshop</strong> — AI tools track</li>
+<li><strong>arXiv preprint</strong> — for speed</li>
+<li><strong>JOSS</strong> — if the evaluation framework becomes a standalone tool</li>
+</ul>
+<h2 id="next-steps">Next Steps</h2>
+<ol>
+<li>[ ] Finalize benchmark query set (35 queries across domains)</li>
+<li>[ ] Run queries across all available providers (collect results)</li>
+<li>[ ] Build automated metrics computation module</li>
+<li>[ ] Design LLM-as-judge evaluation prompts</li>
+<li>[ ] Curate gold standard key findings for subset of queries</li>
+<li>[ ] Run evaluations and generate comparison tables/figures</li>
+<li>[ ] Recruit domain experts for human evaluation subset</li>
+<li>[ ] Statistical analysis and visualization</li>
+<li>[ ] Draft manuscript</li>
+<li>[ ] Review deep research output for additional related work</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

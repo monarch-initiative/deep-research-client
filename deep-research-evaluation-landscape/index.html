@@ -1,0 +1,1644 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/deep-research-evaluation-landscape/">
+      
+      
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+    
+    
+      
+        <title>Deep research evaluation landscape - deep-research-client</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../css/ansi-colours.css">
+    
+      <link rel="stylesheet" href="../css/jupyter-cells.css">
+    
+      <link rel="stylesheet" href="../css/pandas-dataframe.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#question" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deep-research-client
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deep research evaluation landscape
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deep-research-client
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Tutorials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Tutorials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/first-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Your First Query
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    How-to Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            How-to Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/choose-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Choose a Provider
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/use-cyberian-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Cyberian + Codex
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Templates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/browse-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/browse-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Files
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/proxies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Proxies
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FAQ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Reference
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Providers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Explanation
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Explanation
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Provider Comparison
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explanation/ralph-wiggum-deep-research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ralph Wiggum Tries Research
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#question" class="md-nav__link">
+    <span class="md-ellipsis">
+      Question
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-report-benchmarks-and-papers-evaluating-ai-deep-research-literature-synthesis-systems-20232024-priority" class="md-nav__link">
+    <span class="md-ellipsis">
+      Research report: Benchmarks and papers evaluating AI deep-research &amp; literature-synthesis systems (2023–2024 priority)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Research report: Benchmarks and papers evaluating AI deep-research &amp; literature-synthesis systems (2023–2024 priority)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Executive summary
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-key-concepts-and-definitions-current-understanding" class="md-nav__link">
+    <span class="md-ellipsis">
+      1) Key concepts and definitions (current understanding)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1) Key concepts and definitions (current understanding)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-deep-research-agentic-research-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 “Deep research” / “agentic research” systems
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-literature-synthesis-agents-scientific-rag-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 Literature-synthesis agents (scientific RAG agents)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-verifiability-and-citation-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.3 Verifiability and citation metrics
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-recent-developments-and-latest-research-prioritizing-20232024" class="md-nav__link">
+    <span class="md-ellipsis">
+      2) Recent developments and latest research (prioritizing 2023–2024)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2) Recent developments and latest research (prioritizing 2023–2024)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-paperqa-dec-2023-litqa-biomedical-qa-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 PaperQA (Dec 2023): LitQA + biomedical QA benchmarks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-paperqa2-litqa2-sep-2024-expert-level-literature-qa-and-human-comparisons" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 PaperQA2 + LitQA2 (Sep 2024): expert-level literature QA and human comparisons
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-openscholar-scholarqabench-nov-2024-multi-domain-literature-synthesis-with-citation-accuracy-emphasis" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 OpenScholar + ScholarQABench (Nov 2024): multi-domain literature synthesis with citation accuracy emphasis
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-answer-engines-and-web-research-audits-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 Answer engines and web research audits (2024)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2.4 Answer engines and web research audits (2024)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#answer-engine-evaluation-aee-benchmark-oct-2024" class="md-nav__link">
+    <span class="md-ellipsis">
+      Answer Engine Evaluation (AEE) benchmark (Oct 2024)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uxinteraction-measures-for-answer-engines" class="md-nav__link">
+    <span class="md-ellipsis">
+      UX/interaction measures for answer engines
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-current-applications-and-real-world-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      3) Current applications and real-world implementations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3) Current applications and real-world implementations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-scientific-literature-qa-and-synthesis" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 Scientific literature Q&amp;A and synthesis
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-generative-search-answer-engines-in-the-wild" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Generative search / “answer engines” in the wild
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-systematic-review-workflows-screening-extraction-and-writing" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 Systematic review workflows (screening, extraction, and writing)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-expert-opinions-and-analysis-from-authoritative-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      4) Expert opinions and analysis from authoritative sources
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4) Expert opinions and analysis from authoritative sources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-rag-evaluation-dimensions-and-metric-standardization" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 RAG evaluation dimensions and metric standardization
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-citations-are-not-enough-in-answer-engines" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 “Citations are not enough” in answer engines
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-relevant-statistics-and-data-recent-studies" class="md-nav__link">
+    <span class="md-ellipsis">
+      5) Relevant statistics and data (recent studies)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5) Relevant statistics and data (recent studies)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-literature-qa-synthesis" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 Literature QA / synthesis
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-answer-engine-audits" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Answer engine audits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-systematic-review-workflow-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Systematic-review workflow tasks
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-benchmarks-and-comparison-frameworks-what-to-use-and-how-to-compare-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      6) Benchmarks and comparison frameworks: what to use and how to compare tools
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6) Benchmarks and comparison frameworks: what to use and how to compare tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-three-tier-comparison-framework-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.1 Three-tier comparison framework (recommended)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-metrics-that-best-discriminate-deep-research-quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      6.2 Metrics that best discriminate deep-research quality
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-notable-gaps-and-cautions" class="md-nav__link">
+    <span class="md-ellipsis">
+      7) Notable gaps and cautions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-source-bibliography-urls-dates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Primary source bibliography (URLs + dates)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#citations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Citations
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Deep research evaluation landscape</h1>
+
+<h2 id="question">Question</h2>
+<p>What published papers or benchmarks evaluate AI deep research and literature synthesis tools? Include PaperQA, OpenAI deep research, Perplexity, and similar agentic research systems. Focus on evaluation metrics and comparison frameworks.</p>
+<h2 id="output">Output</h2>
+<p>Question: You are an expert researcher providing comprehensive, well-cited information.</p>
+<p>Provide detailed information focusing on:
+1. Key concepts and definitions with current understanding
+2. Recent developments and latest research (prioritize 2023-2024 sources)
+3. Current applications and real-world implementations
+4. Expert opinions and analysis from authoritative sources
+5. Relevant statistics and data from recent studies</p>
+<p>Format as a comprehensive research report with proper citations. Include URLs and publication dates where available.
+Always prioritize recent, authoritative sources and provide specific citations for all major claims.</p>
+<p>What published papers or benchmarks evaluate AI deep research and literature synthesis tools? Include PaperQA, OpenAI deep research, Perplexity, and similar agentic research systems. Focus on evaluation metrics and comparison frameworks.</p>
+<h2 id="research-report-benchmarks-and-papers-evaluating-ai-deep-research-literature-synthesis-systems-20232024-priority">Research report: Benchmarks and papers evaluating AI deep-research &amp; literature-synthesis systems (2023–2024 priority)</h2>
+<h3 id="executive-summary">Executive summary</h3>
+<p>Evaluation of “deep research” and literature-synthesis agents has converged on a few recurring measurement axes: (i) <em>task correctness</em> on research questions; (ii) <em>retrieval quality and coverage</em>; (iii) <em>verifiability and citation quality</em> (citation precision/recall, supported-sentence rates); (iv) <em>synthesis quality</em> (organization and nugget/claim coverage); (v) <em>human factors</em> (preference, effort, interaction behaviors); and (vi) <em>process/trace</em> properties (hallucination, tool use, forgetting). Across 2023–2024, the best-publicly-documented agentic systems (notably PaperQA2 and OpenScholar) report strong performance on literature-specific benchmarks, while commercial answer engines frequently show weaker citation accuracy and substantial unsupported content under controlled audits. (skarlinski2024languageagentsachieve pages 3-5, asai2024openscholarsynthesizingscientific pages 2-4, venkit2024searchenginesin pages 14-15)</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Date</th>
+<th>URL/DOI</th>
+<th>What is evaluated</th>
+<th>Key metrics</th>
+<th>Example quantitative results</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PaperQA (LitQA + biomed QA)</td>
+<td>2023-12</td>
+<td>https://doi.org/10.48550/arxiv.2312.07559</td>
+<td>RAG agent answering scientific questions vs. GPT-4/agents (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</td>
+<td>Accuracy on MedQA/BioASQ/PubMedQA; citation hallucination rate</td>
+<td>MedQA 68.0, BioASQ 89.0, PubMedQAblind 86.3; 0% hallucinated citations (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</td>
+</tr>
+<tr>
+<td>PaperQA2 / LitQA2</td>
+<td>2024-09</td>
+<td>https://doi.org/10.48550/arxiv.2409.13740</td>
+<td>Hard full-text literature QA + synthesis; human vs agent on retrieval/summarization/contradiction (skarlinski2024languageagentsachieve pages 1-3, skarlinski2024languageagentsachieve pages 3-5)</td>
+<td>Precision (answered-correct), Accuracy (overall), DOI Recall; contradiction detection/validation</td>
+<td>Precision 85.2%±1.1, Accuracy 66.0%±1.2; Humans: Precision 73.8%±9.6, Accuracy 67.7%±11.9; 2.34±1.99 contradictions/paper with 70% validated (skarlinski2024languageagentsachieve pages 3-5, skarlinski2024languageagentsachieve pages 1-3)</td>
+</tr>
+<tr>
+<td>OpenScholar / ScholarQABench</td>
+<td>2024-11</td>
+<td>https://doi.org/10.48550/arxiv.2411.14199</td>
+<td>Retrieval-augmented literature synthesis over 45M papers; multi-domain benchmark with expert long-form answers (asai2024openscholarsynthesizingscientific pages 2-4)</td>
+<td>Correctness, citation accuracy, coverage/coherence, human preference</td>
+<td>+7% correctness vs PaperQA2; GPT-4o citation hallucination 78–90%; expert preference: 51% (OpenScholar-8B), 70% (OpenScholar-GPT4o) vs expert refs (asai2024openscholarsynthesizingscientific pages 2-4)</td>
+</tr>
+<tr>
+<td>Venkit et al., Answer Engine Evaluation (AEE)</td>
+<td>2024-10</td>
+<td>https://doi.org/10.48550/arxiv.2410.22349</td>
+<td>Generative search engines (Perplexity, Bing Copilot, You.com): source-cited answer quality + UX (venkit2024searchenginesin pages 8-10, venkit2024searchenginesin pages 14-15)</td>
+<td>Citation accuracy/thoroughness; unsupported statements; one-sidedness/overconfidence; interaction metrics</td>
+<td>Citation accuracy: You 68.3%, Bing 65.8%, Perplexity 49.0; Unsupported statements 23–32%; significant increases in source hovering/clicking under contradictions (venkit2024searchenginesin pages 14-15, venkit2024searchenginesin pages 8-10)</td>
+</tr>
+<tr>
+<td>Knollmeyer et al., RAG eval SLR</td>
+<td>2024-01</td>
+<td>https://doi.org/10.5220/0013065700003838</td>
+<td>Systematic review of RAG evaluation dimensions/metrics/datasets (knollmeyer2024benchmarkingofretrieval pages 8-9, knollmeyer2024benchmarkingofretrieval pages 9-10)</td>
+<td>Correctness, faithfulness, answer/context relevance; citation precision/recall; Recall@k/MRR; LLM-as-judge (with pros/cons)</td>
+<td>Framework/metrics synthesis (no single benchmark score); notes limits of BERTScore vs recall for correctness (knollmeyer2024benchmarkingofretrieval pages 8-9, knollmeyer2024benchmarkingofretrieval pages 9-10)</td>
+</tr>
+<tr>
+<td>Bosse et al., Deep Research Bench (DRB)</td>
+<td>2025-05</td>
+<td>https://doi.org/10.48550/arxiv.2506.06287</td>
+<td>89 multi-step web research tasks; offline RetroSearch; evaluates commercial deep-research products incl. OpenAI Deep Research (bosse2025deepresearchbench pages 1-2)</td>
+<td>Automated trace analysis: hallucination, tool use, forgetting; task success; leaderboard</td>
+<td>Public leaderboard; comparable offline vs live-web performance; no per-system numbers in paper text excerpt (bosse2025deepresearchbench pages 1-2)</td>
+</tr>
+<tr>
+<td>Du et al., DeepResearch Bench</td>
+<td>2025-06</td>
+<td>https://doi.org/10.48550/arxiv.2506.11763</td>
+<td>100 expert-crafted deep-research tasks across 22 fields; new eval rubrics RACE/FACT (du2506deepresearchbencha pages 1-3)</td>
+<td>RACE: report quality via adaptive criteria; FACT: effective citation count, citation accuracy (with human validation)</td>
+<td>Reports agent citation accuracy and effective-citation counts; methods validated with human studies (du2506deepresearchbencha pages 1-3)</td>
+</tr>
+<tr>
+<td>Patel et al., DeepScholar‑Bench</td>
+<td>2025-08</td>
+<td>https://doi.org/10.48550/arxiv.2508.20033</td>
+<td>Live benchmark for related‑work synthesis; automated 7-metric evaluation across synthesis/retrieval/verifiability (patel2025deepscholarbenchalive pages 2-3, patel2025deepscholarbenchalive pages 1-2)</td>
+<td>Organization, Nugget Coverage, Relevance Rate, Document Importance, Reference Coverage, Citation Precision, Claim Coverage</td>
+<td>No system &gt;0.19 across all metrics; baseline pipeline provided; strong human‑agreement for metrics (patel2025deepscholarbenchalive pages 2-3, patel2025deepscholarbenchalive pages 1-2)</td>
+</tr>
+<tr>
+<td>Gwon et al., SR literature search</td>
+<td>2024-05</td>
+<td>https://doi.org/10.2196/51187</td>
+<td>ChatGPT &amp; Bing AI vs human SR search (Peyronie’s disease) using human query formula (gwon2024theuseof pages 1-2)</td>
+<td>Relevance rate; bibliographic grading (A/B/C/F)</td>
+<td>ChatGPT: 7/1287 relevant (0.5%); Bing AI: 19/48 relevant (40%); output grade distributions reported (gwon2024theuseof pages 1-2)</td>
+</tr>
+<tr>
+<td>Meliante et al., AI vs PRISMA (glaucoma SLRs)</td>
+<td>2025-09</td>
+<td>https://doi.org/10.2196/68592</td>
+<td>Elicit/Connected Papers (identification), Elicit/ChatPDF (extraction), Jenni AI (composition) vs PRISMA (meliante2025evaluationofai pages 1-2, meliante2025evaluationofai pages 4-6)</td>
+<td>Extraction accuracy/precision/missing/incorrect; retrieval coverage vs PRISMA; composition quality scores</td>
+<td>Elicit extraction: 51.4% accurate (±31.45), 22.4% missing, 12.5% incorrect; ChatPDF: 60.3% accurate (±30.7); AI tools failed to retrieve all PRISMA results (meliante2025evaluationofai pages 1-2, meliante2025evaluationofai pages 4-6)</td>
+</tr>
+</tbody>
+</table>
+<p><em>Table: Compact overview of published evaluations and benchmarks for AI deep-research and literature-synthesis systems, highlighting tasks, metrics, and representative results. Citations link to source papers; the table helps compare systems like PaperQA, OpenAI Deep Research, Perplexity, and others across consistent evaluation dimensions.</em></p>
+<hr />
+<h2 id="1-key-concepts-and-definitions-current-understanding">1) Key concepts and definitions (current understanding)</h2>
+<h3 id="11-deep-research-agentic-research-systems">1.1 “Deep research” / “agentic research” systems</h3>
+<p>In the 2023–2025 literature, deep-research agents are typically defined operationally as LLM-based systems that iteratively plan, retrieve (web or paper corpora), and synthesize <em>long-form, citation-backed</em> reports rather than answering single-shot factoids. Core behaviors include multi-step exploration, targeted retrieval, and report-style synthesis. Benchmarks such as Deep Research Bench explicitly target this multi-step web exploration + synthesis setting and emphasize controlling the changing web via frozen corpora (RetroSearch). (bosse2025deepresearchbench pages 1-2)</p>
+<h3 id="12-literature-synthesis-agents-scientific-rag-agents">1.2 Literature-synthesis agents (scientific RAG agents)</h3>
+<p>Scientific literature agents are a narrower class: they retrieve and read <em>full-text papers</em>, then synthesize answers with provenance. PaperQA and PaperQA2 frame the task as answering research questions over scientific PDFs, emphasizing reduced hallucination and transparent citations. (lala2023paperqaretrievalaugmentedgenerative pages 9-11, skarlinski2024languageagentsachieve pages 1-3)</p>
+<h3 id="13-verifiability-and-citation-metrics">1.3 Verifiability and citation metrics</h3>
+<p>A widely used conceptual split is:
+- <strong>Citation precision</strong>: fraction of provided citations that truly support the associated claim/sentence.
+- <strong>Citation recall / thoroughness</strong>: degree to which <em>all</em> verification-worthy claims are supported by citations.
+These are used in audits of answer engines (e.g., AEE) and in RAG evaluation frameworks and reviews. (venkit2024searchenginesin pages 14-15, knollmeyer2024benchmarkingofretrieval pages 8-9)</p>
+<p>A critical nuance in recent work is that <em>correctness of a statement</em> is not the same as <em>faithfulness of attribution</em> (whether the model truly relied on the cited evidence), motivating separate measurement of correctness vs faithfulness. (knollmeyer2024benchmarkingofretrieval pages 8-9)</p>
+<hr />
+<h2 id="2-recent-developments-and-latest-research-prioritizing-20232024">2) Recent developments and latest research (prioritizing 2023–2024)</h2>
+<h3 id="21-paperqa-dec-2023-litqa-biomedical-qa-benchmarks">2.1 PaperQA (Dec 2023): LitQA + biomedical QA benchmarks</h3>
+<p><strong>PaperQA</strong> introduced an agent that retrieves across full-text papers and answers with citations, and it introduced <strong>LitQA</strong> as a harder full-text retrieval benchmark (50 questions). PaperQA also evaluated on PubMedQA (context withheld), MedQA, and BioASQ. Reported scores (100 sampled questions per dataset) showed PaperQA outperforming GPT-4 on these science/biomedical QA settings (e.g., PubMedQAblind 86.3 vs GPT-4 57.9) and reporting <em>no hallucinated citations</em> vs literature-reported high citation-hallucination rates for non-grounded LLMs. (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</p>
+<p><strong>Why it matters for evaluation</strong>: PaperQA combines (a) standard benchmark accuracy and (b) explicit citation-hallucination auditing as a trust metric. (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</p>
+<h3 id="22-paperqa2-litqa2-sep-2024-expert-level-literature-qa-and-human-comparisons">2.2 PaperQA2 + LitQA2 (Sep 2024): expert-level literature QA and human comparisons</h3>
+<p>Skarlinski et al. introduced <strong>LitQA2</strong> (248 expert-generated multiple-choice questions) with constraints that answers appear in the <em>main body</em> (not abstracts) and are ideally unique in the literature. They define three key metrics:
+- <strong>Precision</strong>: fraction correct <em>given the system answered</em>.
+- <strong>Accuracy</strong>: fraction correct overall.
+- <strong>DOI recall</strong>: fraction of answers attributed to the correct source DOI (i.e., source-level retrieval attribution). (skarlinski2024languageagentsachieve pages 1-3)</p>
+<p>They report <strong>PaperQA2</strong> performance and a direct human comparison:
+- PaperQA2: precision <strong>85.2% ± 1.1</strong>, accuracy <strong>66.0% ± 1.2</strong>, and it chose “insufficient information” <strong>21.9% ± 0.9</strong>; it parsed ~<strong>14.5 ± 0.6</strong> papers per question. (skarlinski2024languageagentsachieve pages 3-5)
+- Human experts: precision <strong>73.8% ± 9.6</strong>, accuracy <strong>67.7% ± 11.9</strong>. PaperQA2 had significantly higher precision than humans and similar accuracy. (skarlinski2024languageagentsachieve pages 3-5)</p>
+<p>Beyond QA, they evaluate contradiction detection: PaperQA2 found <strong>2.34 ± 1.99</strong> contradictions per paper in a sample of <strong>93</strong> biology papers, with <strong>70%</strong> of identified contradictions validated by human experts. (skarlinski2024languageagentsachieve pages 1-3)</p>
+<p><strong>Inclusion of Perplexity</strong>: The same work reports running <strong>Perplexity Pro (GPT-4o)</strong> manually over all 248 LitQA2 questions and scoring it with the same metrics as PaperQA2 (accuracy/precision/DOI-recall framework), though the provided excerpt does not include Perplexity’s final numeric score table. (skarlinski2024languageagentsachieve pages 16-18)</p>
+<h3 id="23-openscholar-scholarqabench-nov-2024-multi-domain-literature-synthesis-with-citation-accuracy-emphasis">2.3 OpenScholar + ScholarQABench (Nov 2024): multi-domain literature synthesis with citation accuracy emphasis</h3>
+<p>Asai et al. introduced <strong>OpenScholar</strong>, a retrieval-augmented LM over an open-access datastore (reported as <strong>45M</strong> papers) and a new benchmark <strong>ScholarQABench</strong> for multi-domain literature search/synthesis with expert-authored long-form answers. Evaluation emphasizes <strong>correctness</strong> and <strong>citation accuracy</strong> and includes expert preference tests.</p>
+<p>Key reported results include:
+- OpenScholar correctness improvements vs baselines: OpenScholar outperforms GPT-4o and reports improvements relative to PaperQA2 and Perplexity Pro (as summarized in the excerpt). (asai2024openscholarsynthesizingscientific pages 2-4)
+- Citation behavior: the paper reports GPT-4o “hallucinates citations” at <strong>78–90%</strong> in their setting, while OpenScholar achieves citation accuracy comparable to human experts (as stated in the excerpt). (asai2024openscholarsynthesizingscientific pages 2-4)
+- Expert preference: OpenScholar-8B and OpenScholar-GPT4o are preferred over expert-written responses <strong>51%</strong> and <strong>70%</strong> of the time, respectively, while GPT-4o alone is preferred <strong>31%</strong> of the time. (asai2024openscholarsynthesizingscientific pages 2-4)</p>
+<p><strong>Why it matters</strong>: ScholarQABench is explicitly designed as a literature-synthesis benchmark rather than a standard QA benchmark, and it couples correctness with citation accuracy and human preference. (asai2024openscholarsynthesizingscientific pages 2-4)</p>
+<h3 id="24-answer-engines-and-web-research-audits-2024">2.4 Answer engines and web research audits (2024)</h3>
+<h4 id="answer-engine-evaluation-aee-benchmark-oct-2024">Answer Engine Evaluation (AEE) benchmark (Oct 2024)</h4>
+<p>Venkit et al. introduce an <strong>Answer Engine Evaluation (AEE)</strong> with <strong>303</strong> queries and compute metrics that connect user-reported limitations to measurable indicators. They evaluate <strong>You.com, BingChat/Copilot, and Perplexity</strong>.</p>
+<p>Representative metrics and results include:
+- <strong>Unsupported statements</strong>: ~<strong>23–32%</strong> across engines. (venkit2024searchenginesin pages 14-15)
+- <strong>Citation accuracy</strong>: You <strong>68.3%</strong>, Bing <strong>65.8%</strong>, Perplexity <strong>49.0%</strong>. (venkit2024searchenginesin pages 14-15)
+- <strong>Citation thoroughness</strong>: ~<strong>20–24%</strong>. (venkit2024searchenginesin pages 14-15)
+- Also tracked: one-sidedness, overconfidence, sources per answer, citations per statement. (venkit2024searchenginesin pages 14-15)</p>
+<h4 id="uxinteraction-measures-for-answer-engines">UX/interaction measures for answer engines</h4>
+<p>The same paper reports user-study-derived interaction measures (e.g., users hovered and clicked more sources under contradictory questions than aligned questions, with statistically significant differences), tying evaluation to <em>verification effort</em> rather than only output quality. (venkit2024searchenginesin pages 8-10)</p>
+<hr />
+<h2 id="3-current-applications-and-real-world-implementations">3) Current applications and real-world implementations</h2>
+<h3 id="31-scientific-literature-qa-and-synthesis">3.1 Scientific literature Q&amp;A and synthesis</h3>
+<ul>
+<li><strong>PaperQA/PaperQA2</strong>: positioned as scientific research assistants for literature Q&amp;A, synthesis, and contradiction discovery, with explicit citations and benchmark-driven development (LitQA/LitQA2). (lala2023paperqaretrievalaugmentedgenerative pages 9-11, skarlinski2024languageagentsachieve pages 1-3)</li>
+<li><strong>OpenScholar</strong>: an open retrieval-augmented approach over very large scholarly corpora, evaluated on a dedicated literature-synthesis benchmark, with emphasis on citation accuracy and expert preference. (asai2024openscholarsynthesizingscientific pages 2-4)</li>
+</ul>
+<h3 id="32-generative-search-answer-engines-in-the-wild">3.2 Generative search / “answer engines” in the wild</h3>
+<ul>
+<li>Commercial “answer engines” (Perplexity, Bing Copilot, You.com) are evaluated as consumer-facing web research products where <em>citations exist but are often incomplete or inaccurate</em>, and users must expend additional verification effort. (venkit2024searchenginesin pages 14-15, venkit2024searchenginesin pages 8-10)</li>
+</ul>
+<h3 id="33-systematic-review-workflows-screening-extraction-and-writing">3.3 Systematic review workflows (screening, extraction, and writing)</h3>
+<p>Peer-reviewed evaluations in healthcare show that present-day AI tools can assist but often fail to match PRISMA rigor.
+- <strong>Meliante et al. (Sep 2025)</strong>: tested <strong>Connected Papers</strong> and <strong>Elicit</strong> for identification; <strong>Elicit</strong> and <strong>ChatPDF</strong> for extraction; and <strong>Jenni AI</strong> for composition. They report Elicit extraction averaged <strong>51.40%</strong> accurate (SD 31.45%), <strong>22.37%</strong> missing, <strong>12.51%</strong> incorrect; ChatPDF averaged <strong>60.33%</strong> accurate (SD 30.72%). Tools did not retrieve the full PRISMA set. (meliante2025evaluationofai pages 1-2, meliante2025evaluationofai pages 4-6)
+- <strong>Gwon et al. (May 2024)</strong>: compared ChatGPT vs Bing AI against a human systematic review benchmark; ChatGPT returned <strong>7/1287</strong> directly relevant studies (<strong>0.5%</strong>) vs Bing AI <strong>19/48</strong> (<strong>40%</strong>), using a bibliographic grading scheme. (gwon2024theuseof pages 1-2)</p>
+<p>These studies illustrate “real-world implementations” where evaluation is grounded in <em>replicating a published systematic review</em>, but they also underscore that deep-research-style tools still require expert oversight for high-stakes evidence synthesis. (meliante2025evaluationofai pages 1-2, gwon2024theuseof pages 1-2)</p>
+<hr />
+<h2 id="4-expert-opinions-and-analysis-from-authoritative-sources">4) Expert opinions and analysis from authoritative sources</h2>
+<h3 id="41-rag-evaluation-dimensions-and-metric-standardization">4.1 RAG evaluation dimensions and metric standardization</h3>
+<p>Knollmeyer et al. (Jan 2024) synthesize evaluation practice for RAG systems and highlight that robust evaluation requires separating retrieval vs generation and measuring multiple dimensions:
+- <strong>Correctness</strong>, <strong>faithfulness</strong>, <strong>context relevance</strong>, <strong>answer relevance</strong>, and <strong>citation quality</strong>.
+- Citation quality is commonly operationalized with <strong>citation precision</strong> and <strong>citation recall</strong>; retrieval quality via <strong>Recall@k</strong> and <strong>MRR@k</strong>.
+- The review notes that LLM-as-a-judge approaches can better capture multi-hop, multi-context cases but introduce latency/cost and dependence on the judge model. (knollmeyer2024benchmarkingofretrieval pages 9-10, knollmeyer2024benchmarkingofretrieval pages 8-9)</p>
+<p>This aligns with how dedicated literature-synthesis benchmarks (LitQA2, ScholarQABench, DeepScholar-Bench) increasingly use multi-metric and often human-validated evaluation. (skarlinski2024languageagentsachieve pages 3-5, asai2024openscholarsynthesizingscientific pages 2-4, patel2025deepscholarbenchalive pages 2-3)</p>
+<h3 id="42-citations-are-not-enough-in-answer-engines">4.2 “Citations are not enough” in answer engines</h3>
+<p>Venkit et al. argue that merely providing citations does not ensure factual/verifiable responses; their AEE audit finds substantial unsupported content and low citation thoroughness, and their user study identifies limitations such as limited user control over sources and extra verification work. (venkit2024searchenginesin pages 14-15, venkit2024searchenginesin pages 8-10)</p>
+<hr />
+<h2 id="5-relevant-statistics-and-data-recent-studies">5) Relevant statistics and data (recent studies)</h2>
+<h3 id="51-literature-qa-synthesis">5.1 Literature QA / synthesis</h3>
+<ul>
+<li>PaperQA (Dec 2023): PubMedQAblind <strong>86.3</strong> vs GPT-4 <strong>57.9</strong> (100-question sample); also reports <strong>0</strong> hallucinated citations in its outputs. (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</li>
+<li>PaperQA2 (Sep 2024): precision <strong>85.2% ± 1.1</strong> vs human <strong>73.8% ± 9.6</strong>; accuracy similar to humans (<strong>66.0% ± 1.2</strong> vs <strong>67.7% ± 11.9</strong>). (skarlinski2024languageagentsachieve pages 3-5)</li>
+<li>PaperQA2 contradiction detection: <strong>2.34 ± 1.99</strong> contradictions per paper; <strong>70%</strong> validated by experts. (skarlinski2024languageagentsachieve pages 1-3)</li>
+<li>OpenScholar (Nov 2024): GPT-4o citation hallucination <strong>78–90%</strong> (in their study setting), while OpenScholar reports citation accuracy on par with human experts; expert preference wins up to <strong>70%</strong> in pairwise comparisons (depending on system variant). (asai2024openscholarsynthesizingscientific pages 2-4)</li>
+</ul>
+<h3 id="52-answer-engine-audits">5.2 Answer engine audits</h3>
+<ul>
+<li>AEE (Oct 2024): citation accuracy You <strong>68.3%</strong>, Bing <strong>65.8%</strong>, Perplexity <strong>49.0%</strong>; citation thoroughness ~<strong>20–24%</strong>; unsupported statements ~<strong>23–32%</strong>. (venkit2024searchenginesin pages 14-15)</li>
+</ul>
+<h3 id="53-systematic-review-workflow-tasks">5.3 Systematic-review workflow tasks</h3>
+<ul>
+<li>Gwon et al. (May 2024): ChatGPT <strong>0.5%</strong> directly relevant (7/1287) vs Bing AI <strong>40%</strong> relevant (19/48) on a benchmark systematic-review query formula. (gwon2024theuseof pages 1-2)</li>
+<li>Meliante et al. (Sep 2025): Elicit extraction <strong>51.4%</strong> accurate vs ChatPDF <strong>60.3%</strong> accurate over 1,274 extraction items; substantial missing/incorrect fractions. (meliante2025evaluationofai pages 1-2, meliante2025evaluationofai pages 4-6)</li>
+</ul>
+<hr />
+<h2 id="6-benchmarks-and-comparison-frameworks-what-to-use-and-how-to-compare-tools">6) Benchmarks and comparison frameworks: what to use and how to compare tools</h2>
+<h3 id="61-three-tier-comparison-framework-recommended">6.1 Three-tier comparison framework (recommended)</h3>
+<p><strong>Tier A: Literature-grounded QA/synthesis (scientific PDFs / scholarly corpora)</strong>
+- <strong>LitQA/LitQA2</strong> (PaperQA): measures correctness plus source attribution via DOI recall; includes refusal option for insufficient information. (skarlinski2024languageagentsachieve pages 1-3)
+- <strong>ScholarQABench</strong> (OpenScholar): multi-domain literature search + long-form synthesis; emphasizes correctness and citation accuracy; uses expert preference. (asai2024openscholarsynthesizingscientific pages 2-4)</p>
+<p><strong>Tier B: Web deep-research (dynamic web; multi-step browsing and synthesis)</strong>
+- <strong>Deep Research Bench (DRB)</strong>: evaluates research products such as OpenAI Deep Research using a frozen web corpus (RetroSearch) and analyzes agent traces for hallucination/tool-use/forgetting. (bosse2025deepresearchbench pages 1-2)
+- <strong>DeepResearch Bench (Du et al.)</strong>: proposes RACE (report-quality rubric) and FACT (effective citation count, citation accuracy) for 100 expert-crafted tasks. (du2506deepresearchbencha pages 1-3)
+- <strong>LiveDRBench</strong>: evaluates OpenAI/Perplexity/Google deep-research systems with claim-level modified precision/recall; reports OpenAI highest average F1 <strong>0.55</strong> in the excerpt. (java2025characterizingdeepresearch pages 3-5)</p>
+<p><strong>Tier C: Generative search engines (“answer engines”)</strong>
+- <strong>AEE</strong>: aligns user-perceived limitations to measurable metrics (unsupported statements, citation accuracy/thoroughness, one-sidedness, overconfidence) on curated query sets. (venkit2024searchenginesin pages 14-15)</p>
+<h3 id="62-metrics-that-best-discriminate-deep-research-quality">6.2 Metrics that best discriminate deep-research quality</h3>
+<p>Drawing from benchmark definitions and RAG evaluation surveys, the following metric families are most diagnostic:
+1. <strong>Correctness / task success</strong>: accuracy, rubric-based correctness, or claim-level scoring. (skarlinski2024languageagentsachieve pages 3-5, java2025characterizingdeepresearch pages 3-5)
+2. <strong>Attribution quality</strong>: citation precision, citation recall/thoroughness, “supported sentence” rates, DOI recall. (skarlinski2024languageagentsachieve pages 1-3, venkit2024searchenginesin pages 14-15, knollmeyer2024benchmarkingofretrieval pages 8-9)
+3. <strong>Coverage / completeness</strong>: nugget coverage, claim coverage, reference coverage, document importance (notability). (patel2025deepscholarbenchalive pages 2-3)
+4. <strong>Human evaluation</strong>: pairwise preference, expert grading; also time/effort proxies such as click/hover behavior under contradictions. (asai2024openscholarsynthesizingscientific pages 2-4, venkit2024searchenginesin pages 8-10)
+5. <strong>Agent process robustness</strong>: hallucination incidence, tool-use quality, forgetting, stability under offline-vs-live web. (bosse2025deepresearchbench pages 1-2)</p>
+<hr />
+<h2 id="7-notable-gaps-and-cautions">7) Notable gaps and cautions</h2>
+<ul>
+<li><strong>Liu et al. (Apr 2023) verifiability audit</strong>: the available excerpt here documents dataset construction and annotation workflow but does not include the numeric citation precision/recall results; use the full paper for the reported supported-sentence and citation-precision statistics. (liu2023evaluatingverifiabilityin pages 11-13)</li>
+<li><strong>Perplexity on LitQA2</strong>: PaperQA2 reports running Perplexity Pro across all questions with identical scoring, but the numeric results are not present in the provided excerpt (tables are referenced but not included). (skarlinski2024languageagentsachieve pages 16-18)</li>
+<li><strong>DRB (Bosse et al.)</strong>: confirms OpenAI Deep Research is included and describes evaluation design, but per-system numeric scores are not in the excerpted pages; the public leaderboard is the likely source for detailed numbers. (bosse2025deepresearchbench pages 1-2)</li>
+</ul>
+<hr />
+<h2 id="primary-source-bibliography-urls-dates">Primary source bibliography (URLs + dates)</h2>
+<ul>
+<li>L’ala et al. <em>PaperQA: Retrieval-Augmented Generative Agent for Scientific Research</em>. arXiv (2023-12). https://doi.org/10.48550/arxiv.2312.07559 (lala2023paperqaretrievalaugmentedgenerative pages 9-11)</li>
+<li>Skarlinski et al. <em>Language agents achieve superhuman synthesis of scientific knowledge</em>. arXiv (2024-09). https://doi.org/10.48550/arxiv.2409.13740 (skarlinski2024languageagentsachieve pages 3-5)</li>
+<li>Asai et al. <em>OpenScholar: Synthesizing Scientific Literature with Retrieval-augmented LMs</em>. arXiv (2024-11). https://doi.org/10.48550/arxiv.2411.14199 (asai2024openscholarsynthesizingscientific pages 2-4)</li>
+<li>Venkit et al. <em>Search Engines in an AI Era: The False Promise of Factual and Verifiable Source-Cited Responses</em>. arXiv (2024-10). https://doi.org/10.48550/arxiv.2410.22349 (venkit2024searchenginesin pages 14-15)</li>
+<li>Liu et al. <em>Evaluating Verifiability in Generative Search Engines</em>. arXiv (2023-04). https://doi.org/10.48550/arxiv.2304.09848 (liu2023evaluatingverifiabilityin pages 11-13)</li>
+<li>Knollmeyer et al. <em>Benchmarking of Retrieval Augmented Generation: A Systematic Literature Review on Evaluation Dimensions, Metrics and Datasets</em>. KEOD (2024-01). https://doi.org/10.5220/0013065700003838 (knollmeyer2024benchmarkingofretrieval pages 9-10)</li>
+<li>Bosse et al. <em>Deep Research Bench: Evaluating AI Web Research Agents</em>. arXiv (2025-05). https://doi.org/10.48550/arxiv.2506.06287 (bosse2025deepresearchbench pages 1-2)</li>
+<li>Du et al. <em>DeepResearch Bench: A Comprehensive Benchmark for Deep Research Agents</em>. arXiv (2025-06). https://doi.org/10.48550/arxiv.2506.11763 (du2506deepresearchbencha pages 1-3)</li>
+<li>Patel et al. <em>DeepScholar-Bench: A Live Benchmark and Automated Evaluation for Generative Research Synthesis</em>. arXiv (2025-08). https://doi.org/10.48550/arxiv.2508.20033 (patel2025deepscholarbenchalive pages 2-3)</li>
+<li>Gwon et al. <em>The Use of Generative AI for Scientific Literature Searches for Systematic Reviews: ChatGPT and Microsoft Bing AI Performance Evaluation</em>. JMIR Med Inform (2024-05). https://doi.org/10.2196/51187 (gwon2024theuseof pages 1-2)</li>
+<li>Meliante et al. <em>Evaluation of AI Tools Versus the PRISMA Method for Literature Search, Data Extraction, and Study Composition in Glaucoma Systematic Reviews</em>. JMIR AI (2025-09). https://doi.org/10.2196/68592 (meliante2025evaluationofai pages 1-2)</li>
+</ul>
+<p>References</p>
+<ol>
+<li>
+<p>(skarlinski2024languageagentsachieve pages 3-5): Michael D. Skarlinski, Sam Cox, Jon M. Laurent, James D. Braza, Michaela Hinks, Michael J. Hammerling, Manvitha Ponnapati, Samuel G. Rodriques, and Andrew D. White. Language agents achieve superhuman synthesis of scientific knowledge. ArXiv, Sep 2024. URL: https://doi.org/10.48550/arxiv.2409.13740, doi:10.48550/arxiv.2409.13740. This article has 132 citations.</p>
+</li>
+<li>
+<p>(asai2024openscholarsynthesizingscientific pages 2-4): Akari Asai, Jacqueline He, Rulin Shao, Weijia Shi, Amanpreet Singh, Joseph Chee Chang, Kyle Lo, Luca Soldaini, Sergey Feldman, Mike D'arcy, David Wadden, Matt Latzke, Minyang Tian, Pan Ji, Shengyan Liu, Hao Tong, Bohao Wu, Yanyu Xiong, Luke Zettlemoyer, Graham Neubig, Dan Weld, Doug Downey, Wen-tau Yih, Pang Wei Koh, and Hannaneh Hajishirzi. Openscholar: synthesizing scientific literature with retrieval-augmented lms. ArXiv, Nov 2024. URL: https://doi.org/10.48550/arxiv.2411.14199, doi:10.48550/arxiv.2411.14199. This article has 70 citations.</p>
+</li>
+<li>
+<p>(venkit2024searchenginesin pages 14-15): Pranav Narayanan Venkit, Philippe Laban, Yilun Zhou, Yixin Mao, and Chien-Sheng Wu. Search engines in an ai era: the false promise of factual and verifiable source-cited responses. ArXiv, Oct 2024. URL: https://doi.org/10.48550/arxiv.2410.22349, doi:10.48550/arxiv.2410.22349. This article has 19 citations.</p>
+</li>
+<li>
+<p>(lala2023paperqaretrievalaugmentedgenerative pages 9-11): Jakub L'ala, Odhran O'Donoghue, Aleksandar Shtedritski, Sam Cox, Samuel G. Rodriques, and Andrew D. White. Paperqa: retrieval-augmented generative agent for scientific research. ArXiv, Dec 2023. URL: https://doi.org/10.48550/arxiv.2312.07559, doi:10.48550/arxiv.2312.07559. This article has 219 citations.</p>
+</li>
+<li>
+<p>(skarlinski2024languageagentsachieve pages 1-3): Michael D. Skarlinski, Sam Cox, Jon M. Laurent, James D. Braza, Michaela Hinks, Michael J. Hammerling, Manvitha Ponnapati, Samuel G. Rodriques, and Andrew D. White. Language agents achieve superhuman synthesis of scientific knowledge. ArXiv, Sep 2024. URL: https://doi.org/10.48550/arxiv.2409.13740, doi:10.48550/arxiv.2409.13740. This article has 132 citations.</p>
+</li>
+<li>
+<p>(venkit2024searchenginesin pages 8-10): Pranav Narayanan Venkit, Philippe Laban, Yilun Zhou, Yixin Mao, and Chien-Sheng Wu. Search engines in an ai era: the false promise of factual and verifiable source-cited responses. ArXiv, Oct 2024. URL: https://doi.org/10.48550/arxiv.2410.22349, doi:10.48550/arxiv.2410.22349. This article has 19 citations.</p>
+</li>
+<li>
+<p>(knollmeyer2024benchmarkingofretrieval pages 8-9): Simon Knollmeyer, Oğuz Caymazer, Leonid Koval, Muhammad Uzair Akmal, Saara Asif, Selvine G. Mathias, and Daniel Grossmann. Benchmarking of retrieval augmented generation: a comprehensive systematic literature review on evaluation dimensions, evaluation metrics and datasets. Proceedings of the 16th International Joint Conference on Knowledge Discovery, Knowledge Engineering and Knowledge Management, pages 137-148, Jan 2024. URL: https://doi.org/10.5220/0013065700003838, doi:10.5220/0013065700003838. This article has 10 citations.</p>
+</li>
+<li>
+<p>(knollmeyer2024benchmarkingofretrieval pages 9-10): Simon Knollmeyer, Oğuz Caymazer, Leonid Koval, Muhammad Uzair Akmal, Saara Asif, Selvine G. Mathias, and Daniel Grossmann. Benchmarking of retrieval augmented generation: a comprehensive systematic literature review on evaluation dimensions, evaluation metrics and datasets. Proceedings of the 16th International Joint Conference on Knowledge Discovery, Knowledge Engineering and Knowledge Management, pages 137-148, Jan 2024. URL: https://doi.org/10.5220/0013065700003838, doi:10.5220/0013065700003838. This article has 10 citations.</p>
+</li>
+<li>
+<p>(bosse2025deepresearchbench pages 1-2): Nikos I. Bosse, Jon Evans, Robert G. Gambee, Daniel Hnyk, Peter Mühlbacher, Lawrence Phillips, Dan Schwarz, and Jack Wildman. Deep research bench: evaluating ai web research agents. ArXiv, May 2025. URL: https://doi.org/10.48550/arxiv.2506.06287, doi:10.48550/arxiv.2506.06287. This article has 12 citations.</p>
+</li>
+<li>
+<p>(du2506deepresearchbencha pages 1-3): Mingxuan Du, Benfeng Xu, Chiwei Zhu, Xiaorui Wang, and Zhendong Mao. Deepresearch bench: a comprehensive benchmark for deep research agents. ArXiv, Jun 2506. URL: https://doi.org/10.48550/arxiv.2506.11763, doi:10.48550/arxiv.2506.11763. This article has 81 citations.</p>
+</li>
+<li>
+<p>(patel2025deepscholarbenchalive pages 2-3): Liana Patel, Negar Arabzadeh, Harshit Gupta, Ankita Sundar, Ion Stoica, Matei Zaharia, and Carlos Guestrin. Deepscholar-bench: a live benchmark and automated evaluation for generative research synthesis. ArXiv, Aug 2025. URL: https://doi.org/10.48550/arxiv.2508.20033, doi:10.48550/arxiv.2508.20033. This article has 12 citations.</p>
+</li>
+<li>
+<p>(patel2025deepscholarbenchalive pages 1-2): Liana Patel, Negar Arabzadeh, Harshit Gupta, Ankita Sundar, Ion Stoica, Matei Zaharia, and Carlos Guestrin. Deepscholar-bench: a live benchmark and automated evaluation for generative research synthesis. ArXiv, Aug 2025. URL: https://doi.org/10.48550/arxiv.2508.20033, doi:10.48550/arxiv.2508.20033. This article has 12 citations.</p>
+</li>
+<li>
+<p>(gwon2024theuseof pages 1-2): Yong Nam Gwon, Jae Heon Kim, Hyun Soo Chung, Eun Jee Jung, Joey Chun, Serin Lee, and Sung Ryul Shim. The use of generative ai for scientific literature searches for systematic reviews: chatgpt and microsoft bing ai performance evaluation. JMIR Medical Informatics, 12:e51187-e51187, May 2024. URL: https://doi.org/10.2196/51187, doi:10.2196/51187. This article has 66 citations and is from a peer-reviewed journal.</p>
+</li>
+<li>
+<p>(meliante2025evaluationofai pages 1-2): Laura Antonia Meliante, Giulia Coco, Alessandro Rabiolo, Stefano De Cillà, and Gianluca Manni. Evaluation of ai tools versus the prisma method for literature search, data extraction, and study composition in glaucoma systematic reviews: content analysis. JMIR AI, 4:e68592-e68592, Sep 2025. URL: https://doi.org/10.2196/68592, doi:10.2196/68592. This article has 4 citations and is from a peer-reviewed journal.</p>
+</li>
+<li>
+<p>(meliante2025evaluationofai pages 4-6): Laura Antonia Meliante, Giulia Coco, Alessandro Rabiolo, Stefano De Cillà, and Gianluca Manni. Evaluation of ai tools versus the prisma method for literature search, data extraction, and study composition in glaucoma systematic reviews: content analysis. JMIR AI, 4:e68592-e68592, Sep 2025. URL: https://doi.org/10.2196/68592, doi:10.2196/68592. This article has 4 citations and is from a peer-reviewed journal.</p>
+</li>
+<li>
+<p>(skarlinski2024languageagentsachieve pages 16-18): Michael D. Skarlinski, Sam Cox, Jon M. Laurent, James D. Braza, Michaela Hinks, Michael J. Hammerling, Manvitha Ponnapati, Samuel G. Rodriques, and Andrew D. White. Language agents achieve superhuman synthesis of scientific knowledge. ArXiv, Sep 2024. URL: https://doi.org/10.48550/arxiv.2409.13740, doi:10.48550/arxiv.2409.13740. This article has 132 citations.</p>
+</li>
+<li>
+<p>(java2025characterizingdeepresearch pages 3-5): Abhinav Java, Ashmit Khandelwal, S. Midigeshi, Aaron Halfaker, Amit Deshpande, Navin Goyal, Ankur Gupta, Nagarajan Natarajan, and Amit Sharma. Characterizing deep research: a benchmark and formal definition. ArXiv, Aug 2025. URL: https://doi.org/10.48550/arxiv.2508.04183, doi:10.48550/arxiv.2508.04183. This article has 16 citations.</p>
+</li>
+<li>
+<p>(liu2023evaluatingverifiabilityin pages 11-13): Nelson F. Liu, Tianyi Zhang, and Percy Liang. Evaluating verifiability in generative search engines. ArXiv, Apr 2023. URL: https://doi.org/10.48550/arxiv.2304.09848, doi:10.48550/arxiv.2304.09848. This article has 345 citations.</p>
+</li>
+</ol>
+<h2 id="citations">Citations</h2>
+<ol>
+<li>lala2023paperqaretrievalaugmentedgenerative pages 9-11</li>
+<li>asai2024openscholarsynthesizingscientific pages 2-4</li>
+<li>bosse2025deepresearchbench pages 1-2</li>
+<li>du2506deepresearchbencha pages 1-3</li>
+<li>gwon2024theuseof pages 1-2</li>
+<li>knollmeyer2024benchmarkingofretrieval pages 8-9</li>
+<li>skarlinski2024languageagentsachieve pages 1-3</li>
+<li>skarlinski2024languageagentsachieve pages 3-5</li>
+<li>skarlinski2024languageagentsachieve pages 16-18</li>
+<li>venkit2024searchenginesin pages 14-15</li>
+<li>venkit2024searchenginesin pages 8-10</li>
+<li>java2025characterizingdeepresearch pages 3-5</li>
+<li>patel2025deepscholarbenchalive pages 2-3</li>
+<li>liu2023evaluatingverifiabilityin pages 11-13</li>
+<li>knollmeyer2024benchmarkingofretrieval pages 9-10</li>
+<li>meliante2025evaluationofai pages 1-2</li>
+<li>patel2025deepscholarbenchalive pages 1-2</li>
+<li>meliante2025evaluationofai pages 4-6</li>
+<li>https://doi.org/10.48550/arxiv.2312.07559</li>
+<li>https://doi.org/10.48550/arxiv.2409.13740</li>
+<li>https://doi.org/10.48550/arxiv.2411.14199</li>
+<li>https://doi.org/10.48550/arxiv.2410.22349</li>
+<li>https://doi.org/10.5220/0013065700003838</li>
+<li>https://doi.org/10.48550/arxiv.2506.06287</li>
+<li>https://doi.org/10.48550/arxiv.2506.11763</li>
+<li>https://doi.org/10.48550/arxiv.2508.20033</li>
+<li>https://doi.org/10.2196/51187</li>
+<li>https://doi.org/10.2196/68592</li>
+<li>https://doi.org/10.48550/arxiv.2304.09848</li>
+<li>https://doi.org/10.48550/arxiv.2409.13740,</li>
+<li>https://doi.org/10.48550/arxiv.2411.14199,</li>
+<li>https://doi.org/10.48550/arxiv.2410.22349,</li>
+<li>https://doi.org/10.48550/arxiv.2312.07559,</li>
+<li>https://doi.org/10.5220/0013065700003838,</li>
+<li>https://doi.org/10.48550/arxiv.2506.06287,</li>
+<li>https://doi.org/10.48550/arxiv.2506.11763,</li>
+<li>https://doi.org/10.48550/arxiv.2508.20033,</li>
+<li>https://doi.org/10.2196/51187,</li>
+<li>https://doi.org/10.2196/68592,</li>
+<li>https://doi.org/10.48550/arxiv.2508.04183,</li>
+<li>https://doi.org/10.48550/arxiv.2304.09848,</li>
+</ol>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

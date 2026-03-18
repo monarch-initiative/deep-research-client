@@ -44,6 +44,7 @@ class EvalConfig:
     run_race: bool = True
     run_intrinsic: bool = True
     gene_symbol: str | None = None
+    llm_model: str = "gpt-4o-mini"
 
 
 def load_entities(config: EvalConfig) -> list[GroundTruthEntity]:
@@ -62,7 +63,7 @@ def load_entities(config: EvalConfig) -> list[GroundTruthEntity]:
         if not fpath.exists():
             logger.warning("File not found: %s", fpath)
             continue
-        if "disorders" in str(fpath) or fpath.name.endswith(".yaml") and "ai-review" not in fpath.name:
+        if "disorders" in str(fpath) or (fpath.name.endswith(".yaml") and "ai-review" not in fpath.name):
             entities.append(load_dismech_entity(fpath))
         else:
             entities.append(load_gene_review_entity(fpath))
@@ -152,7 +153,7 @@ async def score_output(
 
     try:
         if config.run_fact:
-            result.fact_score = await score_fact(dr_output, llm_client, pubmed_client)
+            result.fact_score = await score_fact(dr_output, llm_client, pubmed_client, model=config.llm_model)
             logger.info(
                 "FACT score for %s/%s: accuracy=%.2f, effective=%d",
                 task.task_id,
@@ -167,7 +168,7 @@ async def score_output(
     try:
         if config.run_claim_recall:
             result.claim_recall_score = await score_claim_recall(
-                dr_output, task.ground_truth_claims, llm_client
+                dr_output, task.ground_truth_claims, llm_client, model=config.llm_model
             )
             logger.info(
                 "Claim recall for %s/%s: %.2f (%d/%d)",
@@ -186,7 +187,7 @@ async def score_output(
 
     try:
         if config.run_race:
-            result.race_score = await score_race(dr_output, task, llm_client)
+            result.race_score = await score_race(dr_output, task, llm_client, model=config.llm_model)
             logger.info(
                 "RACE score for %s/%s: %.2f",
                 task.task_id,

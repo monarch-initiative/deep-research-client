@@ -166,6 +166,7 @@ class TestLoaderHelpers:
         assert _parse_evidence(None) == []
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("yaml_path", [
     Path("/tmp/dismech/kb/disorders/Achondroplasia.yaml"),
 ])
@@ -184,6 +185,7 @@ def test_load_dismech_entity(yaml_path):
     assert "treatment" in categories
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("yaml_path", [
     Path("/tmp/ai-gene-review/genes/human/BRCA1/BRCA1-ai-review.yaml"),
 ])
@@ -298,6 +300,7 @@ class TestRunner:
         assert len(dr.extracted_citations) == 1
         assert dr.extracted_citations[0].normalized_id == "PMID:7913883"
 
+    @pytest.mark.integration
     def test_load_entities_from_file(self):
         path = Path("/tmp/dismech/kb/disorders/Achondroplasia.yaml")
         if not path.exists():

@@ -1371,6 +1371,7 @@ def eval_score(
     if not api_key:
         typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail.")
     llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
+    config.llm_model = llm_model
 
     async def _run():
         results = []
@@ -1396,6 +1397,26 @@ def eval_score(
             typer.echo(f"  RACE: overall={r.race_score.overall_score:.2f}")
             for d in r.race_score.dimensions:
                 typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
+        if r.intrinsic_score:
+            isc = r.intrinsic_score
+            if isc.citation_verifiability:
+                cv = isc.citation_verifiability
+                typer.echo(f"  Citation Verifiability: {cv.verified_exist}/{cv.total_citations} "
+                           f"({cv.verifiability:.2f})")
+                if cv.median_year:
+                    typer.echo(f"    Median citation year: {cv.median_year}")
+            if isc.citation_alignment:
+                ca = isc.citation_alignment
+                typer.echo(f"  Citation-Claim Alignment: {ca.aligned_count}/{ca.total_checked} "
+                           f"({ca.alignment_rate:.2f})")
+            if isc.factual_spot_checks:
+                sc = isc.factual_spot_checks
+                typer.echo(f"  Factual Spot Checks: {sc.correct_count}/{sc.total_checks} correct, "
+                           f"{sc.present_count}/{sc.total_checks} present")
+            if isc.topic_coverage:
+                tc = isc.topic_coverage
+                typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
+                           f"({tc.coverage_rate:.2f})")
         if r.error:
             typer.echo(f"  Errors: {r.error}")
 

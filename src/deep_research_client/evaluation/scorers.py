@@ -45,6 +45,11 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
+# Truncation limits for LLM context windows
+MAX_REPORT_CHARS = 12000
+MAX_ABSTRACT_CHARS = 3000
+MAX_DESCRIPTION_CHARS = 500
+
 # ---------------------------------------------------------------------------
 # Citation extraction helpers
 # ---------------------------------------------------------------------------
@@ -155,18 +160,46 @@ async def fetch_pubmed_abstract(pmid: str, client: httpx.AsyncClient | None = No
 # ---------------------------------------------------------------------------
 
 
-async def _llm_judge(prompt: str, llm_client: Any) -> str:
+def _extract_json_object(text: str) -> dict | None:
+    """Extract the first JSON object from text, handling nested braces.
+
+    >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
+    {'a': 1, 'b': {'c': 2}}
+    >>> _extract_json_object('no json here') is None
+    True
+    >>> _extract_json_object('{"supported": true, "explanation": "yes"}')
+    {'supported': True, 'explanation': 'yes'}
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start : i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+async def _llm_judge(prompt: str, llm_client: Any, model: str = "gpt-4o-mini") -> str:
     """Call an LLM to judge/evaluate. Expects an OpenAI-compatible client.
 
     Args:
         prompt: The evaluation prompt.
         llm_client: An openai.AsyncOpenAI-compatible client.
+        model: Model name to use for the judge.
 
     Returns:
         The LLM response text.
     """
     response = await llm_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
         max_tokens=2048,
@@ -183,6 +216,7 @@ async def score_fact(
     dr_output: DROutput,
     llm_client: Any,
     pubmed_client: httpx.AsyncClient | None = None,
+    model: str = "gpt-4o-mini",
 ) -> FACTScore:
     """Compute FACT score for a DR output.
 
@@ -234,16 +268,14 @@ async def score_fact(
                 "and the ABSTRACT of the cited paper, determine whether the abstract provides "
                 "evidence that supports the claim.\n\n"
                 f"CLAIM: {claim.text}\n\n"
-                f"CITED PAPER ABSTRACT:\n{abstract[:3000]}\n\n"
+                f"CITED PAPER ABSTRACT:\n{abstract[:MAX_ABSTRACT_CHARS]}\n\n"
                 "Does this abstract support the claim? Respond with a JSON object:\n"
                 '{"supported": true/false, "explanation": "brief explanation"}'
             )
             try:
-                result_text = await _llm_judge(prompt, llm_client)
-                # Parse JSON from response
-                json_match = re.search(r"\{[^}]+\}", result_text)
-                if json_match:
-                    result = json.loads(json_match.group())
+                result_text = await _llm_judge(prompt, llm_client, model=model)
+                result = _extract_json_object(result_text)
+                if result:
                     supported = result.get("supported", False)
                     explanation = result.get("explanation", "")
                 else:
@@ -291,6 +323,7 @@ async def score_claim_recall(
     dr_output: DROutput,
     ground_truth_claims: list[GroundTruthClaim],
     llm_client: Any,
+    model: str = "gpt-4o-mini",
 ) -> ClaimRecallScore:
     """Compute claim recall: what fraction of ground truth claims appear in the DR output.
 
@@ -311,7 +344,7 @@ async def score_claim_recall(
         )
 
     # Truncate output for LLM context
-    report_text = dr_output.raw_markdown[:12000]
+    report_text = dr_output.raw_markdown[:MAX_REPORT_CHARS]
 
     matches: list[ClaimMatch] = []
     for gt_claim in ground_truth_claims:
@@ -320,7 +353,7 @@ async def score_claim_recall(
             f"GROUND TRUTH CLAIM:\n"
             f"Category: {gt_claim.category}\n"
             f"Name: {gt_claim.name}\n"
-            f"Description: {gt_claim.description[:500]}\n\n"
+            f"Description: {gt_claim.description[:MAX_DESCRIPTION_CHARS]}\n\n"
             f"RESEARCH REPORT (excerpt):\n{report_text}\n\n"
             "Does the research report contain information that substantially covers "
             "this ground truth claim? The report does not need to use identical wording, "
@@ -330,10 +363,9 @@ async def score_claim_recall(
             '"explanation": "brief explanation"}'
         )
         try:
-            result_text = await _llm_judge(prompt, llm_client)
-            json_match = re.search(r"\{[^}]+\}", result_text, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
+            result_text = await _llm_judge(prompt, llm_client, model=model)
+            result = _extract_json_object(result_text)
+            if result:
                 matched = result.get("matched", False)
                 best_text = result.get("best_matching_text")
                 explanation = result.get("explanation", "")
@@ -405,6 +437,7 @@ async def score_race(
     dr_output: DROutput,
     task: EvalTask,
     llm_client: Any,
+    model: str = "gpt-4o-mini",
 ) -> RACEScore:
     """Compute RACE score for a DR output: report quality via LLM judge.
 
@@ -419,7 +452,7 @@ async def score_race(
     Returns:
         RACEScore with per-dimension details.
     """
-    report_text = dr_output.raw_markdown[:12000]
+    report_text = dr_output.raw_markdown[:MAX_REPORT_CHARS]
 
     # Build ground truth summary for the judge
     gt_summary_parts = []
@@ -445,10 +478,9 @@ async def score_race(
             '{"score": <1-5>, "explanation": "brief justification"}'
         )
         try:
-            result_text = await _llm_judge(prompt, llm_client)
-            json_match = re.search(r"\{[^}]+\}", result_text, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
+            result_text = await _llm_judge(prompt, llm_client, model=model)
+            result = _extract_json_object(result_text)
+            if result:
                 score = float(result.get("score", 3))
                 explanation = result.get("explanation", "")
             else:
@@ -514,12 +546,12 @@ async def fetch_pubmed_metadata(
     Returns:
         Dict with 'title', 'year', and 'exists' keys.
 
-    >>> import asyncio
-    >>> result = asyncio.run(fetch_pubmed_metadata("PMID:7913883"))
-    >>> result["exists"]
-    True
-    >>> "FGFR3" in result.get("title", "")
-    True
+    Example::
+
+        >>> import asyncio
+        >>> result = asyncio.run(fetch_pubmed_metadata("PMID:7913883"))  # doctest: +SKIP
+        >>> result["exists"]  # doctest: +SKIP
+        True
     """
     numeric_id = pmid.replace("PMID:", "").strip()
     url = (

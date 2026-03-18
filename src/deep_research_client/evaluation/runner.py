@@ -8,7 +8,6 @@ The main entry point is ``run_evaluation``, which:
 5. Returns structured results
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -11,7 +11,6 @@ Task types follow the taxonomy from our evaluation framework:
 - phenotype_explanation: phenotypes and their molecular basis
 """
 
-import hashlib
 from typing import Sequence
 
 from .models import EvalTask, GroundTruthClaim, GroundTruthEntity, TaskType

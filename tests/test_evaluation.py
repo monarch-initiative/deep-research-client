@@ -12,12 +12,8 @@ from pathlib import Path
 import pytest
 
 from deep_research_client.evaluation.models import (
-    ClaimRecallScore,
-    DROutput,
     EvalTask,
     EvidenceItem,
-    ExtractedCitation,
-    ExtractedClaim,
     FACTScore,
     GroundTruthClaim,
     GroundTruthEntity,

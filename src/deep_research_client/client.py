@@ -10,7 +10,7 @@ from typing import Any, Optional
 from .cache import CacheManager
 from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
-from .provider_params import create_provider_params
+from .provider_params import BaseProviderParams, create_provider_params
 
 PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "openai": ("deep_research_client.providers.openai", "OpenAIProvider"),
@@ -151,7 +151,7 @@ class DeepResearchClient:
         self,
         provider_name: str,
         config: ProviderConfig,
-        params: Optional[object] = None,
+        params: str | BaseProviderParams | None = None,
     ) -> ResearchProvider:
         """Instantiate a provider via the lazy class loader."""
         provider_class = self._get_provider_class(provider_name)

@@ -15,7 +15,7 @@ from deep_research_client.cli import (
 from deep_research_client.models import CacheConfig
 
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 
 def _load_asta_api_key() -> str:
@@ -37,7 +37,7 @@ def test_research_uses_input_file(tmp_path):
         env={"ENABLE_MOCK_PROVIDER": "true"},
     )
 
-    assert result.exit_code == 0, result.stderr
+    assert result.exit_code == 0, result.output
     assert "What is synthetic biology?" in result.stdout
 
 
@@ -54,7 +54,7 @@ def test_research_rejects_conflicting_query_sources(tmp_path):
     )
 
     assert result.exit_code == 1
-    combined_output = result.stdout + result.stderr
+    combined_output = result.output
     assert "Provide the query either as an argument or via --input-file" in combined_output
 
 
@@ -66,7 +66,7 @@ def test_providers_asta_shows_required_credentials():
         env={},
     )
 
-    assert result.exit_code == 0, result.stderr
+    assert result.exit_code == 0, result.output
     assert "Provider: asta - Not available" in result.stdout
     assert "ASTA_API_KEY" in result.stdout
 
@@ -165,8 +165,8 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
         env={"ASTA_API_KEY": _load_asta_api_key(), "IGNORED_KEY": ""},
     )
 
-    assert result.exit_code == 0, result.stderr
-    combined_output = result.stdout + result.stderr
+    assert result.exit_code == 0, result.output
+    combined_output = result.output
     assert "ignores --model" in combined_output
     assert "ignores --base-url" in combined_output
     assert "ignores --use-cborg" in combined_output

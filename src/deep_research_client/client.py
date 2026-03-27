@@ -1,22 +1,26 @@
 """Main client for deep research tools."""
 
 import asyncio
+import importlib
 import os
 import time
 from datetime import datetime
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 from .cache import CacheManager
 from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
-from .providers.openai import OpenAIProvider
-from .providers.falcon import FalconProvider
-from .providers.asta import AstaProvider
-from .providers.perplexity import PerplexityProvider
-from .providers.consensus import ConsensusProvider
-from .providers.mock import MockProvider
-from .providers.cyberian import CyberianProvider
-from .provider_params import create_provider_params
+from .provider_params import BaseProviderParams, create_provider_params
+
+PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
+    "openai": ("deep_research_client.providers.openai", "OpenAIProvider"),
+    "falcon": ("deep_research_client.providers.falcon", "FalconProvider"),
+    "asta": ("deep_research_client.providers.asta", "AstaProvider"),
+    "perplexity": ("deep_research_client.providers.perplexity", "PerplexityProvider"),
+    "consensus": ("deep_research_client.providers.consensus", "ConsensusProvider"),
+    "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
+    "mock": ("deep_research_client.providers.mock", "MockProvider"),
+}
 
 
 class DeepResearchClient:
@@ -56,7 +60,7 @@ class DeepResearchClient:
                 api_key=openai_key,
                 enabled=True
             )
-            self.registry.register(OpenAIProvider(config, None))
+            self.registry.register(self._create_provider("openai", config))
 
         # Edison provider (formerly Falcon/FutureHouse)
         edison_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
@@ -74,7 +78,7 @@ class DeepResearchClient:
                 api_key=edison_key,
                 enabled=True
             )
-            self.registry.register(FalconProvider(config, None))
+            self.registry.register(self._create_provider("falcon", config))
 
         # Asta provider
         asta_key = os.getenv("ASTA_API_KEY")
@@ -84,7 +88,7 @@ class DeepResearchClient:
                 api_key=asta_key,
                 enabled=True,
             )
-            self.registry.register(AstaProvider(config, None))
+            self.registry.register(self._create_provider("asta", config))
 
         # Perplexity provider
         perplexity_key = os.getenv("PERPLEXITY_API_KEY")
@@ -94,7 +98,7 @@ class DeepResearchClient:
                 api_key=perplexity_key,
                 enabled=True
             )
-            self.registry.register(PerplexityProvider(config, None))
+            self.registry.register(self._create_provider("perplexity", config))
 
         # Consensus provider
         consensus_key = os.getenv("CONSENSUS_API_KEY")
@@ -104,7 +108,7 @@ class DeepResearchClient:
                 api_key=consensus_key,
                 enabled=True
             )
-            self.registry.register(ConsensusProvider(config, None))
+            self.registry.register(self._create_provider("consensus", config))
 
         # Cyberian provider - check if cyberian is installed
         try:
@@ -115,7 +119,7 @@ class DeepResearchClient:
                 enabled=True,
                 timeout=1800  # 30 minutes for long-running workflows
             )
-            self.registry.register(CyberianProvider(cyberian_config, None))
+            self.registry.register(self._create_provider("cyberian", cyberian_config))
         except ImportError:
             pass  # Cyberian not installed, skip
 
@@ -126,31 +130,32 @@ class DeepResearchClient:
                 api_key="mock-key",  # Not required but needed for config
                 enabled=True
             )
-            mock_provider = MockProvider(mock_config, None)
-            self.registry.register(mock_provider)
+            self.registry.register(self._create_provider("mock", mock_config))
 
     def _setup_providers_from_config(self, configs: dict[str, ProviderConfig]) -> None:
         """Setup providers from provided configurations."""
         for name, config in configs.items():
-            provider: ResearchProvider
-            if name == "openai":
-                provider = OpenAIProvider(config, None)
-            elif name == "falcon":
-                provider = FalconProvider(config, None)
-            elif name == "asta":
-                provider = AstaProvider(config, None)
-            elif name == "perplexity":
-                provider = PerplexityProvider(config, None)
-            elif name == "consensus":
-                provider = ConsensusProvider(config, None)
-            elif name == "cyberian":
-                provider = CyberianProvider(config, None)
-            elif name == "mock":
-                provider = MockProvider(config, None)
-            else:
-                raise ValueError(f"Unknown provider: {name}")
+            self.registry.register(self._create_provider(name, config))
 
-            self.registry.register(provider)
+    def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
+        """Resolve a provider class only when it is actually needed."""
+        class_path = PROVIDER_CLASS_PATHS.get(provider_name)
+        if class_path is None:
+            raise ValueError(f"Unknown provider: {provider_name}")
+
+        module_name, class_name = class_path
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)
+
+    def _create_provider(
+        self,
+        provider_name: str,
+        config: ProviderConfig,
+        params: str | BaseProviderParams | None = None,
+    ) -> ResearchProvider:
+        """Instantiate a provider via the lazy class loader."""
+        provider_class = self._get_provider_class(provider_name)
+        return provider_class(config, params)
 
     def _create_provider_with_params(self, provider_name: str, model: Optional[str] = None, provider_params: Optional[dict] = None) -> 'ResearchProvider':
         """Create a provider instance with custom parameters.
@@ -177,8 +182,7 @@ class DeepResearchClient:
         params = create_provider_params(provider_name, model, provider_params)
 
         # Get provider class and create instance
-        provider_class = type(base_provider)
-        return provider_class(config, params)
+        return self._create_provider(provider_name, config, params)
 
     def _get_cache_provider_params(
         self,
@@ -307,9 +311,10 @@ class DeepResearchClient:
         }
 
         # Add provider-specific parameters if they exist
-        if hasattr(research_provider, 'params') and research_provider.params:
+        params = getattr(research_provider, "params", None)
+        if isinstance(params, BaseProviderParams):
             # Convert Pydantic model to dict, excluding None values and model field
-            params_dict = research_provider.params.model_dump(exclude_none=True, exclude={'model'})
+            params_dict = params.model_dump(exclude_none=True, exclude={'model'})
             if params_dict:
                 result.provider_config['parameters'] = params_dict
 
@@ -318,7 +323,7 @@ class DeepResearchClient:
 
         return result
 
-    def get_available_providers(self) -> List[str]:
+    def get_available_providers(self) -> list[str]:
         """Get list of available provider names."""
         return [p.name for p in self.registry.get_available_providers()]
 

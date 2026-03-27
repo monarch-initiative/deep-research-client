@@ -1,8 +1,13 @@
 """Tests for the deep research client."""
 
-import pytest
-from unittest.mock import patch
 import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
 from deep_research_client.providers import ResearchProvider
@@ -82,6 +87,47 @@ def test_asta_provider_setup_from_env():
     ):
         client = DeepResearchClient(cache_config=cache_config)
         assert "asta" in client.get_available_providers()
+
+
+def test_client_import_does_not_eagerly_import_falcon_for_asta(tmp_path: Path):
+    """Importing the client for Asta should not require Falcon/Edison dependencies."""
+    fake_edison_module = tmp_path / "edison_client.py"
+    fake_edison_module.write_text(
+        "raise ImportError('simulated broken edison_client dependency')\n",
+        encoding="utf-8",
+    )
+
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [
+            str(tmp_path),
+            str(repo_root / "src"),
+            env.get("PYTHONPATH", ""),
+        ]
+    )
+    env["ASTA_API_KEY"] = "asta-key"
+    env.pop("EDISON_API_KEY", None)
+    env.pop("FUTUREHOUSE_API_KEY", None)
+
+    script = textwrap.dedent(
+        """
+        from deep_research_client import CacheConfig, DeepResearchClient
+
+        client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+        assert "asta" in client.get_available_providers()
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=repo_root,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_asta_cache_params_include_version_tag():

@@ -311,9 +311,10 @@ class DeepResearchClient:
         }
 
         # Add provider-specific parameters if they exist
-        if research_provider.params is not None:
+        params = getattr(research_provider, "params", None)
+        if isinstance(params, BaseProviderParams):
             # Convert Pydantic model to dict, excluding None values and model field
-            params_dict = research_provider.params.model_dump(exclude_none=True, exclude={'model'})
+            params_dict = params.model_dump(exclude_none=True, exclude={'model'})
             if params_dict:
                 result.provider_config['parameters'] = params_dict
 

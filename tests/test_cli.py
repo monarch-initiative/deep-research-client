@@ -15,7 +15,7 @@ from deep_research_client.cli import (
 from deep_research_client.models import CacheConfig
 
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 
 def _load_asta_api_key() -> str:

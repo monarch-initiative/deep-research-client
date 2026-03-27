@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 class ResearchProvider(ABC):
     """Abstract base class for deep research providers."""
 
+    params: "BaseProviderParams | None" = None
+
     def __init__(self, config: ProviderConfig, params_or_model: Optional[Union[str, "BaseProviderParams"]] = None):
         """Initialize provider with configuration.
 

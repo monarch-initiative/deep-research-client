@@ -46,10 +46,8 @@ class OpenScientistProvider(ResearchProvider):
         self.params = params or OpenScientistParams()
         super().__init__(config, self.params.model)
 
-        self.base_url = (
-            config.base_url
-            or os.getenv("OPENSCIENTIST_URL", DEFAULT_BASE_URL)
-        ).rstrip("/")
+        base: str = config.base_url or os.getenv("OPENSCIENTIST_URL") or DEFAULT_BASE_URL
+        self.base_url = base.rstrip("/")
         self.api_key = config.api_key
 
     def get_default_model(self) -> str:

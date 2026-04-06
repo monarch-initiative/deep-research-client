@@ -446,13 +446,64 @@ def create_consensus_model_cards() -> ProviderModelCards:
     )
 
 
+def create_openscientist_model_cards() -> ProviderModelCards:
+    """Create model cards for OpenScientist research provider."""
+
+    autonomous = ModelCard(
+        name="openscientist-autonomous",
+        display_name="OpenScientist Autonomous Research",
+        description=(
+            "Autonomous iterative research agent from Berkeley Lab. Runs "
+            "multi-iteration hypothesis-driven research using PubMed search "
+            "and code execution. Produces comprehensive markdown reports "
+            "with structured PMID citations. Best for deep scientific "
+            "literature reviews where thoroughness matters more than speed."
+        ),
+        cost_level=CostLevel.HIGH,
+        time_estimate=TimeEstimate.VERY_SLOW,
+        capabilities=[
+            ModelCapability.ACADEMIC_SEARCH,
+            ModelCapability.SCIENTIFIC_LITERATURE,
+            ModelCapability.CITATION_TRACKING,
+            ModelCapability.CODE_INTERPRETATION,
+        ],
+        aliases=["openscientist", "os", "berkeley"],
+        pricing_notes=(
+            "Runs Claude under the hood; costs depend on iteration count. "
+            "5 iterations ~ moderate cost, 10+ iterations ~ high cost."
+        ),
+        use_cases=[
+            "Disease pathophysiology research",
+            "Scientific literature reviews",
+            "Hypothesis-driven investigation",
+            "PubMed-backed evidence synthesis",
+            "Biomedical mechanism discovery",
+        ],
+        limitations=[
+            "Very slow (10-60+ minutes per job)",
+            "Requires account approval on openscientist.io",
+            "PubMed-focused (limited general web search)",
+            "High cost for many iterations",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="openscientist",
+        default_model="openscientist-autonomous",
+        models={
+            "openscientist-autonomous": autonomous,
+        },
+    )
+
+
 # Registry of all provider model cards
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openai": create_openai_model_cards(),
     "perplexity": create_perplexity_model_cards(),
     "falcon": create_falcon_model_cards(),
     "asta": create_asta_model_cards(),
-    "consensus": create_consensus_model_cards()
+    "consensus": create_consensus_model_cards(),
+    "openscientist": create_openscientist_model_cards(),
 }
 
 

@@ -230,6 +230,42 @@ class MockParams(BaseProviderParams):
     )
 
 
+class OpenScientistParams(BaseProviderParams):
+    """Parameters specific to OpenScientist research provider.
+
+    OpenScientist runs iterative hypothesis-driven research jobs that
+    take 10-60+ minutes to complete. The provider submits a job, polls
+    for completion, and downloads the final report.
+    """
+
+    max_iterations: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum research iterations per job (API enforces 1-20)"
+    )
+    use_hypotheses: bool = Field(
+        default=False,
+        description="Enable hypothesis tracking tools during research"
+    )
+    investigation_mode: str = Field(
+        default="autonomous",
+        description="Investigation mode: 'autonomous' (fully automated) or 'coinvestigate' (interactive)"
+    )
+    poll_interval: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Seconds between status poll requests"
+    )
+    timeout: int = Field(
+        default=3600,
+        ge=60,
+        le=7200,
+        description="Maximum seconds to wait for job completion"
+    )
+
+
 class CyberianParams(BaseProviderParams):
     """Parameters specific to Cyberian agent-based research provider.
 
@@ -291,6 +327,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "consensus": ConsensusParams,
     "mock": MockParams,
     "cyberian": CyberianParams,
+    "openscientist": OpenScientistParams,
 }
 
 

@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, and Cyberian agent-based research.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, and OpenScientist autonomous research.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, and Cyberian (agent-based)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), and OpenScientist (autonomous)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -53,6 +53,11 @@ export PERPLEXITY_API_KEY="your-perplexity-key"
 
 # For Consensus AI (requires application approval)
 export CONSENSUS_API_KEY="your-consensus-key"
+
+# For OpenScientist (autonomous research agent) - see setup guide below
+export OPENSCIENTIST_API_KEY="name:secret"
+# Optional: custom instance URL (defaults to https://openscientist.io)
+export OPENSCIENTIST_URL="https://openscientist.io"
 
 # For Cyberian (agent-based research) - requires cyberian installation
 pip install deep-research-client[cyberian]
@@ -289,6 +294,59 @@ print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
 - 💰 **Variable cost**: Depends on agent and research depth
 - 🖥️ **Local compute**: Requires agentapi and agent setup
 - 🎯 **Thorough**: More comprehensive than API-based providers
+
+#### OpenScientist-Specific Parameters (Autonomous Research)
+
+OpenScientist is an autonomous AI research agent from Berkeley Lab that runs iterative hypothesis-driven research using PubMed search and code execution. Jobs are submitted to a hosted instance and take 10-60+ minutes to complete.
+
+##### Setup Guide
+
+1. **Create an account**: Go to [openscientist.io](https://openscientist.io) and sign up
+2. **Wait for approval**: Your account must be approved by an administrator before you can create jobs. Until approved, the API returns `403 Forbidden: "Your account is pending administrator approval"`
+3. **Generate an API key**: Once approved, create an API key via the web UI or API. The key is shown only once in `name:secret` format — copy it immediately
+4. **Set environment variables**:
+   ```bash
+   export OPENSCIENTIST_API_KEY="yourname:yoursecret"
+   # Optional: custom instance URL (defaults to https://openscientist.io)
+   export OPENSCIENTIST_URL="https://openscientist.io"
+   ```
+5. **Verify**: `deep-research-client providers` should list `openscientist`
+
+##### Parameters
+
+```python
+from deep_research_client.provider_params import OpenScientistParams
+
+params = OpenScientistParams(
+    max_iterations=5,              # Research iterations (1-20, default 5)
+    use_hypotheses=False,          # Enable hypothesis tracking
+    investigation_mode="autonomous",  # "autonomous" or "coinvestigate"
+    poll_interval=30,              # Seconds between status checks
+    timeout=3600,                  # Max wait time in seconds (default 1 hour)
+)
+
+result = client.research(
+    "What are the pathophysiology mechanisms of Phelan-McDermid syndrome?",
+    provider="openscientist",
+    provider_params=params
+)
+
+# OpenScientist returns PMID citations
+print(f"Citations: {result.citations}")  # ['PMID:12345678', 'PMID:87654321', ...]
+print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
+```
+
+**When to use OpenScientist:**
+- 🔬 Disease pathophysiology research with PubMed citations
+- 📚 Hypothesis-driven scientific literature reviews
+- 🧬 Biomedical mechanism discovery
+- 📖 Evidence synthesis with structured PMID references
+
+**Trade-offs:**
+- ⏱️ **Very slow**: 10-60+ minutes per job (iterative multi-step research)
+- 💰 **Variable cost**: Uses Claude under the hood; cost scales with iterations
+- 🔑 **Requires approval**: Account must be admin-approved on openscientist.io
+- 🎯 **PubMed-focused**: Deep scientific literature coverage with real PMID citations
 
 #### CLI Usage with Provider Parameters
 
@@ -842,6 +900,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3 |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
+| OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations |
 
 ## Development
 

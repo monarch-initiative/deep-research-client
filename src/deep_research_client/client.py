@@ -114,7 +114,7 @@ class DeepResearchClient:
         # OpenScientist provider
         openscientist_key = os.getenv("OPENSCIENTIST_API_KEY")
         if openscientist_key:
-            openscientist_url = os.getenv("OPENSCIENTIST_URL", "https://openscientist.io")
+            openscientist_url = os.getenv("OPENSCIENTIST_URL", "https://www.openscientist.io")
             config = ProviderConfig(
                 name="openscientist",
                 api_key=openscientist_key,

@@ -28,7 +28,7 @@ TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "awaiting_feedback"}
 
 # Default base URL if not overridden
-DEFAULT_BASE_URL = "https://openscientist.io"
+DEFAULT_BASE_URL = "https://www.openscientist.io"
 
 
 class OpenScientistProvider(ResearchProvider):
@@ -89,7 +89,7 @@ class OpenScientistProvider(ResearchProvider):
         poll_interval = self.params.poll_interval
         max_iterations = self.params.max_iterations
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             # 1. Health check
             await self._health_check(client)
 

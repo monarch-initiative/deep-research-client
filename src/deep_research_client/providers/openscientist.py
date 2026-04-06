@@ -85,11 +85,16 @@ class OpenScientistProvider(ResearchProvider):
                 "Set OPENSCIENTIST_API_KEY environment variable."
             )
 
+        if not query or not query.strip():
+            raise ValueError("Research query must not be empty.")
+
         timeout = self.params.timeout
         poll_interval = self.params.poll_interval
         max_iterations = self.params.max_iterations
 
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # Use a longer default timeout for report/artifact downloads
+        default_timeout = httpx.Timeout(30, read=120)
+        async with httpx.AsyncClient(timeout=default_timeout, follow_redirects=True) as client:
             # 1. Health check
             await self._health_check(client)
 
@@ -221,14 +226,22 @@ class OpenScientistProvider(ResearchProvider):
         )
 
     async def _cancel_job(self, client: httpx.AsyncClient, job_id: str) -> None:
-        """Cancel a running job."""
+        """Cancel a running job.
+
+        Logs a warning on HTTP 4xx errors (e.g. job already finished) but
+        re-raises network/transport errors so callers know the request failed.
+        """
         url = f"{self.base_url}/api/v1/jobs/{job_id}/cancel"
         try:
             resp = await client.post(url, headers=self._headers())
             resp.raise_for_status()
             logger.info(f"Job {job_id} cancelled successfully")
-        except httpx.HTTPError as e:
+        except httpx.HTTPStatusError as e:
+            # Server responded but rejected the cancel (e.g. already completed)
             logger.warning(f"Failed to cancel job {job_id}: {e}")
+        except httpx.HTTPError:
+            # Network/transport error — re-raise so callers are aware
+            raise
 
     async def _get_job_detail(self, client: httpx.AsyncClient, job_id: str) -> dict:
         """Get detailed job info."""
@@ -247,7 +260,7 @@ class OpenScientistProvider(ResearchProvider):
 
         # Try requesting with Accept: text/markdown
         headers = {**self._headers(), "Accept": "text/markdown"}
-        resp = await client.get(url, headers=headers, timeout=60)
+        resp = await client.get(url, headers=headers)
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")
@@ -267,7 +280,7 @@ class OpenScientistProvider(ResearchProvider):
         import zipfile
 
         url = f"{self.base_url}/api/v1/jobs/{job_id}/artifacts"
-        resp = await client.get(url, headers=self._headers(), timeout=120)
+        resp = await client.get(url, headers=self._headers())
         resp.raise_for_status()
 
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
@@ -287,7 +300,11 @@ class OpenScientistProvider(ResearchProvider):
 
             # Read the first matching file
             with zf.open(md_files[0]) as f:
-                return f.read().decode("utf-8")
+                raw = f.read()
+                try:
+                    return raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    return raw.decode("latin-1")
 
     @staticmethod
     def _extract_citations(markdown: str) -> List[str]:

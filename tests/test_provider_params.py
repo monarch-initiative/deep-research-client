@@ -6,6 +6,7 @@ from deep_research_client.provider_params import (
     BaseProviderParams,
     AstaParams,
     OpenAIParams,
+    OpenScientistParams,
     PerplexityParams,
     FalconParams,
     create_provider_params,
@@ -171,6 +172,29 @@ def test_create_provider_params_asta():
     assert params.paper_limit == 4
     assert params.snippet_limit == 3
     assert params.publication_date_range == "2022:"
+
+
+def test_create_provider_params_openscientist():
+    """Test creating OpenScientist params via the factory function."""
+    params = create_provider_params(
+        "openscientist",
+        model="os",
+        provider_params={
+            "max_iterations": 7,
+            "use_hypotheses": True,
+            "investigation_mode": "coinvestigate",
+            "poll_interval": 15,
+            "timeout": 900,
+        }
+    )
+
+    assert isinstance(params, OpenScientistParams)
+    assert params.model == "os"
+    assert params.max_iterations == 7
+    assert params.use_hypotheses is True
+    assert params.investigation_mode == "coinvestigate"
+    assert params.poll_interval == 15
+    assert params.timeout == 900
 
 
 def test_allowed_domains_max_limit_documented():

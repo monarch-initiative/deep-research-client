@@ -89,6 +89,27 @@ def test_asta_provider_setup_from_env():
         assert "asta" in client.get_available_providers()
 
 
+def test_openscientist_provider_setup_from_env():
+    """OpenScientist should auto-register when its API key is present."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(
+        os.environ,
+        {
+            "OPENSCIENTIST_API_KEY": "openscientist-key",
+            "OPENSCIENTIST_URL": "https://openscientist.internal",
+        },
+        clear=True,
+    ):
+        client = DeepResearchClient(cache_config=cache_config)
+        assert "openscientist" in client.get_available_providers()
+
+        provider = client.registry.get_provider("openscientist")
+        assert provider is not None
+        assert provider.config.api_key == "openscientist-key"
+        assert provider.config.base_url == "https://openscientist.internal"
+        assert provider.config.timeout == 3600
+
+
 def test_client_import_does_not_eagerly_import_falcon_for_asta(tmp_path: Path):
     """Importing the client for Asta should not require Falcon/Edison dependencies."""
     fake_edison_module = tmp_path / "edison_client.py"

@@ -186,7 +186,7 @@ def research(
     query: Annotated[Optional[str], typer.Argument(
         help="Research query or question (not needed if using --template)")] = None,
     provider: Annotated[Optional[str], typer.Option(
-        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, mock)")] = None,
+        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     output: Annotated[Optional[Path], typer.Option(
@@ -543,6 +543,7 @@ def providers(
                 "asta": "ASTA_API_KEY",
                 "perplexity": "PERPLEXITY_API_KEY",
                 "consensus": "CONSENSUS_API_KEY",
+                "openscientist": "OPENSCIENTIST_API_KEY",
                 "mock": "ENABLE_MOCK_PROVIDER=true"
             }
             if provider in env_vars:
@@ -592,6 +593,7 @@ def providers(
         typer.echo("  - ASTA_API_KEY for Asta")
         typer.echo("  - PERPLEXITY_API_KEY for Perplexity AI")
         typer.echo("  - CONSENSUS_API_KEY for Consensus")
+        typer.echo("  - OPENSCIENTIST_API_KEY for OpenScientist")
         typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")
 
     if not show_params and not provider:

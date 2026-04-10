@@ -2,7 +2,9 @@
 
 import asyncio
 import io
+import os
 import zipfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -10,6 +12,26 @@ import pytest
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import OpenScientistParams
 from deep_research_client.providers.openscientist import OpenScientistProvider
+
+
+def _load_openscientist_api_key() -> str:
+    """Load the OpenScientist API key from env or the repo-local helper file."""
+    api_key = os.getenv("OPENSCIENTIST_API_KEY", "").strip()
+    if api_key:
+        return api_key
+
+    key_path = Path(__file__).resolve().parents[1] / "opensci"
+    if key_path.exists():
+        file_key = key_path.read_text(encoding="utf-8").strip()
+        if file_key:
+            return file_key
+
+    pytest.skip("OPENSCIENTIST_API_KEY not set and opensci file not present")
+
+
+def _load_openscientist_base_url() -> str:
+    """Load the OpenScientist base URL for integration tests."""
+    return os.getenv("OPENSCIENTIST_URL", "https://www.openscientist.io").strip()
 
 
 def create_zip_bytes(files: dict[str, str]) -> bytes:
@@ -360,3 +382,60 @@ class TestOpenScientistProvider:
 
         with pytest.raises(ValueError, match="OpenScientist job failed: Agent execution failed"):
             await self.provider.research("What is autophagy?")
+
+
+@pytest.mark.integration
+async def test_openscientist_health_check_integration():
+    """OpenScientist health endpoint should be reachable with a live deployment."""
+    provider = OpenScientistProvider(
+        ProviderConfig(
+            name="openscientist",
+            api_key=_load_openscientist_api_key(),
+            base_url=_load_openscientist_base_url(),
+            enabled=True,
+        )
+    )
+
+    timeout = httpx.Timeout(30, read=120)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        await provider._health_check(client)
+
+
+@pytest.mark.integration
+async def test_openscientist_research_integration():
+    """OpenScientist should complete a live end-to-end research run."""
+    query = "What is autophagy?"
+    provider = OpenScientistProvider(
+        ProviderConfig(
+            name="openscientist",
+            api_key=_load_openscientist_api_key(),
+            base_url=_load_openscientist_base_url(),
+            enabled=True,
+            timeout=1800,
+        ),
+        OpenScientistParams(
+            max_iterations=1,
+            poll_interval=10,
+            timeout=1800,
+            use_hypotheses=False,
+            investigation_mode="autonomous",
+        ),
+    )
+
+    try:
+        result = await provider.research(query)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in {401, 403}:
+            pytest.skip(
+                "OpenScientist job submission is not authorized for this account. "
+                "The deployment is reachable, but the API key may still need account approval."
+            )
+        raise
+
+    assert result.provider == "openscientist"
+    assert result.query == query
+    assert result.model == "openscientist-autonomous"
+    assert result.markdown.strip()
+    assert len(result.markdown) > 100
+    assert len(result.citations) > 0
+    assert all(citation.startswith("PMID:") for citation in result.citations)

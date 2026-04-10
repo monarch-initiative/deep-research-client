@@ -43,3 +43,11 @@ Best practice:
 * For state in engine-style OO classes, dataclasses is favored
 * Declarative principles are favored
 * Always use type hints, always document methods and classes
+
+## Adding new providers
+
+We welcome PRs wrapping other tools (aka "providers"). When doing this:
+
+- [ ] add unit tests and integration tests
+- [ ] Ensure documented in docs/reference/providers.md as well as README
+- [ ] does not signifantly add to base install dependencies; if so make this an optional install (allowing e.g. `pip install deep-research-client[my-bespoke-provider]`)

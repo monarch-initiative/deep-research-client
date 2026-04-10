@@ -43,7 +43,11 @@ class OpenScientistProvider(ResearchProvider):
     """
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):
-        self.params = params or OpenScientistParams()
+        effective_params = params or OpenScientistParams()
+        if config.timeout is not None and "timeout" not in effective_params.model_fields_set:
+            effective_params = effective_params.model_copy(update={"timeout": config.timeout})
+
+        self.params = effective_params
         super().__init__(config, self.params.model)
 
         base: str = config.base_url or os.getenv("OPENSCIENTIST_URL") or DEFAULT_BASE_URL

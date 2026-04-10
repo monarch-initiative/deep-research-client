@@ -99,6 +99,37 @@ class TestOpenScientistProvider:
         assert provider.params.poll_interval == 15
         assert provider.params.timeout == 900
 
+    def test_provider_uses_config_timeout_as_default(self):
+        """ProviderConfig.timeout should become the effective timeout by default."""
+        config = ProviderConfig(
+            name="openscientist",
+            api_key="test-api-key",
+            base_url="https://example.test/",
+            enabled=True,
+            timeout=123,
+        )
+
+        provider = OpenScientistProvider(config)
+
+        assert provider.config.timeout == 123
+        assert provider.params.timeout == 123
+
+    def test_provider_params_timeout_overrides_config_timeout(self):
+        """Explicit provider params should take precedence over ProviderConfig.timeout."""
+        config = ProviderConfig(
+            name="openscientist",
+            api_key="test-api-key",
+            base_url="https://example.test/",
+            enabled=True,
+            timeout=123,
+        )
+        params = OpenScientistParams(timeout=900)
+
+        provider = OpenScientistProvider(config, params)
+
+        assert provider.config.timeout == 123
+        assert provider.params.timeout == 900
+
     def test_get_default_model(self):
         """Test default model."""
         assert self.provider.get_default_model() == "openscientist-autonomous"

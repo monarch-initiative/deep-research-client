@@ -71,6 +71,43 @@ def test_providers_asta_shows_required_credentials():
     assert "ASTA_API_KEY" in result.stdout
 
 
+def test_providers_openscientist_shows_required_credentials():
+    """CLI should explain that OpenScientist needs its API key."""
+    result = runner.invoke(
+        app,
+        ["providers", "--provider", "openscientist"],
+        env={},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Provider: openscientist - Not available" in result.stdout
+    assert "OPENSCIENTIST_API_KEY" in result.stdout
+
+
+def test_providers_no_available_providers_mentions_openscientist():
+    """CLI should mention OpenScientist in missing-credential guidance."""
+    result = runner.invoke(
+        app,
+        ["providers"],
+        env={},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "OPENSCIENTIST_API_KEY for OpenScientist" in result.stdout
+
+
+def test_research_help_lists_openscientist_provider():
+    """Research command help should list OpenScientist as a supported provider."""
+    result = runner.invoke(
+        app,
+        ["research", "--help"],
+        env={},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "openscientist" in result.stdout
+
+
 def test_collect_noop_research_option_warnings_for_asta():
     """Asta should warn on CLI options that do not affect retrieval."""
     warnings = _collect_noop_research_option_warnings(

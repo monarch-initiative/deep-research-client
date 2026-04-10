@@ -11,6 +11,7 @@ Complete reference for all supported research providers.
 | Edison | `EDISON_API_KEY` | Scientific literature | Slow |
 | Asta | `ASTA_API_KEY` | Semantic Scholar-scale literature retrieval + snippets | Fast |
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
+| OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 
 ## OpenAI Deep Research
@@ -185,6 +186,61 @@ Note: Requires application approval.
 - **Cost**: Low
 - **Speed**: Seconds
 - **Capabilities**: Academic papers only, evidence-based summaries
+
+---
+
+## OpenScientist
+
+### Setup
+
+```bash
+export OPENSCIENTIST_API_KEY="name:secret"
+# Optional: custom instance URL
+export OPENSCIENTIST_URL="https://www.openscientist.io"
+```
+
+**Important**: Your account must be approved by an administrator at [openscientist.io](https://openscientist.io) before you can create jobs. Until approved, the API returns `403 Forbidden`.
+
+### Models
+
+| Model | Aliases | Description |
+|-------|---------|-------------|
+| `openscientist-autonomous` | openscientist, autonomous-research | Iterative hypothesis-driven research |
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import OpenScientistParams
+
+params = OpenScientistParams(
+    max_iterations=5,              # Research iterations (1-20)
+    use_hypotheses=False,          # Enable hypothesis tracking
+    investigation_mode="autonomous",  # "autonomous" or "coinvestigate"
+    poll_interval=30,              # Seconds between status checks
+    timeout=3600,                  # Max wait time (1-2 hours recommended)
+)
+```
+
+### Characteristics
+
+- **Cost**: Variable (uses Claude under the hood)
+- **Speed**: 10-60+ minutes (iterative multi-step research)
+- **Capabilities**: PubMed search, code execution, hypothesis-driven research
+- **Citations**: PMID format with deduplication
+
+### When to Use
+
+- Disease pathophysiology research with PubMed citations
+- Hypothesis-driven scientific literature reviews
+- Biomedical mechanism discovery
+- Evidence synthesis with structured PMID references
+
+### Limitations
+
+- Requires account approval at openscientist.io
+- Very slow (designed for comprehensive research)
+- PubMed-focused (may not cover all scientific domains)
+- Cost scales with number of iterations
 
 ---
 

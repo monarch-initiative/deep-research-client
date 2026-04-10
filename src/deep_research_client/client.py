@@ -19,6 +19,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "perplexity": ("deep_research_client.providers.perplexity", "PerplexityProvider"),
     "consensus": ("deep_research_client.providers.consensus", "ConsensusProvider"),
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
+    "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -109,6 +110,19 @@ class DeepResearchClient:
                 enabled=True
             )
             self.registry.register(self._create_provider("consensus", config))
+
+        # OpenScientist provider
+        openscientist_key = os.getenv("OPENSCIENTIST_API_KEY")
+        if openscientist_key:
+            openscientist_url = os.getenv("OPENSCIENTIST_URL", "https://www.openscientist.io")
+            config = ProviderConfig(
+                name="openscientist",
+                api_key=openscientist_key,
+                base_url=openscientist_url,
+                enabled=True,
+                timeout=3600,  # 1 hour default for long-running jobs
+            )
+            self.registry.register(self._create_provider("openscientist", config))
 
         # Cyberian provider - check if cyberian is installed
         try:

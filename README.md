@@ -308,7 +308,7 @@ OpenScientist is an autonomous AI research agent from Berkeley Lab that runs ite
    ```bash
    export OPENSCIENTIST_API_KEY="yourname:yoursecret"
    # Optional: custom instance URL (defaults to https://openscientist.io)
-   export OPENSCIENTIST_URL="https://openscientist.io"
+   export OPENSCIENTIST_URL="https://www.openscientist.io"
    ```
 5. **Verify**: `deep-research-client providers` should list `openscientist`
 

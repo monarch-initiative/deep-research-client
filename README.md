@@ -56,8 +56,8 @@ export CONSENSUS_API_KEY="your-consensus-key"
 
 # For OpenScientist (autonomous research agent) - see setup guide below
 export OPENSCIENTIST_API_KEY="name:secret"
-# Optional: custom instance URL (defaults to https://openscientist.io)
-export OPENSCIENTIST_URL="https://openscientist.io"
+# Optional: custom instance URL (defaults to https://www.openscientist.io)
+export OPENSCIENTIST_URL="https://www.openscientist.io"
 
 # For Cyberian (agent-based research) - requires cyberian installation
 pip install deep-research-client[cyberian]
@@ -307,7 +307,7 @@ OpenScientist is an autonomous AI research agent from Berkeley Lab that runs ite
 4. **Set environment variables**:
    ```bash
    export OPENSCIENTIST_API_KEY="yourname:yoursecret"
-   # Optional: custom instance URL (defaults to https://openscientist.io)
+   # Optional: custom instance URL (defaults to https://www.openscientist.io)
    export OPENSCIENTIST_URL="https://www.openscientist.io"
    ```
 5. **Verify**: `deep-research-client providers` should list `openscientist`

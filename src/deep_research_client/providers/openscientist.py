@@ -39,7 +39,7 @@ class OpenScientistProvider(ResearchProvider):
 
     Requires:
         - OPENSCIENTIST_API_KEY env var (format: "name:secret")
-        - Optionally OPENSCIENTIST_URL env var (defaults to https://openscientist.io)
+        - Optionally OPENSCIENTIST_URL env var (defaults to https://www.openscientist.io)
     """
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):

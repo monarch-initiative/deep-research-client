@@ -955,19 +955,28 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cyberian-agent-based" class="md-nav__link">
+  <a href="#openscientist" class="md-nav__link">
     <span class="md-ellipsis">
-      Cyberian (Agent-Based)
+      OpenScientist
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Cyberian (Agent-Based)">
+    <nav class="md-nav" aria-label="OpenScientist">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#setup_5" class="md-nav__link">
     <span class="md-ellipsis">
       Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models
     </span>
   </a>
   
@@ -993,6 +1002,66 @@
         
           <li class="md-nav__item">
   <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to Use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cyberian-agent-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cyberian (Agent-Based)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cyberian (Agent-Based)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_1" class="md-nav__link">
     <span class="md-ellipsis">
       When to Use
     </span>
@@ -1520,19 +1589,28 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cyberian-agent-based" class="md-nav__link">
+  <a href="#openscientist" class="md-nav__link">
     <span class="md-ellipsis">
-      Cyberian (Agent-Based)
+      OpenScientist
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Cyberian (Agent-Based)">
+    <nav class="md-nav" aria-label="OpenScientist">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#setup_5" class="md-nav__link">
     <span class="md-ellipsis">
       Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models
     </span>
   </a>
   
@@ -1558,6 +1636,66 @@
         
           <li class="md-nav__item">
   <a href="#when-to-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to Use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cyberian-agent-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cyberian (Agent-Based)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cyberian (Agent-Based)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_1" class="md-nav__link">
     <span class="md-ellipsis">
       When to Use
     </span>
@@ -1658,6 +1796,12 @@
 <td><code>CONSENSUS_API_KEY</code></td>
 <td>Academic papers</td>
 <td>Fast</td>
+</tr>
+<tr>
+<td>OpenScientist</td>
+<td><code>OPENSCIENTIST_API_KEY</code></td>
+<td>Autonomous research, PMID citations</td>
+<td>Very slow</td>
 </tr>
 <tr>
 <td>Cyberian</td>
@@ -1871,12 +2015,69 @@ params = AstaParams(
 <li><strong>Capabilities</strong>: Academic papers only, evidence-based summaries</li>
 </ul>
 <hr />
-<h2 id="cyberian-agent-based">Cyberian (Agent-Based)</h2>
+<h2 id="openscientist">OpenScientist</h2>
 <h3 id="setup_5">Setup</h3>
+<pre><code class="language-bash">export OPENSCIENTIST_API_KEY=&quot;name:secret&quot;
+# Optional: custom instance URL
+export OPENSCIENTIST_URL=&quot;https://www.openscientist.io&quot;
+</code></pre>
+<p><strong>Important</strong>: Your account must be approved by an administrator at <a href="https://openscientist.io">openscientist.io</a> before you can create jobs. Until approved, the API returns <code>403 Forbidden</code>.</p>
+<h3 id="models_5">Models</h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Aliases</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>openscientist-autonomous</code></td>
+<td>openscientist, autonomous-research</td>
+<td>Iterative hypothesis-driven research</td>
+</tr>
+</tbody>
+</table>
+<h3 id="parameters_4">Parameters</h3>
+<pre><code class="language-python">from deep_research_client.provider_params import OpenScientistParams
+
+params = OpenScientistParams(
+    max_iterations=5,              # Research iterations (1-20)
+    use_hypotheses=False,          # Enable hypothesis tracking
+    investigation_mode=&quot;autonomous&quot;,  # &quot;autonomous&quot; or &quot;coinvestigate&quot;
+    poll_interval=30,              # Seconds between status checks
+    timeout=3600,                  # Max wait time (1-2 hours recommended)
+)
+</code></pre>
+<h3 id="characteristics_5">Characteristics</h3>
+<ul>
+<li><strong>Cost</strong>: Variable (uses Claude under the hood)</li>
+<li><strong>Speed</strong>: 10-60+ minutes (iterative multi-step research)</li>
+<li><strong>Capabilities</strong>: PubMed search, code execution, hypothesis-driven research</li>
+<li><strong>Citations</strong>: PMID format with deduplication</li>
+</ul>
+<h3 id="when-to-use">When to Use</h3>
+<ul>
+<li>Disease pathophysiology research with PubMed citations</li>
+<li>Hypothesis-driven scientific literature reviews</li>
+<li>Biomedical mechanism discovery</li>
+<li>Evidence synthesis with structured PMID references</li>
+</ul>
+<h3 id="limitations">Limitations</h3>
+<ul>
+<li>Requires account approval at openscientist.io</li>
+<li>Very slow (designed for comprehensive research)</li>
+<li>PubMed-focused (may not cover all scientific domains)</li>
+<li>Cost scales with number of iterations</li>
+</ul>
+<hr />
+<h2 id="cyberian-agent-based">Cyberian (Agent-Based)</h2>
+<h3 id="setup_6">Setup</h3>
 <pre><code class="language-bash">pip install deep-research-client[cyberian]
 </code></pre>
 <p>Cyberian uses local AI agents (Claude, Aider, etc.) - no separate API key needed.</p>
-<h3 id="parameters_4">Parameters</h3>
+<h3 id="parameters_5">Parameters</h3>
 <pre><code class="language-python">from deep_research_client.provider_params import CyberianParams
 
 params = CyberianParams(
@@ -1892,13 +2093,13 @@ params = CyberianParams(
 </code></pre>
 <p>If you want to run a pre-configured agentapi server (for example, Codex with yolo mode),
 start it manually and set <code>manage_server=False</code> so deep-research-client does not restart it.</p>
-<h3 id="characteristics_5">Characteristics</h3>
+<h3 id="characteristics_6">Characteristics</h3>
 <ul>
 <li><strong>Cost</strong>: Variable (depends on agent)</li>
 <li><strong>Speed</strong>: 10-30+ minutes</li>
 <li><strong>Capabilities</strong>: Iterative research, citation management, comprehensive synthesis</li>
 </ul>
-<h3 id="when-to-use">When to Use</h3>
+<h3 id="when-to-use_1">When to Use</h3>
 <ul>
 <li>Comprehensive literature reviews</li>
 <li>Deep technical research</li>

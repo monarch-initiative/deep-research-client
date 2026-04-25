@@ -496,6 +496,55 @@ def create_openscientist_model_cards() -> ProviderModelCards:
     )
 
 
+def create_deeper_med_model_cards() -> ProviderModelCards:
+    """Create model cards for the DeepER-Med stub provider.
+
+    DeepER-Med (arXiv:2604.15456) is an evidence-based agentic deep research
+    framework for medicine. No public API exists yet; this card documents the
+    system so it appears in `providers` listings and so the wrapper can flip
+    on once an endpoint is available.
+    """
+
+    deeper_med = ModelCard(
+        name="deeper-med-agentic",
+        display_name="DeepER-Med Agentic Medical Research (stub)",
+        description=(
+            "Evidence-based agentic deep research framework for medicine "
+            "(Wang et al., arXiv:2604.15456). Decomposes queries into "
+            "hierarchical sub-questions, retrieves from PubMed, "
+            "ClinicalTrials.gov, and PrimeKG knowledge graph, and synthesizes "
+            "with traceable references retrieved directly from source databases. "
+            "STUB: no public API has been released; calls raise "
+            "NotImplementedError."
+        ),
+        cost_level=CostLevel.HIGH,
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ModelCapability.ACADEMIC_SEARCH,
+            ModelCapability.SCIENTIFIC_LITERATURE,
+            ModelCapability.CITATION_TRACKING,
+        ],
+        aliases=["deeper-med", "deeper_med", "deepermed"],
+        pricing_notes="Unknown - upstream API not yet released",
+        use_cases=[
+            "Evidence-based medical research synthesis",
+            "Hypothesis verification grounded in PubMed",
+            "Precision oncology tumor board preparation",
+            "Clinical trial evidence aggregation",
+        ],
+        limitations=[
+            "Stub: no upstream endpoint",
+            "Reference: https://arxiv.org/abs/2604.15456",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="deeper_med",
+        default_model="deeper-med-agentic",
+        models={"deeper-med-agentic": deeper_med},
+    )
+
+
 # Registry of all provider model cards
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openai": create_openai_model_cards(),
@@ -504,6 +553,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "asta": create_asta_model_cards(),
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
+    "deeper_med": create_deeper_med_model_cards(),
 }
 
 

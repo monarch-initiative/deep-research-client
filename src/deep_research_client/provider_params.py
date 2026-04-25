@@ -266,6 +266,17 @@ class OpenScientistParams(BaseProviderParams):
     )
 
 
+class DeeperMedParams(BaseProviderParams):
+    """Parameters specific to the DeepER-Med provider stub.
+
+    The upstream system (arXiv:2604.15456) is not yet publicly callable, so
+    these fields document the planned surface and let users construct a
+    parameter object today. They are not validated against a live API.
+    """
+
+    pass
+
+
 class CyberianParams(BaseProviderParams):
     """Parameters specific to Cyberian agent-based research provider.
 
@@ -328,6 +339,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "mock": MockParams,
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
+    "deeper_med": DeeperMedParams,
 }
 
 

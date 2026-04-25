@@ -20,6 +20,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "consensus": ("deep_research_client.providers.consensus", "ConsensusProvider"),
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
+    "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 

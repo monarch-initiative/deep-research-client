@@ -13,6 +13,7 @@ Complete reference for all supported research providers.
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
+| DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 
 ## OpenAI Deep Research
 
@@ -303,6 +304,29 @@ This is useful for:
 - **Testing**: Run a quick verification without full research
 - **Cost control**: Limit agent API calls
 - **Debugging**: Inspect intermediate results after fixed iterations
+
+---
+
+## DeepER-Med (Stub)
+
+DeepER-Med is an evidence-based agentic deep medical research framework
+introduced in Wang et al., *DeepER-Med: Advancing Deep Evidence-Based Research
+in Medicine Through Agentic AI* ([arXiv:2604.15456](https://arxiv.org/abs/2604.15456),
+NIH/NLM, April 2026). The paper describes an open-source paradigm with a
+public website and agent API, but at the time of writing **no code, API
+endpoint, or dataset has been released publicly**.
+
+This provider is registered as a stub so:
+
+- the wrapper slot is reserved and discoverable via `providers` listing,
+- model cards and parameter classes are in place,
+- callers get a clear `NotImplementedError` (with the arXiv pointer) instead
+  of a confusing missing-import error.
+
+`is_available()` always returns `False`. Calls to `research()` raise
+`NotImplementedError`. Watch the upstream lab's repository
+([`ncbi-nlp`](https://github.com/ncbi-nlp)) for the eventual release; once an
+API is published, only the body of `providers/deeper_med.py` needs to change.
 
 ---
 

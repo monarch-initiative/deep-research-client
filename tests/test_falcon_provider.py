@@ -232,6 +232,34 @@ def test_extract_output_data_from_environment_frame():
     ]
 
 
+def test_extract_answer_artifacts_from_verbose_response():
+    """Edison Literature answer artifacts should become durable artifacts."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    response = create_verbose_response(
+        {
+            "state": {
+                "state": {
+                    "response": {
+                        "answer": {
+                            "formatted_answer": "Formatted answer",
+                            "artifacts": {"artifact-00": "| A | B |\n| - | - |"},
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    artifacts = provider._extract_answer_artifacts(response)
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.filename == "artifact-00.md"
+    assert artifact.media_type == "text/markdown"
+    assert artifact.source == "edison_answer_artifacts"
+
+
 def test_artifacts_from_raw_fetch_response():
     """Raw Edison storage content should become a durable research artifact."""
     from edison_client.models.data_storage_methods import RawFetchResponse

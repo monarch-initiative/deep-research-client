@@ -1,6 +1,7 @@
 """Edison Scientific provider (formerly FutureHouse Falcon)."""
 
 import base64
+import json
 import logging
 import mimetypes
 import re
@@ -192,9 +193,9 @@ class FalconProvider(ResearchProvider):
             return []
 
         output_data = self._extract_output_data(task_response.environment_frame or {})
-        artifacts: list[ResearchArtifact] = []
+        artifacts = self._extract_answer_artifacts(task_response)
         used_storage_ids: set[str] = set()
-        used_filenames: set[str] = set()
+        used_filenames: set[str] = {artifact.filename for artifact in artifacts}
 
         for item in output_data:
             storage_id = self._get_data_storage_id(item)
@@ -215,6 +216,70 @@ class FalconProvider(ResearchProvider):
                 artifacts.append(artifact)
 
         return artifacts
+
+    def _extract_answer_artifacts(
+        self,
+        response: TaskResponseVerbose,
+    ) -> list[ResearchArtifact]:
+        """Extract artifacts embedded directly in a verbose Edison answer."""
+        answer = self._get_verbose_answer(response)
+        raw_artifacts = answer.get("artifacts")
+        if not isinstance(raw_artifacts, dict):
+            return []
+
+        artifacts: list[ResearchArtifact] = []
+        used_filenames: set[str] = set()
+        for raw_name, raw_content in raw_artifacts.items():
+            artifact = self._artifact_from_answer_value(
+                raw_name=str(raw_name),
+                raw_content=raw_content,
+                used_filenames=used_filenames,
+            )
+            if artifact is not None:
+                artifacts.append(artifact)
+
+        return artifacts
+
+    def _artifact_from_answer_value(
+        self,
+        raw_name: str,
+        raw_content: Any,
+        used_filenames: set[str],
+    ) -> ResearchArtifact | None:
+        """Convert an Edison answer artifact value into a research artifact."""
+        if isinstance(raw_content, dict) and isinstance(raw_content.get("content_base64"), str):
+            filename = self._artifact_filename(
+                raw_content.get("filename") or raw_name,
+                used_filenames,
+            )
+            return ResearchArtifact(
+                filename=filename,
+                content_base64=raw_content["content_base64"],
+                media_type=raw_content.get("media_type") or mimetypes.guess_type(filename)[0],
+                source="edison_answer_artifacts",
+                description=raw_content.get("description") or f"Edison artifact {raw_name}",
+            )
+
+        if isinstance(raw_content, str):
+            filename = self._filename_with_default_suffix(raw_name, ".md")
+            filename = self._artifact_filename(filename, used_filenames)
+            media_type = "text/markdown"
+            content = raw_content.encode("utf-8")
+        elif raw_content is None:
+            return None
+        else:
+            filename = self._filename_with_default_suffix(raw_name, ".json")
+            filename = self._artifact_filename(filename, used_filenames)
+            media_type = "application/json"
+            content = json.dumps(raw_content, indent=2, sort_keys=True).encode("utf-8")
+
+        return ResearchArtifact(
+            filename=filename,
+            content_base64=base64.b64encode(content).decode("ascii"),
+            media_type=media_type,
+            source="edison_answer_artifacts",
+            description=f"Edison artifact {raw_name}",
+        )
 
     def _extract_output_data(self, environment_frame: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract Edison output_data entries from an environment frame."""
@@ -343,6 +408,13 @@ class FalconProvider(ResearchProvider):
 
         used_filenames.add(candidate)
         return candidate
+
+    def _filename_with_default_suffix(self, raw_name: str, suffix: str) -> str:
+        """Add a suffix to an artifact name if Edison did not provide one."""
+        path = Path(raw_name)
+        if path.suffix:
+            return raw_name
+        return f"{raw_name}{suffix}"
 
     def _make_artifact(
         self,

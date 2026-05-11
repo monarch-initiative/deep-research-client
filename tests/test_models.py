@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 import yaml
 
+import deep_research_client.models as model_module
 from deep_research_client.formatter import ResultFormatter as LegacyResultFormatter
 from deep_research_client.models import (
     CacheConfig,
@@ -153,6 +154,27 @@ def test_research_artifact_image_detection():
     )
 
     assert artifact.is_image is True
+
+
+def test_research_artifact_sanitizes_filename():
+    """Artifact filenames should be sanitized at model construction time."""
+    artifact = ResearchArtifact(
+        filename=r"..\..\figure.png",
+        content_base64="ZmFrZQ==",
+    )
+
+    assert artifact.filename == "_figure.png"
+
+
+def test_research_artifact_rejects_oversized_content(monkeypatch):
+    """Artifact model validation should reject payloads above the size limit."""
+    monkeypatch.setattr(model_module, "MAX_ARTIFACT_BYTES", 10)
+
+    with pytest.raises(ValueError, match="Artifact too large"):
+        ResearchArtifact(
+            filename="large.bin",
+            content_base64="A" * 16,
+        )
 
 
 def test_format_research_result_includes_image_artifacts():

@@ -14,7 +14,12 @@ from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
 from edison_client.models.data_storage_methods import RawFetchResponse
 
 from . import ResearchProvider
-from ..models import ResearchArtifact, ResearchResult, ProviderConfig
+from ..models import (
+    ProviderConfig,
+    ResearchArtifact,
+    ResearchResult,
+    sanitize_artifact_filename,
+)
 from ..provider_params import FalconParams
 from ..model_cards import ProviderModelCards, create_falcon_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
@@ -394,7 +399,7 @@ class FalconProvider(ResearchProvider):
 
     def _artifact_filename(self, raw_name: Any, used_filenames: set[str]) -> str:
         """Return a stable, unique filename for a fetched artifact."""
-        filename = Path(str(raw_name or "artifact")).name
+        filename = sanitize_artifact_filename(str(raw_name or "artifact"))
         if not filename or filename in {".", ".."}:
             filename = "artifact"
 

@@ -21,7 +21,7 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
-from .models import ResearchResult
+from .models import ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -187,7 +187,7 @@ def _effective_research_options(
 
 def _unique_artifact_filename(filename: str, used_filenames: set[str], index: int) -> str:
     """Return a filesystem-safe artifact filename unique within one result."""
-    safe_name = Path(filename).name.strip() or f"artifact-{index}"
+    safe_name = sanitize_artifact_filename(filename, fallback=f"artifact-{index}")
     if safe_name in {".", ".."}:
         safe_name = f"artifact-{index}"
 

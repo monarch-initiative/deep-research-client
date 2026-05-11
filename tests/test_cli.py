@@ -174,9 +174,33 @@ def test_write_result_artifacts_sanitizes_path_traversal_names(tmp_path):
 
     _write_result_artifacts(result, output_path)
 
-    assert result.artifacts[0].path == "report_artifacts/passwd"
-    assert (tmp_path / "report_artifacts" / "passwd").read_bytes() == b"safe"
+    artifact_path = tmp_path / result.artifacts[0].path
+    assert result.artifacts[0].path.startswith("report_artifacts/")
+    assert ".." not in result.artifacts[0].path
+    assert artifact_path.read_bytes() == b"safe"
     assert not (tmp_path / "etc").exists()
+
+
+def test_write_result_artifacts_sanitizes_windows_path_traversal_names(tmp_path):
+    """Windows-style separators should not escape the sidecar artifact directory."""
+    result = ResearchResult(
+        markdown="Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename=r"..\..\evil.png",
+                content_base64="c2FmZQ==",
+            )
+        ],
+    )
+
+    _write_result_artifacts(result, tmp_path / "report.md")
+
+    artifact_path = tmp_path / result.artifacts[0].path
+    assert result.artifacts[0].path == "report_artifacts/_evil.png"
+    assert artifact_path.read_bytes() == b"safe"
+    assert not (tmp_path / "evil.png").exists()
 
 
 def test_write_result_artifacts_handles_unicode_filenames(tmp_path):

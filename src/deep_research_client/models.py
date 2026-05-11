@@ -2,7 +2,22 @@
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
+_UNSAFE_ARTIFACT_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_REPEATED_UNDERSCORES = re.compile(r"_+")
+
+
+def sanitize_artifact_filename(raw_name: str, fallback: str = "artifact") -> str:
+    """Return a filesystem-safe basename for an artifact filename."""
+    safe_name = _UNSAFE_ARTIFACT_FILENAME_CHARS.sub("_", str(raw_name or fallback))
+    safe_name = safe_name.replace("..", "_").strip(". ")
+    safe_name = _REPEATED_UNDERSCORES.sub("_", safe_name)
+    return safe_name or fallback
 
 
 class EditHistoryEntry(BaseModel):
@@ -30,6 +45,23 @@ class ResearchArtifact(BaseModel):
     source: Optional[str] = Field(default=None, description="Provider-specific artifact source")
     data_storage_id: Optional[str] = Field(default=None, description="Provider data storage identifier")
     description: Optional[str] = Field(default=None, description="Human-readable artifact description")
+
+    @field_validator("filename")
+    @classmethod
+    def sanitize_filename(cls, value: str) -> str:
+        """Sanitize artifact filenames before they reach filesystem output."""
+        return sanitize_artifact_filename(value)
+
+    @model_validator(mode="after")
+    def validate_artifact_size(self) -> "ResearchArtifact":
+        """Reject artifacts that are too large to safely hold in memory."""
+        estimated_size = len(self.content_base64) * 3 // 4
+        if estimated_size > MAX_ARTIFACT_BYTES:
+            raise ValueError(
+                f"Artifact too large: estimated {estimated_size} bytes exceeds "
+                f"{MAX_ARTIFACT_BYTES} byte limit"
+            )
+        return self
 
     @property
     def is_image(self) -> bool:

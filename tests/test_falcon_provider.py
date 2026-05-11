@@ -313,8 +313,12 @@ def test_artifact_filename_handles_collisions_and_path_traversal():
     provider = FalconProvider(config)
     used_filenames: set[str] = set()
 
-    assert provider._artifact_filename("../../../etc/passwd", used_filenames) == "passwd"
-    assert provider._artifact_filename("passwd", used_filenames) == "passwd-2"
+    first_name = provider._artifact_filename("../../../etc/passwd", used_filenames)
+    assert ".." not in first_name
+    assert "/" not in first_name
+    assert "\\" not in first_name
+    assert provider._artifact_filename(first_name, used_filenames) == f"{first_name}-2"
+    assert provider._artifact_filename(r"..\..\evil.png", used_filenames) == "_evil.png"
     assert provider._artifact_filename("", used_filenames) == "artifact"
 
 
@@ -410,7 +414,7 @@ def test_artifacts_from_directory_fetch_response(tmp_path):
         used_filenames=set(),
     )
 
-    assert [artifact.filename for artifact in artifacts] == ["figure.svg", "summary.md"]
+    assert [artifact.filename for artifact in artifacts] == ["nested_figure.svg", "summary.md"]
     assert [artifact.media_type for artifact in artifacts] == ["image/svg+xml", "text/markdown"]
 
 

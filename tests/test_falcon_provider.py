@@ -232,6 +232,53 @@ def test_extract_output_data_from_environment_frame():
     ]
 
 
+def test_extract_output_data_from_complex_nested_environment_frame():
+    """Output data entries should be found in non-standard nested frame shapes."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    environment_frame = {
+        "state": {"info": {"not_output_data": []}},
+        "supplemental_data": [
+            {"nested": {"output_data": [{"entry_id": "22222222-2222-2222-2222-222222222222"}]}},
+            {"output_data": ["not-a-dict", {"data_storage_id": "33333333-3333-3333-3333-333333333333"}]},
+        ],
+    }
+
+    output_data = provider._extract_output_data(environment_frame)
+
+    assert output_data == [
+        {"entry_id": "22222222-2222-2222-2222-222222222222"},
+        {"data_storage_id": "33333333-3333-3333-3333-333333333333"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [
+        (
+            {"entry_id": "data_entry:11111111-1111-1111-1111-111111111111"},
+            UUID("11111111-1111-1111-1111-111111111111"),
+        ),
+        (
+            {"data_storage_id": "22222222-2222-2222-2222-222222222222"},
+            UUID("22222222-2222-2222-2222-222222222222"),
+        ),
+        (
+            {"id": UUID("33333333-3333-3333-3333-333333333333")},
+            UUID("33333333-3333-3333-3333-333333333333"),
+        ),
+        ({}, None),
+    ],
+)
+def test_get_data_storage_id_accepts_supported_id_shapes(item, expected):
+    """Edison output entries can identify storage records with several keys."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    assert provider._get_data_storage_id(item) == expected
+
+
 def test_extract_answer_artifacts_from_verbose_response():
     """Edison Literature answer artifacts should become durable artifacts."""
     config = ProviderConfig(name="falcon", api_key="test-key")
@@ -258,6 +305,17 @@ def test_extract_answer_artifacts_from_verbose_response():
     assert artifact.filename == "artifact-00.md"
     assert artifact.media_type == "text/markdown"
     assert artifact.source == "edison_answer_artifacts"
+
+
+def test_artifact_filename_handles_collisions_and_path_traversal():
+    """Provider artifact filenames should be basename-only and unique."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    used_filenames: set[str] = set()
+
+    assert provider._artifact_filename("../../../etc/passwd", used_filenames) == "passwd"
+    assert provider._artifact_filename("passwd", used_filenames) == "passwd-2"
+    assert provider._artifact_filename("", used_filenames) == "artifact"
 
 
 def test_artifacts_from_raw_fetch_response():
@@ -287,3 +345,120 @@ def test_artifacts_from_raw_fetch_response():
     assert artifact.is_image is True
     assert artifact.description == "Figure 1"
     assert artifact.data_storage_id == str(storage_id)
+
+
+def test_artifacts_from_path_fetch_response(tmp_path):
+    """Downloaded Edison files should become artifacts."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    storage_id = UUID("11111111-1111-1111-1111-111111111111")
+    image_path = tmp_path / "plot.png"
+    image_path.write_bytes(b"png bytes")
+
+    artifacts = provider._artifacts_from_fetch_response(
+        image_path,
+        source_item={"description": "Generated plot"},
+        storage_id=storage_id,
+        used_filenames=set(),
+    )
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.filename == "plot.png"
+    assert artifact.media_type == "image/png"
+    assert artifact.description == "Generated plot"
+    assert artifact.data_storage_id == str(storage_id)
+
+
+def test_artifacts_from_list_fetch_response_handles_collisions(tmp_path):
+    """Multiple downloaded paths with same names should all be preserved."""
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_plot = first_dir / "plot.png"
+    second_plot = second_dir / "plot.png"
+    first_plot.write_bytes(b"first")
+    second_plot.write_bytes(b"second")
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    artifacts = provider._artifacts_from_fetch_response(
+        [first_plot, second_plot],
+        source_item={},
+        storage_id=UUID("11111111-1111-1111-1111-111111111111"),
+        used_filenames=set(),
+    )
+
+    assert [artifact.filename for artifact in artifacts] == ["plot.png", "plot-2.png"]
+
+
+def test_artifacts_from_directory_fetch_response(tmp_path):
+    """Directory downloads should recursively produce one artifact per file."""
+    output_dir = tmp_path / "downloaded"
+    nested_dir = output_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    (output_dir / "summary.md").write_text("# Summary", encoding="utf-8")
+    (nested_dir / "figure.svg").write_text("<svg></svg>", encoding="utf-8")
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    artifacts = provider._artifacts_from_fetch_response(
+        output_dir,
+        source_item={"name": "Directory output"},
+        storage_id=UUID("11111111-1111-1111-1111-111111111111"),
+        used_filenames=set(),
+    )
+
+    assert [artifact.filename for artifact in artifacts] == ["figure.svg", "summary.md"]
+    assert [artifact.media_type for artifact in artifacts] == ["image/svg+xml", "text/markdown"]
+
+
+def test_extract_artifacts_combines_answer_and_output_data_artifacts(tmp_path):
+    """Full extraction should include direct answer artifacts and fetched output_data."""
+
+    class FakeEdisonClient:
+        def __init__(self, fetched_path: Path):
+            self.fetched_path = fetched_path
+            self.fetch_calls: list[UUID] = []
+
+        def fetch_data_from_storage(self, data_storage_id: UUID):
+            self.fetch_calls.append(data_storage_id)
+            return self.fetched_path
+
+    fetched_path = tmp_path / "artifact-00.md"
+    fetched_path.write_text("Fetched artifact", encoding="utf-8")
+    storage_id = UUID("11111111-1111-1111-1111-111111111111")
+    response = [
+        create_verbose_response(
+            {
+                "state": {
+                    "info": {
+                        "output_data": [
+                            {"entry_id": f"data_entry:{storage_id}"},
+                            {"entry_id": f"data_entry:{storage_id}"},
+                        ]
+                    },
+                    "state": {
+                        "response": {
+                            "answer": {
+                                "formatted_answer": "Formatted answer",
+                                "artifacts": {"artifact-00": "Answer artifact"},
+                            }
+                        }
+                    },
+                }
+            }
+        )
+    ]
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    client = FakeEdisonClient(fetched_path)
+
+    artifacts = provider._extract_artifacts(client, response)
+
+    assert [artifact.filename for artifact in artifacts] == [
+        "artifact-00.md",
+        "artifact-00-2.md",
+    ]
+    assert client.fetch_calls == [storage_id]

@@ -1,6 +1,7 @@
 """CLI interface for deep-research-client."""
 
 import base64
+import binascii
 from dataclasses import dataclass
 import logging
 import os
@@ -214,7 +215,11 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
     for index, artifact in enumerate(result.artifacts, 1):
         filename = _unique_artifact_filename(artifact.filename, used_filenames, index)
         artifact_path = artifact_dir / filename
-        artifact_path.write_bytes(base64.b64decode(artifact.content_base64))
+        try:
+            content = base64.b64decode(artifact.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"Invalid base64 content for artifact {artifact.filename}") from exc
+        artifact_path.write_bytes(content)
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 

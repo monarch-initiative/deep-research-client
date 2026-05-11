@@ -1054,7 +1054,7 @@
 <p>The name comes from <a href="https://en.wikipedia.org/wiki/Ralph_Wiggum">Ralph Wiggum</a>, the perpetually confused child from <em>The Simpsons</em> who never stops trying despite consistent failure. Huntley's philosophy: "Better to fail predictably than succeed unpredictably." Let the agent iterate toward correctness rather than demanding perfection on the first attempt.</p>
 <h2 id="ralph-tries-research">Ralph Tries Research</h2>
 <p>So Ralph can code. But can he do a literature review?</p>
-<p>The <a href="https://github.com/monarch-initiative/cyberian">cyberian</a> provider in <a href="https://github.com/monarch-initiative/deep-research-client">deep-research-client</a> runs a similar autonomous loop, but instead of iterating on code until tests pass, it iterates on research until the literature is exhausted. The workflow is defined in <a href="../workflows/deep-research.yaml">deep-research.yaml</a>:</p>
+<p>The <a href="https://github.com/monarch-initiative/cyberian">cyberian</a> provider in <a href="https://github.com/monarch-initiative/deep-research-client">deep-research-client</a> runs a similar autonomous loop, but instead of iterating on code until tests pass, it iterates on research until the literature is exhausted. The workflow is defined in <a href="https://github.com/monarch-initiative/deep-research-client/blob/main/src/deep_research_client/workflows/deep-research.yaml">deep-research.yaml</a>:</p>
 <pre><code class="language-yaml">subtasks:
   initial_search:
     instructions: perform deep research on {{query}}.

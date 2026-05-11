@@ -25,7 +25,7 @@ The name comes from [Ralph Wiggum](https://en.wikipedia.org/wiki/Ralph_Wiggum), 
 
 So Ralph can code. But can he do a literature review?
 
-The [cyberian](https://github.com/monarch-initiative/cyberian) provider in [deep-research-client](https://github.com/monarch-initiative/deep-research-client) runs a similar autonomous loop, but instead of iterating on code until tests pass, it iterates on research until the literature is exhausted. The workflow is defined in [deep-research.yaml](../workflows/deep-research.yaml):
+The [cyberian](https://github.com/monarch-initiative/cyberian) provider in [deep-research-client](https://github.com/monarch-initiative/deep-research-client) runs a similar autonomous loop, but instead of iterating on code until tests pass, it iterates on research until the literature is exhausted. The workflow is defined in [deep-research.yaml](https://github.com/monarch-initiative/deep-research-client/blob/main/src/deep_research_client/workflows/deep-research.yaml):
 
 ```yaml
 subtasks:

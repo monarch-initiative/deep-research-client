@@ -2,8 +2,17 @@
 
 import pytest
 from pydantic import ValidationError
+import yaml
 
-from deep_research_client.models import ResearchResult, ProviderConfig, CacheConfig
+import deep_research_client.models as model_module
+from deep_research_client.formatter import ResultFormatter as LegacyResultFormatter
+from deep_research_client.models import (
+    CacheConfig,
+    ProviderConfig,
+    ResearchArtifact,
+    ResearchResult,
+)
+from deep_research_client.processing import ResearchProcessor, ResultFormatter
 
 
 def test_research_result_creation():
@@ -31,6 +40,7 @@ def test_research_result_with_defaults():
     )
 
     assert result.citations == []  # Default empty list
+    assert result.artifacts == []  # Default empty list
     assert result.cached is False
 
 
@@ -133,3 +143,138 @@ def test_model_deserialization():
     result = ResearchResult(**data)
     assert result.markdown == "# Test Result"
     assert result.cached is True
+
+
+def test_research_artifact_image_detection():
+    """Research artifacts should identify embeddable image media types."""
+    artifact = ResearchArtifact(
+        filename="figure.png",
+        content_base64="ZmFrZQ==",
+        media_type="image/png",
+    )
+
+    assert artifact.is_image is True
+
+
+def test_research_artifact_sanitizes_filename():
+    """Artifact filenames should be sanitized at model construction time."""
+    artifact = ResearchArtifact(
+        filename=r"..\..\figure.png",
+        content_base64="ZmFrZQ==",
+    )
+
+    assert artifact.filename == "_figure.png"
+
+
+def test_research_artifact_rejects_oversized_content(monkeypatch):
+    """Artifact model validation should reject payloads above the size limit."""
+    monkeypatch.setattr(model_module, "MAX_ARTIFACT_BYTES", 10)
+
+    with pytest.raises(ValueError, match="Artifact too large"):
+        ResearchArtifact(
+            filename="large.bin",
+            content_base64="A" * 16,
+        )
+
+
+def test_format_research_result_includes_image_artifacts():
+    """Formatted markdown should embed image artifacts."""
+    result = ResearchResult(
+        markdown="# Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename="figure.png",
+                content_base64="ZmFrZQ==",
+                media_type="image/png",
+                path="report_artifacts/figure.png",
+                description="Figure 1",
+            )
+        ],
+    )
+
+    formatted = ResearchProcessor().format_research_result(result)
+
+    assert "artifact_count: 1" in formatted
+    assert "## Artifacts" in formatted
+    assert "![Figure 1](report_artifacts/figure.png)" in formatted
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_format_research_result_includes_artifact_frontmatter(formatter_class):
+    """Formatter frontmatter should preserve structured artifact metadata."""
+    result = ResearchResult(
+        markdown="# Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename="figure.png",
+                content_base64="ZmFrZQ==",
+                media_type="image/png",
+                path="report_artifacts/figure.png",
+                source="edison_output_data",
+                data_storage_id="11111111-1111-1111-1111-111111111111",
+                description="Figure 1",
+            )
+        ],
+    )
+
+    formatted = formatter_class().format_full_markdown(result)
+    frontmatter = yaml.safe_load(formatted.split("---", 2)[1])
+
+    assert frontmatter["artifact_count"] == 1
+    assert frontmatter["artifacts"] == [
+        {
+            "filename": "figure.png",
+            "path": "report_artifacts/figure.png",
+            "media_type": "image/png",
+            "source": "edison_output_data",
+            "data_storage_id": "11111111-1111-1111-1111-111111111111",
+            "description": "Figure 1",
+        }
+    ]
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_format_research_result_handles_mixed_artifacts(formatter_class):
+    """Formatters should embed images, link files, and preserve artifact order."""
+    long_description = "Supplementary table " + "with detailed evidence " * 20
+    result = ResearchResult(
+        markdown="# Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename="figure.png",
+                content_base64="ZmFrZQ==",
+                media_type="image/png",
+                path="report_artifacts/figure.png",
+                description="Figure 1",
+            ),
+            ResearchArtifact(
+                filename="supplement.md",
+                content_base64="ZmFrZQ==",
+                media_type="text/markdown",
+                path="report_artifacts/supplement.md",
+                description=long_description,
+            ),
+            ResearchArtifact(
+                filename="raw.json",
+                content_base64="e30=",
+                media_type="application/json",
+            ),
+        ],
+    )
+
+    formatted = formatter_class().format_full_markdown(result)
+
+    image_line = "![Figure 1](report_artifacts/figure.png)"
+    supplement_line = f"- [{long_description}](report_artifacts/supplement.md)"
+    fallback_line = "- [raw.json](raw.json)"
+    assert image_line in formatted
+    assert supplement_line in formatted
+    assert fallback_line in formatted
+    assert formatted.index(image_line) < formatted.index(supplement_line)
+    assert formatted.index(supplement_line) < formatted.index(fallback_line)

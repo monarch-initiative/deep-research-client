@@ -126,6 +126,7 @@ params = FalconParams(
 - **Cost**: High
 - **Speed**: 2-5 minutes
 - **Capabilities**: Scientific literature, powered by PaperQA3
+- **Artifacts**: Edison output artifacts are fetched from the completed task. Image artifacts such as diagrams, charts, and figures are written beside saved reports and embedded in the generated Markdown; other artifact files are linked from an `Artifacts` section.
 
 ---
 

@@ -210,6 +210,8 @@ class DeepResearchClient:
         # keep stale cache entries from shadowing current live results.
         if research_provider.name == "asta":
             effective_params["_cache_version"] = "snippet-v5"
+        elif research_provider.name == "falcon":
+            effective_params["_cache_version"] = "artifacts-v1"
 
         return effective_params or None
 

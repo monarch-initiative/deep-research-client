@@ -12,6 +12,7 @@ import pytest
 from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
 from deep_research_client.providers import ResearchProvider
 from deep_research_client.providers.asta import AstaProvider
+from deep_research_client.providers.falcon import FalconProvider
 
 
 class MockProvider(ResearchProvider):
@@ -166,6 +167,19 @@ def test_asta_cache_params_include_version_tag():
         "paper_limit": 20,
         "_cache_version": "snippet-v5",
     }
+
+
+def test_falcon_cache_params_include_artifact_version_tag():
+    """Falcon cache keys should invalidate stale no-artifact Edison entries."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = FalconProvider(ProviderConfig(
+        name="falcon", api_key="edison-key", enabled=True))
+    cache_params = client._get_cache_provider_params(provider)
+
+    assert cache_params == {"_cache_version": "artifacts-v1"}
 
 
 async def test_research_with_mock_provider():

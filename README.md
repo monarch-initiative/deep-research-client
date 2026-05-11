@@ -897,10 +897,12 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Provider | Environment Variable | Model/Service | Strengths |
 |----------|---------------------|---------------|-----------|
 | OpenAI | `OPENAI_API_KEY` | o3-deep-research-2025-06-26 | Deep research, comprehensive reports |
-| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3 |
+| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations |
+
+When Edison produces diagrams, charts, figures, or other output artifacts, saved reports include an `Artifacts` section. Image artifacts are written to a sidecar directory such as `report_artifacts/` and embedded with relative Markdown links.
 
 ## Development
 

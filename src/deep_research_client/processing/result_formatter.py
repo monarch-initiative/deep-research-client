@@ -66,6 +66,20 @@ class ResultFormatter:
         if result.citations:
             metadata["citation_count"] = len(result.citations)
 
+        if result.artifacts:
+            metadata["artifact_count"] = len(result.artifacts)
+            metadata["artifacts"] = [
+                {
+                    "filename": artifact.filename,
+                    "path": artifact.path or artifact.filename,
+                    "media_type": artifact.media_type,
+                    "source": artifact.source,
+                    "data_storage_id": artifact.data_storage_id,
+                    "description": artifact.description,
+                }
+                for artifact in result.artifacts
+            ]
+
         # Add edit history if present
         if result.edit_history:
             metadata["edit_history"] = [
@@ -99,6 +113,18 @@ class ResultFormatter:
         parts.append("## Output")
         parts.append("")
         parts.append(result.markdown)
+
+        if result.artifacts:
+            parts.append("")
+            parts.append("## Artifacts")
+            parts.append("")
+            for artifact in result.artifacts:
+                artifact_path = artifact.path or artifact.filename
+                label = artifact.description or artifact.filename
+                if artifact.is_image:
+                    parts.append(f"![{label}]({artifact_path})")
+                else:
+                    parts.append(f"- [{label}]({artifact_path})")
 
         # Add citations section (unless separated)
         if result.citations and not separate_citations:

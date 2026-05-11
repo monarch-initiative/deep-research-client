@@ -2,6 +2,8 @@
 
 import pytest
 from datetime import datetime
+from pathlib import Path
+from uuid import UUID
 
 # Skip all tests in this module if edison_client is not installed
 pytest.importorskip("edison_client")
@@ -40,6 +42,30 @@ def create_mock_pqa_response(
     )
 
 
+def create_verbose_response(environment_frame: dict):
+    """Create a verbose Edison response for testing."""
+    from edison_client.models.app import TaskResponseVerbose
+
+    return TaskResponseVerbose.model_construct(
+        status="completed",
+        query="test query",
+        user=None,
+        created_at=datetime.now(),
+        job_name="literature-20260216",
+        share_status="private",
+        permitted_accessors=None,
+        build_owner=None,
+        environment_name=None,
+        agent_name=None,
+        task_id=None,
+        project_id=None,
+        agent_state=None,
+        environment_frame=environment_frame,
+        metadata=None,
+        deployment_config=None,
+    )
+
+
 def test_extract_text_from_pqa_response():
     """Test extracting text content from PQATaskResponse."""
     config = ProviderConfig(name="falcon", api_key="test-key")
@@ -53,6 +79,33 @@ def test_extract_text_from_pqa_response():
 
     text = provider._extract_text_content(response)
     assert text == "Formatted answer with (smith2020study pages 1-5) citations"
+
+
+def test_extract_text_from_verbose_response():
+    """Verbose Edison responses should read formatted answers from the frame."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    response = [
+        create_verbose_response(
+            {
+                "state": {
+                    "state": {
+                        "response": {
+                            "answer": {
+                                "answer": "Plain answer",
+                                "formatted_answer": "Formatted answer",
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    ]
+
+    text = provider._extract_text_content(response)
+
+    assert text == "Formatted answer"
 
 
 def test_extract_text_fallback_to_answer():
@@ -155,3 +208,54 @@ def test_extract_no_citations():
     citations = provider._extract_citations(response, report_text)
 
     assert citations == []
+
+
+def test_extract_output_data_from_environment_frame():
+    """Output data entries should be found in the final Edison frame."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+
+    environment_frame = {
+        "state": {
+            "info": {
+                "output_data": [
+                    {"entry_id": "data_entry:11111111-1111-1111-1111-111111111111"}
+                ]
+            }
+        }
+    }
+
+    output_data = provider._extract_output_data(environment_frame)
+
+    assert output_data == [
+        {"entry_id": "data_entry:11111111-1111-1111-1111-111111111111"}
+    ]
+
+
+def test_artifacts_from_raw_fetch_response():
+    """Raw Edison storage content should become a durable research artifact."""
+    from edison_client.models.data_storage_methods import RawFetchResponse
+
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    storage_id = UUID("11111111-1111-1111-1111-111111111111")
+
+    artifacts = provider._artifacts_from_fetch_response(
+        RawFetchResponse(
+            filename=Path("figure.svg"),
+            content="<svg></svg>",
+            entry_id=storage_id,
+            entry_name="Figure 1",
+        ),
+        source_item={"name": "Figure 1"},
+        storage_id=storage_id,
+        used_filenames=set(),
+    )
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.filename == "figure.svg"
+    assert artifact.media_type == "image/svg+xml"
+    assert artifact.is_image is True
+    assert artifact.description == "Figure 1"
+    assert artifact.data_storage_id == str(storage_id)

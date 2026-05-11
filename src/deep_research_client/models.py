@@ -20,11 +20,29 @@ class QueryMetadata(BaseModel):
     contributors: List[str] = Field(default_factory=list, description="List of contributors")
 
 
+class ResearchArtifact(BaseModel):
+    """A non-text artifact produced alongside a research report."""
+
+    filename: str = Field(..., description="Artifact filename")
+    content_base64: str = Field(..., description="Base64-encoded artifact content")
+    media_type: Optional[str] = Field(default=None, description="Artifact MIME/media type")
+    path: Optional[str] = Field(default=None, description="Relative path used in formatted markdown")
+    source: Optional[str] = Field(default=None, description="Provider-specific artifact source")
+    data_storage_id: Optional[str] = Field(default=None, description="Provider data storage identifier")
+    description: Optional[str] = Field(default=None, description="Human-readable artifact description")
+
+    @property
+    def is_image(self) -> bool:
+        """Return whether this artifact can be embedded as a Markdown image."""
+        return (self.media_type or "").startswith("image/")
+
+
 class ResearchResult(BaseModel):
     """Result from a deep research query."""
 
     markdown: str = Field(..., description="Research report in markdown format")
     citations: List[str] = Field(default_factory=list, description="List of citations/references")
+    artifacts: List[ResearchArtifact] = Field(default_factory=list, description="Non-text artifacts produced with the report")
     provider: str = Field(..., description="Name of the research provider used")
     cached: bool = Field(default=False, description="Whether result was retrieved from cache")
     query: str = Field(..., description="Original query that generated this result")

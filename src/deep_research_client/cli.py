@@ -1,5 +1,6 @@
 """CLI interface for deep-research-client."""
 
+import base64
 from dataclasses import dataclass
 import logging
 import os
@@ -19,12 +20,23 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
+from .models import ResearchResult
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
 
 app = typer.Typer(
     help="deep-research-client: Wrapper for multiple deep research tools")
+
+PROVIDER_CREDENTIAL_HINTS = {
+    "openai": ("OPENAI_API_KEY", "OpenAI Deep Research"),
+    "falcon": ("EDISON_API_KEY", "Edison Scientific"),
+    "asta": ("ASTA_API_KEY", "Asta"),
+    "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
+    "consensus": ("CONSENSUS_API_KEY", "Consensus"),
+    "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
+    "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
+}
 
 
 def setup_logging(verbosity: int) -> None:
@@ -170,6 +182,47 @@ def _effective_research_options(
         api_key_env=api_key_env,
         warnings=warnings,
     )
+
+
+def _unique_artifact_filename(filename: str, used_filenames: set[str], index: int) -> str:
+    """Return a filesystem-safe artifact filename unique within one result."""
+    safe_name = Path(filename).name.strip() or f"artifact-{index}"
+    if safe_name in {".", ".."}:
+        safe_name = f"artifact-{index}"
+
+    candidate = safe_name
+    suffix = Path(safe_name).suffix
+    stem = Path(safe_name).stem or f"artifact-{index}"
+    counter = 2
+    while candidate in used_filenames:
+        candidate = f"{stem}-{counter}{suffix}"
+        counter += 1
+
+    used_filenames.add(candidate)
+    return candidate
+
+
+def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
+    """Write research artifacts beside a report and set their relative paths."""
+    if not result.artifacts:
+        return
+
+    artifact_dir = output.parent / f"{output.stem}_artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    used_filenames: set[str] = set()
+    for index, artifact in enumerate(result.artifacts, 1):
+        filename = _unique_artifact_filename(artifact.filename, used_filenames, index)
+        artifact_path = artifact_dir / filename
+        artifact_path.write_bytes(base64.b64decode(artifact.content_base64))
+        artifact.path = artifact_path.relative_to(output.parent).as_posix()
+
+
+def _echo_credential_hints(provider_names: list[str]) -> None:
+    """Print credential hints for providers by canonical provider name."""
+    for provider_name in provider_names:
+        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
+        typer.echo(f"  - {env_var} for {label}")
 
 
 @app.callback()
@@ -464,6 +517,9 @@ def research(
         # Determine if we're separating citations
         should_separate_citations = separate_citations is not None
 
+        if output:
+            _write_result_artifacts(result, output)
+
         # Format output using processor
         logger.debug("Formatting research result")
         output_content = processor.format_research_result(
@@ -537,17 +593,9 @@ def providers(
 
         if not is_available:
             # Show required environment variable
-            env_vars = {
-                "openai": "OPENAI_API_KEY",
-                "falcon": "EDISON_API_KEY",
-                "asta": "ASTA_API_KEY",
-                "perplexity": "PERPLEXITY_API_KEY",
-                "consensus": "CONSENSUS_API_KEY",
-                "openscientist": "OPENSCIENTIST_API_KEY",
-                "mock": "ENABLE_MOCK_PROVIDER=true"
-            }
-            if provider in env_vars:
-                typer.echo(f"Required: {env_vars[provider]}")
+            if provider in PROVIDER_CREDENTIAL_HINTS:
+                env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
+                typer.echo(f"Required: {env_var}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]
@@ -586,15 +634,18 @@ def providers(
                             continue
                         typer.echo(
                             f"    {field_name}: {field_info.description}")
+
+        missing_credential_providers = [
+            provider_name
+            for provider_name in PROVIDER_CREDENTIAL_HINTS
+            if provider_name not in available
+        ]
+        if missing_credential_providers:
+            typer.echo("\nUnavailable providers requiring credentials:")
+            _echo_credential_hints(missing_credential_providers)
     else:
         logger.error("No providers available. Please set API keys:")
-        typer.echo("  - OPENAI_API_KEY for OpenAI Deep Research")
-        typer.echo("  - EDISON_API_KEY for Edison Scientific")
-        typer.echo("  - ASTA_API_KEY for Asta")
-        typer.echo("  - PERPLEXITY_API_KEY for Perplexity AI")
-        typer.echo("  - CONSENSUS_API_KEY for Consensus")
-        typer.echo("  - OPENSCIENTIST_API_KEY for OpenScientist")
-        typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")
+        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
 
     if not show_params and not provider:
         typer.echo(

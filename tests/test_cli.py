@@ -11,8 +11,9 @@ from deep_research_client.cli import (
     app,
     _collect_noop_research_option_warnings,
     _effective_research_options,
+    _write_result_artifacts,
 )
-from deep_research_client.models import CacheConfig
+from deep_research_client.models import CacheConfig, ResearchArtifact, ResearchResult
 
 
 runner = CliRunner()
@@ -106,6 +107,29 @@ def test_research_help_lists_openscientist_provider():
 
     assert result.exit_code == 0, result.output
     assert "openscientist" in result.stdout
+
+
+def test_write_result_artifacts_sets_relative_paths(tmp_path):
+    """CLI artifact writer should materialize sidecar files for markdown links."""
+    result = ResearchResult(
+        markdown="Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename="figure.png",
+                content_base64="ZmFrZS1pbWFnZQ==",
+                media_type="image/png",
+            )
+        ],
+    )
+    output_path = tmp_path / "report.md"
+
+    _write_result_artifacts(result, output_path)
+
+    artifact_path = tmp_path / "report_artifacts" / "figure.png"
+    assert artifact_path.read_bytes() == b"fake-image"
+    assert result.artifacts[0].path == "report_artifacts/figure.png"
 
 
 def test_collect_noop_research_option_warnings_for_asta():

@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from deep_research_client.models import ResearchResult, ProviderConfig, CacheConfig
+from deep_research_client.models import (
+    CacheConfig,
+    ProviderConfig,
+    ResearchArtifact,
+    ResearchResult,
+)
+from deep_research_client.processing import ResearchProcessor
 
 
 def test_research_result_creation():
@@ -31,6 +37,7 @@ def test_research_result_with_defaults():
     )
 
     assert result.citations == []  # Default empty list
+    assert result.artifacts == []  # Default empty list
     assert result.cached is False
 
 
@@ -133,3 +140,38 @@ def test_model_deserialization():
     result = ResearchResult(**data)
     assert result.markdown == "# Test Result"
     assert result.cached is True
+
+
+def test_research_artifact_image_detection():
+    """Research artifacts should identify embeddable image media types."""
+    artifact = ResearchArtifact(
+        filename="figure.png",
+        content_base64="ZmFrZQ==",
+        media_type="image/png",
+    )
+
+    assert artifact.is_image is True
+
+
+def test_format_research_result_includes_image_artifacts():
+    """Formatted markdown should embed image artifacts."""
+    result = ResearchResult(
+        markdown="# Report",
+        provider="falcon",
+        query="query",
+        artifacts=[
+            ResearchArtifact(
+                filename="figure.png",
+                content_base64="ZmFrZQ==",
+                media_type="image/png",
+                path="report_artifacts/figure.png",
+                description="Figure 1",
+            )
+        ],
+    )
+
+    formatted = ResearchProcessor().format_research_result(result)
+
+    assert "artifact_count: 1" in formatted
+    assert "## Artifacts" in formatted
+    assert "![Figure 1](report_artifacts/figure.png)" in formatted

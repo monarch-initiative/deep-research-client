@@ -110,6 +110,18 @@ def test_research_help_lists_openscientist_provider():
     assert "openscientist" in result.stdout
 
 
+def test_edison_trajectory_requires_api_key():
+    """Trajectory retrieval should fail fast when Edison credentials are missing."""
+    with patch.dict(os.environ, {}, clear=True):
+        result = runner.invoke(
+            app,
+            ["edison-trajectory", "784d73d5-da42-402e-9701-6c5b44beab14"],
+        )
+
+    assert result.exit_code == 1
+    assert "EDISON_API_KEY is required" in result.output
+
+
 def test_write_result_artifacts_sets_relative_paths(tmp_path):
     """CLI artifact writer should materialize sidecar files for markdown links."""
     result = ResearchResult(

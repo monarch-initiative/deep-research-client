@@ -1,5 +1,6 @@
 """Output formatting utilities for research results."""
 
+from collections import Counter
 import yaml
 from typing import Dict, Any
 
@@ -61,6 +62,9 @@ class ResultFormatter:
         # Add provider configuration
         if result.provider_config:
             metadata["provider_config"] = result.provider_config
+            trajectory_id = result.provider_config.get("trajectory_id")
+            if trajectory_id:
+                metadata["trajectory_id"] = trajectory_id
 
         # Add citation count
         if result.citations:
@@ -68,6 +72,9 @@ class ResultFormatter:
 
         if result.artifacts:
             metadata["artifact_count"] = len(result.artifacts)
+            metadata["artifact_sources"] = dict(
+                Counter((artifact.source or "unknown") for artifact in result.artifacts)
+            )
             metadata["artifacts"] = [
                 {
                     "filename": artifact.filename,

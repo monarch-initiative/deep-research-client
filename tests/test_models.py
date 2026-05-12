@@ -208,6 +208,7 @@ def test_format_research_result_includes_artifact_frontmatter(formatter_class):
         markdown="# Report",
         provider="falcon",
         query="query",
+        provider_config={"trajectory_id": "784d73d5-da42-402e-9701-6c5b44beab14"},
         artifacts=[
             ResearchArtifact(
                 filename="figure.png",
@@ -225,6 +226,8 @@ def test_format_research_result_includes_artifact_frontmatter(formatter_class):
     frontmatter = yaml.safe_load(formatted.split("---", 2)[1])
 
     assert frontmatter["artifact_count"] == 1
+    assert frontmatter["trajectory_id"] == "784d73d5-da42-402e-9701-6c5b44beab14"
+    assert frontmatter["artifact_sources"] == {"edison_output_data": 1}
     assert frontmatter["artifacts"] == [
         {
             "filename": "figure.png",

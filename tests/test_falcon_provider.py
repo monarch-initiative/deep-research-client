@@ -1,5 +1,7 @@
 """Tests for Falcon provider response handling."""
 
+import asyncio
+import base64
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -8,8 +10,10 @@ from uuid import UUID
 # Skip all tests in this module if edison_client is not installed
 pytest.importorskip("edison_client")
 
+from deep_research_client.providers import falcon as falcon_module
 from deep_research_client.providers.falcon import FalconProvider
 from deep_research_client.models import ProviderConfig
+from deep_research_client.provider_params import FalconParams
 
 
 def create_mock_pqa_response(
@@ -307,6 +311,192 @@ def test_extract_answer_artifacts_from_verbose_response():
     assert artifact.source == "edison_answer_artifacts"
 
 
+def test_extract_message_image_artifacts_from_verbose_response():
+    """Verbose Edison message history images should become durable artifacts."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    image_payload = base64.b64encode(b"png-bytes").decode("ascii")
+    response = create_verbose_response(
+        {
+            "state": {
+                "state": {
+                    "response": {
+                        "answer": {
+                            "formatted_answer": "Formatted answer",
+                        }
+                    }
+                }
+            }
+        }
+    )
+    response = response.model_copy(
+        update={
+            "agent_state": [
+                {
+                    "state": {
+                        "transition": {
+                            "agent_state": {
+                                "messages": [
+                                    {
+                                        "content": [
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": f"data:image/png;base64,{image_payload}",
+                                                },
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    )
+
+    artifacts = provider._extract_message_image_artifacts(response, used_filenames=set())
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.filename == "image-1.png"
+    assert artifact.media_type == "image/png"
+    assert artifact.source == "edison_message_content"
+    assert base64.b64decode(artifact.content_base64) == b"png-bytes"
+
+
+def test_extract_message_image_artifacts_deduplicates_data_urls():
+    """Repeated verbose Edison image URLs should only produce one artifact."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    image_payload = base64.b64encode(b"png-bytes").decode("ascii")
+    response = create_verbose_response({"state": {}})
+    response = response.model_copy(
+        update={
+            "agent_state": [
+                {
+                    "messages": [
+                        {
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_payload}",
+                                    },
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_payload}",
+                                    },
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    artifacts = provider._extract_message_image_artifacts(response, used_filenames=set())
+
+    assert [artifact.filename for artifact in artifacts] == ["image-1.png"]
+
+
+def test_extract_message_image_artifacts_keeps_one_image_per_message():
+    """A single Edison image-retrieval message should produce one representative image."""
+    config = ProviderConfig(name="falcon", api_key="test-key")
+    provider = FalconProvider(config)
+    first_payload = base64.b64encode(b"first-png").decode("ascii")
+    second_payload = base64.b64encode(b"second-png").decode("ascii")
+    response = create_verbose_response({"state": {}})
+    response = response.model_copy(
+        update={
+            "agent_state": [
+                {
+                    "messages": [
+                        {
+                            "content": [
+                                {"type": "text", "text": "Retrieved 2 image(s) from paper."},
+                                {"type": "text", "text": "## Context ID: pqac-1\n\nTable 2 crop."},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{first_payload}",
+                                    },
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{second_payload}",
+                                    },
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    artifacts = provider._extract_message_image_artifacts(response, used_filenames=set())
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.filename == "image-1.png"
+    assert artifact.description == "## Context ID: pqac-1 Table 2 crop."
+    assert base64.b64decode(artifact.content_base64) == b"first-png"
+
+
+def test_extract_message_image_artifacts_honors_configured_limit():
+    """Embedded Edison image recovery should stop at the configured maximum."""
+    provider = FalconProvider(
+        ProviderConfig(name="falcon", api_key="test-key"),
+        FalconParams(max_embedded_images=1),
+    )
+    first_payload = base64.b64encode(b"first-png").decode("ascii")
+    second_payload = base64.b64encode(b"second-png").decode("ascii")
+    response = create_verbose_response({"state": {}})
+    response = response.model_copy(
+        update={
+            "agent_state": [
+                {
+                    "messages": [
+                        {
+                            "content": [
+                                {"type": "text", "text": "First image group"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{first_payload}",
+                                    },
+                                },
+                            ]
+                        },
+                        {
+                            "content": [
+                                {"type": "text", "text": "Second image group"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{second_payload}",
+                                    },
+                                },
+                            ]
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
+    artifacts = provider._extract_message_image_artifacts(response, used_filenames=set())
+
+    assert len(artifacts) == 1
+    assert artifacts[0].description == "First image group"
+
+
 def test_artifact_filename_handles_collisions_and_path_traversal():
     """Provider artifact filenames should be basename-only and unique."""
     config = ProviderConfig(name="falcon", api_key="test-key")
@@ -466,3 +656,95 @@ def test_extract_artifacts_combines_answer_and_output_data_artifacts(tmp_path):
         "artifact-00-2.md",
     ]
     assert client.fetch_calls == [storage_id]
+
+
+def test_research_and_trajectory_return_same_artifacts(monkeypatch):
+    """New Edison research should preserve the same artifacts as trajectory rehydration."""
+
+    image_payload_one = base64.b64encode(b"first-png").decode("ascii")
+    image_payload_two = base64.b64encode(b"second-png").decode("ascii")
+    verbose_response = create_verbose_response(
+        {
+            "state": {
+                "state": {
+                    "response": {
+                        "answer": {
+                            "formatted_answer": "Formatted answer with [PMID:12345678]",
+                            "artifacts": {"artifact-00": "| A | B |\n| - | - |"},
+                        }
+                    }
+                }
+            }
+        }
+    ).model_copy(
+        update={
+            "query": "Original Edison query",
+            "agent_state": [
+                {
+                    "messages": [
+                        {
+                            "content": [
+                                {"type": "text", "text": "Retrieved 2 image(s) from paper."},
+                                {"type": "text", "text": "## Context ID: pqac-1\n\nTable 2 crop."},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_payload_one}",
+                                    },
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{image_payload_two}",
+                                    },
+                                },
+                            ]
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+
+    class FakeEdisonClient:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.run_task_calls: list[tuple[dict, bool]] = []
+            self.get_task_calls: list[tuple[str, bool]] = []
+
+        def run_tasks_until_done(self, task_data: dict, verbose: bool = False):
+            self.run_task_calls.append((task_data, verbose))
+            return [verbose_response]
+
+        def get_task(self, task_id: str, verbose: bool = False):
+            self.get_task_calls.append((task_id, verbose))
+            return verbose_response
+
+    created_clients: list[FakeEdisonClient] = []
+
+    def fake_client_factory(api_key: str):
+        client = FakeEdisonClient(api_key)
+        created_clients.append(client)
+        return client
+
+    monkeypatch.setattr(falcon_module, "EdisonClient", fake_client_factory)
+
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    research_result = asyncio.run(provider.research("fresh query"))
+    trajectory_result = provider.retrieve_trajectory("trajectory-123")
+
+    def artifact_signature(result):
+        return [
+            (artifact.filename, artifact.media_type, artifact.source, artifact.description)
+            for artifact in result.artifacts
+        ]
+
+    assert research_result.markdown == trajectory_result.markdown
+    assert research_result.citations == trajectory_result.citations
+    assert artifact_signature(research_result) == artifact_signature(trajectory_result)
+    assert [artifact.filename for artifact in research_result.artifacts] == [
+        "artifact-00.md",
+        "image-1.png",
+    ]
+    assert created_clients[0].run_task_calls[0][1] is True
+    assert created_clients[1].get_task_calls == [("trajectory-123", True)]

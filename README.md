@@ -81,6 +81,9 @@ deep-research-client research "Explain quantum computing" --provider perplexity 
 # Save to file (citations included by default)
 deep-research-client research "Machine learning trends 2024" --output report.md
 
+# Retrieve an existing Edison trajectory by ID
+deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 --output edison-report.md
+
 # Save citations to separate file
 deep-research-client research "AI trends 2024" --output report.md --separate-citations
 
@@ -902,7 +905,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations |
 
-When Edison produces diagrams, charts, figures, or other output artifacts, saved reports include an `Artifacts` section. Image artifacts are written to a sidecar directory such as `report_artifacts/` and embedded with relative Markdown links.
+When Edison produces diagrams, charts, figures, or other output artifacts, saved reports include an `Artifacts` section. Both the standard `research` command and `edison-trajectory` materialize recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
 
 ## Development
 

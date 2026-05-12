@@ -124,6 +124,15 @@ class FalconParams(BaseProviderParams):
         gt=0,
         description="Maximum tokens in response"
     )
+    max_embedded_images: int = Field(
+        default=8,
+        ge=0,
+        le=100,
+        description=(
+            "Maximum number of embedded Edison image artifacts to preserve from "
+            "verbose message history. Set to 0 to disable recovery of embedded images."
+        )
+    )
 
 
 class AstaParams(BaseProviderParams):

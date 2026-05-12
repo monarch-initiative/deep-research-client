@@ -13,6 +13,7 @@ pytest.importorskip("edison_client")
 from deep_research_client.providers import falcon as falcon_module
 from deep_research_client.providers.falcon import FalconProvider
 from deep_research_client.models import ProviderConfig
+from deep_research_client.provider_params import FalconParams
 
 
 def create_mock_pqa_response(
@@ -446,6 +447,54 @@ def test_extract_message_image_artifacts_keeps_one_image_per_message():
     assert artifact.filename == "image-1.png"
     assert artifact.description == "## Context ID: pqac-1 Table 2 crop."
     assert base64.b64decode(artifact.content_base64) == b"first-png"
+
+
+def test_extract_message_image_artifacts_honors_configured_limit():
+    """Embedded Edison image recovery should stop at the configured maximum."""
+    provider = FalconProvider(
+        ProviderConfig(name="falcon", api_key="test-key"),
+        FalconParams(max_embedded_images=1),
+    )
+    first_payload = base64.b64encode(b"first-png").decode("ascii")
+    second_payload = base64.b64encode(b"second-png").decode("ascii")
+    response = create_verbose_response({"state": {}})
+    response = response.model_copy(
+        update={
+            "agent_state": [
+                {
+                    "messages": [
+                        {
+                            "content": [
+                                {"type": "text", "text": "First image group"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{first_payload}",
+                                    },
+                                },
+                            ]
+                        },
+                        {
+                            "content": [
+                                {"type": "text", "text": "Second image group"},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{second_payload}",
+                                    },
+                                },
+                            ]
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
+    artifacts = provider._extract_message_image_artifacts(response, used_filenames=set())
+
+    assert len(artifacts) == 1
+    assert artifacts[0].description == "First image group"
 
 
 def test_artifact_filename_handles_collisions_and_path_traversal():

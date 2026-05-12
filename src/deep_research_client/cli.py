@@ -564,8 +564,11 @@ def research(
                 typer.echo("\n" + "="*60)
                 typer.echo(output_content)
 
-    except Exception as e:
-        logger.error(f"Error: {e}")
+    except ValueError as exc:
+        logger.error(f"Error: {exc}")
+        raise typer.Exit(1)
+    except OSError as exc:
+        logger.error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 

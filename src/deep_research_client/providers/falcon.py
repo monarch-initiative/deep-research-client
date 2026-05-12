@@ -6,7 +6,7 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from edison_client import EdisonClient, JobNames
@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 _DATA_URL_PREFIX = "data:"
+type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
+type EdisonResponse = Sequence[EdisonTaskResponse]
 
 
 class FalconProvider(ResearchProvider):
@@ -104,7 +106,7 @@ class FalconProvider(ResearchProvider):
     def _result_from_response(
         self,
         client: EdisonClient,
-        response: list[Any],
+        response: EdisonResponse,
         query: str,
     ) -> ResearchResult:
         """Build a research result from an Edison verbose response."""
@@ -125,7 +127,7 @@ class FalconProvider(ResearchProvider):
             query=query,
         )
 
-    def _extract_text_content(self, response) -> str:
+    def _extract_text_content(self, response: EdisonResponse) -> str:
         """Extract text content from Edison response.
 
         Edison returns PQATaskResponse objects for standard calls. With
@@ -184,7 +186,7 @@ class FalconProvider(ResearchProvider):
 
         return {}
 
-    def _extract_citations(self, response, report_text: str) -> List[str]:
+    def _extract_citations(self, response: EdisonResponse, report_text: str) -> List[str]:
         """Extract citations from Edison response.
 
         Citations are embedded in the formatted_answer text using various patterns.
@@ -215,7 +217,7 @@ class FalconProvider(ResearchProvider):
 
         return []
 
-    def _extract_artifacts(self, client: Any, response: list[Any]) -> list[ResearchArtifact]:
+    def _extract_artifacts(self, client: Any, response: EdisonResponse) -> list[ResearchArtifact]:
         """Fetch artifacts listed in the final Edison environment frame."""
         if not response:
             return []
@@ -261,7 +263,11 @@ class FalconProvider(ResearchProvider):
         used_filenames: set[str],
     ) -> list[ResearchArtifact]:
         """Extract one representative image from each verbose Edison image message."""
-        payload = response.model_dump(mode="python")
+        if self.params.max_embedded_images == 0:
+            return []
+
+        # Only the agent-state message history is needed for embedded images.
+        payload = {"agent_state": response.agent_state}
         artifacts: list[ResearchArtifact] = []
         seen_urls: set[str] = set()
 
@@ -279,6 +285,12 @@ class FalconProvider(ResearchProvider):
             )
             if artifact is not None:
                 artifacts.append(artifact)
+                if len(artifacts) >= self.params.max_embedded_images:
+                    logger.info(
+                        "Reached Falcon embedded image limit (%s); skipping remaining embedded images",
+                        self.params.max_embedded_images,
+                    )
+                    break
 
         return artifacts
 

@@ -571,6 +571,71 @@ def research(
 
 
 @app.command()
+def edison_trajectory(
+    trajectory_id: Annotated[str, typer.Argument(help="Existing Edison trajectory/task ID")],
+    output: Annotated[Optional[Path], typer.Option(
+        help="Output file path (prints to stdout if not provided)")] = None,
+    separate_citations: Annotated[Optional[Path], typer.Option(
+        "--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
+):
+    """Retrieve an existing Edison trajectory report and artifacts by ID."""
+    from .models import ProviderConfig
+    from .providers.falcon import FalconProvider
+
+    api_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
+    if not api_key:
+        logger.error("EDISON_API_KEY is required to retrieve an Edison trajectory")
+        raise typer.Exit(1)
+
+    processor = ResearchProcessor()
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key=api_key, enabled=True))
+
+    try:
+        result = provider.retrieve_trajectory(trajectory_id)
+        should_separate_citations = separate_citations is not None
+
+        if output:
+            _write_result_artifacts(result, output)
+
+        output_content = processor.format_research_result(
+            result,
+            separate_citations=should_separate_citations,
+        )
+
+        if output:
+            output.write_text(output_content, encoding="utf-8")
+            logger.info(f"Result saved to: {output}")
+
+            if should_separate_citations and result.citations:
+                if isinstance(separate_citations, Path):
+                    citations_output = separate_citations
+                else:
+                    citations_output = output.with_suffix('.citations.md')
+
+                citations_content = processor.format_citations_only(result)
+                citations_output.write_text(citations_content, encoding="utf-8")
+                logger.info(f"Citations saved to: {citations_output}")
+
+            if result.citations:
+                logger.info(f"Found {len(result.citations)} citations")
+            if result.artifacts:
+                logger.info(f"Recovered {len(result.artifacts)} artifacts")
+        else:
+            typer.echo("\n" + "=" * 60)
+            typer.echo(output_content)
+            if should_separate_citations and result.citations:
+                typer.echo("\n" + "=" * 60)
+                typer.echo("CITATIONS:")
+                typer.echo("=" * 60)
+                typer.echo(processor.format_citations_only(result))
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def providers(
     show_params: Annotated[bool, typer.Option(
         "--show-params", help="Show available parameters for each provider")] = False,

@@ -27,6 +27,9 @@ from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 
+_DATA_URL_PREFIX = "data:"
+
+
 class FalconProvider(ResearchProvider):
     """Provider for Edison Scientific API (formerly FutureHouse Falcon)."""
 
@@ -75,28 +78,52 @@ class FalconProvider(ResearchProvider):
             logger.debug("Making API request to Edison")
             response = client.run_tasks_until_done(task_data, verbose=True)
             logger.info("Edison API request completed successfully")
-
-            # Extract the report text and citations
-            markdown_content = self._extract_text_content(response)
-            logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
-
-            citations = self._extract_citations(response, markdown_content)
-            logger.info(f"Extracted {len(citations)} citations from response")
-
-            artifacts = self._extract_artifacts(client, response)
-            logger.info(f"Extracted {len(artifacts)} artifacts from response")
-
-            return ResearchResult(
-                markdown=markdown_content,
-                citations=citations,
-                artifacts=artifacts,
-                provider=self.name,
-                query=query
-            )
+            return self._result_from_response(client, response, query)
         except Exception as e:
             logger.error(f"Edison API request failed: {e}")
             logger.debug("Error details:", exc_info=True)
             raise
+
+    def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
+        """Retrieve an existing Edison trajectory and preserve its artifacts."""
+        if not self.is_available():
+            raise ValueError(f"Edison provider not available (API key: {bool(self.config.api_key)})")
+
+        client = EdisonClient(api_key=self.config.api_key)
+        logger.info(f"Retrieving Edison trajectory {trajectory_id}")
+        response = [client.get_task(task_id=trajectory_id, verbose=True)]
+        query = response[0].query or f"Edison trajectory {trajectory_id}"
+        result = self._result_from_response(client, response, query)
+        result.provider_config = {
+            **(result.provider_config or {}),
+            "trajectory_id": trajectory_id,
+            "retrieval_mode": "edison_trajectory",
+        }
+        return result
+
+    def _result_from_response(
+        self,
+        client: EdisonClient,
+        response: list[Any],
+        query: str,
+    ) -> ResearchResult:
+        """Build a research result from an Edison verbose response."""
+        markdown_content = self._extract_text_content(response)
+        logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
+
+        citations = self._extract_citations(response, markdown_content)
+        logger.info(f"Extracted {len(citations)} citations from response")
+
+        artifacts = self._extract_artifacts(client, response)
+        logger.info(f"Extracted {len(artifacts)} artifacts from response")
+
+        return ResearchResult(
+            markdown=markdown_content,
+            citations=citations,
+            artifacts=artifacts,
+            provider=self.name,
+            query=query,
+        )
 
     def _extract_text_content(self, response) -> str:
         """Extract text content from Edison response.
@@ -188,7 +215,7 @@ class FalconProvider(ResearchProvider):
 
         return []
 
-    def _extract_artifacts(self, client: EdisonClient, response: list[Any]) -> list[ResearchArtifact]:
+    def _extract_artifacts(self, client: Any, response: list[Any]) -> list[ResearchArtifact]:
         """Fetch artifacts listed in the final Edison environment frame."""
         if not response:
             return []
@@ -199,6 +226,12 @@ class FalconProvider(ResearchProvider):
 
         output_data = self._extract_output_data(task_response.environment_frame or {})
         artifacts = self._extract_answer_artifacts(task_response)
+        artifacts.extend(
+            self._extract_message_image_artifacts(
+                task_response,
+                used_filenames={artifact.filename for artifact in artifacts},
+            )
+        )
         used_storage_ids: set[str] = set()
         used_filenames: set[str] = {artifact.filename for artifact in artifacts}
 
@@ -221,6 +254,114 @@ class FalconProvider(ResearchProvider):
                 artifacts.append(artifact)
 
         return artifacts
+
+    def _extract_message_image_artifacts(
+        self,
+        response: TaskResponseVerbose,
+        used_filenames: set[str],
+    ) -> list[ResearchArtifact]:
+        """Extract one representative image from each verbose Edison image message."""
+        payload = response.model_dump(mode="python")
+        artifacts: list[ResearchArtifact] = []
+        seen_urls: set[str] = set()
+
+        for image_group in self._walk_image_message_groups(payload):
+            image_url = image_group["url"]
+            if image_url in seen_urls:
+                continue
+            seen_urls.add(image_url)
+
+            artifact = self._artifact_from_data_url(
+                image_url,
+                used_filenames=used_filenames,
+                index=len(artifacts) + 1,
+                description=image_group["description"],
+            )
+            if artifact is not None:
+                artifacts.append(artifact)
+
+        return artifacts
+
+    def _walk_image_message_groups(self, value: Any) -> Iterable[dict[str, str | None]]:
+        """Yield one representative image and description per nested message content block."""
+        if isinstance(value, dict):
+            content = value.get("content")
+            if isinstance(content, list):
+                image_urls = [
+                    item.get("image_url", {}).get("url")
+                    for item in content
+                    if isinstance(item, dict)
+                    and isinstance(item.get("image_url"), dict)
+                    and isinstance(item["image_url"].get("url"), str)
+                    and item["image_url"]["url"].startswith(f"{_DATA_URL_PREFIX}image/")
+                ]
+                if image_urls:
+                    yield {
+                        "url": image_urls[0],
+                        "description": self._image_description_from_content(content),
+                    }
+
+            for nested_value in value.values():
+                yield from self._walk_image_message_groups(nested_value)
+            return
+
+        if isinstance(value, list):
+            for nested_value in value:
+                yield from self._walk_image_message_groups(nested_value)
+
+    def _image_description_from_content(self, content: list[Any]) -> str | None:
+        """Build a concise artifact description from Edison message text content."""
+        text_items = [
+            item.get("text", "").strip()
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ]
+        for text in text_items:
+            if not text or text.startswith("Retrieved "):
+                continue
+            condensed = " ".join(text.split())
+            return condensed[:160]
+        return None
+
+    def _artifact_from_data_url(
+        self,
+        data_url: str,
+        used_filenames: set[str],
+        index: int,
+        description: str | None = None,
+    ) -> ResearchArtifact | None:
+        """Convert a base64 data URL into a research artifact."""
+        if not data_url.startswith(_DATA_URL_PREFIX) or ";base64," not in data_url:
+            return None
+
+        header, payload = data_url[len(_DATA_URL_PREFIX):].split(",", 1)
+        if not header.endswith(";base64"):
+            return None
+
+        media_type = header.removesuffix(";base64") or None
+        if not media_type or not media_type.startswith("image/"):
+            return None
+
+        filename = self._artifact_filename(
+            f"image-{index}{self._artifact_extension_for_media_type(media_type)}",
+            used_filenames,
+        )
+        return ResearchArtifact(
+            filename=filename,
+            content_base64="".join(payload.split()),
+            media_type=media_type,
+            source="edison_message_content",
+            description=description or f"Edison image artifact {index}",
+        )
+
+    def _artifact_extension_for_media_type(self, media_type: str) -> str:
+        """Return a filename extension suitable for a MIME type."""
+        extension = mimetypes.guess_extension(media_type)
+        if extension is not None:
+            return extension
+        if media_type == "image/svg+xml":
+            return ".svg"
+        return ".bin"
 
     def _extract_answer_artifacts(
         self,

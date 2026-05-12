@@ -6,7 +6,7 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence, TypedDict, cast
 from uuid import UUID
 
 from edison_client import EdisonClient, JobNames
@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 _DATA_URL_PREFIX = "data:"
 type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
+
+
+class _ImageMessageGroup(TypedDict):
+    """Representative embedded Edison image plus its optional description."""
+
+    url: str
+    description: str | None
 
 
 class FalconProvider(ResearchProvider):
@@ -78,7 +85,7 @@ class FalconProvider(ResearchProvider):
 
         try:
             logger.debug("Making API request to Edison")
-            response = client.run_tasks_until_done(task_data, verbose=True)
+            response = self._coerce_response(client.run_tasks_until_done(task_data, verbose=True))
             logger.info("Edison API request completed successfully")
             return self._result_from_response(client, response, query)
         except Exception as e:
@@ -93,7 +100,7 @@ class FalconProvider(ResearchProvider):
 
         client = EdisonClient(api_key=self.config.api_key)
         logger.info(f"Retrieving Edison trajectory {trajectory_id}")
-        response = [client.get_task(task_id=trajectory_id, verbose=True)]
+        response = self._coerce_response([client.get_task(task_id=trajectory_id, verbose=True)])
         query = response[0].query or f"Edison trajectory {trajectory_id}"
         result = self._result_from_response(client, response, query)
         result.provider_config = {
@@ -126,6 +133,20 @@ class FalconProvider(ResearchProvider):
             provider=self.name,
             query=query,
         )
+
+    def _coerce_response(self, response: Sequence[Any]) -> EdisonResponse:
+        """Validate Edison client responses against the shapes this provider supports."""
+        if not response:
+            raise ValueError("Unexpected Edison response structure: empty response")
+
+        for task_response in response:
+            if not isinstance(task_response, (PQATaskResponse, TaskResponseVerbose)):
+                raise ValueError(
+                    "Expected PQATaskResponse or TaskResponseVerbose, got "
+                    f"{type(task_response)}. This indicates an API change in edison-client."
+                )
+
+        return cast(EdisonResponse, response)
 
     def _extract_text_content(self, response: EdisonResponse) -> str:
         """Extract text content from Edison response.
@@ -294,7 +315,7 @@ class FalconProvider(ResearchProvider):
 
         return artifacts
 
-    def _walk_image_message_groups(self, value: Any) -> Iterable[dict[str, str | None]]:
+    def _walk_image_message_groups(self, value: Any) -> Iterable[_ImageMessageGroup]:
         """Yield one representative image and description per nested message content block."""
         if isinstance(value, dict):
             content = value.get("content")

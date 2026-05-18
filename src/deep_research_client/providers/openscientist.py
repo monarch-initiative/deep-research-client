@@ -76,7 +76,7 @@ class OpenScientistProvider(ResearchProvider):
         """Submit a research job, poll until completion, and return the report.
 
         Args:
-            query: The research question (used as both title and research_question).
+            query: The research question sent to the OpenScientist agent.
 
         Returns:
             ResearchResult with markdown report and extracted PMID citations.
@@ -166,11 +166,7 @@ class OpenScientistProvider(ResearchProvider):
         """Submit a research job and return the job ID."""
         url = f"{self.base_url}/api/v1/jobs"
 
-        # Generate a concise title from the query
-        title = query[:255] if len(query) <= 255 else query[:252] + "..."
-
         payload = {
-            "title": title,
             "research_question": query,
             "max_iterations": max_iterations,
             "use_hypotheses": self.params.use_hypotheses,

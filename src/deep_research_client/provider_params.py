@@ -273,6 +273,29 @@ class OpenScientistParams(BaseProviderParams):
         le=7200,
         description="Maximum seconds to wait for job completion"
     )
+    save_artifacts: bool = Field(
+        default=True,
+        description=(
+            "Download and preserve artifacts (figures, tables, structured data) "
+            "from the job artifacts ZIP. Set to False to skip artifact extraction."
+        )
+    )
+    artifact_max_size: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1024,
+        description=(
+            "Maximum size in bytes for a single artifact (default: 5 MB). "
+            "Artifacts larger than this are skipped and counted in the manifest."
+        )
+    )
+    artifact_include_extensions: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "File extensions to include when extracting artifacts. "
+            "Defaults to images (.png .jpg .jpeg .gif .svg) and small structured data "
+            "(.md .csv .tsv .json .html). Pass an explicit list to override the defaults."
+        )
+    )
 
 
 class CyberianParams(BaseProviderParams):

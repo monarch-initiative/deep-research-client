@@ -341,6 +341,9 @@ class TestOpenScientistProvider:
             assert job_id == "job-123"
             return "# Report\n\nPMID: 12345678\n\nPMID: 23456789"
 
+        async def fake_download_artifacts(self, client, job_id: str):
+            return [], 0
+
         monkeypatch.setattr(
             "deep_research_client.providers.openscientist.httpx.AsyncClient",
             DummyAsyncClient,
@@ -349,6 +352,7 @@ class TestOpenScientistProvider:
         monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
         monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
         monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(OpenScientistProvider, "_download_artifacts", fake_download_artifacts)
 
         result = await self.provider.research("What is autophagy?")
 
@@ -357,6 +361,7 @@ class TestOpenScientistProvider:
         assert result.model == "openscientist-autonomous"
         assert result.markdown == "# Report\n\nPMID: 12345678\n\nPMID: 23456789"
         assert result.citations == ["PMID:12345678", "PMID:23456789"]
+        assert result.artifacts == []
 
     async def test_research_timeout_cancels_job(self, monkeypatch):
         """Test timeout handling cancels the submitted job."""
@@ -413,6 +418,420 @@ class TestOpenScientistProvider:
 
         with pytest.raises(ValueError, match="OpenScientist job failed: Agent execution failed"):
             await self.provider.research("What is autophagy?")
+
+
+class TestOpenScientistArtifacts:
+    """Tests for OpenScientist artifact extraction from the job artifacts ZIP."""
+
+    def setup_method(self):
+        self.config = ProviderConfig(
+            name="openscientist",
+            api_key="test-api-key",
+            base_url="https://example.test/",
+            enabled=True,
+        )
+        self.provider = OpenScientistProvider(self.config)
+
+    # ------------------------------------------------------------------
+    # _should_exclude_artifact_path
+    # ------------------------------------------------------------------
+
+    def test_excludes_dot_claude_paths(self):
+        assert OpenScientistProvider._should_exclude_artifact_path(".claude/settings.json") is True
+        assert OpenScientistProvider._should_exclude_artifact_path("work/.claude/skills/foo.py") is True
+
+    def test_excludes_skills_paths(self):
+        assert OpenScientistProvider._should_exclude_artifact_path("skills/helper.py") is True
+
+    def test_excludes_logs_paths(self):
+        assert OpenScientistProvider._should_exclude_artifact_path("output/logs/run.log") is True
+
+    def test_excludes_transcripts_paths(self):
+        assert OpenScientistProvider._should_exclude_artifact_path("transcripts/session.txt") is True
+        assert OpenScientistProvider._should_exclude_artifact_path("transcript_20260101.txt") is True
+
+    def test_allows_normal_artifact_paths(self):
+        assert OpenScientistProvider._should_exclude_artifact_path("evidence_matrix.png") is False
+        assert OpenScientistProvider._should_exclude_artifact_path("results/knowledge_gaps.json") is False
+        assert OpenScientistProvider._should_exclude_artifact_path("final_summary.md") is False
+
+    # ------------------------------------------------------------------
+    # _unique_artifact_filename
+    # ------------------------------------------------------------------
+
+    def test_unique_filename_no_collision(self):
+        used: set[str] = set()
+        name = OpenScientistProvider._unique_artifact_filename("figure.png", used)
+        assert name == "figure.png"
+        assert "figure.png" in used
+
+    def test_unique_filename_collision_adds_counter(self):
+        used = {"figure.png"}
+        name = OpenScientistProvider._unique_artifact_filename("figure.png", used)
+        assert name == "figure-2.png"
+
+    def test_unique_filename_multiple_collisions(self):
+        used = {"figure.png", "figure-2.png"}
+        name = OpenScientistProvider._unique_artifact_filename("figure.png", used)
+        assert name == "figure-3.png"
+
+    def test_unique_filename_sanitizes_unsafe_chars(self):
+        used: set[str] = set()
+        name = OpenScientistProvider._unique_artifact_filename("fig/ure:1.png", used)
+        assert "/" not in name
+        assert ":" not in name
+
+    # ------------------------------------------------------------------
+    # _download_artifacts
+    # ------------------------------------------------------------------
+
+    async def test_download_artifacts_extracts_images_and_tables(self):
+        """Useful artifact types are extracted from the ZIP."""
+        zip_bytes = create_zip_bytes({
+            "evidence_matrix.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+            "knowledge_gaps.json": b'{"gaps": ["gap1"]}',
+            "final_summary.md": b"# Summary\n\nKey findings.",
+            "results/table.csv": b"col1,col2\nval1,val2",
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path.endswith("/artifacts")
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 4
+        filenames = {a.filename for a in artifacts}
+        assert "evidence_matrix.png" in filenames
+        assert "knowledge_gaps.json" in filenames
+        assert "final_summary.md" in filenames
+        assert "table.csv" in filenames
+        assert all(a.source == "openscientist_artifacts" for a in artifacts)
+        assert skipped == 0
+
+    async def test_download_artifacts_skips_excluded_paths(self):
+        """Files in .claude/, skills/, logs/, transcripts/ are excluded."""
+        zip_bytes = create_zip_bytes({
+            ".claude/settings.json": b"{}",
+            "skills/helper.py": b"def foo(): pass",
+            "output/logs/run.log": b"log line",
+            "transcripts/session.txt": b"session data",
+            "evidence_matrix.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "evidence_matrix.png"
+        assert skipped == 4
+
+    async def test_download_artifacts_skips_non_allowed_extensions(self):
+        """Files with non-whitelisted extensions are excluded."""
+        zip_bytes = create_zip_bytes({
+            "run.py": b"import os",
+            "binary.bin": b"\x00\x01\x02",
+            "useful.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "useful.png"
+        assert skipped == 2
+
+    async def test_download_artifacts_skips_oversized_files(self):
+        """Files exceeding artifact_max_size are excluded."""
+        large_content = b"x" * (6 * 1024 * 1024)  # 6 MB
+        zip_bytes = create_zip_bytes({
+            "large_data.json": large_content.decode("latin-1"),
+            "small.json": b'{"ok": true}',
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "small.json"
+        assert skipped == 1
+
+    async def test_download_artifacts_skips_main_report_md(self):
+        """The main report.md is not duplicated as an artifact."""
+        zip_bytes = create_zip_bytes({
+            "final_report.md": "# Report\n\nMain output.",
+            "knowledge_gaps.md": "# Knowledge Gaps\n\nGap 1.",
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        # final_report.md should be skipped; knowledge_gaps.md should be kept
+        filenames = {a.filename for a in artifacts}
+        assert "final_report.md" not in filenames
+        assert "knowledge_gaps.md" in filenames
+        assert skipped == 1
+
+    async def test_download_artifacts_handles_bad_zip(self):
+        """A non-ZIP response is handled gracefully."""
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"not a zip",
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert artifacts == []
+        assert skipped == 0
+
+    async def test_download_artifacts_handles_http_error(self):
+        """An HTTP error on the artifacts endpoint is handled gracefully."""
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"detail": "not found"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await self.provider._download_artifacts(client, "job-123")
+
+        assert artifacts == []
+        assert skipped == 0
+
+    async def test_download_artifacts_deduplicates_filenames(self):
+        """Collision-prone filenames from different ZIP paths get unique names."""
+        zip_bytes = create_zip_bytes({
+            "dir_a/figure.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+            "dir_b/figure.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, _ = await self.provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 2
+        assert artifacts[0].filename != artifacts[1].filename
+
+    async def test_download_artifacts_respects_custom_include_extensions(self):
+        """artifact_include_extensions overrides the default allowed extensions."""
+        params = OpenScientistParams(artifact_include_extensions=[".svg"])
+        provider = OpenScientistProvider(self.config, params)
+
+        zip_bytes = create_zip_bytes({
+            "chart.svg": b"<svg/>",
+            "data.json": b'{"x": 1}',
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "chart.svg"
+        assert skipped == 1
+
+    async def test_download_artifacts_respects_custom_max_size(self):
+        """artifact_max_size is respected when set explicitly."""
+        params = OpenScientistParams(artifact_max_size=1024)
+        provider = OpenScientistProvider(self.config, params)
+
+        zip_bytes = create_zip_bytes({
+            "tiny.json": b'{"x":1}',                      # 7 bytes — under limit
+            "large.json": b'{"x": ' + b"1" * 2000 + b"}",  # > 1024 bytes — over limit
+        })
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=zip_bytes,
+                                  headers={"content-type": "application/zip"})
+
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            artifacts, skipped = await provider._download_artifacts(client, "job-123")
+
+        assert len(artifacts) == 1
+        assert artifacts[0].filename == "tiny.json"
+        assert skipped == 1
+
+    # ------------------------------------------------------------------
+    # research() integration with artifacts
+    # ------------------------------------------------------------------
+
+    async def test_research_success_includes_artifacts(self, monkeypatch):
+        """research() returns ResearchResult.artifacts populated from the ZIP."""
+        zip_bytes = create_zip_bytes({
+            "evidence_matrix.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 16,
+            "knowledge_gaps.json": b'{"gaps": []}',
+        })
+
+        async def fake_health_check(self, client) -> None:
+            return None
+
+        async def fake_submit_job(self, client, query, max_iterations) -> str:
+            return "job-with-artifacts"
+
+        async def fake_poll_until_done(self, client, job_id, timeout, poll_interval) -> str:
+            return "completed"
+
+        async def fake_download_report(self, client, job_id) -> str:
+            return "# Report\n\nPMID: 12345678"
+
+        async def fake_download_artifacts(self, client, job_id):
+            from deep_research_client.models import ResearchArtifact
+            import base64
+            artifact = ResearchArtifact(
+                filename="evidence_matrix.png",
+                content_base64=base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16).decode(),
+                media_type="image/png",
+                source="openscientist_artifacts",
+            )
+            return [artifact], 0
+
+        monkeypatch.setattr(
+            "deep_research_client.providers.openscientist.httpx.AsyncClient",
+            DummyAsyncClient,
+        )
+        monkeypatch.setattr(OpenScientistProvider, "_health_check", fake_health_check)
+        monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
+        monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
+        monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(OpenScientistProvider, "_download_artifacts", fake_download_artifacts)
+
+        result = await self.provider.research("What is autophagy?")
+
+        assert len(result.artifacts) == 1
+        assert result.artifacts[0].filename == "evidence_matrix.png"
+        assert result.artifacts[0].source == "openscientist_artifacts"
+        assert result.artifacts[0].is_image is True
+
+    async def test_research_save_artifacts_false_skips_download(self, monkeypatch):
+        """save_artifacts=False prevents artifact download entirely."""
+        params = OpenScientistParams(save_artifacts=False)
+        provider = OpenScientistProvider(self.config, params)
+        download_called = {"called": False}
+
+        async def fake_health_check(self, client) -> None:
+            return None
+
+        async def fake_submit_job(self, client, query, max_iterations) -> str:
+            return "job-no-artifacts"
+
+        async def fake_poll_until_done(self, client, job_id, timeout, poll_interval) -> str:
+            return "completed"
+
+        async def fake_download_report(self, client, job_id) -> str:
+            return "# Report\n\nPMID: 12345678"
+
+        async def fake_download_artifacts(self, client, job_id):
+            download_called["called"] = True
+            return [], 0
+
+        monkeypatch.setattr(
+            "deep_research_client.providers.openscientist.httpx.AsyncClient",
+            DummyAsyncClient,
+        )
+        monkeypatch.setattr(OpenScientistProvider, "_health_check", fake_health_check)
+        monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
+        monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
+        monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(OpenScientistProvider, "_download_artifacts", fake_download_artifacts)
+
+        result = await provider.research("What is autophagy?")
+
+        assert result.artifacts == []
+        assert download_called["called"] is False
+
+    async def test_research_records_skipped_artifact_count(self, monkeypatch):
+        """Skipped artifacts are recorded in provider_config."""
+        async def fake_health_check(self, client) -> None:
+            return None
+
+        async def fake_submit_job(self, client, query, max_iterations) -> str:
+            return "job-skipped"
+
+        async def fake_poll_until_done(self, client, job_id, timeout, poll_interval) -> str:
+            return "completed"
+
+        async def fake_download_report(self, client, job_id) -> str:
+            return "# Report"
+
+        async def fake_download_artifacts(self, client, job_id):
+            return [], 7
+
+        monkeypatch.setattr(
+            "deep_research_client.providers.openscientist.httpx.AsyncClient",
+            DummyAsyncClient,
+        )
+        monkeypatch.setattr(OpenScientistProvider, "_health_check", fake_health_check)
+        monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
+        monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
+        monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(OpenScientistProvider, "_download_artifacts", fake_download_artifacts)
+
+        result = await self.provider.research("What is autophagy?")
+
+        assert result.provider_config is not None
+        assert result.provider_config["skipped_artifact_count"] == 7
+
+    async def test_research_no_provider_config_when_no_skipped(self, monkeypatch):
+        """provider_config is None when no artifacts are skipped."""
+        async def fake_health_check(self, client) -> None:
+            return None
+
+        async def fake_submit_job(self, client, query, max_iterations) -> str:
+            return "job-clean"
+
+        async def fake_poll_until_done(self, client, job_id, timeout, poll_interval) -> str:
+            return "completed"
+
+        async def fake_download_report(self, client, job_id) -> str:
+            return "# Report"
+
+        async def fake_download_artifacts(self, client, job_id):
+            return [], 0
+
+        monkeypatch.setattr(
+            "deep_research_client.providers.openscientist.httpx.AsyncClient",
+            DummyAsyncClient,
+        )
+        monkeypatch.setattr(OpenScientistProvider, "_health_check", fake_health_check)
+        monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
+        monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
+        monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(OpenScientistProvider, "_download_artifacts", fake_download_artifacts)
+
+        result = await self.provider.research("What is autophagy?")
+
+        assert result.provider_config is None
 
 
 @pytest.mark.integration

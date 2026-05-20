@@ -9,15 +9,20 @@ openscientist.io), polls for completion, and downloads the final report.
 """
 
 import asyncio
+import base64
+import io
 import logging
+import mimetypes
 import os
 import re
-from typing import List, Optional
+import zipfile
+from pathlib import Path
+from typing import Any, List, Optional
 
 import httpx
 
 from . import ResearchProvider
-from ..models import ResearchResult, ProviderConfig
+from ..models import ResearchArtifact, ResearchResult, ProviderConfig, sanitize_artifact_filename
 from ..provider_params import OpenScientistParams
 from ..model_cards import ProviderModelCards, create_openscientist_model_cards
 
@@ -29,6 +34,24 @@ IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "aw
 
 # Default base URL if not overridden
 DEFAULT_BASE_URL = "https://www.openscientist.io"
+
+# Default artifact file extensions to keep (images + small structured data)
+_ARTIFACT_INCLUDE_EXTENSIONS: frozenset[str] = frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".svg",
+    ".md", ".csv", ".tsv", ".json", ".html",
+})
+
+# Path segments that mark artifacts as runtime noise to exclude by default
+_ARTIFACT_EXCLUDE_PATH_SEGMENTS: tuple[str, ...] = (
+    ".claude/",
+    "skills/",
+    "__pycache__/",
+    ".cache/",
+    ".git/",
+    "/logs/",
+    "/transcripts/",
+    "transcript",
+)
 
 
 class OpenScientistProvider(ResearchProvider):
@@ -129,20 +152,35 @@ class OpenScientistProvider(ResearchProvider):
             # 4. Download report
             markdown = await self._download_report(client, job_id)
 
-            # 5. Extract citations
+            # 5. Download artifacts from the job ZIP
+            artifacts: list[ResearchArtifact] = []
+            skipped_artifact_count = 0
+            if self.params.save_artifacts:
+                artifacts, skipped_artifact_count = await self._download_artifacts(
+                    client, job_id
+                )
+
+            # 6. Extract citations
             citations = self._extract_citations(markdown)
 
             logger.info(
                 f"OpenScientist research complete: "
-                f"{len(markdown)} chars, {len(citations)} citations"
+                f"{len(markdown)} chars, {len(citations)} citations, "
+                f"{len(artifacts)} artifacts ({skipped_artifact_count} skipped)"
             )
+
+            provider_config: dict[str, Any] | None = None
+            if skipped_artifact_count > 0:
+                provider_config = {"skipped_artifact_count": skipped_artifact_count}
 
             return ResearchResult(
                 markdown=markdown,
                 citations=citations,
+                artifacts=artifacts,
                 provider=self.name,
                 query=query,
                 model=self.model,
+                provider_config=provider_config,
             )
 
     async def _health_check(self, client: httpx.AsyncClient) -> None:
@@ -274,9 +312,6 @@ class OpenScientistProvider(ResearchProvider):
         self, client: httpx.AsyncClient, job_id: str
     ) -> str:
         """Download artifacts ZIP and extract the markdown report."""
-        import io
-        import zipfile
-
         url = f"{self.base_url}/api/v1/jobs/{job_id}/artifacts"
         resp = await client.get(url, headers=self._headers())
         resp.raise_for_status()
@@ -303,6 +338,117 @@ class OpenScientistProvider(ResearchProvider):
                     return raw.decode("utf-8")
                 except UnicodeDecodeError:
                     return raw.decode("latin-1")
+
+    async def _download_artifacts(
+        self,
+        client: httpx.AsyncClient,
+        job_id: str,
+    ) -> tuple[list[ResearchArtifact], int]:
+        """Download the job artifacts ZIP and extract useful research artifacts.
+
+        Returns a (artifacts, skipped_count) tuple. skipped_count tracks entries
+        that were filtered out so callers can record a manifest note.
+        """
+        url = f"{self.base_url}/api/v1/jobs/{job_id}/artifacts"
+        try:
+            resp = await client.get(url, headers=self._headers())
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Could not download artifacts for job {job_id}: {e}")
+            return [], 0
+
+        include_exts: set[str]
+        if self.params.artifact_include_extensions is not None:
+            include_exts = {ext.lower() for ext in self.params.artifact_include_extensions}
+        else:
+            include_exts = set(_ARTIFACT_INCLUDE_EXTENSIONS)
+
+        max_size = self.params.artifact_max_size
+        artifacts: list[ResearchArtifact] = []
+        skipped_count = 0
+        used_filenames: set[str] = set()
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                for info in zf.infolist():
+                    name = info.filename
+                    if name.endswith("/"):
+                        continue
+
+                    if self._should_exclude_artifact_path(name):
+                        skipped_count += 1
+                        logger.debug(f"Skipping excluded artifact path: {name}")
+                        continue
+
+                    ext = Path(name).suffix.lower()
+                    if ext not in include_exts:
+                        skipped_count += 1
+                        logger.debug(f"Skipping artifact with excluded extension {ext!r}: {name}")
+                        continue
+
+                    if info.file_size > max_size:
+                        skipped_count += 1
+                        logger.debug(
+                            f"Skipping oversized artifact {name} "
+                            f"({info.file_size} bytes > {max_size})"
+                        )
+                        continue
+
+                    # Skip the main report file — its content is already in result.markdown
+                    basename_lower = Path(name).name.lower()
+                    if ext == ".md" and "report" in basename_lower:
+                        skipped_count += 1
+                        logger.debug(f"Skipping main report file: {name}")
+                        continue
+
+                    content = zf.read(name)
+                    safe_filename = self._unique_artifact_filename(Path(name).name, used_filenames)
+                    media_type = mimetypes.guess_type(name)[0]
+
+                    artifacts.append(ResearchArtifact(
+                        filename=safe_filename,
+                        content_base64=base64.b64encode(content).decode("ascii"),
+                        media_type=media_type,
+                        source="openscientist_artifacts",
+                        description=f"OpenScientist artifact: {Path(name).name}",
+                    ))
+
+        except zipfile.BadZipFile:
+            logger.warning(f"Artifacts response for job {job_id} is not a valid ZIP")
+            return [], 0
+
+        logger.info(
+            f"Extracted {len(artifacts)} artifacts from ZIP "
+            f"({skipped_count} skipped)"
+        )
+        return artifacts, skipped_count
+
+    @staticmethod
+    def _should_exclude_artifact_path(name: str) -> bool:
+        """Return True if a ZIP entry path matches an exclusion rule."""
+        normalized = name.replace("\\", "/").lower()
+        for segment in _ARTIFACT_EXCLUDE_PATH_SEGMENTS:
+            if segment in normalized:
+                return True
+        return False
+
+    @staticmethod
+    def _unique_artifact_filename(raw_name: Any, used_filenames: set[str]) -> str:
+        """Return a sanitized, collision-free filename for an artifact."""
+        filename = sanitize_artifact_filename(str(raw_name or "artifact"))
+        if not filename or filename in {".", ".."}:
+            filename = "artifact"
+
+        candidate = filename
+        suffix = Path(filename).suffix
+        stem = Path(filename).stem or "artifact"
+        counter = 2
+        while candidate in used_filenames:
+            candidate = f"{stem}-{counter}{suffix}"
+            counter += 1
+
+        used_filenames.add(candidate)
+        return candidate
 
     @staticmethod
     def _extract_citations(markdown: str) -> List[str]:

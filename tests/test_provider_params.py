@@ -185,6 +185,8 @@ def test_create_provider_params_openscientist():
             "investigation_mode": "coinvestigate",
             "poll_interval": 15,
             "timeout": 900,
+            "save_artifacts": False,
+            "artifact_max_bytes": 1024,
         }
     )
 
@@ -195,6 +197,8 @@ def test_create_provider_params_openscientist():
     assert params.investigation_mode == "coinvestigate"
     assert params.poll_interval == 15
     assert params.timeout == 900
+    assert params.save_artifacts is False
+    assert params.artifact_max_bytes == 1024
 
 
 def test_allowed_domains_max_limit_documented():

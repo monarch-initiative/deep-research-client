@@ -13,6 +13,7 @@ from deep_research_client import DeepResearchClient, ResearchResult, ProviderCon
 from deep_research_client.providers import ResearchProvider
 from deep_research_client.providers.asta import AstaProvider
 from deep_research_client.providers.falcon import FalconProvider
+from deep_research_client.providers.openscientist import OpenScientistProvider
 
 
 class MockProvider(ResearchProvider):
@@ -177,6 +178,20 @@ def test_falcon_cache_params_include_artifact_version_tag():
 
     provider = FalconProvider(ProviderConfig(
         name="falcon", api_key="edison-key", enabled=True))
+    cache_params = client._get_cache_provider_params(provider)
+
+    assert cache_params == {"_cache_version": "artifacts-v1"}
+
+
+def test_openscientist_cache_params_include_artifact_version_tag():
+    """OpenScientist cache keys should invalidate stale no-artifact entries."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = OpenScientistProvider(
+        ProviderConfig(name="openscientist", api_key="opensci-key", enabled=True)
+    )
     cache_params = client._get_cache_provider_params(provider)
 
     assert cache_params == {"_cache_version": "artifacts-v1"}

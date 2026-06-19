@@ -326,6 +326,8 @@ params = OpenScientistParams(
     investigation_mode="autonomous",  # "autonomous" or "coinvestigate"
     poll_interval=30,              # Seconds between status checks
     timeout=3600,                  # Max wait time in seconds (default 1 hour)
+    save_artifacts=True,           # Preserve useful ZIP artifacts
+    artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
 )
 
 result = client.research(
@@ -336,6 +338,7 @@ result = client.research(
 
 # OpenScientist returns PMID citations
 print(f"Citations: {result.citations}")  # ['PMID:12345678', 'PMID:87654321', ...]
+print(f"Artifacts: {len(result.artifacts)}")
 print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
 ```
 
@@ -903,9 +906,9 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
-| OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations |
+| OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
 
-When Edison produces diagrams, charts, figures, or other output artifacts, saved reports include an `Artifacts` section. Both the standard `research` command and `edison-trajectory` materialize recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
+When Edison or OpenScientist produces diagrams, charts, figures, or other useful output artifacts, saved reports include an `Artifacts` section. The standard `research` command materializes recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
 
 ## Development
 

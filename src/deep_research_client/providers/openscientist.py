@@ -9,15 +9,26 @@ openscientist.io), polls for completion, and downloads the final report.
 """
 
 import asyncio
+import base64
+from dataclasses import dataclass
+import io
 import logging
+import mimetypes
 import os
+from pathlib import PurePosixPath
 import re
 from typing import List, Optional
+import zipfile
 
 import httpx
 
 from . import ResearchProvider
-from ..models import ResearchResult, ProviderConfig
+from ..models import (
+    ResearchArtifact,
+    ResearchResult,
+    ProviderConfig,
+    sanitize_artifact_filename,
+)
 from ..provider_params import OpenScientistParams
 from ..model_cards import ProviderModelCards, create_openscientist_model_cards
 
@@ -29,6 +40,58 @@ IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "aw
 
 # Default base URL if not overridden
 DEFAULT_BASE_URL = "https://www.openscientist.io"
+
+
+_ALLOWED_ARTIFACT_EXTENSIONS = {
+    ".csv",
+    ".gif",
+    ".htm",
+    ".html",
+    ".jpeg",
+    ".jpg",
+    ".json",
+    ".md",
+    ".pdf",
+    ".png",
+    ".svg",
+    ".tsv",
+    ".webp",
+}
+_ARCHIVE_ARTIFACT_EXTENSIONS = {
+    ".7z",
+    ".bz2",
+    ".gz",
+    ".tar",
+    ".tgz",
+    ".xz",
+    ".zip",
+}
+_NOISY_ARTIFACT_PREFIXES = (
+    ".cache/",
+    ".claude/",
+    ".git/",
+    ".ipynb_checkpoints/",
+    ".venv/",
+    "__macosx/",
+    "cache/",
+    "node_modules/",
+)
+_NOISY_ARTIFACT_SUFFIXES = (".log", ".tmp")
+_NOISY_ARTIFACT_NAME_FRAGMENTS = (
+    "stderr",
+    "stdout",
+    "transcript",
+)
+_REPORT_MARKDOWN_BASENAMES = {"final_report.md", "report.md"}
+_ARTIFACT_SOURCE = "openscientist_artifacts_zip"
+
+
+@dataclass(frozen=True)
+class _DownloadedOpenScientistReport:
+    """OpenScientist markdown plus selected sidecar artifacts."""
+
+    markdown: str
+    artifacts: list[ResearchArtifact]
 
 
 class OpenScientistProvider(ResearchProvider):
@@ -126,20 +189,23 @@ class OpenScientistProvider(ResearchProvider):
                     f"OpenScientist job {final_status}: {error_msg}"
                 )
 
-            # 4. Download report
-            markdown = await self._download_report(client, job_id)
+            # 4. Download report and selected artifacts
+            download = await self._download_report_with_artifacts(client, job_id)
+            markdown = download.markdown
 
             # 5. Extract citations
             citations = self._extract_citations(markdown)
 
             logger.info(
                 f"OpenScientist research complete: "
-                f"{len(markdown)} chars, {len(citations)} citations"
+                f"{len(markdown)} chars, {len(citations)} citations, "
+                f"{len(download.artifacts)} artifacts"
             )
 
             return ResearchResult(
                 markdown=markdown,
                 citations=citations,
+                artifacts=download.artifacts,
                 provider=self.name,
                 query=query,
                 model=self.model,
@@ -270,26 +336,96 @@ class OpenScientistProvider(ResearchProvider):
         logger.info("Report returned as PDF, trying artifacts endpoint...")
         return await self._extract_markdown_from_artifacts(client, job_id)
 
+    async def _download_report_with_artifacts(
+        self,
+        client: httpx.AsyncClient,
+        job_id: str,
+    ) -> _DownloadedOpenScientistReport:
+        """Download the job report and selected provider artifacts."""
+        url = f"{self.base_url}/api/v1/jobs/{job_id}/report"
+        headers = {**self._headers(), "Accept": "text/markdown"}
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "")
+        if "text/" in content_type or "markdown" in content_type:
+            artifacts = await self._download_artifacts(client, job_id)
+            return _DownloadedOpenScientistReport(markdown=resp.text, artifacts=artifacts)
+
+        logger.info("Report returned as PDF, trying artifacts endpoint...")
+        bundle = await self._download_artifact_bundle(client, job_id)
+        report_name, markdown = self._extract_markdown_from_artifact_zip(bundle, job_id)
+        artifacts = (
+            self._extract_artifacts_from_artifact_zip(bundle, report_names={report_name})
+            if self.params.save_artifacts
+            else []
+        )
+        return _DownloadedOpenScientistReport(markdown=markdown, artifacts=artifacts)
+
+    async def _download_artifacts(
+        self,
+        client: httpx.AsyncClient,
+        job_id: str,
+    ) -> list[ResearchArtifact]:
+        """Download and extract useful OpenScientist sidecar artifacts."""
+        if not self.params.save_artifacts:
+            return []
+
+        try:
+            bundle = await self._download_artifact_bundle(client, job_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {404, 405}:
+                logger.info(f"No OpenScientist artifact bundle available for job {job_id}")
+                return []
+            raise
+
+        return self._extract_artifacts_from_artifact_zip(bundle)
+
+    async def _download_artifact_bundle(
+        self,
+        client: httpx.AsyncClient,
+        job_id: str,
+    ) -> bytes:
+        """Download the OpenScientist artifacts ZIP for a completed job."""
+        url = f"{self.base_url}/api/v1/jobs/{job_id}/artifacts"
+        resp = await client.get(url, headers=self._headers())
+        resp.raise_for_status()
+        return resp.content
+
     async def _extract_markdown_from_artifacts(
         self, client: httpx.AsyncClient, job_id: str
     ) -> str:
         """Download artifacts ZIP and extract the markdown report."""
-        import io
-        import zipfile
+        bundle = await self._download_artifact_bundle(client, job_id)
+        return self._extract_markdown_from_artifact_zip(bundle, job_id)[1]
 
-        url = f"{self.base_url}/api/v1/jobs/{job_id}/artifacts"
-        resp = await client.get(url, headers=self._headers())
-        resp.raise_for_status()
-
-        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-            # Look for markdown files in the ZIP
+    def _extract_markdown_from_artifact_zip(
+        self,
+        bundle: bytes,
+        job_id: str,
+    ) -> tuple[str, str]:
+        """Extract the best markdown report from an OpenScientist artifact ZIP."""
+        with zipfile.ZipFile(io.BytesIO(bundle)) as zf:
+            zip_names = zf.namelist()
+            # Prefer canonical report filenames over similarly named runtime skills.
             md_files = [
-                n for n in zf.namelist()
-                if n.endswith(".md") and "report" in n.lower()
+                n for n in zip_names
+                if self._is_report_markdown_name(n) and not self._is_noisy_artifact_path(n)
             ]
             if not md_files:
-                # Fall back to any .md file
-                md_files = [n for n in zf.namelist() if n.endswith(".md")]
+                md_files = [
+                    n for n in zip_names
+                    if n.lower().endswith(".md")
+                    and "report" in n.lower()
+                    and not self._is_noisy_artifact_path(n)
+                ]
+            if not md_files:
+                # Fall back to any non-runtime .md file.
+                md_files = [
+                    n for n in zip_names
+                    if n.lower().endswith(".md")
+                    and not self._is_noisy_artifact_path(n)
+                ]
 
             if not md_files:
                 raise ValueError(
@@ -297,12 +433,121 @@ class OpenScientistProvider(ResearchProvider):
                 )
 
             # Read the first matching file
-            with zf.open(md_files[0]) as f:
+            report_name = md_files[0]
+            with zf.open(report_name) as f:
                 raw = f.read()
                 try:
-                    return raw.decode("utf-8")
+                    return report_name, raw.decode("utf-8")
                 except UnicodeDecodeError:
-                    return raw.decode("latin-1")
+                    return report_name, raw.decode("latin-1")
+
+    def _extract_artifacts_from_artifact_zip(
+        self,
+        bundle: bytes,
+        report_names: set[str] | None = None,
+    ) -> list[ResearchArtifact]:
+        """Extract useful sidecar artifacts from an OpenScientist ZIP archive."""
+        report_names = report_names or set()
+        artifacts: list[ResearchArtifact] = []
+        used_filenames: set[str] = set()
+
+        with zipfile.ZipFile(io.BytesIO(bundle)) as zf:
+            for info in sorted(zf.infolist(), key=lambda item: item.filename):
+                if not self._should_preserve_artifact(info, report_names):
+                    continue
+
+                with zf.open(info) as file:
+                    content = file.read()
+
+                filename = self._artifact_filename(info.filename, used_filenames)
+                media_type = mimetypes.guess_type(info.filename)[0]
+                artifacts.append(
+                    ResearchArtifact(
+                        filename=filename,
+                        content_base64=base64.b64encode(content).decode("ascii"),
+                        media_type=media_type,
+                        source=_ARTIFACT_SOURCE,
+                        description=self._artifact_description(info.filename),
+                    )
+                )
+
+        return artifacts
+
+    def _should_preserve_artifact(
+        self,
+        info: zipfile.ZipInfo,
+        report_names: set[str],
+    ) -> bool:
+        """Return whether a ZIP member should become a ResearchArtifact."""
+        if info.is_dir():
+            return False
+
+        name = info.filename
+        if name in report_names:
+            return False
+
+        if self._is_report_markdown_name(name) or self._is_noisy_artifact_path(name):
+            return False
+
+        if info.file_size > self.params.artifact_max_bytes:
+            logger.info(
+                "Skipping OpenScientist artifact %s: %s bytes exceeds %s byte limit",
+                name,
+                info.file_size,
+                self.params.artifact_max_bytes,
+            )
+            return False
+
+        path = PurePosixPath(name.lower())
+        suffix = path.suffix
+        if suffix in _ARCHIVE_ARTIFACT_EXTENSIONS:
+            return False
+
+        media_type = mimetypes.guess_type(name)[0]
+        return suffix in _ALLOWED_ARTIFACT_EXTENSIONS or (
+            media_type is not None and media_type.startswith("image/")
+        )
+
+    def _is_report_markdown_name(self, name: str) -> bool:
+        """Return whether a ZIP member is the markdown report already captured."""
+        path = PurePosixPath(name.lower())
+        return path.name in _REPORT_MARKDOWN_BASENAMES
+
+    def _is_noisy_artifact_path(self, name: str) -> bool:
+        """Return whether a ZIP member is runtime scaffolding or verbose logs."""
+        normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
+        basename = PurePosixPath(normalized).name
+        if normalized.startswith(_NOISY_ARTIFACT_PREFIXES):
+            return True
+        if basename.endswith(_NOISY_ARTIFACT_SUFFIXES):
+            return True
+        return any(fragment in basename for fragment in _NOISY_ARTIFACT_NAME_FRAGMENTS)
+
+    def _artifact_filename(self, raw_name: str, used_filenames: set[str]) -> str:
+        """Return a stable, unique filename for a ZIP artifact member."""
+        filename = sanitize_artifact_filename(raw_name, fallback="artifact")
+        candidate = filename
+        suffix = PurePosixPath(filename).suffix
+        stem = filename.removesuffix(suffix) if suffix else filename
+        stem = stem or "artifact"
+        counter = 2
+
+        while candidate in used_filenames:
+            candidate = f"{stem}-{counter}{suffix}"
+            counter += 1
+
+        used_filenames.add(candidate)
+        return candidate
+
+    def _artifact_description(self, name: str) -> str:
+        """Build a short human-readable artifact description."""
+        path = PurePosixPath(name)
+        stem = path.stem.replace("_", " ").replace("-", " ").strip()
+        if path.name.lower() == "final_report.pdf":
+            return "OpenScientist final report"
+        if stem:
+            return f"OpenScientist {stem}"
+        return f"OpenScientist artifact {path.name}"
 
     @staticmethod
     def _extract_citations(markdown: str) -> List[str]:

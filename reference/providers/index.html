@@ -2049,6 +2049,8 @@ params = OpenScientistParams(
     investigation_mode=&quot;autonomous&quot;,  # &quot;autonomous&quot; or &quot;coinvestigate&quot;
     poll_interval=30,              # Seconds between status checks
     timeout=3600,                  # Max wait time (1-2 hours recommended)
+    save_artifacts=True,           # Preserve useful ZIP artifacts
+    artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
 )
 </code></pre>
 <h3 id="characteristics_5">Characteristics</h3>
@@ -2057,6 +2059,7 @@ params = OpenScientistParams(
 <li><strong>Speed</strong>: 10-60+ minutes (iterative multi-step research)</li>
 <li><strong>Capabilities</strong>: PubMed search, code execution, hypothesis-driven research</li>
 <li><strong>Citations</strong>: PMID format with deduplication</li>
+<li><strong>Artifacts</strong>: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as <code>ResearchArtifact</code> entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default.</li>
 </ul>
 <h3 id="when-to-use">When to Use</h3>
 <ul>

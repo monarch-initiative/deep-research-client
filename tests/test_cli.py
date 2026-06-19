@@ -62,11 +62,12 @@ def test_research_rejects_conflicting_query_sources(tmp_path):
 
 def test_providers_asta_shows_required_credentials():
     """CLI should explain that Asta needs its retrieval credential."""
-    result = runner.invoke(
-        app,
-        ["providers", "--provider", "asta"],
-        env={},
-    )
+    with patch.dict(os.environ, {}, clear=True):
+        result = runner.invoke(
+            app,
+            ["providers", "--provider", "asta"],
+            env={},
+        )
 
     assert result.exit_code == 0, result.output
     assert "Provider: asta - Not available" in result.stdout
@@ -75,11 +76,12 @@ def test_providers_asta_shows_required_credentials():
 
 def test_providers_openscientist_shows_required_credentials():
     """CLI should explain that OpenScientist needs its API key."""
-    result = runner.invoke(
-        app,
-        ["providers", "--provider", "openscientist"],
-        env={},
-    )
+    with patch.dict(os.environ, {}, clear=True):
+        result = runner.invoke(
+            app,
+            ["providers", "--provider", "openscientist"],
+            env={},
+        )
 
     assert result.exit_code == 0, result.output
     assert "Provider: openscientist - Not available" in result.stdout
@@ -88,11 +90,12 @@ def test_providers_openscientist_shows_required_credentials():
 
 def test_providers_no_available_providers_mentions_openscientist():
     """CLI should mention OpenScientist in missing-credential guidance."""
-    result = runner.invoke(
-        app,
-        ["providers"],
-        env={},
-    )
+    with patch.dict(os.environ, {}, clear=True):
+        result = runner.invoke(
+            app,
+            ["providers"],
+            env={},
+        )
 
     assert result.exit_code == 0, result.output
     assert "OPENSCIENTIST_API_KEY for OpenScientist" in result.stdout

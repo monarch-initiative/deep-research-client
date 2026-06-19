@@ -273,6 +273,19 @@ class OpenScientistParams(BaseProviderParams):
         le=7200,
         description="Maximum seconds to wait for job completion"
     )
+    save_artifacts: bool = Field(
+        default=True,
+        description=(
+            "Download and preserve useful OpenScientist artifacts such as figures, "
+            "small structured data files, and rendered reports."
+        )
+    )
+    artifact_max_bytes: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1,
+        le=50 * 1024 * 1024,
+        description="Maximum uncompressed bytes to preserve for a single artifact file"
+    )
 
 
 class CyberianParams(BaseProviderParams):

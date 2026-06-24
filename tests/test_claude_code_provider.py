@@ -48,14 +48,17 @@ def test_is_available_false_when_disabled():
 
 
 def test_build_command_defaults():
-    """Default command runs print mode, JSON output, and skips permissions."""
+    """Default command runs print mode, JSON output, and a read-only toolset."""
     provider = make_provider()
     command = provider._build_command()
 
     assert command[0] == "claude"
     assert "--print" in command
     assert command[command.index("--output-format") + 1] == "json"
-    assert "--dangerously-skip-permissions" in command
+    # Secure default: permissions are NOT skipped, and the agent is restricted to
+    # a read-only research toolset via the allowlist.
+    assert "--dangerously-skip-permissions" not in command
+    assert command[command.index("--allowedTools") + 1] == "WebSearch,WebFetch"
     # The research system prompt plus the inline-report directive are appended.
     assert "--append-system-prompt" in command
     appended = command[command.index("--append-system-prompt") + 1]
@@ -63,6 +66,13 @@ def test_build_command_defaults():
     assert _INLINE_REPORT_DIRECTIVE in appended
     # No model is forwarded for the default sentinel.
     assert "--model" not in command
+
+
+def test_build_command_skip_permissions_opt_in():
+    """Opting into skip_permissions adds the dangerous flag (for sandboxes)."""
+    provider = make_provider(ClaudeCodeParams(skip_permissions=True))
+    command = provider._build_command()
+    assert "--dangerously-skip-permissions" in command
 
 
 def test_build_command_forwards_explicit_model():
@@ -116,35 +126,36 @@ def test_build_command_allowed_tools_and_dirs_and_extra_args():
     assert command[-2:] == ["--max-turns", "30"]
 
 
-def test_parse_output_success():
-    """A successful JSON result yields the markdown report."""
+def test_load_payload_and_result_text_success():
+    """A successful JSON result parses and yields the markdown report."""
     stdout = '{"type": "result", "is_error": false, "result": "# Report\\n\\nbody"}'
-    assert ClaudeCodeProvider._parse_output(stdout) == "# Report\n\nbody"
+    data = ClaudeCodeProvider._load_payload(stdout)
+    assert ClaudeCodeProvider._result_text(data) == "# Report\n\nbody"
 
 
-def test_parse_output_raises_on_error_flag():
+def test_load_payload_raises_on_error_flag():
     """An is_error result raises a ValueError with the detail."""
     stdout = '{"is_error": true, "subtype": "error_max_turns", "result": "hit limit"}'
     with pytest.raises(ValueError, match="error_max_turns"):
-        ClaudeCodeProvider._parse_output(stdout)
+        ClaudeCodeProvider._load_payload(stdout)
 
 
-def test_parse_output_raises_on_invalid_json():
+def test_load_payload_raises_on_invalid_json():
     """Non-JSON output raises a ValueError."""
     with pytest.raises(ValueError, match="parse Claude Code JSON"):
-        ClaudeCodeProvider._parse_output("not json at all")
+        ClaudeCodeProvider._load_payload("not json at all")
 
 
-def test_parse_output_raises_on_empty_output():
+def test_load_payload_raises_on_empty_output():
     """Empty stdout raises a ValueError."""
     with pytest.raises(ValueError, match="empty output"):
-        ClaudeCodeProvider._parse_output("   ")
+        ClaudeCodeProvider._load_payload("   ")
 
 
-def test_parse_output_raises_on_missing_result():
-    """A JSON object with no usable result text raises a ValueError."""
+def test_result_text_raises_on_missing_result():
+    """A payload with no usable result text raises a ValueError."""
     with pytest.raises(ValueError, match="no result text"):
-        ClaudeCodeProvider._parse_output('{"is_error": false, "result": ""}')
+        ClaudeCodeProvider._result_text({"is_error": False, "result": ""})
 
 
 def test_extract_run_metadata_reads_actual_models_and_usage():
@@ -204,11 +215,35 @@ def test_extract_citations_handles_no_urls():
 @pytest.mark.asyncio
 async def test_research_raises_on_empty_query():
     """An empty query is rejected before invoking the CLI."""
-    provider = make_provider()
-    if not provider.is_available():
-        pytest.skip("claude CLI not available")
+    # Use a trivially-available executable so the check doesn't depend on `claude`.
+    provider = make_provider(ClaudeCodeParams(claude_executable="true"))
     with pytest.raises(ValueError, match="must not be empty"):
         await provider.research("   ")
+
+
+@pytest.mark.asyncio
+async def test_research_raises_on_nonzero_exit():
+    """A non-zero exit from the CLI surfaces as a ValueError."""
+    if shutil.which("false") is None:
+        pytest.skip("`false` not available")
+    # `false` ignores stdin/args and exits 1 immediately.
+    provider = make_provider(ClaudeCodeParams(claude_executable="false"))
+    with pytest.raises(ValueError, match="exited with code"):
+        await provider.research("anything")
+
+
+@pytest.mark.asyncio
+async def test_research_raises_on_timeout(tmp_path):
+    """A run that exceeds the timeout is killed and surfaces as a ValueError."""
+    script = tmp_path / "slowclaude"
+    script.write_text("#!/bin/sh\nsleep 5\n")
+    script.chmod(0o755)
+    config = ProviderConfig(name="claude_code", api_key=None, enabled=True, timeout=1)
+    provider = ClaudeCodeProvider(
+        config, ClaudeCodeParams(claude_executable=str(script))
+    )
+    with pytest.raises(ValueError, match="timed out"):
+        await provider.research("anything")
 
 
 @pytest.mark.integration

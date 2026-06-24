@@ -1084,6 +1084,75 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      Claude Code
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude Code">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -1718,6 +1787,75 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      Claude Code
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claude Code">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -1808,6 +1946,12 @@
 <td>(local agents)</td>
 <td>Agent-based, thorough</td>
 <td>Very slow</td>
+</tr>
+<tr>
+<td>Claude Code</td>
+<td>(local <code>claude</code> CLI)</td>
+<td>Agentic web research, no API key</td>
+<td>Slow</td>
 </tr>
 </tbody>
 </table>
@@ -2122,6 +2266,80 @@ deep-research-client research --provider cyberian &quot;query&quot; \
 <li><strong>Testing</strong>: Run a quick verification without full research</li>
 <li><strong>Cost control</strong>: Limit agent API calls</li>
 <li><strong>Debugging</strong>: Inspect intermediate results after fixed iterations</li>
+</ul>
+<hr />
+<h2 id="claude-code">Claude Code</h2>
+<p>Claude Code is a local command-line tool rather than an HTTP API. This provider
+shells out to the <code>claude</code> binary in non-interactive ("print") mode, pipes the
+research prompt to it via stdin, and lets Claude Code's own agentic tools (web
+search, web fetch, file reading) carry out the research. The final answer comes
+back as a cited markdown report.</p>
+<h3 id="setup_7">Setup</h3>
+<p>No API key is needed — authentication and billing are handled by your local
+Claude Code installation. Just make sure the CLI is installed and on your PATH:</p>
+<pre><code class="language-bash">claude --version   # should succeed
+</code></pre>
+<p>The provider is auto-detected whenever <code>claude</code> is found on PATH. Set
+<code>DISABLE_CLAUDE_CODE_PROVIDER=true</code> to opt out of auto-detection.</p>
+<h3 id="parameters_6">Parameters</h3>
+<pre><code class="language-python">from deep_research_client.provider_params import ClaudeCodeParams
+
+params = ClaudeCodeParams(
+    model=&quot;opus&quot;,                 # optional; forwarded to `claude --model`
+    allowed_tools=[&quot;WebSearch&quot;, &quot;WebFetch&quot;],  # tool allowlist (default: read-only research set)
+    skip_permissions=False,       # default; True bypasses ALL checks (see Security)
+    add_dirs=[&quot;/data/papers&quot;],    # optional --add-dir entries
+    working_dir=&quot;/tmp/research&quot;,  # optional cwd for the run
+    extra_args=[&quot;--max-turns&quot;, &quot;30&quot;],  # escape hatch for unmodeled flags
+)
+</code></pre>
+<p>When <code>skip_permissions</code> is <code>False</code> (the default), you can also set
+<code>permission_mode</code> (e.g. <code>"plan"</code> or <code>"acceptEdits"</code>).</p>
+<h3 id="security">Security</h3>
+<p>In non-interactive mode the run is driven by an agent, and
+<code>get_first_available()</code> may select this provider for an arbitrary query whenever
+<code>claude</code> is on PATH. To keep that safe by default:</p>
+<ul>
+<li><code>allowed_tools</code> defaults to a <strong>read-only research set</strong> (<code>["WebSearch", "WebFetch"]</code>),
+  passed via <code>--allowedTools</code>. Tools not on the list are auto-denied (without
+  blocking the run), so the agent cannot edit files or run shell commands.</li>
+<li><code>skip_permissions</code> defaults to <strong><code>False</code></strong>. Setting it <code>True</code> adds
+  <code>--dangerously-skip-permissions</code>, which bypasses every permission check and
+  <strong>makes <code>allowed_tools</code> a no-op</strong> (all tools become available). Only enable it
+  in trusted, sandboxed environments.</li>
+</ul>
+<p>Widen <code>allowed_tools</code> if a task genuinely needs more. The most common case is
+<strong>research over local documents</strong>: the default set is web-only and deliberately
+omits the <code>Read</code> tool, so to let Claude Code read files you have supplied (for
+example in an <code>add_dirs</code> path) you must add it explicitly:</p>
+<pre><code class="language-python">params = ClaudeCodeParams(
+    allowed_tools=[&quot;WebSearch&quot;, &quot;WebFetch&quot;, &quot;Read&quot;],
+    add_dirs=[&quot;/data/papers&quot;],
+)
+</code></pre>
+<p><code>Read</code> is left out of the default because it grants the agent read access to the
+local filesystem, which is unnecessary for purely web-based research and is a
+mild information-disclosure surface if the query is untrusted. Add it only when
+reading local documents is actually part of the task.</p>
+<h3 id="usage">Usage</h3>
+<pre><code class="language-bash">deep-research-client research --provider claude_code &quot;your research question&quot;
+</code></pre>
+<p>See <a href="../../examples/claude-code-deep-research-example/">a full example report</a>
+produced by this provider, including the YAML frontmatter that records the
+actual model(s) used and run provenance (<code>run_metadata</code>).</p>
+<h3 id="characteristics_7">Characteristics</h3>
+<ul>
+<li><strong>Cost</strong>: Handled by your Claude Code subscription / API key</li>
+<li><strong>Speed</strong>: Slow (agentic, multi-step)</li>
+<li><strong>Capabilities</strong>: Web search, citation tracking, code interpretation</li>
+<li><strong>Auth</strong>: None required by this client; relies on local Claude Code</li>
+</ul>
+<h3 id="limitations_1">Limitations</h3>
+<ul>
+<li>Requires the <code>claude</code> CLI installed and authenticated locally</li>
+<li>Restricted to a read-only research toolset by default; broaden <code>allowed_tools</code>
+  (or enable <code>skip_permissions</code> in a sandbox) for tasks that need more</li>
+<li>Non-deterministic results</li>
 </ul>
 <hr />
 <h2 id="provider-detection">Provider Detection</h2>

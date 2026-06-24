@@ -363,8 +363,22 @@ In non-interactive mode the run is driven by an agent, and
   **makes `allowed_tools` a no-op** (all tools become available). Only enable it
   in trusted, sandboxed environments.
 
-Widen `allowed_tools` if a task genuinely needs more (e.g. reading local files
-in an `add_dirs` path).
+Widen `allowed_tools` if a task genuinely needs more. The most common case is
+**research over local documents**: the default set is web-only and deliberately
+omits the `Read` tool, so to let Claude Code read files you have supplied (for
+example in an `add_dirs` path) you must add it explicitly:
+
+```python
+params = ClaudeCodeParams(
+    allowed_tools=["WebSearch", "WebFetch", "Read"],
+    add_dirs=["/data/papers"],
+)
+```
+
+`Read` is left out of the default because it grants the agent read access to the
+local filesystem, which is unnecessary for purely web-based research and is a
+mild information-disclosure surface if the query is untrusted. Add it only when
+reading local documents is actually part of the task.
 
 ### Usage
 

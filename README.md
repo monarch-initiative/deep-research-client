@@ -329,6 +329,7 @@ result = client.research(
 - No API key required — auth/billing is handled by your local Claude Code installation.
 - Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
 - **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
+- **Reading local documents:** the default toolset is web-only and omits the `Read` tool. To research over files you supply (e.g. via `add_dirs`), add `Read` to `allowed_tools` explicitly: `allowed_tools=["WebSearch", "WebFetch", "Read"]`. It is left out by default because filesystem read access is unnecessary for web research and is a mild information-disclosure surface for untrusted queries.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

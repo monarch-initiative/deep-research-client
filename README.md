@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, and OpenScientist autonomous research.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, and Claude Code.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), and OpenScientist (autonomous)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -62,6 +62,10 @@ export OPENSCIENTIST_URL="https://www.openscientist.io"
 # For Cyberian (agent-based research) - requires cyberian installation
 pip install deep-research-client[cyberian]
 # Cyberian uses your local AI agents (Claude, etc.) - no separate API key needed
+
+# For Claude Code - just install the `claude` CLI and have it authenticated.
+# Auto-detected when `claude` is on PATH; no separate API key needed.
+# Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -297,6 +301,34 @@ print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
 - 💰 **Variable cost**: Depends on agent and research depth
 - 🖥️ **Local compute**: Requires agentapi and agent setup
 - 🎯 **Thorough**: More comprehensive than API-based providers
+
+#### Claude Code-Specific Parameters (Local CLI)
+
+Claude Code is a local command-line tool rather than an HTTP API. This provider runs the `claude` binary in non-interactive ("print") mode, pipes the prompt to it via stdin, and lets Claude Code's own agentic tools (web search, web fetch, file reading) carry out the research.
+
+```python
+from deep_research_client.provider_params import ClaudeCodeParams
+
+params = ClaudeCodeParams(
+    model="opus",                  # optional; forwarded to `claude --model`
+    skip_permissions=True,         # adds --dangerously-skip-permissions (default)
+    allowed_tools=["WebSearch", "WebFetch"],  # optional --allowedTools allowlist
+    add_dirs=["/data/papers"],     # optional --add-dir entries
+    working_dir=None,              # optional cwd for the run
+    extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
+)
+
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="claude_code",
+    provider_params=params
+)
+```
+
+**Notes:**
+- No API key required — auth/billing is handled by your local Claude Code installation.
+- Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
+- Non-interactive runs typically need `--dangerously-skip-permissions` (recommended only in trusted/sandboxed environments).
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

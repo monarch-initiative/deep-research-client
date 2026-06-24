@@ -340,6 +340,76 @@ class CyberianParams(BaseProviderParams):
     )
 
 
+class ClaudeCodeParams(BaseProviderParams):
+    """Parameters specific to the Claude Code research provider.
+
+    Claude Code is invoked as a local command-line tool (the ``claude`` binary)
+    rather than via an HTTP API. The provider shells out to it in
+    non-interactive "print" mode and lets Claude Code use its own agentic tools
+    (web search, file reading, etc.) to perform the research.
+    """
+
+    claude_executable: str = Field(
+        default="claude",
+        description="Path or name of the Claude Code executable to invoke"
+    )
+    skip_permissions: bool = Field(
+        default=False,
+        description=(
+            "Pass --dangerously-skip-permissions, which bypasses ALL permission "
+            "checks and lets the agent use every tool (file edits, shell, etc.). "
+            "SECURITY: this overrides allowed_tools entirely, so the allowlist no "
+            "longer restricts anything. Defaults to False so the read-only "
+            "allowed_tools allowlist governs tool access. Enable only in trusted, "
+            "sandboxed environments where running arbitrary tools on an "
+            "agent-driven (possibly untrusted) query is acceptable."
+        )
+    )
+    allowed_tools: List[str] = Field(
+        default_factory=lambda: ["WebSearch", "WebFetch"],
+        description=(
+            "Allowlist of Claude Code tool names passed via --allowedTools. In "
+            "non-interactive mode, tools not on this list are auto-denied (without "
+            "blocking), so this is the primary tool-authority control. Defaults to "
+            "a read-only research set (WebSearch, WebFetch) so the out-of-the-box "
+            "behavior cannot mutate the filesystem or run shell commands even on an "
+            "untrusted query. Widen it for tasks that need more, or set it empty "
+            "AND skip_permissions=True to allow all tools. Has no effect when "
+            "skip_permissions is True."
+        )
+    )
+    permission_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional Claude Code --permission-mode value (e.g. 'plan', "
+            "'acceptEdits'). Ignored when skip_permissions is true."
+        )
+    )
+    add_dirs: List[str] = Field(
+        default_factory=list,
+        description="Additional directories to grant Claude Code tool access to (--add-dir)"
+    )
+    working_dir: Optional[str] = Field(
+        default=None,
+        description="Working directory in which to run the claude process (defaults to current dir)"
+    )
+    timeout: int = Field(
+        default=1800,
+        ge=1,
+        description=(
+            "Maximum seconds to wait for the claude run before killing it. "
+            "Overridden by ProviderConfig.timeout when that is set."
+        )
+    )
+    extra_args: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra command-line arguments appended verbatim to the claude invocation. "
+            "Escape hatch for flags not otherwise modeled (e.g. ['--max-turns', '20'])."
+        )
+    )
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -350,6 +420,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "mock": MockParams,
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
+    "claude_code": ClaudeCodeParams,
 }
 
 

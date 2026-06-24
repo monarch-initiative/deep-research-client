@@ -98,6 +98,14 @@ class ResearchResult(BaseModel):
     # Provider configuration
     model: Optional[str] = Field(default=None, description="Model used by provider")
     provider_config: Optional[Dict[str, Any]] = Field(default=None, description="Provider configuration")
+    run_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Provider-reported provenance about the actual run (e.g. model(s) used, "
+            "token/cost usage, number of turns). Distinct from the requested "
+            "configuration in provider_config."
+        ),
+    )
 
 
 class ProviderConfig(BaseModel):

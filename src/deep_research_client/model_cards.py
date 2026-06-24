@@ -496,6 +496,51 @@ def create_openscientist_model_cards() -> ProviderModelCards:
     )
 
 
+def create_claude_code_model_cards() -> ProviderModelCards:
+    """Create model cards for the Claude Code research provider."""
+
+    default = ModelCard(
+        name="claude-code-default",
+        display_name="Claude Code (account default model)",
+        description=(
+            "Runs the local Claude Code CLI in non-interactive mode, letting its "
+            "agentic tools (web search, web fetch, file reading) drive a multi-step "
+            "research process that yields a cited markdown report. Uses whichever "
+            "model the local Claude Code installation defaults to."
+        ),
+        cost_level=CostLevel.MEDIUM,
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ModelCapability.WEB_SEARCH,
+            ModelCapability.CITATION_TRACKING,
+            ModelCapability.CODE_INTERPRETATION,
+        ],
+        aliases=["claude", "claude-code", "cc", "default"],
+        pricing_notes=(
+            "Billing is handled by the local Claude Code installation (subscription "
+            "or Anthropic API key); no separate provider API key is required."
+        ),
+        use_cases=[
+            "Deep research using an already-configured Claude Code environment",
+            "Agentic web research with citations",
+            "Research in environments where curation already runs Claude Code",
+        ],
+        limitations=[
+            "Requires the `claude` CLI to be installed and authenticated locally",
+            "Restricted to a read-only research toolset by default (web search/fetch)",
+            "Non-deterministic results",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="claude_code",
+        default_model="claude-code-default",
+        models={
+            "claude-code-default": default,
+        },
+    )
+
+
 # Registry of all provider model cards
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openai": create_openai_model_cards(),
@@ -504,6 +549,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "asta": create_asta_model_cards(),
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
+    "claude_code": create_claude_code_model_cards(),
 }
 
 

@@ -66,6 +66,10 @@ class ResultFormatter:
             if trajectory_id:
                 metadata["trajectory_id"] = trajectory_id
 
+        # Add run provenance metadata (e.g. actual model(s) used, cost, turns)
+        if result.run_metadata:
+            metadata["run_metadata"] = result.run_metadata
+
         # Add citation count
         if result.citations:
             metadata["citation_count"] = len(result.citations)

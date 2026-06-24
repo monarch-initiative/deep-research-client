@@ -20,6 +20,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "consensus": ("deep_research_client.providers.consensus", "ConsensusProvider"),
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
+    "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -137,6 +138,22 @@ class DeepResearchClient:
         except ImportError:
             pass  # Cyberian not installed, skip
 
+        # Claude Code provider - available whenever the `claude` CLI is on PATH.
+        # No API key required; auth/billing is handled by the local installation.
+        # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+        import shutil
+        if (
+            os.getenv("DISABLE_CLAUDE_CODE_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and shutil.which("claude") is not None
+        ):
+            claude_code_config = ProviderConfig(
+                name="claude_code",
+                api_key=None,  # Not required for Claude Code
+                enabled=True,
+                timeout=1800,  # 30 minutes for long-running agentic research
+            )
+            self.registry.register(self._create_provider("claude_code", claude_code_config))
+
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):
             mock_config = ProviderConfig(
@@ -212,6 +229,11 @@ class DeepResearchClient:
             effective_params["_cache_version"] = "snippet-v5"
         elif research_provider.name in {"falcon", "openscientist"}:
             effective_params["_cache_version"] = "artifacts-v1"
+        # The Claude Code prompt scaffolding (inline-report directive) and run
+        # provenance capture changed how results are produced; bump to keep
+        # stale cache entries from shadowing current live results.
+        elif research_provider.name == "claude_code":
+            effective_params["_cache_version"] = "inline-report-v1"
 
         return effective_params or None
 
@@ -319,8 +341,11 @@ class DeepResearchClient:
                     contributors=metadata.get('contributors', [])
                 )
 
-        # Add provider configuration
-        result.model = getattr(research_provider, 'model', None)
+        # Add provider configuration. Prefer a model the provider already recorded
+        # on the result (e.g. the actual model id reported by the run) over the
+        # provider's configured/default model.
+        if result.model is None:
+            result.model = getattr(research_provider, 'model', None)
         result.provider_config = {
             'timeout': research_provider.config.timeout,
             'max_retries': research_provider.config.max_retries,

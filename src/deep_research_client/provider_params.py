@@ -340,6 +340,58 @@ class CyberianParams(BaseProviderParams):
     )
 
 
+class ClaudeCodeParams(BaseProviderParams):
+    """Parameters specific to the Claude Code research provider.
+
+    Claude Code is invoked as a local command-line tool (the ``claude`` binary)
+    rather than via an HTTP API. The provider shells out to it in
+    non-interactive "print" mode and lets Claude Code use its own agentic tools
+    (web search, file reading, etc.) to perform the research.
+    """
+
+    claude_executable: str = Field(
+        default="claude",
+        description="Path or name of the Claude Code executable to invoke"
+    )
+    skip_permissions: bool = Field(
+        default=True,
+        description=(
+            "Pass --dangerously-skip-permissions so the non-interactive run does "
+            "not block on permission prompts. Recommended only in trusted/sandboxed "
+            "environments."
+        )
+    )
+    allowed_tools: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional allowlist of Claude Code tool names (e.g. ['WebSearch', "
+            "'WebFetch']) passed via --allowedTools. Leave empty to allow all tools."
+        )
+    )
+    permission_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional Claude Code --permission-mode value (e.g. 'plan', "
+            "'acceptEdits'). Ignored when skip_permissions is true."
+        )
+    )
+    add_dirs: List[str] = Field(
+        default_factory=list,
+        description="Additional directories to grant Claude Code tool access to (--add-dir)"
+    )
+    working_dir: Optional[str] = Field(
+        default=None,
+        description="Working directory in which to run the claude process (defaults to current dir)"
+    )
+    extra_args: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra command-line arguments appended verbatim to the claude invocation. "
+            "Escape hatch for flags not otherwise modeled (e.g. ['--max-turns', '20'])."
+        )
+    )
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -350,6 +402,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "mock": MockParams,
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
+    "claude_code": ClaudeCodeParams,
 }
 
 

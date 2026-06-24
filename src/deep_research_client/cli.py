@@ -36,6 +36,7 @@ PROVIDER_CREDENTIAL_HINTS = {
     "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
     "consensus": ("CONSENSUS_API_KEY", "Consensus"),
     "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
+    "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
     "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
 }
 
@@ -244,7 +245,7 @@ def research(
     query: Annotated[Optional[str], typer.Argument(
         help="Research query or question (not needed if using --template)")] = None,
     provider: Annotated[Optional[str], typer.Option(
-        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, mock)")] = None,
+        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     output: Annotated[Optional[Path], typer.Option(

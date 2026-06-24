@@ -311,8 +311,8 @@ from deep_research_client.provider_params import ClaudeCodeParams
 
 params = ClaudeCodeParams(
     model="opus",                  # optional; forwarded to `claude --model`
-    skip_permissions=True,         # adds --dangerously-skip-permissions (default)
-    allowed_tools=["WebSearch", "WebFetch"],  # optional --allowedTools allowlist
+    allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
+    skip_permissions=False,        # default; True bypasses ALL checks (see below)
     add_dirs=["/data/papers"],     # optional --add-dir entries
     working_dir=None,              # optional cwd for the run
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
@@ -328,7 +328,7 @@ result = client.research(
 **Notes:**
 - No API key required — auth/billing is handled by your local Claude Code installation.
 - Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
-- Non-interactive runs typically need `--dangerously-skip-permissions` (recommended only in trusted/sandboxed environments).
+- **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

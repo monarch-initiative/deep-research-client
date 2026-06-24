@@ -338,16 +338,33 @@ from deep_research_client.provider_params import ClaudeCodeParams
 
 params = ClaudeCodeParams(
     model="opus",                 # optional; forwarded to `claude --model`
-    skip_permissions=True,        # adds --dangerously-skip-permissions (default)
-    allowed_tools=["WebSearch", "WebFetch"],  # optional --allowedTools allowlist
+    allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
+    skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=["/data/papers"],    # optional --add-dir entries
     working_dir="/tmp/research",  # optional cwd for the run
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
 ```
 
-When `skip_permissions` is `False`, you can instead set `permission_mode` (e.g.
-`"plan"` or `"acceptEdits"`).
+When `skip_permissions` is `False` (the default), you can also set
+`permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+### Security
+
+In non-interactive mode the run is driven by an agent, and
+`get_first_available()` may select this provider for an arbitrary query whenever
+`claude` is on PATH. To keep that safe by default:
+
+- `allowed_tools` defaults to a **read-only research set** (`["WebSearch", "WebFetch"]`),
+  passed via `--allowedTools`. Tools not on the list are auto-denied (without
+  blocking the run), so the agent cannot edit files or run shell commands.
+- `skip_permissions` defaults to **`False`**. Setting it `True` adds
+  `--dangerously-skip-permissions`, which bypasses every permission check and
+  **makes `allowed_tools` a no-op** (all tools become available). Only enable it
+  in trusted, sandboxed environments.
+
+Widen `allowed_tools` if a task genuinely needs more (e.g. reading local files
+in an `add_dirs` path).
 
 ### Usage
 
@@ -369,8 +386,8 @@ actual model(s) used and run provenance (`run_metadata`).
 ### Limitations
 
 - Requires the `claude` CLI installed and authenticated locally
-- Runs non-interactively, typically with `--dangerously-skip-permissions`
-  (recommended only in trusted/sandboxed environments)
+- Restricted to a read-only research toolset by default; broaden `allowed_tools`
+  (or enable `skip_permissions` in a sandbox) for tasks that need more
 - Non-deterministic results
 
 ---

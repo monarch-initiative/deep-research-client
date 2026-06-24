@@ -354,18 +354,28 @@ class ClaudeCodeParams(BaseProviderParams):
         description="Path or name of the Claude Code executable to invoke"
     )
     skip_permissions: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "Pass --dangerously-skip-permissions so the non-interactive run does "
-            "not block on permission prompts. Recommended only in trusted/sandboxed "
-            "environments."
+            "Pass --dangerously-skip-permissions, which bypasses ALL permission "
+            "checks and lets the agent use every tool (file edits, shell, etc.). "
+            "SECURITY: this overrides allowed_tools entirely, so the allowlist no "
+            "longer restricts anything. Defaults to False so the read-only "
+            "allowed_tools allowlist governs tool access. Enable only in trusted, "
+            "sandboxed environments where running arbitrary tools on an "
+            "agent-driven (possibly untrusted) query is acceptable."
         )
     )
     allowed_tools: List[str] = Field(
-        default_factory=list,
+        default_factory=lambda: ["WebSearch", "WebFetch"],
         description=(
-            "Optional allowlist of Claude Code tool names (e.g. ['WebSearch', "
-            "'WebFetch']) passed via --allowedTools. Leave empty to allow all tools."
+            "Allowlist of Claude Code tool names passed via --allowedTools. In "
+            "non-interactive mode, tools not on this list are auto-denied (without "
+            "blocking), so this is the primary tool-authority control. Defaults to "
+            "a read-only research set (WebSearch, WebFetch) so the out-of-the-box "
+            "behavior cannot mutate the filesystem or run shell commands even on an "
+            "untrusted query. Widen it for tasks that need more, or set it empty "
+            "AND skip_permissions=True to allow all tools. Has no effect when "
+            "skip_permissions is True."
         )
     )
     permission_mode: Optional[str] = Field(
@@ -382,6 +392,14 @@ class ClaudeCodeParams(BaseProviderParams):
     working_dir: Optional[str] = Field(
         default=None,
         description="Working directory in which to run the claude process (defaults to current dir)"
+    )
+    timeout: int = Field(
+        default=1800,
+        ge=1,
+        description=(
+            "Maximum seconds to wait for the claude run before killing it. "
+            "Overridden by ProviderConfig.timeout when that is set."
+        )
     )
     extra_args: List[str] = Field(
         default_factory=list,

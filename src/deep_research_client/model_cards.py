@@ -527,7 +527,7 @@ def create_claude_code_model_cards() -> ProviderModelCards:
         ],
         limitations=[
             "Requires the `claude` CLI to be installed and authenticated locally",
-            "Runs non-interactively, typically with --dangerously-skip-permissions",
+            "Restricted to a read-only research toolset by default (web search/fetch)",
             "Non-deterministic results",
         ],
     )

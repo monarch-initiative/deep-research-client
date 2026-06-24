@@ -6,10 +6,17 @@ piping the research prompt to it and letting Claude Code's own agentic tools
 (web search, web fetch, file reading, etc.) carry out a multi-step research
 workflow. The final answer is returned as a cited markdown report.
 
-Because the run is non-interactive, it typically needs
-``--dangerously-skip-permissions`` so it does not block on permission prompts.
 No provider API key is required: billing and authentication are handled by the
 local Claude Code installation.
+
+Security: by default the provider does NOT pass ``--dangerously-skip-permissions``.
+Instead it restricts the agent to a read-only research toolset
+(``allowed_tools`` defaults to WebSearch + WebFetch) via ``--allowedTools``; in
+non-interactive mode any tool not on that list is auto-denied without blocking.
+This keeps the out-of-the-box behavior from mutating the filesystem or running
+shell commands even on an untrusted query. Enabling ``skip_permissions`` bypasses
+all permission checks and makes the allowlist a no-op, so it should only be used
+in trusted, sandboxed environments.
 """
 
 import asyncio
@@ -27,10 +34,6 @@ from ..model_cards import ProviderModelCards, create_claude_code_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
-
-# Deep research with an agentic CLI workflow can take a long time; default to
-# 30 minutes, matching the other long-running agent-based providers.
-CLAUDE_CODE_DEFAULT_TIMEOUT = 1800
 
 # Non-interactive ("print") mode has no "later": the process emits one response
 # and exits. Local skills/workflows that defer work to a background task would be
@@ -74,7 +77,8 @@ class ClaudeCodeProvider(ResearchProvider):
         super().__init__(config, self.params.model)
 
         self.claude_executable = self.params.claude_executable
-        self.timeout = config.timeout or CLAUDE_CODE_DEFAULT_TIMEOUT
+        # ProviderConfig.timeout wins when set; otherwise use the params default.
+        self.timeout = config.timeout or self.params.timeout
 
         logger.debug(
             "Initializing Claude Code provider (executable=%s, skip_permissions=%s)",
@@ -316,22 +320,6 @@ class ClaudeCodeProvider(ResearchProvider):
         if not result or not str(result).strip():
             raise ValueError("Claude Code output contained no result text.")
         return str(result)
-
-    @classmethod
-    def _parse_output(cls, stdout: str) -> str:
-        """Extract the markdown report from Claude Code's JSON output.
-
-        Args:
-            stdout: Raw stdout from ``claude --print --output-format json``.
-
-        Returns:
-            The markdown research report.
-
-        Raises:
-            ValueError: If the output is not valid JSON, reports an error, or
-                contains no result text.
-        """
-        return cls._result_text(cls._load_payload(stdout))
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:

@@ -141,6 +141,12 @@ class DeepResearchClient:
         # Claude Code provider - available whenever the `claude` CLI is on PATH.
         # No API key required; auth/billing is handled by the local installation.
         # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+        #
+        # NOTE: auto-detection deliberately probes the default "claude" executable
+        # rather than constructing the provider and calling is_available(), to keep
+        # env setup import-light. A custom claude_executable (a ClaudeCodeParams
+        # field, not env-derived) is therefore not honored here; pass an explicit
+        # provider_config to register the provider against a non-default binary.
         import shutil
         if (
             os.getenv("DISABLE_CLAUDE_CODE_PROVIDER", "").lower() not in ("true", "1", "yes")

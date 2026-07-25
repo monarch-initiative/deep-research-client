@@ -6,10 +6,12 @@
 
 A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, and Claude Code.
 
+These tools span a spectrum: from fast literature **retrieval** (Consensus, Asta, Perplexity), through comprehensive cited **synthesis** (OpenAI, Edison), to **agentic analysis** that plans and executes work — running code, iterating on hypotheses, and materializing a tree of artifacts (figures, tables, data files) alongside the report (OpenScientist, Cyberian, Claude Code). Every provider returns the same `ResearchResult`, so a five-second lookup and a multi-hour analysis are directly comparable.
+
 ## Features
 
 - 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
-- 📚 **Rich Output**: Returns comprehensive markdown reports with citations
+- 📚 **Rich Output**: Returns comprehensive markdown reports with citations — plus `artifacts` (figures, tables, data files) and `run_metadata` from agentic-analysis providers
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
 - 📝 **Library + CLI**: Use as a Python library or command-line tool

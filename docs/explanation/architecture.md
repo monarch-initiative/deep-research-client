@@ -22,13 +22,24 @@ This page explains how deep-research-client is designed.
 │   Cache   │  │ Templates │  │ Providers │
 └───────────┘  └───────────┘  └─────┬─────┘
                                     │
-              ┌─────────────────────┼─────────────────────┐
-              │           │         │         │           │
-              ▼           ▼         ▼         ▼           ▼
-         ┌────────┐ ┌──────────┐ ┌───────┐ ┌───────────┐ ┌──────────┐
-         │ OpenAI │ │Perplexity│ │Edison │ │ Consensus │ │Cyberian  │
-         └────────┘ └──────────┘ └───────┘ └───────────┘ └──────────┘
+              ┌───────────────────┼───────────────────┐
+              │                   │                   │
+              ▼                   ▼                   ▼
+      ┌───────────────┐   ┌───────────────┐   ┌──────────────────┐
+      │  Retrieval    │   │  Synthesis    │   │ Agentic analysis │
+      │  Consensus    │   │  OpenAI       │   │  OpenScientist   │
+      │  Asta         │   │  Edison       │   │  Cyberian        │
+      │  Perplexity   │   │  Perplexity   │   │  Claude Code     │
+      └───────────────┘   └───────────────┘   └──────────────────┘
 ```
+
+Providers span a spectrum. *Retrieval* providers return ranked snippets and
+citations; *synthesis* providers return one comprehensive cited report; and
+*agentic-analysis* providers run an autonomous agent that executes code and
+returns a tree of `artifacts` (plus `run_metadata`) alongside the report. All
+of them satisfy the same `ResearchProvider` interface and return the same
+`ResearchResult`, which is what makes them comparable in the evaluation
+harness.
 
 ## Core Components
 
@@ -60,11 +71,14 @@ class ResearchProvider:
 
 **Implementations:**
 
-- `openai.py` - OpenAI Deep Research
-- `perplexity.py` - Perplexity AI
-- `edison.py` - Edison Scientific (formerly Falcon)
-- `consensus.py` - Consensus Academic Search
-- `cyberian.py` - Cyberian agent-based research
+- `openai.py` - OpenAI Deep Research (synthesis)
+- `perplexity.py` - Perplexity AI (retrieval → synthesis)
+- `falcon.py` - Edison Scientific, formerly Falcon (synthesis)
+- `asta.py` - Asta / Semantic Scholar corpus retrieval
+- `consensus.py` - Consensus Academic Search (retrieval)
+- `openscientist.py` - OpenScientist autonomous research (agentic analysis)
+- `cyberian.py` - Cyberian agent-based research (agentic analysis)
+- `claude_code.py` - Claude Code local CLI agent (agentic analysis)
 
 ### Models
 
@@ -234,17 +248,24 @@ class NewProvider(ResearchProvider):
 
 ## Output Format
 
-All providers return `ResearchResult`:
+All providers return the same `ResearchResult` (a Pydantic model). The report
+itself is `markdown` + `citations`; `artifacts` and `run_metadata` carry the
+*work product* of agentic-analysis providers and stay empty for pure
+retrieval/synthesis providers:
 
 ```python
-@dataclass
-class ResearchResult:
-    markdown: str           # Research content
-    citations: list[str]    # Source URLs
-    provider: str           # Provider name
-    model: str              # Model used
-    duration_seconds: float # Time taken
-    cached: bool = False    # From cache?
+class ResearchResult(BaseModel):
+    markdown: str                          # Research report (report body)
+    citations: list[str]                   # Source references
+    artifacts: list[ResearchArtifact] = [] # Figures, tables, data files, notebooks
+    provider: str                          # Provider name
+    query: str                             # Original query
+    model: str | None = None               # Model used
+    run_metadata: dict | None = None       # Models used, iterations, cost, decisions
+    duration_seconds: float | None = None  # Time taken
+    cached: bool = False                   # From cache?
+    # ...plus publication metadata (title, abstract, keywords), timing,
+    # and template fields; see src/deep_research_client/models.py
 ```
 
 The CLI formats this with YAML frontmatter:

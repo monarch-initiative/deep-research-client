@@ -4,7 +4,10 @@
 
 # deep-research-client
 
-A CLI tool for AI-powered deep research across multiple providers.
+A CLI and Python library that wraps many AI research tools behind one
+interface — from fast literature retrieval, through comprehensive cited
+synthesis, to **agentic analysis** that executes code and materializes
+artifacts (figures, tables, data files) alongside the report.
 
 ## Quick Start
 
@@ -27,7 +30,8 @@ uvx deep-research-client research "Analyze recent advances in solid-state batter
 
 ## Features
 
-- **Multiple Providers**: OpenAI, Perplexity, Edison, Consensus, Cyberian
+- **Multiple Providers**: OpenAI, Perplexity, Edison, Asta, Consensus, Cyberian, OpenScientist, Claude Code
+- **One Result Type**: `markdown` + `citations` for every provider, plus `artifacts` and `run_metadata` for agentic-analysis providers
 - **Smart Caching**: Avoid expensive re-queries
 - **Templates**: Create reusable research queries with variables
 - **Model Selection**: Choose speed vs comprehensiveness
@@ -35,13 +39,20 @@ uvx deep-research-client research "Analyze recent advances in solid-state batter
 
 ## Supported Providers
 
-| Provider | Best For | Speed |
-|----------|----------|-------|
-| [OpenAI](reference/providers.md#openai-deep-research) | Comprehensive reports | Slow |
-| [Perplexity](reference/providers.md#perplexity-ai) | General web research | Fast-Slow |
-| [Edison](reference/providers.md#edison-scientific-falcon) | Scientific literature | Slow |
-| [Consensus](reference/providers.md#consensus) | Academic papers | Fast |
-| [Cyberian](reference/providers.md#cyberian-agent-based) | Agent-based deep research | Very Slow |
+Providers fall on a spectrum from *retrieval* (ranked snippets + citations),
+through *synthesis* (one comprehensive cited report), to *agentic analysis*
+(an agent that executes code and returns artifacts as well as a report):
+
+| Provider | Family | Best For | Speed |
+|----------|--------|----------|-------|
+| [Consensus](reference/providers.md#consensus) | Retrieval | Academic papers | Fast |
+| [Asta](reference/providers.md#asta) | Retrieval | Semantic Scholar-scale corpus + snippets | Fast |
+| [Perplexity](reference/providers.md#perplexity-ai) | Retrieval→Synthesis | General web research | Fast-Slow |
+| [OpenAI](reference/providers.md#openai-deep-research) | Synthesis | Comprehensive reports | Slow |
+| [Edison](reference/providers.md#edison-scientific-falcon) | Synthesis | Scientific literature | Slow |
+| [OpenScientist](reference/providers.md#openscientist) | Agentic analysis | Autonomous hypothesis-driven research, artifacts | Very Slow |
+| [Cyberian](reference/providers.md#cyberian-agent-based) | Agentic analysis | Local agent-based deep research | Very Slow |
+| [Claude Code](reference/providers.md#claude-code) | Agentic analysis | Local CLI agent, tool use | Slow |
 
 ## Documentation
 

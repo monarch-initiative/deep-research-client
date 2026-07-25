@@ -4,12 +4,37 @@ This page explains how different providers work and when to use each one.
 
 ## What is a "Deep Research" Provider?
 
-Traditional AI chatbots answer questions from their training data. Deep research providers go further:
+Traditional AI chatbots answer questions from their training data. Deep research
+providers go further. At minimum they:
 
-1. **Search the web** for current information
+1. **Search the web or literature** for current information
 2. **Read and synthesize** multiple sources
 3. **Provide citations** for their claims
 4. **Generate comprehensive reports** rather than brief answers
+
+## Retrieval, synthesis, analysis: a spectrum
+
+"Deep research" is not one thing, and the providers wrapped here span a
+spectrum. It helps to think of three overlapping families:
+
+- **Retrieval** — fast lookups over a literature corpus, returning ranked
+  snippets and citations (Consensus, Asta, Perplexity `sonar`).
+- **Synthesis** — iterative web/literature search cross-referenced into a
+  single comprehensive, cited report (OpenAI Deep Research, Edison,
+  Perplexity `sonar-deep-research`).
+- **Agentic analysis** — an autonomous agent that plans and *executes work*:
+  running code, querying data, iterating on hypotheses, and materializing a
+  tree of outputs alongside the report (OpenScientist, Cyberian, Claude Code,
+  and analysis runtimes such as Lightcone/ASTRA).
+
+The third family is why a result is not just text. Every provider returns the
+same [`ResearchResult`](../reference/providers.md), whose `markdown` and
+`citations` are the report, but whose `artifacts` (figures, tables, data
+files, notebooks) and `run_metadata` (models used, iterations, decisions)
+capture the *work product* of an analysis. A retrieval provider leaves those
+empty; an agentic-analysis provider populates them. Wrapping every tool behind
+one interface is what lets you compare a five-second Consensus lookup and a
+multi-hour data analysis in the same evaluation harness.
 
 ## How Providers Differ
 

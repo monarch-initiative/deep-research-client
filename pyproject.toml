@@ -36,7 +36,7 @@ cyberian = [
 # biomni is a heavy optional dependency (local biomedical agent + ~11GB data
 # lake), so it is not part of the base install.
 biomni = [
-    "biomni",
+    "biomni>=0.0.8",
 ]
 # NOTE: browser extra removed - linkml-browser is not on PyPI
 # Install manually: uv pip install "linkml-browser @ git+https://github.com/linkml/linkml-browser.git"

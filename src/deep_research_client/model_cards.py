@@ -19,9 +19,17 @@ from .datamodel import (
 )
 
 # Backwards-compatible alias. ``ResearchCapability`` is the canonical name; older
-# code and imports referring to ``ModelCapability`` continue to work because the
-# string values are unchanged.
+# code and imports referring to ``ModelCapability`` continue to work.
 ModelCapability = ResearchCapability
+
+# The generated enum uses lower_case member names (e.g. ``web_search``), whereas
+# the historical ``ModelCapability`` enum used UPPER_CASE names (``WEB_SEARCH``).
+# Register UPPER_CASE attribute aliases pointing at the same members so existing
+# attribute-style access (``ModelCapability.WEB_SEARCH``) keeps working. The
+# string values were already identical, so value-based access was never affected.
+for _capability in ResearchCapability:
+    setattr(ResearchCapability, _capability.name.upper(), _capability)
+del _capability
 
 
 class CostLevel(str, Enum):
@@ -595,15 +603,9 @@ def create_claude_code_model_cards() -> ProviderModelCards:
 
 
 # Registry of all provider model cards
-PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
-    "openai": create_openai_model_cards(),
-    "perplexity": create_perplexity_model_cards(),
-    "falcon": create_falcon_model_cards(),
-    "asta": create_asta_model_cards(),
-    "consensus": create_consensus_model_cards(),
-    "openscientist": create_openscientist_model_cards(),
-    "claude_code": create_claude_code_model_cards(),
-}
+# NOTE: PROVIDER_MODEL_CARDS is defined at the end of this module, after every
+# card factory (including cyberian and biomni) has been declared, so all
+# providers are registered in a single place.
 
 
 def get_provider_model_cards(provider_name: str) -> Optional[ProviderModelCards]:
@@ -809,5 +811,16 @@ def create_biomni_model_cards() -> ProviderModelCards:
     )
 
 
-# Register providers whose card factories are defined after PROVIDER_MODEL_CARDS.
-PROVIDER_MODEL_CARDS["biomni"] = create_biomni_model_cards()
+# Registry of all provider model cards. Defined here, after every factory, so
+# each provider is registered in exactly one place.
+PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
+    "openai": create_openai_model_cards(),
+    "perplexity": create_perplexity_model_cards(),
+    "falcon": create_falcon_model_cards(),
+    "asta": create_asta_model_cards(),
+    "consensus": create_consensus_model_cards(),
+    "openscientist": create_openscientist_model_cards(),
+    "claude_code": create_claude_code_model_cards(),
+    "cyberian": create_cyberian_model_cards(),
+    "biomni": create_biomni_model_cards(),
+}

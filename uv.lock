@@ -654,7 +654,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=23.0.0" },
-    { name = "biomni", marker = "extra == 'biomni'" },
+    { name = "biomni", marker = "extra == 'biomni'", specifier = ">=0.0.8" },
     { name = "cyberian", specifier = ">=0.2.2" },
     { name = "cyberian", marker = "extra == 'cyberian'", specifier = ">=0.2.2" },
     { name = "edison-client", specifier = ">=0.11.0" },

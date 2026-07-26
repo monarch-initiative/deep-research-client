@@ -1370,10 +1370,18 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo(f"{indent}  Cost: {cost_icon} {card.cost_level}")
         typer.echo(f"{indent}  Speed: {time_icon} {card.time_estimate}")
 
+        if card.archetype:
+            typer.echo(f"{indent}  Archetype: {str(card.archetype).replace('_', ' ').title()}")
+
         if card.capabilities:
             caps = ", ".join([cap.replace("_", " ").title()
                              for cap in card.capabilities])
             typer.echo(f"{indent}  Capabilities: {caps}")
+
+        if card.resources:
+            resources = ", ".join([res.replace("_", " ").title()
+                                   for res in card.resources])
+            typer.echo(f"{indent}  Resources: {resources}")
 
         if card.context_window:
             typer.echo(f"{indent}  Context: {card.context_window:,} tokens")

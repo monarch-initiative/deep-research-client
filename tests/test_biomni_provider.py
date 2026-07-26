@@ -61,7 +61,9 @@ def test_params_llm_distinct_from_model():
 
 
 def test_params_reject_unknown_field():
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         BiomniParams(not_a_real_field=True)
 
 
@@ -85,10 +87,10 @@ async def test_research_requires_available_provider():
 
 @pytest.mark.asyncio
 async def test_research_rejects_empty_query():
-    if not BIOMNI_INSTALLED:
-        pytest.skip("biomni not installed; empty-query guard is unreachable")
+    # The empty-query guard runs before the availability check, so it is
+    # exercised whether or not the optional package is installed.
     with pytest.raises(ValueError, match="must not be empty"):
-        await make_provider(skip_data_lake=True).research("   ")
+        await make_provider().research("   ")
 
 
 @pytest.mark.parametrize(
@@ -128,6 +130,34 @@ def test_biomni_model_card_shape():
     assert ResearchCapability.hypothesis_generation in card.capabilities
     # Aliases resolve to the canonical model name
     assert cards.resolve_model_name("biomni") == "biomni-a1"
+
+
+def test_build_agent_kwargs_accepted_by_a1_signature():
+    """Every kwarg _build_agent can emit must be accepted by A1.__init__.
+
+    Guards against silent signature drift (e.g. `timeout` vs `timeout_seconds`)
+    without mocking or constructing the agent (which would download the data
+    lake). Skipped when the optional package is not installed.
+    """
+    import inspect
+
+    pytest.importorskip("biomni")
+    from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
+
+    accepted = set(inspect.signature(A1.__init__).parameters)
+    # Superset of keys _build_agent may produce across all param combinations.
+    possible_kwargs = {
+        "path",
+        "use_tool_retriever",
+        "llm",
+        "source",
+        "base_url",
+        "api_key",
+        "timeout_seconds",
+        "expected_data_lake_files",
+    }
+    missing = possible_kwargs - accepted
+    assert not missing, f"A1.__init__ does not accept: {sorted(missing)}"
 
 
 @pytest.mark.integration

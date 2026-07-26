@@ -86,13 +86,15 @@ class BiomniProvider(ResearchProvider):
             ResearchResult with the agent's final answer as markdown and any
             PMID/DOI citations extracted from it.
         """
+        # Validate the query first so a caller error surfaces regardless of
+        # whether the optional package happens to be installed.
+        if not query or not query.strip():
+            raise ValueError("Research query must not be empty.")
         if not self.is_available():
             raise ValueError(
                 "Biomni provider not available. "
                 "Install it with: pip install deep-research-client[biomni]"
             )
-        if not query or not query.strip():
-            raise ValueError("Research query must not be empty.")
 
         start_time = datetime.now()
         logger.info("Starting Biomni agent run (data path: %s)", self.data_path)
@@ -103,7 +105,7 @@ class BiomniProvider(ResearchProvider):
         except Exception as e:  # noqa: BLE001 - surface a clean provider error
             logger.error("Biomni agent run failed: %s", e)
             logger.debug("Error details:", exc_info=True)
-            raise ValueError(f"Biomni agent error: {e}")
+            raise ValueError(f"Biomni agent error: {e}") from e
 
         markdown = self._result_to_markdown(raw)
         citations = self._extract_citations(markdown)
@@ -142,9 +144,11 @@ class BiomniProvider(ResearchProvider):
             kwargs["base_url"] = self.config.base_url
         if self.config.api_key:
             kwargs["api_key"] = self.config.api_key
-        timeout = self.config.timeout or self.params.timeout
-        if timeout:
-            kwargs["timeout"] = timeout
+        # A1's parameter is `timeout_seconds` (not `timeout`). Let an explicit
+        # BiomniParams.timeout win over the config default, then the module
+        # default.
+        timeout = self.params.timeout or self.config.timeout or BIOMNI_DEFAULT_TIMEOUT
+        kwargs["timeout_seconds"] = timeout
         if self.params.skip_data_lake:
             # An empty expected-files list tells A1 not to load/download the lake.
             kwargs["expected_data_lake_files"] = []

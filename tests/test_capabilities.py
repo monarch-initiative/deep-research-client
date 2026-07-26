@@ -97,10 +97,22 @@ def test_model_card_has_capability_fields():
     assert ResearchResource.pubmed in card.resources
 
 
-def test_co_scientists_are_openscientist_and_biomni():
-    """The two co-scientist providers are OpenScientist and Biomni."""
+def test_openscientist_and_biomni_are_co_scientists():
+    """OpenScientist and Biomni are co-scientists (others may be added later)."""
     providers = set(find_models_by_archetype(ProviderArchetype.co_scientist))
-    assert providers == {"openscientist", "biomni"}
+    assert providers >= {"openscientist", "biomni"}
+
+
+def test_cyberian_registered_as_agentic_researcher():
+    """Cyberian is registered and discoverable via its archetype."""
+    providers = set(find_models_by_archetype(ProviderArchetype.agentic_researcher))
+    assert "cyberian" in providers
+
+
+def test_model_capability_uppercase_aliases_preserved():
+    """Legacy UPPER_CASE attribute access still resolves to the same members."""
+    assert ModelCapability.WEB_SEARCH is ResearchCapability.web_search
+    assert ModelCapability.CODE_INTERPRETATION is ResearchCapability.code_interpretation
 
 
 def test_find_by_resource_and_capability():

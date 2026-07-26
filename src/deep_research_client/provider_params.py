@@ -410,6 +410,91 @@ class ClaudeCodeParams(BaseProviderParams):
     )
 
 
+class LightconeParams(BaseProviderParams):
+    """Parameters specific to the Lightcone / ASTRA research provider.
+
+    Lightcone (``lc``) is a local command-line tool that materializes an
+    ``astra.yaml`` analysis specification into a tree of outputs. Unlike the
+    literature providers, the "query" for this provider is a path to an ASTRA
+    project directory (or an ``astra.yaml`` file), not a free-text question:
+    the spec already declares the inputs, methodological decisions, and
+    expected outputs. See ``providers/lightcone.py`` for details.
+
+    Provisional fields: the exact ``lc`` subcommand used to materialize a spec
+    and the directory it writes outputs to are not yet pinned against a
+    verified release of the CLI. ``materialize_args`` and ``output_subdir``
+    expose those so the provider can be adjusted (or an ``extra_args`` escape
+    hatch used) without code changes once the real interface is confirmed.
+    """
+
+    lc_executable: str = Field(
+        default="lc",
+        description="Path or name of the Lightcone CLI executable to invoke",
+    )
+    materialize_args: List[str] = Field(
+        default_factory=lambda: ["run"],
+        description=(
+            "Subcommand/arguments passed to `lc` to materialize the spec, run in "
+            "the project directory (which is expected to contain astra.yaml). "
+            "PROVISIONAL: defaults to ['run']; adjust once verified against the "
+            "installed CLI. The astra.yaml is discovered from the working "
+            "directory rather than passed as an argument."
+        ),
+    )
+    universe: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional ASTRA universe name to materialize (selects one option per "
+            "decision, e.g. 'baseline'). Forwarded as '--universe <name>' when set. "
+            "PROVISIONAL flag name."
+        ),
+    )
+    output_subdir: str = Field(
+        default="outputs",
+        description=(
+            "Directory, relative to the project dir, scanned for materialized "
+            "outputs to harvest as artifacts and to locate the report. "
+            "PROVISIONAL default."
+        ),
+    )
+    working_dir: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explicit ASTRA project directory to run in. When unset, the project "
+            "directory is derived from the research query (a project dir or an "
+            "astra.yaml path)."
+        ),
+    )
+    save_artifacts: bool = Field(
+        default=True,
+        description=(
+            "Harvest materialized outputs (figures, tables, small data files, "
+            "notebooks) from the output directory as ResearchArtifacts."
+        ),
+    )
+    artifact_max_bytes: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1,
+        le=50 * 1024 * 1024,
+        description="Maximum bytes to preserve for a single harvested artifact file",
+    )
+    timeout: int = Field(
+        default=3600,
+        ge=1,
+        description=(
+            "Maximum seconds to wait for the `lc` run before killing it. "
+            "Overridden by ProviderConfig.timeout when that is set."
+        ),
+    )
+    extra_args: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra command-line arguments appended verbatim to the `lc` invocation. "
+            "Escape hatch for flags not otherwise modeled."
+        ),
+    )
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -421,6 +506,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
+    "lightcone": LightconeParams,
 }
 
 

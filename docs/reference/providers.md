@@ -13,6 +13,7 @@ Complete reference for all supported research providers.
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
+| Lightcone | (local `lc` CLI) | Runs an astra.yaml analysis spec, artifacts | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
 
 ## OpenAI Deep Research
@@ -402,6 +403,90 @@ actual model(s) used and run provenance (`run_metadata`).
 - Requires the `claude` CLI installed and authenticated locally
 - Restricted to a read-only research toolset by default; broaden `allowed_tools`
   (or enable `skip_permissions` in a sandbox) for tasks that need more
+- Non-deterministic results
+
+---
+
+## Lightcone (ASTRA)
+
+Lightcone is an *agentic-analysis* provider, not a literature one. The local
+`lc` CLI materializes an **ASTRA** (*Agentic Schema for Transparent Research
+Analysis*) specification — an `astra.yaml` file — into a tree of outputs,
+recording the methodological decisions and their provenance. This provider is a
+**spec runner**: the research "query" is a path to an ASTRA project directory
+(or an `astra.yaml` file), *not* a free-text question. The spec already declares
+the inputs, decisions, and expected outputs; the provider drives `lc` in the
+project directory and harvests the materialized output tree into the standard
+`ResearchResult` (report `markdown` plus non-text `artifacts`).
+
+An `astra.yaml` encodes a hypothesis *as the analysis that would test it*. For a
+disease-mechanism ("dismech") hypothesis, for example, the `name`/`hypothesis`
+state the claim while `decisions` capture each methodological fork (enrichment
+background, DE method, significance cutoff) with the literature that justifies
+each option; separate `universes/*.yaml` files pin one option per decision so
+you can materialize several and see whether the verdict is decision-robust. A
+runnable sample lives in `tests/input/astra_dismech/`.
+
+!!! warning "Provisional"
+    Lightcone's published command reference documents `lc init`, `lc verify`,
+    and `lc export`, but the exact subcommand that materializes a spec and the
+    directory it writes outputs to are not yet pinned against a verified CLI
+    release. These two unknowns are isolated behind `materialize_args` and
+    `output_subdir` (plus an `extra_args` escape hatch), so the provider can be
+    corrected without code changes once the real interface is confirmed.
+
+### Setup
+
+No API key is needed — Lightcone drives a local agent (Claude Code) that handles
+auth/billing. Install the CLI and make sure it is on your PATH:
+
+```bash
+lc --version   # should succeed
+```
+
+The provider is auto-detected whenever `lc` is found on PATH. Set
+`DISABLE_LIGHTCONE_PROVIDER=true` to opt out of auto-detection.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import LightconeParams
+
+params = LightconeParams(
+    universe="baseline",          # optional ASTRA universe to materialize
+    materialize_args=["run"],     # PROVISIONAL: subcommand to run in the project dir
+    output_subdir="outputs",      # PROVISIONAL: dir scanned for artifacts/report
+    working_dir="/data/my-astra-project",  # explicit project dir (else derived from query)
+    save_artifacts=True,          # harvest figures/tables/data from the output tree
+    extra_args=[],                # escape hatch for unmodeled flags
+)
+```
+
+### Usage
+
+```bash
+# The "query" is a path to an ASTRA project (or its astra.yaml)
+deep-research-client research --provider lightcone ./my-astra-project
+```
+
+### Security
+
+Materializing an ASTRA spec runs an agent that **executes code**. Only run
+Lightcone against trusted projects in a sandboxed environment.
+
+### Characteristics
+
+- **Cost**: Handled by the local agent (Claude Code) it drives
+- **Speed**: Very slow (executes a full analysis)
+- **Capabilities**: Code interpretation, citation tracking, decision provenance
+- **Auth**: None required by this client; relies on local `lc` / Claude Code
+
+### Limitations
+
+- Requires the `lc` CLI installed and an ASTRA project to run against
+- Input is a project/spec path, not a free-text research question
+- Executes code as part of the analysis; run only in a trusted environment
+- Exact materialize subcommand / output layout are provisional (see warning)
 - Non-deterministic results
 
 ---

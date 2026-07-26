@@ -21,6 +21,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "lightcone": ("deep_research_client.providers.lightcone", "LightconeProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -159,6 +160,24 @@ class DeepResearchClient:
                 timeout=1800,  # 30 minutes for long-running agentic research
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
+
+        # Lightcone provider - available whenever the `lc` CLI is on PATH. No API
+        # key required; it drives a local agent that handles auth/billing. Set
+        # DISABLE_LIGHTCONE_PROVIDER=true to opt out of auto-detection. Like the
+        # claude_code probe above, this deliberately checks the default "lc"
+        # executable rather than constructing the provider, to keep env setup
+        # import-light; pass an explicit provider_config for a non-default binary.
+        if (
+            os.getenv("DISABLE_LIGHTCONE_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and shutil.which("lc") is not None
+        ):
+            lightcone_config = ProviderConfig(
+                name="lightcone",
+                api_key=None,  # Not required for Lightcone
+                enabled=True,
+                timeout=3600,  # 1 hour for long-running spec materialization
+            )
+            self.registry.register(self._create_provider("lightcone", lightcone_config))
 
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):

@@ -10,7 +10,7 @@ These tools span a spectrum: from fast literature **retrieval** (Consensus, Asta
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), and Lightcone/ASTRA (local spec runner)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations — plus `artifacts` (figures, tables, data files) and `run_metadata` from agentic-analysis providers
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables

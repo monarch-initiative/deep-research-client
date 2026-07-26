@@ -1,0 +1,6 @@
+# A universe pins one option per decision, defining a concrete configuration to
+# materialize. Materialize several to test whether the mechanism call is robust
+# to the methodological forks.
+name: baseline
+decisions:
+  enrichment_background: expressed_genes

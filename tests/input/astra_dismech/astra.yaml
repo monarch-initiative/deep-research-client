@@ -1,0 +1,44 @@
+# Sample ASTRA specification used as a fixture for the Lightcone provider tests.
+# It encodes a disease-mechanism ("dismech") hypothesis as an analysis: whether
+# genes dysregulated in a disease cohort converge on mitochondrial dysfunction.
+version: "1.0"
+name: "Mitochondrial dysfunction mediates neuronal loss in Disease-X"
+hypothesis: >
+  Genes dysregulated in Disease-X patient cortex are enriched for
+  oxidative-phosphorylation / mitochondrial components, implicating
+  mitochondrial dysfunction as a driver rather than a bystander of neuronal loss.
+
+inputs:
+  - id: expr_matrix
+    type: matrix/tsv
+    source: data/counts.tsv
+    description: "RNA-seq raw counts, patient vs control cortex"
+  - id: mito_geneset
+    type: geneset/gmt
+    source: data/mitocarta.gmt
+    description: "Curated mitochondrial gene set"
+
+decisions:
+  - id: enrichment_background
+    label: "Enrichment universe"
+    rationale: >
+      A whole-genome background inflates significance versus an
+      expressed-genes background; this is the biggest driver of whether the
+      mitochondrial signal is real.
+    default: expressed_genes
+    options:
+      - {label: expressed_genes, evidence: "background bias in enrichment"}
+      - {label: whole_genome}
+
+outputs:
+  - id: mito_enrichment
+    type: table/tsv
+    description: "Hypergeometric enrichment of DE genes for the mitochondrial set"
+    inputs: [expr_matrix, mito_geneset]
+    decisions: [enrichment_background]
+    recipe: "python scripts/enrich.py"
+  - id: mechanism_call
+    type: report/md
+    description: "Supported / not-supported verdict with effect size and caveats"
+    inputs: [mito_enrichment]
+    recipe: "python scripts/verdict.py"

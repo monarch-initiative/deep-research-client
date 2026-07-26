@@ -541,6 +541,54 @@ def create_claude_code_model_cards() -> ProviderModelCards:
     )
 
 
+def create_lightcone_model_cards() -> ProviderModelCards:
+    """Create model cards for the Lightcone / ASTRA research provider."""
+
+    default = ModelCard(
+        name="lightcone-astra",
+        display_name="Lightcone (ASTRA analysis runtime)",
+        description=(
+            "Runs the local Lightcone CLI (`lc`) to materialize an astra.yaml "
+            "analysis specification into a tree of outputs. The 'query' is a path "
+            "to an ASTRA project rather than a free-text question: the spec "
+            "declares inputs, methodological decisions, and expected outputs, and "
+            "the run executes them and records a decision/provenance trail. "
+            "Returns the materialized report plus harvested output artifacts."
+        ),
+        cost_level=CostLevel.MEDIUM,
+        time_estimate=TimeEstimate.VERY_SLOW,
+        capabilities=[
+            ModelCapability.CODE_INTERPRETATION,
+            ModelCapability.CITATION_TRACKING,
+            ModelCapability.SCIENTIFIC_LITERATURE,
+        ],
+        aliases=["lightcone", "astra", "lc", "default"],
+        pricing_notes=(
+            "Lightcone drives a local agent (Claude Code); billing/auth is handled "
+            "by that local installation. No separate provider API key is required."
+        ),
+        use_cases=[
+            "Reproducible, decision-tracked data analysis from an astra.yaml spec",
+            "Multiverse analysis: materializing several universes of one spec",
+            "Turning a curated analysis plan into materialized outputs + provenance",
+        ],
+        limitations=[
+            "Requires the `lc` CLI to be installed and an ASTRA project to run",
+            "Input is a project/spec path, not a free-text research question",
+            "Executes code as part of the analysis; run in a trusted environment",
+            "Non-deterministic results",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="lightcone",
+        default_model="lightcone-astra",
+        models={
+            "lightcone-astra": default,
+        },
+    )
+
+
 # Registry of all provider model cards
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openai": create_openai_model_cards(),
@@ -550,6 +598,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
     "claude_code": create_claude_code_model_cards(),
+    "lightcone": create_lightcone_model_cards(),
 }
 
 

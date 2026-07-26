@@ -109,6 +109,13 @@ def test_cyberian_registered_as_agentic_researcher():
     assert "cyberian" in providers
 
 
+def test_finders_deduplicate_multi_key_cards():
+    """Cyberian aliases one card under two keys; finders must not double-count."""
+    cards = find_models_by_archetype(ProviderArchetype.agentic_researcher)["cyberian"]
+    names = [c.name for c in cards]
+    assert len(names) == len(set(names))
+
+
 def test_model_capability_uppercase_aliases_preserved():
     """Legacy UPPER_CASE attribute access still resolves to the same members."""
     assert ModelCapability.WEB_SEARCH is ResearchCapability.web_search

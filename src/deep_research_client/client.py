@@ -148,11 +148,13 @@ class DeepResearchClient:
             os.getenv("DISABLE_BIOMNI_PROVIDER", "").lower() not in ("true", "1", "yes")
             and importlib.util.find_spec("biomni") is not None
         ):
+            from .providers.biomni import BIOMNI_DEFAULT_TIMEOUT
             biomni_config = ProviderConfig(
                 name="biomni",
                 api_key=None,  # Not required; biomni authenticates its own LLM
                 enabled=True,
-                timeout=3600,  # Agentic runs with local code execution are slow
+                # Agentic runs with local code execution are slow.
+                timeout=BIOMNI_DEFAULT_TIMEOUT,
             )
             self.registry.register(self._create_provider("biomni", biomni_config))
 

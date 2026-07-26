@@ -143,25 +143,50 @@ class ProviderModelCards(BaseModel):
                 alias_map[alias] = model_name
         return alias_map
 
+    def _unique_cards(self, cards: List[ModelCard]) -> List[ModelCard]:
+        """Deduplicate cards by name, preserving order.
+
+        Some providers alias one ``ModelCard`` object under several keys (e.g.
+        cyberian maps both its model name and workflow name to the same card),
+        which would otherwise surface the same card twice from these finders.
+        """
+        seen: set[str] = set()
+        unique: List[ModelCard] = []
+        for card in cards:
+            if card.name not in seen:
+                seen.add(card.name)
+                unique.append(card)
+        return unique
+
     def get_models_by_cost(self, cost_level: CostLevel) -> List[ModelCard]:
         """Get models filtered by cost level."""
-        return [card for card in self.models.values() if card.cost_level == cost_level]
+        return self._unique_cards(
+            [card for card in self.models.values() if card.cost_level == cost_level]
+        )
 
     def get_models_by_time(self, time_estimate: TimeEstimate) -> List[ModelCard]:
         """Get models filtered by time estimate."""
-        return [card for card in self.models.values() if card.time_estimate == time_estimate]
+        return self._unique_cards(
+            [card for card in self.models.values() if card.time_estimate == time_estimate]
+        )
 
     def get_models_with_capability(self, capability: ResearchCapability) -> List[ModelCard]:
         """Get models that have a specific capability."""
-        return [card for card in self.models.values() if capability in card.capabilities]
+        return self._unique_cards(
+            [card for card in self.models.values() if capability in card.capabilities]
+        )
 
     def get_models_with_resource(self, resource: ResearchResource) -> List[ModelCard]:
         """Get models that wrap a specific data resource."""
-        return [card for card in self.models.values() if resource in card.resources]
+        return self._unique_cards(
+            [card for card in self.models.values() if resource in card.resources]
+        )
 
     def get_models_by_archetype(self, archetype: ProviderArchetype) -> List[ModelCard]:
         """Get models matching a given provider archetype."""
-        return [card for card in self.models.values() if card.archetype == archetype]
+        return self._unique_cards(
+            [card for card in self.models.values() if card.archetype == archetype]
+        )
 
 
 def create_openai_model_cards() -> ProviderModelCards:

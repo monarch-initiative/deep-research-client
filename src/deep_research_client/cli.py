@@ -1371,7 +1371,7 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo(f"{indent}  Speed: {time_icon} {card.time_estimate}")
 
         if card.archetype:
-            typer.echo(f"{indent}  Archetype: {str(card.archetype).replace('_', ' ').title()}")
+            typer.echo(f"{indent}  Archetype: {card.archetype.replace('_', ' ').title()}")
 
         if card.capabilities:
             caps = ", ".join([cap.replace("_", " ").title()

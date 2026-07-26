@@ -450,8 +450,10 @@ class BiomniParams(BaseProviderParams):
         default=None,
         ge=1,
         description=(
-            "Per-run timeout in seconds passed to the Biomni agent. Overridden by "
-            "ProviderConfig.timeout when that is set."
+            "Per-run timeout in seconds passed to the Biomni agent (A1's "
+            "timeout_seconds). When set, takes precedence over "
+            "ProviderConfig.timeout; otherwise falls back to it and then to the "
+            "provider's default."
         )
     )
     use_tool_retriever: bool = Field(

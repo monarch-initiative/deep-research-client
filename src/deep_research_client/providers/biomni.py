@@ -194,11 +194,15 @@ class BiomniProvider(ResearchProvider):
         ['PMID:12345678', 'doi:10.1/xyz']
         >>> BiomniProvider._extract_citations("PMID:11111111 again PMID: 11111111")
         ['PMID:11111111']
+        >>> BiomniProvider._extract_citations("PMID: 123456789")
+        ['PMID:123456789']
         """
         citations: List[str] = []
         seen: set[str] = set()
 
-        for pmid in re.findall(r"PMID:\s*(\d{7,8})", markdown):
+        # Bound the match with (?!\d) so a longer numeric string is not silently
+        # truncated to a wrong PMID (PubMed IDs are 7-9 digits).
+        for pmid in re.findall(r"PMID:\s*(\d{7,9})(?!\d)", markdown):
             ref = f"PMID:{pmid}"
             if ref not in seen:
                 seen.add(ref)

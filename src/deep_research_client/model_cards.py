@@ -739,7 +739,7 @@ def create_cyberian_model_cards() -> ProviderModelCards:
             ResearchResource.general_web,
             ResearchResource.semantic_scholar,
         ],
-        aliases=["cyberian", "agent-research", "cy"],
+        aliases=["cyberian", "agent-research", "cy", "deep-research"],
         pricing_notes=(
             "Costs depend on underlying agent (Claude, etc.) and research depth. "
             "May involve multiple LLM API calls during iterative research."
@@ -764,8 +764,9 @@ def create_cyberian_model_cards() -> ProviderModelCards:
         provider_name="cyberian",
         default_model="Cyberian Deep Research",
         models={
+            # "deep-research" is exposed as an alias (see aliases=) rather than a
+            # second key so the card is not listed twice by list_models().
             "Cyberian Deep Research": deep_research,
-            "deep-research": deep_research  # Alias for the workflow name
         }
     )
 

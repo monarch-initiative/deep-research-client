@@ -113,7 +113,15 @@ def test_finders_deduplicate_multi_key_cards():
     """Cyberian aliases one card under two keys; finders must not double-count."""
     cards = find_models_by_archetype(ProviderArchetype.agentic_researcher)["cyberian"]
     names = [c.name for c in cards]
-    assert len(names) == len(set(names))
+    assert names == ["Cyberian Deep Research"]
+
+
+def test_cyberian_lists_one_card_but_still_resolves_deep_research():
+    """`deep-research` is an alias, not a second card, so list_models has no dup."""
+    cards = get_provider_model_cards("cyberian")
+    assert cards.list_models() == ["Cyberian Deep Research"]
+    # The workflow-name alias must still resolve to the canonical card.
+    assert cards.resolve_model_name("deep-research") == "Cyberian Deep Research"
 
 
 def test_model_capability_uppercase_aliases_preserved():

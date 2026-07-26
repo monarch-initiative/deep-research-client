@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, and Claude Code.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist).
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -66,6 +66,12 @@ pip install deep-research-client[cyberian]
 # For Claude Code - just install the `claude` CLI and have it authenticated.
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+
+# For Biomni (biomedical co-scientist) - requires biomni installation
+pip install deep-research-client[biomni]
+# Biomni runs a local agent that executes code against a ~11GB data lake and
+# drives its own LLM (set e.g. ANTHROPIC_API_KEY). Auto-detected when installed.
+# Run only in a trusted/sandboxed environment; set DISABLE_BIOMNI_PROVIDER=true to opt out.
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).

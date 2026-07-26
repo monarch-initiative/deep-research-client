@@ -410,6 +410,64 @@ class ClaudeCodeParams(BaseProviderParams):
     )
 
 
+class BiomniParams(BaseProviderParams):
+    """Parameters specific to the Biomni biomedical co-scientist provider.
+
+    Biomni runs locally via the optional ``biomni`` package: it constructs a
+    ``biomni.agent.A1`` agent that drives an underlying LLM and executes
+    generated code against a large biomedical data lake.
+
+    Note the two distinct model concepts: the harmonized ``model`` field selects
+    the *research model card* (``biomni-a1``), while ``llm`` selects the
+    *underlying LLM* that Biomni drives (e.g. a Claude model). Leave ``llm`` as
+    ``None`` to use Biomni's own default.
+    """
+
+    llm: Optional[str] = Field(
+        default=None,
+        description=(
+            "Underlying LLM for the Biomni agent (e.g. 'claude-sonnet-4-20250514'). "
+            "Distinct from the harmonized `model` field, which selects the research "
+            "model card. Defaults to Biomni's own default when unset."
+        )
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description=(
+            "LLM provider Biomni should use ('Anthropic', 'OpenAI', 'Gemini', "
+            "'AzureOpenAI', 'Bedrock', 'Ollama', ...). Defaults to Biomni's "
+            "inference from the llm name when unset."
+        )
+    )
+    path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Directory for Biomni's data lake (auto-downloaded, ~11GB on first "
+            "run). Defaults to the BIOMNI_DATA_PATH env var, else './biomni_data'."
+        )
+    )
+    timeout: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Per-run timeout in seconds passed to the Biomni agent. Overridden by "
+            "ProviderConfig.timeout when that is set."
+        )
+    )
+    use_tool_retriever: bool = Field(
+        default=True,
+        description="Let Biomni retrieve the most relevant tools for each task."
+    )
+    skip_data_lake: bool = Field(
+        default=False,
+        description=(
+            "Skip loading/downloading the large data lake (passes an empty "
+            "expected_data_lake_files list to A1). Useful for lightweight tasks "
+            "and tests, at the cost of database-backed capabilities."
+        )
+    )
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -421,6 +479,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
+    "biomni": BiomniParams,
 }
 
 

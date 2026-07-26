@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import importlib.util
 import os
 import time
 from datetime import datetime
@@ -21,6 +22,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -137,6 +139,22 @@ class DeepResearchClient:
             self.registry.register(self._create_provider("cyberian", cyberian_config))
         except ImportError:
             pass  # Cyberian not installed, skip
+
+        # Biomni provider - check if the optional biomni package is installed.
+        # Biomni configures its own underlying LLM (via ANTHROPIC_API_KEY etc.),
+        # so no provider API key is required at this layer.
+        # Set DISABLE_BIOMNI_PROVIDER=true to opt out of auto-detection.
+        if (
+            os.getenv("DISABLE_BIOMNI_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and importlib.util.find_spec("biomni") is not None
+        ):
+            biomni_config = ProviderConfig(
+                name="biomni",
+                api_key=None,  # Not required; biomni authenticates its own LLM
+                enabled=True,
+                timeout=3600,  # Agentic runs with local code execution are slow
+            )
+            self.registry.register(self._create_provider("biomni", biomni_config))
 
         # Claude Code provider - available whenever the `claude` CLI is on PATH.
         # No API key required; auth/billing is handled by the local installation.

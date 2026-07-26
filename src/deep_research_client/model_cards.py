@@ -1,8 +1,27 @@
-"""Model cards for research providers - descriptions, costs, and capabilities."""
+"""Model cards for research providers - descriptions, costs, and capabilities.
+
+The capability, resource, and archetype controlled vocabularies
+(:class:`ResearchCapability`, :class:`ResearchResource`,
+:class:`ProviderArchetype`) are defined in the LinkML schema at
+``src/deep_research_client/schema/deep_research_client.yaml`` and imported here
+from the generated datamodel. See ``docs/reference/capabilities.md`` for the
+conceptual model.
+"""
 
 from enum import Enum
 from typing import Dict, Optional, List
 from pydantic import BaseModel, Field, ConfigDict
+
+from .datamodel import (
+    ProviderArchetype,
+    ResearchCapability,
+    ResearchResource,
+)
+
+# Backwards-compatible alias. ``ResearchCapability`` is the canonical name; older
+# code and imports referring to ``ModelCapability`` continue to work because the
+# string values are unchanged.
+ModelCapability = ResearchCapability
 
 
 class CostLevel(str, Enum):
@@ -21,18 +40,6 @@ class TimeEstimate(str, Enum):
     VERY_SLOW = "very_slow"  # > 10 minutes
 
 
-class ModelCapability(str, Enum):
-    """Model capabilities."""
-    WEB_SEARCH = "web_search"
-    ACADEMIC_SEARCH = "academic_search"
-    SCIENTIFIC_LITERATURE = "scientific_literature"
-    CITATION_TRACKING = "citation_tracking"
-    REAL_TIME_DATA = "real_time_data"
-    CODE_INTERPRETATION = "code_interpretation"
-    VISUAL_ANALYSIS = "visual_analysis"
-    MULTI_LANGUAGE = "multi_language"
-
-
 class ModelCard(BaseModel):
     """Information card for a research model."""
 
@@ -41,9 +48,21 @@ class ModelCard(BaseModel):
     description: str = Field(description="Detailed description of model capabilities")
     cost_level: CostLevel = Field(description="Relative cost level")
     time_estimate: TimeEstimate = Field(description="Expected response time")
-    capabilities: List[ModelCapability] = Field(
+    capabilities: List[ResearchCapability] = Field(
         default_factory=list,
-        description="List of model capabilities"
+        description="Functional capabilities the model exposes (what it can do)"
+    )
+    resources: List[ResearchResource] = Field(
+        default_factory=list,
+        description="Data sources / knowledge bases the model wraps (what it can reach)"
+    )
+    archetype: Optional[ProviderArchetype] = Field(
+        default=None,
+        description=(
+            "Where the provider sits on the retrieval -> co-scientist spectrum. "
+            "A conventional deep-research tool is a 'synthesizer'; a 'co_scientist' "
+            "is a superset that also forms hypotheses and runs code."
+        )
     )
     aliases: List[str] = Field(
         default_factory=list,
@@ -124,9 +143,17 @@ class ProviderModelCards(BaseModel):
         """Get models filtered by time estimate."""
         return [card for card in self.models.values() if card.time_estimate == time_estimate]
 
-    def get_models_with_capability(self, capability: ModelCapability) -> List[ModelCard]:
+    def get_models_with_capability(self, capability: ResearchCapability) -> List[ModelCard]:
         """Get models that have a specific capability."""
         return [card for card in self.models.values() if capability in card.capabilities]
+
+    def get_models_with_resource(self, resource: ResearchResource) -> List[ModelCard]:
+        """Get models that wrap a specific data resource."""
+        return [card for card in self.models.values() if resource in card.resources]
+
+    def get_models_by_archetype(self, archetype: ProviderArchetype) -> List[ModelCard]:
+        """Get models matching a given provider archetype."""
+        return [card for card in self.models.values() if card.archetype == archetype]
 
 
 def create_openai_model_cards() -> ProviderModelCards:
@@ -143,11 +170,13 @@ def create_openai_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.VERY_HIGH,
         time_estimate=TimeEstimate.VERY_SLOW,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.REAL_TIME_DATA,
-            ModelCapability.CODE_INTERPRETATION,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.web_search,
+            ResearchCapability.real_time_data,
+            ResearchCapability.code_interpretation,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.general_web],
         aliases=["o3", "o3-deep", "o3dr"],
         context_window=128000,
         pricing_notes="$10/$40 per million input/output tokens + $10/1K web searches + $0.03/code interpreter session",
@@ -177,11 +206,13 @@ def create_openai_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.MEDIUM,
         time_estimate=TimeEstimate.MEDIUM,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.REAL_TIME_DATA,
-            ModelCapability.CODE_INTERPRETATION,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.web_search,
+            ResearchCapability.real_time_data,
+            ResearchCapability.code_interpretation,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.general_web],
         aliases=["o4m", "o4-mini", "o4mini", "mini"],
         context_window=128000,
         pricing_notes="$2/$8 per million input/output tokens + tool usage fees",
@@ -223,11 +254,13 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.HIGH,
         time_estimate=TimeEstimate.SLOW,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.REAL_TIME_DATA,
-            ModelCapability.CITATION_TRACKING,
-            ModelCapability.MULTI_LANGUAGE
+            ResearchCapability.web_search,
+            ResearchCapability.real_time_data,
+            ResearchCapability.citation_tracking,
+            ResearchCapability.multi_language
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.general_web],
         aliases=["deep", "deep-research", "sdr"],
         context_window=200000,
         pricing_notes="Higher cost per query, includes comprehensive web search",
@@ -256,10 +289,12 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.MEDIUM,
         time_estimate=TimeEstimate.MEDIUM,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.REAL_TIME_DATA,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.web_search,
+            ResearchCapability.real_time_data,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.general_web],
         aliases=["pro", "sp"],
         context_window=200000,
         pricing_notes="Mid-tier pricing with good performance",
@@ -286,10 +321,12 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.LOW,
         time_estimate=TimeEstimate.FAST,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.REAL_TIME_DATA,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.web_search,
+            ResearchCapability.real_time_data,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.general_web],
         aliases=["basic", "fast", "s"],
         context_window=100000,
         pricing_notes="Most cost-effective option",
@@ -332,9 +369,15 @@ def create_falcon_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.HIGH,
         time_estimate=TimeEstimate.SLOW,
         capabilities=[
-            ModelCapability.ACADEMIC_SEARCH,
-            ModelCapability.SCIENTIFIC_LITERATURE,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.academic_search,
+            ResearchCapability.scientific_literature,
+            ResearchCapability.citation_tracking
+        ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[
+            ResearchResource.pubmed,
+            ResearchResource.semantic_scholar,
+            ResearchResource.preprint_servers,
         ],
         aliases=["falcon", "fh", "science"],
         pricing_notes="Academic research pricing, varies by usage",
@@ -375,10 +418,12 @@ def create_asta_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.LOW,
         time_estimate=TimeEstimate.FAST,
         capabilities=[
-            ModelCapability.ACADEMIC_SEARCH,
-            ModelCapability.SCIENTIFIC_LITERATURE,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.academic_search,
+            ResearchCapability.scientific_literature,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.retriever,
+        resources=[ResearchResource.semantic_scholar],
         aliases=["asta", "retrieval", "snippets"],
         pricing_notes="Free retrieval-only provider using the Asta MCP service",
         use_cases=[
@@ -417,9 +462,11 @@ def create_consensus_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.LOW,
         time_estimate=TimeEstimate.FAST,
         capabilities=[
-            ModelCapability.ACADEMIC_SEARCH,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.academic_search,
+            ResearchCapability.citation_tracking
         ],
+        archetype=ProviderArchetype.synthesizer,
+        resources=[ResearchResource.semantic_scholar],
         aliases=["consensus", "academic", "papers", "c"],
         pricing_notes="$6.99/month for premium, free tier available",
         use_cases=[
@@ -462,11 +509,15 @@ def create_openscientist_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.HIGH,
         time_estimate=TimeEstimate.VERY_SLOW,
         capabilities=[
-            ModelCapability.ACADEMIC_SEARCH,
-            ModelCapability.SCIENTIFIC_LITERATURE,
-            ModelCapability.CITATION_TRACKING,
-            ModelCapability.CODE_INTERPRETATION,
+            ResearchCapability.academic_search,
+            ResearchCapability.scientific_literature,
+            ResearchCapability.citation_tracking,
+            ResearchCapability.code_interpretation,
+            ResearchCapability.hypothesis_generation,
+            ResearchCapability.evidence_synthesis,
         ],
+        archetype=ProviderArchetype.co_scientist,
+        resources=[ResearchResource.pubmed],
         aliases=["openscientist", "os", "berkeley"],
         pricing_notes=(
             "Runs Claude under the hood; costs depend on iteration count. "
@@ -511,10 +562,12 @@ def create_claude_code_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.MEDIUM,
         time_estimate=TimeEstimate.SLOW,
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.CITATION_TRACKING,
-            ModelCapability.CODE_INTERPRETATION,
+            ResearchCapability.web_search,
+            ResearchCapability.citation_tracking,
+            ResearchCapability.code_interpretation,
         ],
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[ResearchResource.general_web],
         aliases=["claude", "claude-code", "cc", "default"],
         pricing_notes=(
             "Billing is handled by the local Claude Code installation (subscription "
@@ -576,11 +629,31 @@ def find_models_by_cost(cost_level: CostLevel) -> Dict[str, List[ModelCard]]:
     return result
 
 
-def find_models_by_capability(capability: ModelCapability) -> Dict[str, List[ModelCard]]:
+def find_models_by_capability(capability: ResearchCapability) -> Dict[str, List[ModelCard]]:
     """Find models across all providers by capability."""
     result = {}
     for provider, cards in PROVIDER_MODEL_CARDS.items():
         models = cards.get_models_with_capability(capability)
+        if models:
+            result[provider] = models
+    return result
+
+
+def find_models_by_resource(resource: ResearchResource) -> Dict[str, List[ModelCard]]:
+    """Find models across all providers that wrap a given data resource."""
+    result = {}
+    for provider, cards in PROVIDER_MODEL_CARDS.items():
+        models = cards.get_models_with_resource(resource)
+        if models:
+            result[provider] = models
+    return result
+
+
+def find_models_by_archetype(archetype: ProviderArchetype) -> Dict[str, List[ModelCard]]:
+    """Find models across all providers matching a given archetype."""
+    result = {}
+    for provider, cards in PROVIDER_MODEL_CARDS.items():
+        models = cards.get_models_by_archetype(archetype)
         if models:
             result[provider] = models
     return result
@@ -630,9 +703,14 @@ def create_cyberian_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.HIGH,  # Agent-based, potentially many LLM calls
         time_estimate=TimeEstimate.VERY_SLOW,  # Iterative multi-step process
         capabilities=[
-            ModelCapability.WEB_SEARCH,
-            ModelCapability.ACADEMIC_SEARCH,
-            ModelCapability.CITATION_TRACKING
+            ResearchCapability.web_search,
+            ResearchCapability.academic_search,
+            ResearchCapability.citation_tracking
+        ],
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[
+            ResearchResource.general_web,
+            ResearchResource.semantic_scholar,
         ],
         aliases=["cyberian", "agent-research", "cy"],
         pricing_notes=(
@@ -663,3 +741,73 @@ def create_cyberian_model_cards() -> ProviderModelCards:
             "deep-research": deep_research  # Alias for the workflow name
         }
     )
+
+
+def create_biomni_model_cards() -> ProviderModelCards:
+    """Create model cards for the Biomni biomedical co-scientist provider."""
+
+    a1 = ModelCard(
+        name="biomni-a1",
+        display_name="Biomni A1 Biomedical Agent",
+        description=(
+            "General-purpose biomedical AI agent from Stanford SNAP. Wraps a large "
+            "toolbox of biomedical software and curated databases and executes "
+            "generated code to plan and carry out research tasks (e.g. designing a "
+            "CRISPR screen, annotating variants, analysing omics data). Runs "
+            "locally via the `biomni` package against an auto-downloaded data lake. "
+            "A hypothesis-driven co-scientist rather than a pure literature "
+            "reviewer."
+        ),
+        cost_level=CostLevel.HIGH,  # Drives an LLM plus heavy local computation
+        time_estimate=TimeEstimate.VERY_SLOW,  # Multi-step agentic execution
+        capabilities=[
+            ResearchCapability.scientific_literature,
+            ResearchCapability.code_interpretation,
+            ResearchCapability.data_analysis,
+            ResearchCapability.hypothesis_generation,
+            ResearchCapability.experiment_design,
+            ResearchCapability.evidence_synthesis,
+            ResearchCapability.citation_tracking,
+        ],
+        archetype=ProviderArchetype.co_scientist,
+        resources=[
+            ResearchResource.pubmed,
+            ResearchResource.general_web,
+            ResearchResource.biomedical_databases,
+            ResearchResource.genomic_databases,
+            ResearchResource.chemical_databases,
+            ResearchResource.protein_structure_databases,
+        ],
+        aliases=["biomni", "a1", "coscientist"],
+        pricing_notes=(
+            "Drives an underlying LLM (Claude by default) and downloads an ~11GB "
+            "data lake on first run. Cost depends on the LLM provider and task "
+            "complexity; local compute and disk are also required."
+        ),
+        use_cases=[
+            "Designing experiments (e.g. CRISPR screens)",
+            "Variant annotation and interpretation",
+            "Omics and sequence data analysis",
+            "Hypothesis-driven biomedical investigation",
+            "Wet-lab / dry-lab protocol drafting",
+        ],
+        limitations=[
+            "Requires the optional `biomni` package (pip install deep-research-client[biomni])",
+            "Downloads a large (~11GB) data lake on first run",
+            "Executes generated code locally; run in a trusted/sandboxed environment",
+            "Needs an LLM API key (e.g. ANTHROPIC_API_KEY) for the underlying model",
+            "Very slow and non-deterministic",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="biomni",
+        default_model="biomni-a1",
+        models={
+            "biomni-a1": a1,
+        },
+    )
+
+
+# Register providers whose card factories are defined after PROVIDER_MODEL_CARDS.
+PROVIDER_MODEL_CARDS["biomni"] = create_biomni_model_cards()

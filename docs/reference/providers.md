@@ -14,6 +14,11 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
+| Biomni | (local `biomni` package) | Biomedical co-scientist, runs code | Very slow |
+
+See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
+used to describe each provider, including why a conventional deep-research tool
+is a subset of the co-scientist case.
 
 ## OpenAI Deep Research
 
@@ -403,6 +408,91 @@ actual model(s) used and run provenance (`run_metadata`).
 - Restricted to a read-only research toolset by default; broaden `allowed_tools`
   (or enable `skip_permissions` in a sandbox) for tasks that need more
 - Non-deterministic results
+
+---
+
+## Biomni (Biomedical Co-Scientist)
+
+[Biomni](https://github.com/snap-stanford/Biomni) is a general-purpose biomedical
+AI agent from Stanford SNAP. Rather than searching the literature and writing a
+report, it wraps a large toolbox of biomedical software and curated databases and
+**executes generated code** to plan and carry out research tasks — designing a
+CRISPR screen, annotating variants, analysing omics data, and so on. It is a
+`co_scientist` archetype: hypothesis-driven and code-running, of which a
+conventional deep-research run is a subset (see
+[Capabilities, Resources & Archetypes](capabilities.md)).
+
+This provider wraps the local `biomni` Python package (`biomni.agent.A1`), an
+optional dependency. Biomni configures and authenticates its own underlying LLM
+(Claude by default), so no separate provider API key is required by this client.
+
+### Setup
+
+```bash
+pip install deep-research-client[biomni]
+
+# Biomni drives an LLM under the hood; provide that provider's key, e.g.:
+export ANTHROPIC_API_KEY="your-key"
+
+# Optional: where the (~11GB) data lake is stored (default ./biomni_data)
+export BIOMNI_DATA_PATH="/data/biomni"
+```
+
+The provider is auto-detected whenever the `biomni` package is importable. Set
+`DISABLE_BIOMNI_PROVIDER=true` to opt out of auto-detection.
+
+**Important**: Biomni executes generated code locally and downloads a large data
+lake on first run. Run it only in a trusted / sandboxed environment.
+
+### Models
+
+| Model | Aliases | Description |
+|-------|---------|-------------|
+| `biomni-a1` | biomni, a1, coscientist | Biomni A1 biomedical agent |
+
+Note the two model concepts: the `model` field selects this research model card
+(`biomni-a1`), while the `llm` parameter selects the *underlying* LLM that Biomni
+drives.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import BiomniParams
+
+params = BiomniParams(
+    llm="claude-sonnet-4-20250514",  # underlying LLM (default: Biomni's own)
+    source="Anthropic",              # LLM provider: Anthropic, OpenAI, Gemini, ...
+    path="/data/biomni",             # data lake dir (default: env or ./biomni_data)
+    timeout=3600,                    # per-run timeout in seconds
+    use_tool_retriever=True,         # retrieve most relevant tools per task
+    skip_data_lake=False,            # True skips the ~11GB data lake download
+)
+```
+
+### Characteristics
+
+- **Cost**: Variable (drives an underlying LLM + heavy local compute)
+- **Speed**: Very slow (multi-step agentic execution)
+- **Capabilities**: Code execution, data analysis, hypothesis generation,
+  experiment design, evidence synthesis, citation tracking
+- **Resources**: PubMed, general web, and curated biomedical / genomic /
+  chemical / protein-structure databases
+- **Citations**: PMID and DOI references extracted from the final answer
+
+### When to Use
+
+- Designing experiments (e.g. CRISPR screens)
+- Variant annotation and interpretation
+- Omics and sequence data analysis
+- Hypothesis-driven biomedical investigation
+
+### Limitations
+
+- Requires the optional `biomni` package
+- Downloads a large (~11GB) data lake on first run
+- Executes generated code locally — use a trusted/sandboxed environment
+- Needs an LLM API key (e.g. `ANTHROPIC_API_KEY`) for the underlying model
+- Very slow and non-deterministic
 
 ---
 

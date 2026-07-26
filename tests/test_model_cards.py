@@ -31,14 +31,14 @@ class TestModelCards:
             description="A test model for verification",
             cost_level=CostLevel.MEDIUM,
             time_estimate=TimeEstimate.FAST,
-            capabilities=[ModelCapability.WEB_SEARCH]
+            capabilities=[ModelCapability.web_search]
         )
 
         assert card.name == "test-model"
         assert card.display_name == "Test Model"
         assert card.cost_level == CostLevel.MEDIUM
         assert card.time_estimate == TimeEstimate.FAST
-        assert ModelCapability.WEB_SEARCH in card.capabilities
+        assert ModelCapability.web_search in card.capabilities
 
     def test_openai_model_cards(self):
         """Test OpenAI provider model cards."""
@@ -54,8 +54,8 @@ class TestModelCards:
         assert o3_card is not None
         assert o3_card.cost_level == CostLevel.VERY_HIGH
         assert o3_card.time_estimate == TimeEstimate.VERY_SLOW
-        assert ModelCapability.WEB_SEARCH in o3_card.capabilities
-        assert ModelCapability.CODE_INTERPRETATION in o3_card.capabilities
+        assert ModelCapability.web_search in o3_card.capabilities
+        assert ModelCapability.code_interpretation in o3_card.capabilities
 
         # Test o4-mini model card
         o4_card = cards.get_model_card("o4-mini-deep-research-2025-06-26")
@@ -92,8 +92,8 @@ class TestModelCards:
 
         falcon_card = cards.get_model_card("FutureHouse Falcon API")
         assert falcon_card is not None
-        assert ModelCapability.SCIENTIFIC_LITERATURE in falcon_card.capabilities
-        assert ModelCapability.ACADEMIC_SEARCH in falcon_card.capabilities
+        assert ModelCapability.scientific_literature in falcon_card.capabilities
+        assert ModelCapability.academic_search in falcon_card.capabilities
         assert "Scientific literature reviews" in falcon_card.use_cases
 
     def test_consensus_model_cards(self):
@@ -107,7 +107,7 @@ class TestModelCards:
         assert consensus_card is not None
         assert consensus_card.cost_level == CostLevel.LOW
         assert consensus_card.time_estimate == TimeEstimate.FAST
-        assert ModelCapability.ACADEMIC_SEARCH in consensus_card.capabilities
+        assert ModelCapability.academic_search in consensus_card.capabilities
         assert "$6.99/month" in consensus_card.pricing_notes
 
     def test_asta_model_cards(self):
@@ -121,7 +121,7 @@ class TestModelCards:
         assert asta_card is not None
         assert asta_card.cost_level == CostLevel.LOW
         assert asta_card.time_estimate == TimeEstimate.FAST
-        assert ModelCapability.SCIENTIFIC_LITERATURE in asta_card.capabilities
+        assert ModelCapability.scientific_literature in asta_card.capabilities
         assert "Free retrieval-only provider" in asta_card.pricing_notes
         assert "No synthesis step" in asta_card.limitations
 
@@ -144,7 +144,7 @@ class TestModelCards:
         assert fast_models[0].name == "sonar"
 
         # Test filtering by capability
-        web_search_models = cards.get_models_with_capability(ModelCapability.WEB_SEARCH)
+        web_search_models = cards.get_models_with_capability(ModelCapability.web_search)
         assert len(web_search_models) == 3  # All Perplexity models have web search
 
     def test_global_model_registry(self):
@@ -199,20 +199,20 @@ class TestModelCards:
     def test_find_models_by_capability(self):
         """Test finding models across providers by capability."""
         # Test web search capability
-        web_search_models = find_models_by_capability(ModelCapability.WEB_SEARCH)
+        web_search_models = find_models_by_capability(ModelCapability.web_search)
         assert "openai" in web_search_models
         assert "perplexity" in web_search_models
         # falcon and consensus don't have general web search
 
         # Test academic search capability
-        academic_search_models = find_models_by_capability(ModelCapability.ACADEMIC_SEARCH)
+        academic_search_models = find_models_by_capability(ModelCapability.academic_search)
         assert "falcon" in academic_search_models
         assert "asta" in academic_search_models
         assert "consensus" in academic_search_models
         # perplexity doesn't have dedicated academic search
 
         # Test scientific literature capability
-        scientific_models = find_models_by_capability(ModelCapability.SCIENTIFIC_LITERATURE)
+        scientific_models = find_models_by_capability(ModelCapability.scientific_literature)
         assert "falcon" in scientific_models
         assert "asta" in scientific_models
 

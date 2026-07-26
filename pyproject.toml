@@ -33,6 +33,11 @@ dependencies = [
 cyberian = [
     "cyberian>=0.2.2",
 ]
+# biomni is a heavy optional dependency (local biomedical agent + ~11GB data
+# lake), so it is not part of the base install.
+biomni = [
+    "biomni",
+]
 # NOTE: browser extra removed - linkml-browser is not on PyPI
 # Install manually: uv pip install "linkml-browser @ git+https://github.com/linkml/linkml-browser.git"
 
@@ -69,6 +74,7 @@ packages = ["src/deep_research_client"]
 include = [
   "src/deep_research_client/workflows/*.yaml",
   "src/deep_research_client/templates/*.j2",
+  "src/deep_research_client/schema/*.yaml",
 ]
 
 [tool.hatch.version]
@@ -79,6 +85,12 @@ source = "uv-dynamic-versioning"
 vcs = "git"
 style = "pep440"
 fallback-version = "0.0.0"
+
+# Ref.: https://docs.astral.sh/ruff/settings/
+[tool.ruff]
+# The datamodel is generated from the LinkML schema by `just gen-datamodel`;
+# do not lint generated code (it carries generator-standard unused imports).
+extend-exclude = ["src/deep_research_client/datamodel/"]
 
 # Ref.: https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
 # NOTE: pytest.ini takes precedence - marker config is defined there

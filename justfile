@@ -37,8 +37,10 @@ install:
 [group('model development')]
 gen-datamodel:
   # Generate to a temp file and move on success, so a schema error can't leave
-  # a zero-byte generated module in the tree.
-  uv run --with linkml gen-pydantic src/deep_research_client/schema/deep_research_client.yaml > src/deep_research_client/datamodel/deep_research_client_pydantic.py.tmp && mv src/deep_research_client/datamodel/deep_research_client_pydantic.py.tmp src/deep_research_client/datamodel/deep_research_client_pydantic.py
+  # a zero-byte (or stray) generated module in the tree. Fail non-zero on error.
+  uv run --with linkml gen-pydantic src/deep_research_client/schema/deep_research_client.yaml > src/deep_research_client/datamodel/deep_research_client_pydantic.py.tmp \
+    && mv src/deep_research_client/datamodel/deep_research_client_pydantic.py.tmp src/deep_research_client/datamodel/deep_research_client_pydantic.py \
+    || { rm -f src/deep_research_client/datamodel/deep_research_client_pydantic.py.tmp; false; }
 
 
 # Run all tests

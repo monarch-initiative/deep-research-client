@@ -11,7 +11,11 @@ from deep_research_client import (
     find_models_by_capability,
     find_models_by_resource,
 )
-from deep_research_client.model_cards import ModelCard, get_provider_model_cards
+from deep_research_client.model_cards import (
+    ModelCard,
+    ProviderModelCards,
+    get_provider_model_cards,
+)
 
 
 def test_model_capability_is_research_capability_alias():
@@ -109,11 +113,27 @@ def test_cyberian_registered_as_agentic_researcher():
     assert "cyberian" in providers
 
 
-def test_finders_deduplicate_multi_key_cards():
-    """Cyberian aliases one card under two keys; finders must not double-count."""
-    cards = find_models_by_archetype(ProviderArchetype.agentic_researcher)["cyberian"]
-    names = [c.name for c in cards]
-    assert names == ["Cyberian Deep Research"]
+def test_unique_cards_dedupes_a_multi_key_provider():
+    """_unique_cards collapses one card aliased under two keys to a single hit.
+
+    Uses a synthetic provider because no shipped provider currently maps one
+    ModelCard object to two keys; this keeps the defensive helper covered.
+    """
+    card = ModelCard(
+        name="dup",
+        display_name="Dup",
+        description="d",
+        cost_level="low",
+        time_estimate="fast",
+        archetype=ProviderArchetype.retriever,
+    )
+    cards = ProviderModelCards(
+        provider_name="synthetic",
+        default_model="dup",
+        models={"dup": card, "dup-alias": card},
+    )
+    assert cards.get_models_by_archetype(ProviderArchetype.retriever) == [card]
+    assert cards.get_models_by_cost("low") == [card]
 
 
 def test_cyberian_lists_one_card_but_still_resolves_deep_research():

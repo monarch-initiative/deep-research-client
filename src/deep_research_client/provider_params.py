@@ -401,6 +401,16 @@ class ClaudeCodeParams(BaseProviderParams):
             "Overridden by ProviderConfig.timeout when that is set."
         )
     )
+    min_report_chars: int = Field(
+        default=200,
+        ge=0,
+        description=(
+            "Minimum plausible length, in characters, of the returned report. A "
+            "shorter result raises rather than writing a well-formed file with no "
+            "research in it, which is otherwise a silent and expensive no-op. Set "
+            "to 0 to disable the check when short answers are expected."
+        )
+    )
     extra_args: List[str] = Field(
         default_factory=list,
         description=(

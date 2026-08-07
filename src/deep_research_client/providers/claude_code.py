@@ -4,7 +4,14 @@ Unlike the API-based providers, Claude Code is a local command-line tool (the
 ``claude`` binary). This provider drives it in non-interactive "print" mode,
 piping the research prompt to it and letting Claude Code's own agentic tools
 (web search, web fetch, file reading, etc.) carry out a multi-step research
-workflow. The final answer is returned as a cited markdown report.
+workflow. The full response is returned as a cited markdown report.
+
+Output is read as a ``stream-json`` event stream rather than the simpler ``json``
+format. The latter exposes only a ``result`` field holding the agent's *final*
+message, so an agent that writes its report and then emits any closing remark
+loses the entire report -- silently, since the run still exits 0 with valid
+provenance metadata. Reading the stream lets us join every assistant text block
+while still taking run metadata from the terminal ``result`` event.
 
 No provider API key is required: billing and authentication are handled by the
 local Claude Code installation.
@@ -138,11 +145,15 @@ class ClaudeCodeProvider(ResearchProvider):
         Returns:
             The argument list to pass to ``asyncio.create_subprocess_exec``.
         """
+        # stream-json (which requires --verbose in print mode) preserves every
+        # assistant message; the plain "json" format would give us only the last
+        # one. See the module docstring.
         command: List[str] = [
             self.claude_executable,
             "--print",
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
         ]
 
         if self.params.skip_permissions:
@@ -206,9 +217,15 @@ class ClaudeCodeProvider(ResearchProvider):
                 f"{stderr.strip() or '<no stderr>'}"
             )
 
-        data = self._load_payload(stdout)
-        markdown = self._result_text(data)
+        assistant_texts, data = self._parse_stream(stdout)
+        markdown = self._report_text(assistant_texts, data)
+        self._check_report_length(markdown, self.params.min_report_chars)
+
         run_metadata = self._extract_run_metadata(data)
+        # How many separate assistant messages the report was assembled from. A
+        # value above 1 means the agent spoke again after its main output, the
+        # shape that used to truncate the report entirely.
+        run_metadata["assistant_text_blocks"] = len(assistant_texts)
         citations = self._extract_citations(markdown)
 
         # Prefer the model id(s) the run actually reported over our sentinel
@@ -281,45 +298,119 @@ class ClaudeCodeProvider(ResearchProvider):
         )
 
     @staticmethod
-    def _load_payload(stdout: str) -> dict:
-        """Parse and validate Claude Code's JSON output into a dict.
+    def _parse_stream(stdout: str) -> tuple[List[str], dict]:
+        """Parse Claude Code's ``stream-json`` output into text blocks and metadata.
+
+        The stream is JSON Lines: one event per line. ``assistant`` events carry
+        the model's own output (text, thinking, and tool_use blocks, split across
+        events); the terminal ``result`` event carries the run's provenance and
+        error status.
 
         Args:
-            stdout: Raw stdout from ``claude --print --output-format json``.
+            stdout: Raw stdout from ``claude --print --output-format stream-json``.
 
         Returns:
-            The parsed JSON payload.
+            Tuple of (assistant text blocks in emission order, terminal result event).
 
         Raises:
-            ValueError: If the output is empty, not valid JSON, or reports an error.
+            ValueError: If the output is empty, contains no terminal result event,
+                or that event reports an error.
         """
         text = stdout.strip()
         if not text:
             raise ValueError("Claude Code returned empty output.")
 
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Could not parse Claude Code JSON output: {exc}")
+        assistant_texts: List[str] = []
+        result_event: Optional[dict] = None
 
-        if data.get("is_error"):
-            subtype = data.get("subtype", "unknown error")
-            detail = data.get("result") or subtype
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                # A stray non-JSON line (a warning, say) should not sink an
+                # otherwise complete run; a genuinely unparseable stream is
+                # caught below by the missing result event.
+                logger.warning(
+                    "Skipping unparseable line in Claude Code output: %.200s", line
+                )
+                continue
+
+            if not isinstance(event, dict):
+                continue
+
+            if event.get("type") == "assistant":
+                content = event.get("message", {}).get("content") or []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        block_text = str(block.get("text") or "")
+                        if block_text.strip():
+                            assistant_texts.append(block_text)
+            elif event.get("type") == "result":
+                result_event = event
+
+        if result_event is None:
+            raise ValueError(
+                "Could not parse Claude Code JSON output: the stream contained no "
+                "terminal 'result' event, so the run did not complete."
+            )
+
+        if result_event.get("is_error"):
+            subtype = result_event.get("subtype", "unknown error")
+            detail = result_event.get("result") or subtype
             raise ValueError(f"Claude Code reported an error ({subtype}): {detail}")
 
-        return data
+        return assistant_texts, result_event
 
     @staticmethod
-    def _result_text(data: dict) -> str:
-        """Extract the markdown report text from a parsed payload.
+    def _report_text(assistant_texts: List[str], data: dict) -> str:
+        """Assemble the markdown report from every assistant text block.
+
+        Falls back to the terminal event's ``result`` field only when the stream
+        carried no assistant text at all. That field holds just the agent's final
+        message, so preferring the joined blocks is what keeps a report from
+        being truncated to its closing remark.
+
+        Args:
+            assistant_texts: Assistant text blocks in emission order.
+            data: The terminal ``result`` event.
 
         Raises:
-            ValueError: If the payload contains no usable result text.
+            ValueError: If neither source yields any text.
         """
+        if assistant_texts:
+            return "\n\n".join(block.strip() for block in assistant_texts)
+
         result = data.get("result")
         if not result or not str(result).strip():
             raise ValueError("Claude Code output contained no result text.")
         return str(result)
+
+    @staticmethod
+    def _check_report_length(markdown: str, min_chars: int) -> None:
+        """Reject a report too short to be a plausible research result.
+
+        Silent success on an empty run is the costly failure mode: the caller
+        gets a well-formed file with real provenance and no content. Failing here
+        turns that into a non-zero exit.
+
+        Raises:
+            ValueError: If ``markdown`` is shorter than ``min_chars``.
+        """
+        if min_chars <= 0:
+            return
+
+        length = len(markdown.strip())
+        if length < min_chars:
+            raise ValueError(
+                f"Claude Code returned a {length}-character report, below the "
+                f"min_report_chars threshold of {min_chars}. This usually means "
+                "the run failed, was cut short, or produced no research. Lower or "
+                "disable the threshold (min_report_chars=0) if short answers are "
+                "expected."
+            )
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:
@@ -330,11 +421,11 @@ class ClaudeCodeProvider(ResearchProvider):
         mid-flight.
 
         Args:
-            data: Parsed Claude Code JSON payload.
+            data: The terminal ``result`` event from the output stream.
 
         Returns:
             A metadata dict with any of: models_used, num_turns, total_cost_usd,
-            web_search_requests, session_id, stop_reason.
+            web_search_requests, session_id, stop_reason, permission_denials.
         """
         metadata: dict = {}
 
@@ -358,6 +449,12 @@ class ClaudeCodeProvider(ResearchProvider):
             metadata["session_id"] = data["session_id"]
         if data.get("stop_reason"):
             metadata["stop_reason"] = data["stop_reason"]
+
+        # Denied tool calls are a common cause of a thin report: the agent asked
+        # for a tool outside the allowlist, was refused, and gave up.
+        denials = data.get("permission_denials")
+        if denials:
+            metadata["permission_denials"] = len(denials)
 
         return metadata
 

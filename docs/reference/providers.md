@@ -316,8 +316,14 @@ This is useful for:
 Claude Code is a local command-line tool rather than an HTTP API. This provider
 shells out to the `claude` binary in non-interactive ("print") mode, pipes the
 research prompt to it via stdin, and lets Claude Code's own agentic tools (web
-search, web fetch, file reading) carry out the research. The final answer comes
-back as a cited markdown report.
+search, web fetch, file reading) carry out the research. The response comes back
+as a cited markdown report.
+
+Output is read as a `stream-json` event stream so that *every* assistant message
+becomes part of the report. The simpler `json` output format exposes only a
+`result` field holding the agent's final message, so an agent that wrote its
+report and then emitted any closing remark would lose the whole report while
+still exiting 0 with valid provenance ([#59](https://github.com/monarch-initiative/deep-research-client/issues/59)).
 
 ### Setup
 
@@ -342,12 +348,30 @@ params = ClaudeCodeParams(
     skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=["/data/papers"],    # optional --add-dir entries
     working_dir="/tmp/research",  # optional cwd for the run
+    min_report_chars=200,         # fail on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
 ```
 
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+### Failing loudly on an empty report
+
+A run that produces no research is the expensive failure mode, because it still
+writes a well-formed file with real cost and provenance metadata — easy to skim
+past and mistake for a real report. `min_report_chars` (default 200) turns that
+into a raised `ValueError` and a non-zero exit. Set it to `0` when short answers
+are expected.
+
+Two `run_metadata` fields help diagnose a thin result after the fact:
+
+- `assistant_text_blocks` — how many separate assistant messages the report was
+  assembled from. More than one means the agent spoke again after its main
+  output.
+- `permission_denials` — how many tool calls were refused. A non-zero count often
+  explains a thin report: the agent asked for a tool outside `allowed_tools` and
+  gave up.
 
 ### Security
 

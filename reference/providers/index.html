@@ -1112,6 +1112,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#failing-loudly-on-an-empty-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Failing loudly on an empty report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       Security
@@ -1815,6 +1824,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#failing-loudly-on-an-empty-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Failing loudly on an empty report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       Security
@@ -2272,8 +2290,19 @@ deep-research-client research --provider cyberian &quot;query&quot; \
 <p>Claude Code is a local command-line tool rather than an HTTP API. This provider
 shells out to the <code>claude</code> binary in non-interactive ("print") mode, pipes the
 research prompt to it via stdin, and lets Claude Code's own agentic tools (web
-search, web fetch, file reading) carry out the research. The final answer comes
-back as a cited markdown report.</p>
+search, web fetch, file reading) carry out the research. The response comes back
+as a cited markdown report.</p>
+<p>Output is read as a <code>stream-json</code> event stream so that <em>every</em> assistant message
+becomes part of the report. The simpler <code>json</code> output format exposes only a
+<code>result</code> field holding the agent's final message, so an agent that wrote its
+report and then emitted any closing remark would lose the whole report while
+still exiting 0 with valid provenance (<a href="https://github.com/monarch-initiative/deep-research-client/issues/59">#59</a>).</p>
+<p>Because every assistant message is kept, any narration the agent emits between
+tool calls ("Let me search for X…") appears in the report alongside the research.
+That is a deliberate trade — including narration is cosmetic, whereas selecting a
+single message risks dropping the report — but it has one consequence worth
+knowing: citations are extracted from the joined text, so a URL mentioned only in
+passing is counted in <code>citation_count</code>.</p>
 <h3 id="setup_7">Setup</h3>
 <p>No API key is needed — authentication and billing are handled by your local
 Claude Code installation. Just make sure the CLI is installed and on your PATH:</p>
@@ -2290,11 +2319,36 @@ params = ClaudeCodeParams(
     skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=[&quot;/data/papers&quot;],    # optional --add-dir entries
     working_dir=&quot;/tmp/research&quot;,  # optional cwd for the run
+    min_report_chars=200,         # fail on an implausibly short report (0 disables)
     extra_args=[&quot;--max-turns&quot;, &quot;30&quot;],  # escape hatch for unmodeled flags
 )
 </code></pre>
 <p>When <code>skip_permissions</code> is <code>False</code> (the default), you can also set
 <code>permission_mode</code> (e.g. <code>"plan"</code> or <code>"acceptEdits"</code>).</p>
+<h3 id="failing-loudly-on-an-empty-report">Failing loudly on an empty report</h3>
+<p>A run that produces no research is the expensive failure mode, because it still
+writes a well-formed file with real cost and provenance metadata — easy to skim
+past and mistake for a real report. <code>min_report_chars</code> (default 200) turns that
+into a raised <code>ValueError</code> and a non-zero exit. The rejected text is logged in
+full and previewed in the exception, so a failed run is diagnosable without
+paying for a second one.</p>
+<p>!!! warning "This default is a behavior change"</p>
+<pre><code>Runs that previously returned a short answer successfully now raise. A
+one-sentence reply is typically under 200 characters. Set
+`min_report_chars=0` if you expect short answers.
+</code></pre>
+<p>This is an emptiness check, not a quality one — a 250-character <em>"I was unable to
+find sufficient information on this topic"</em> passes it cleanly.</p>
+<p>Three <code>run_metadata</code> fields help diagnose a thin result after the fact:</p>
+<ul>
+<li><code>assistant_text_blocks</code> — how many separate assistant messages the report was
+  assembled from. More than one is normal for an agentic run; this is provenance
+  for how the report was assembled, not a warning sign.</li>
+<li><code>permission_denials</code> — how many tool calls were refused.</li>
+<li><code>denied_tools</code> — which tools were refused. A non-zero count often explains a
+  thin report: the agent asked for a tool outside <code>allowed_tools</code> and gave up,
+  and this names what to add.</li>
+</ul>
 <h3 id="security">Security</h3>
 <p>In non-interactive mode the run is driven by an agent, and
 <code>get_first_available()</code> may select this provider for an arbitrary query whenever
@@ -2340,6 +2394,9 @@ actual model(s) used and run provenance (<code>run_metadata</code>).</p>
 <li>Restricted to a read-only research toolset by default; broaden <code>allowed_tools</code>
   (or enable <code>skip_permissions</code> in a sandbox) for tasks that need more</li>
 <li>Non-deterministic results</li>
+<li>The <code>stream-json</code> output carries every tool result, including full fetched page
+  bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
+  correctness problem, but worth knowing for long runs.</li>
 </ul>
 <hr />
 <h2 id="provider-detection">Provider Detection</h2>

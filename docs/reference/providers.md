@@ -14,6 +14,7 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
+| DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 
 ## OpenAI Deep Research
 
@@ -448,6 +449,49 @@ actual model(s) used and run provenance (`run_metadata`).
 - The `stream-json` output carries every tool result, including full fetched page
   bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
   correctness problem, but worth knowing for long runs.
+
+---
+
+## DeepER-Med (Stub)
+
+DeepER-Med is an evidence-based agentic deep medical research framework
+introduced in Wang et al., *DeepER-Med: Advancing Deep Evidence-Based Research
+in Medicine Through Agentic AI* ([arXiv:2604.15456](https://arxiv.org/abs/2604.15456),
+submitted 16 April 2026). The paper describes an open-source paradigm with a
+public website and agent API, but at the time of writing **no code, API
+endpoint, or dataset has been released publicly**.
+
+This provider is registered as a stub so:
+
+- the wrapper slot is reserved and discoverable via `providers` listing,
+- model cards and parameter classes are in place,
+- callers asking for it are told *why* it cannot run, with the arXiv pointer,
+  instead of getting a bare "provider not found".
+
+### Behavior
+
+`is_available()` always returns `False`, so DeepER-Med is never auto-selected
+and can never be chosen by `get_first_available()`. It is still registered
+unconditionally, which means an explicit request reports the stub status:
+
+```python
+client.research("...", provider="deeper_med")
+# ValueError: DeepER-Med has no public API or code release yet, so this
+# provider cannot run research. See https://arxiv.org/abs/2604.15456 ...
+```
+
+Calling `DeeperMedProvider.research()` directly raises `NotImplementedError`
+with the same message. In the CLI it is listed under **Stub providers (not yet
+callable)** in `deep-research-client providers`.
+
+### Caveats
+
+The model card's cost, speed, and capability entries are transcribed from the
+paper — nothing has been measured, because there is no endpoint to measure. The
+card's `limitations` say so explicitly.
+
+Once an API is published, only the body of `providers/deeper_med.py` needs to
+change.
 
 ---
 

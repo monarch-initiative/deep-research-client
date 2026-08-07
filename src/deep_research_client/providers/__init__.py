@@ -69,6 +69,19 @@ class ResearchProvider(ABC):
         """Check if provider is available (has API key, etc.)."""
         return self.config.enabled and self.config.api_key is not None
 
+    def unavailable_reason(self) -> str:
+        """Explain why this provider is unavailable.
+
+        Called when a caller explicitly requests a provider that fails
+        :meth:`is_available`. Subclasses should override this when they can say
+        something more useful than "no API key" -- for example a stub provider
+        whose upstream service does not exist yet.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        return f"Provider '{self.name}' is not available"
+
     @property
     def name(self) -> str:
         """Get provider name."""

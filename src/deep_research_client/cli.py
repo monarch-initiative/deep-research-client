@@ -13,6 +13,7 @@ from typing_extensions import Annotated
 from .client import DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
+    DEEPER_MED_ARXIV_ID,
     get_provider_model_cards,
     list_all_models,
     find_models_by_cost,
@@ -38,6 +39,15 @@ PROVIDER_CREDENTIAL_HINTS = {
     "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
     "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
     "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
+}
+
+# Providers registered as stubs: the upstream system has no public API yet, so
+# they are not merely missing credentials and cannot be enabled by the user.
+# Keyed by provider name, valued by a short reason shown in `providers` output.
+PROVIDER_STUB_HINTS = {
+    "deeper_med": (
+        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
+    ),
 }
 
 
@@ -229,6 +239,15 @@ def _echo_credential_hints(provider_names: list[str]) -> None:
     for provider_name in provider_names:
         env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
         typer.echo(f"  - {env_var} for {label}")
+
+
+def _echo_stub_hints() -> None:
+    """Print the stub providers, which no credential can enable."""
+    if not PROVIDER_STUB_HINTS:
+        return
+    typer.echo("\nStub providers (not yet callable):")
+    for provider_name, reason in PROVIDER_STUB_HINTS.items():
+        typer.echo(f"  - {provider_name}: {reason}")
 
 
 @app.callback()
@@ -662,12 +681,20 @@ def providers(
             raise typer.Exit(1)
 
         is_available = provider in available
-        status = "Available" if is_available else "Not available (missing API key)"
+        if is_available:
+            status = "Available"
+        elif provider in PROVIDER_STUB_HINTS:
+            # A stub is not credential-blocked; no key would make it work.
+            status = "Not available (stub - no upstream API yet)"
+        else:
+            status = "Not available (missing API key)"
         typer.echo(f"Provider: {provider} - {status}")
 
         if not is_available:
-            # Show required environment variable
-            if provider in PROVIDER_CREDENTIAL_HINTS:
+            if provider in PROVIDER_STUB_HINTS:
+                typer.echo(f"Status: {PROVIDER_STUB_HINTS[provider]}")
+            elif provider in PROVIDER_CREDENTIAL_HINTS:
+                # Show required environment variable
                 env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
                 typer.echo(f"Required: {env_var}")
 
@@ -717,9 +744,12 @@ def providers(
         if missing_credential_providers:
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
+
+        _echo_stub_hints()
     else:
         logger.error("No providers available. Please set API keys:")
         _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+        _echo_stub_hints()
 
     if not show_params and not provider:
         typer.echo(

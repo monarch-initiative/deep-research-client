@@ -21,6 +21,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -160,6 +161,18 @@ class DeepResearchClient:
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
 
+        # DeepER-Med is a stub with no upstream endpoint. It is registered
+        # unconditionally and needs no credentials: is_available() is always False,
+        # so it can never be auto-selected by get_first_available(). Registering it
+        # means an explicit request for it reports why it cannot run (with the
+        # arXiv pointer) instead of a bare "Provider not found".
+        deeper_med_config = ProviderConfig(
+            name="deeper_med",
+            api_key=None,  # No upstream service exists to authenticate against
+            enabled=True,
+        )
+        self.registry.register(self._create_provider("deeper_med", deeper_med_config))
+
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):
             mock_config = ProviderConfig(
@@ -289,7 +302,7 @@ class DeepResearchClient:
             if not base_provider:
                 raise ValueError(f"Provider '{provider}' not found")
             if not base_provider.is_available():
-                raise ValueError(f"Provider '{provider}' is not available")
+                raise ValueError(base_provider.unavailable_reason())
 
             # Create new instance with custom parameters if needed
             if provider_params or model:

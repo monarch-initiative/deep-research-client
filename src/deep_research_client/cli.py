@@ -13,6 +13,7 @@ from typing_extensions import Annotated
 from .client import DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
+    DEEPER_MED_ARXIV_ID,
     get_provider_model_cards,
     list_all_models,
     find_models_by_cost,
@@ -44,7 +45,9 @@ PROVIDER_CREDENTIAL_HINTS = {
 # they are not merely missing credentials and cannot be enabled by the user.
 # Keyed by provider name, valued by a short reason shown in `providers` output.
 PROVIDER_STUB_HINTS = {
-    "deeper_med": "DeepER-Med - no public API released yet (arXiv:2604.15456)",
+    "deeper_med": (
+        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
+    ),
 }
 
 

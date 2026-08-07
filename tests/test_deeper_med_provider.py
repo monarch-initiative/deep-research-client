@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from deep_research_client.cli import app
 from deep_research_client.client import DeepResearchClient
-from deep_research_client.models import ProviderConfig
+from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import (
     DeeperMedParams,
     create_provider_params,
@@ -96,14 +96,14 @@ def test_base_provider_has_generic_unavailable_reason():
 def test_client_registers_stub_without_credentials(monkeypatch):
     """The stub is registered from a bare environment so it can be asked for."""
     monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
-    client = DeepResearchClient()
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
     assert client.registry.get_provider("deeper_med") is not None
 
 
 def test_client_never_auto_selects_the_stub(monkeypatch):
     """Registering the stub must not make it selectable as a default provider."""
     monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
-    client = DeepResearchClient()
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
     assert "deeper_med" not in client.get_available_providers()
     assert client.registry.get_first_available() is None or (
         client.registry.get_first_available().name != "deeper_med"
@@ -116,7 +116,7 @@ def test_client_research_surfaces_arxiv_pointer():
     This is the user-facing path the provider exists to serve: without it the
     caller would only see a bare "provider not found" / "is not available".
     """
-    client = DeepResearchClient()
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
     with pytest.raises(ValueError) as excinfo:
         client.research("What causes glioblastoma?", provider="deeper_med")
     assert DEEPER_MED_ARXIV_URL in str(excinfo.value)

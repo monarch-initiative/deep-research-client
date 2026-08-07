@@ -457,7 +457,7 @@ actual model(s) used and run provenance (`run_metadata`).
 DeepER-Med is an evidence-based agentic deep medical research framework
 introduced in Wang et al., *DeepER-Med: Advancing Deep Evidence-Based Research
 in Medicine Through Agentic AI* ([arXiv:2604.15456](https://arxiv.org/abs/2604.15456),
-NIH/NLM, April 2026). The paper describes an open-source paradigm with a
+submitted 16 April 2026). The paper describes an open-source paradigm with a
 public website and agent API, but at the time of writing **no code, API
 endpoint, or dataset has been released publicly**.
 
@@ -465,13 +465,33 @@ This provider is registered as a stub so:
 
 - the wrapper slot is reserved and discoverable via `providers` listing,
 - model cards and parameter classes are in place,
-- callers get a clear `NotImplementedError` (with the arXiv pointer) instead
-  of a confusing missing-import error.
+- callers asking for it are told *why* it cannot run, with the arXiv pointer,
+  instead of getting a bare "provider not found".
 
-`is_available()` always returns `False`. Calls to `research()` raise
-`NotImplementedError`. Watch the upstream lab's repository
-([`ncbi-nlp`](https://github.com/ncbi-nlp)) for the eventual release; once an
-API is published, only the body of `providers/deeper_med.py` needs to change.
+### Behavior
+
+`is_available()` always returns `False`, so DeepER-Med is never auto-selected
+and can never be chosen by `get_first_available()`. It is still registered
+unconditionally, which means an explicit request reports the stub status:
+
+```python
+client.research("...", provider="deeper_med")
+# ValueError: DeepER-Med has no public API or code release yet, so this
+# provider cannot run research. See https://arxiv.org/abs/2604.15456 ...
+```
+
+Calling `DeeperMedProvider.research()` directly raises `NotImplementedError`
+with the same message. In the CLI it is listed under **Stub providers (not yet
+callable)** in `deep-research-client providers`.
+
+### Caveats
+
+The model card's cost, speed, and capability entries are transcribed from the
+paper — nothing has been measured, because there is no endpoint to measure. The
+card's `limitations` say so explicitly.
+
+Once an API is published, only the body of `providers/deeper_med.py` needs to
+change.
 
 ---
 

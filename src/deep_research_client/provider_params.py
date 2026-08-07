@@ -291,12 +291,11 @@ class OpenScientistParams(BaseProviderParams):
 class DeeperMedParams(BaseProviderParams):
     """Parameters specific to the DeepER-Med provider stub.
 
-    The upstream system (arXiv:2604.15456) is not yet publicly callable, so
-    these fields document the planned surface and let users construct a
-    parameter object today. They are not validated against a live API.
+    There are no provider-specific parameters yet. The upstream system
+    (arXiv:2604.15456) is not publicly callable, so its tunable surface is
+    unknown; only the inherited base fields are accepted. Fields will be added
+    here once an API is published.
     """
-
-    pass
 
 
 class CyberianParams(BaseProviderParams):

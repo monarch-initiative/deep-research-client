@@ -1162,6 +1162,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#deeper-med-stub" class="md-nav__link">
+    <span class="md-ellipsis">
+      DeepER-Med (Stub)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DeepER-Med (Stub)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      Behavior
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -1874,6 +1907,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#deeper-med-stub" class="md-nav__link">
+    <span class="md-ellipsis">
+      DeepER-Med (Stub)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DeepER-Med (Stub)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      Behavior
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -1970,6 +2036,12 @@
 <td>(local <code>claude</code> CLI)</td>
 <td>Agentic web research, no API key</td>
 <td>Slow</td>
+</tr>
+<tr>
+<td>DeepER-Med</td>
+<td>(stub - no API yet)</td>
+<td>Evidence-based agentic medical research (arXiv:2604.15456)</td>
+<td>n/a</td>
 </tr>
 </tbody>
 </table>
@@ -2398,6 +2470,38 @@ actual model(s) used and run provenance (<code>run_metadata</code>).</p>
   bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
   correctness problem, but worth knowing for long runs.</li>
 </ul>
+<hr />
+<h2 id="deeper-med-stub">DeepER-Med (Stub)</h2>
+<p>DeepER-Med is an evidence-based agentic deep medical research framework
+introduced in Wang et al., <em>DeepER-Med: Advancing Deep Evidence-Based Research
+in Medicine Through Agentic AI</em> (<a href="https://arxiv.org/abs/2604.15456">arXiv:2604.15456</a>,
+submitted 16 April 2026). The paper describes an open-source paradigm with a
+public website and agent API, but at the time of writing <strong>no code, API
+endpoint, or dataset has been released publicly</strong>.</p>
+<p>This provider is registered as a stub so:</p>
+<ul>
+<li>the wrapper slot is reserved and discoverable via <code>providers</code> listing,</li>
+<li>model cards and parameter classes are in place,</li>
+<li>callers asking for it are told <em>why</em> it cannot run, with the arXiv pointer,
+  instead of getting a bare "provider not found".</li>
+</ul>
+<h3 id="behavior">Behavior</h3>
+<p><code>is_available()</code> always returns <code>False</code>, so DeepER-Med is never auto-selected
+and can never be chosen by <code>get_first_available()</code>. It is still registered
+unconditionally, which means an explicit request reports the stub status:</p>
+<pre><code class="language-python">client.research(&quot;...&quot;, provider=&quot;deeper_med&quot;)
+# ValueError: DeepER-Med has no public API or code release yet, so this
+# provider cannot run research. See https://arxiv.org/abs/2604.15456 ...
+</code></pre>
+<p>Calling <code>DeeperMedProvider.research()</code> directly raises <code>NotImplementedError</code>
+with the same message. In the CLI it is listed under <strong>Stub providers (not yet
+callable)</strong> in <code>deep-research-client providers</code>.</p>
+<h3 id="caveats">Caveats</h3>
+<p>The model card's cost, speed, and capability entries are transcribed from the
+paper — nothing has been measured, because there is no endpoint to measure. The
+card's <code>limitations</code> say so explicitly.</p>
+<p>Once an API is published, only the body of <code>providers/deeper_med.py</code> needs to
+change.</p>
 <hr />
 <h2 id="provider-detection">Provider Detection</h2>
 <p>Providers are auto-detected based on environment variables:</p>

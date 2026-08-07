@@ -325,6 +325,13 @@ becomes part of the report. The simpler `json` output format exposes only a
 report and then emitted any closing remark would lose the whole report while
 still exiting 0 with valid provenance ([#59](https://github.com/monarch-initiative/deep-research-client/issues/59)).
 
+Because every assistant message is kept, any narration the agent emits between
+tool calls ("Let me search for X…") appears in the report alongside the research.
+That is a deliberate trade — including narration is cosmetic, whereas selecting a
+single message risks dropping the report — but it has one consequence worth
+knowing: citations are extracted from the joined text, so a URL mentioned only in
+passing is counted in `citation_count`.
+
 ### Setup
 
 No API key is needed — authentication and billing are handled by your local
@@ -361,17 +368,28 @@ When `skip_permissions` is `False` (the default), you can also set
 A run that produces no research is the expensive failure mode, because it still
 writes a well-formed file with real cost and provenance metadata — easy to skim
 past and mistake for a real report. `min_report_chars` (default 200) turns that
-into a raised `ValueError` and a non-zero exit. Set it to `0` when short answers
-are expected.
+into a raised `ValueError` and a non-zero exit. The rejected text is logged in
+full and previewed in the exception, so a failed run is diagnosable without
+paying for a second one.
 
-Two `run_metadata` fields help diagnose a thin result after the fact:
+!!! warning "This default is a behavior change"
+
+    Runs that previously returned a short answer successfully now raise. A
+    one-sentence reply is typically under 200 characters. Set
+    `min_report_chars=0` if you expect short answers.
+
+This is an emptiness check, not a quality one — a 250-character *"I was unable to
+find sufficient information on this topic"* passes it cleanly.
+
+Three `run_metadata` fields help diagnose a thin result after the fact:
 
 - `assistant_text_blocks` — how many separate assistant messages the report was
-  assembled from. More than one means the agent spoke again after its main
-  output.
-- `permission_denials` — how many tool calls were refused. A non-zero count often
-  explains a thin report: the agent asked for a tool outside `allowed_tools` and
-  gave up.
+  assembled from. More than one is normal for an agentic run; this is provenance
+  for how the report was assembled, not a warning sign.
+- `permission_denials` — how many tool calls were refused.
+- `denied_tools` — which tools were refused. A non-zero count often explains a
+  thin report: the agent asked for a tool outside `allowed_tools` and gave up,
+  and this names what to add.
 
 ### Security
 
@@ -427,6 +445,9 @@ actual model(s) used and run provenance (`run_metadata`).
 - Restricted to a read-only research toolset by default; broaden `allowed_tools`
   (or enable `skip_permissions` in a sandbox) for tasks that need more
 - Non-deterministic results
+- The `stream-json` output carries every tool result, including full fetched page
+  bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
+  correctness problem, but worth knowing for long runs.
 
 ---
 

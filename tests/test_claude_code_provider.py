@@ -7,6 +7,7 @@ skipped automatically when the CLI is unavailable.
 """
 
 import json
+import logging
 import shutil
 
 import pytest
@@ -194,6 +195,42 @@ def test_parse_stream_ignores_non_text_blocks():
     assert texts == ["visible answer"]
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        None,
+        {},
+        {"content": None},
+        {"content": []},
+        "not a message object",
+    ],
+    ids=["null", "empty", "null-content", "empty-content", "string"],
+)
+def test_parse_stream_tolerates_malformed_assistant_events(message):
+    """A malformed assistant event is skipped, not turned into an AttributeError.
+
+    The method's contract is that it raises ValueError; an explicit
+    ``"message": null`` must not escape that as an AttributeError.
+    """
+    stdout = make_stream(
+        {"type": "assistant", "message": message},
+        assistant_event("the real report"),
+        {"type": "result", "is_error": False, "result": "the real report"},
+    )
+    texts, _ = ClaudeCodeProvider._parse_stream(stdout)
+    assert texts == ["the real report"]
+
+
+def test_parse_stream_accepts_string_content():
+    """Content given as a bare string is a text block, not a sequence of chars."""
+    stdout = make_stream(
+        {"type": "assistant", "message": {"content": "a whole report as one string"}},
+        {"type": "result", "is_error": False, "result": "x"},
+    )
+    texts, _ = ClaudeCodeProvider._parse_stream(stdout)
+    assert texts == ["a whole report as one string"]
+
+
 def test_parse_stream_skips_unparseable_lines():
     """A stray non-JSON line does not sink an otherwise complete run."""
     stdout = "\n".join([
@@ -252,6 +289,26 @@ def test_check_report_length_rejects_implausible_reports(report):
         ClaudeCodeProvider._check_report_length(report, 200)
 
 
+def test_check_report_length_reports_the_rejected_text(caplog):
+    """The rejected run is diagnosable without paying for a second one."""
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(ValueError, match="I could not find sufficient"):
+            ClaudeCodeProvider._check_report_length(
+                "I could not find sufficient information.", 200
+            )
+    assert "I could not find sufficient information." in caplog.text
+
+
+def test_check_report_length_truncates_long_previews():
+    """A long-but-still-too-short report is previewed, not dumped, in the error."""
+    report = "x" * 900
+    with pytest.raises(ValueError) as excinfo:
+        ClaudeCodeProvider._check_report_length(report, 1000)
+    message = str(excinfo.value)
+    assert "..." in message
+    assert len(message) < 600
+
+
 def test_check_report_length_accepts_a_real_report():
     """A report at or above the threshold passes."""
     ClaudeCodeProvider._check_report_length("x" * 200, 200)
@@ -285,10 +342,27 @@ def test_extract_run_metadata_reads_actual_models_and_usage():
     assert "permission_denials" not in metadata
 
 
-def test_extract_run_metadata_counts_permission_denials():
-    """Denied tool calls are surfaced; they often explain a thin report."""
-    data = {"permission_denials": [{"tool_name": "Read"}, {"tool_name": "Bash"}]}
-    assert ClaudeCodeProvider._extract_run_metadata(data)["permission_denials"] == 2
+def test_extract_run_metadata_records_denied_tool_names():
+    """Denied tool calls are surfaced by name; they often explain a thin report."""
+    data = {
+        "permission_denials": [
+            {"tool_name": "Read"},
+            {"tool_name": "Bash"},
+            {"tool_name": "Read"},
+        ]
+    }
+    metadata = ClaudeCodeProvider._extract_run_metadata(data)
+    # The count keeps every denial; the names are deduplicated and sorted, since
+    # they name what to add to allowed_tools.
+    assert metadata["permission_denials"] == 3
+    assert metadata["denied_tools"] == ["Bash", "Read"]
+
+
+def test_extract_run_metadata_denials_without_tool_names():
+    """Denials lacking a tool_name still count, without an empty names list."""
+    metadata = ClaudeCodeProvider._extract_run_metadata({"permission_denials": [{}]})
+    assert metadata["permission_denials"] == 1
+    assert "denied_tools" not in metadata
 
 
 def test_extract_run_metadata_handles_multiple_models():
@@ -342,6 +416,90 @@ async def test_research_raises_on_nonzero_exit():
     provider = make_provider(ClaudeCodeParams(claude_executable="false"))
     with pytest.raises(ValueError, match="exited with code"):
         await provider.research("anything")
+
+
+def write_stub_claude(tmp_path, stdout: str):
+    """Write an executable stub that emits `stdout` like the real CLI would.
+
+    This is a real subprocess, not a mock: it exercises the actual spawn, stdin
+    write, and stream-parsing path that `research()` uses.
+    """
+    script = tmp_path / "stubclaude"
+    payload = tmp_path / "stub_output.jsonl"
+    payload.write_text(stdout)
+    # Drain stdin so the provider's write to it cannot fail with EPIPE.
+    script.write_text(f"#!/bin/sh\ncat > /dev/null\ncat {payload}\n")
+    script.chmod(0o755)
+    return script
+
+
+@pytest.mark.asyncio
+async def test_research_joins_blocks_and_records_provenance(tmp_path):
+    """End-to-end through a stub CLI: the report survives, provenance is recorded."""
+    body = "The substantive findings, at length. " * 10
+    stdout = make_stream(
+        {"type": "system", "subtype": "init"},
+        assistant_event("Let me search for that."),
+        assistant_event(f"# Report\n\n{body}See https://example.com/a for detail."),
+        assistant_event("One correction: nothing else changes."),
+        {
+            "type": "result",
+            "is_error": False,
+            "result": "One correction: nothing else changes.",
+            "num_turns": 3,
+            "session_id": "sess-xyz",
+            "permission_denials": [{"tool_name": "Read"}],
+            "modelUsage": {"claude-opus-5[1m]": {"webSearchRequests": 2}},
+        },
+    )
+    provider = make_provider(
+        ClaudeCodeParams(claude_executable=str(write_stub_claude(tmp_path, stdout)))
+    )
+    result = await provider.research("anything")
+
+    # All three blocks are present -- notably the report, which the final-turn-only
+    # `result` field would have replaced with the sign-off.
+    assert "Let me search for that." in result.markdown
+    assert "The substantive findings" in result.markdown
+    assert "One correction: nothing else changes." in result.markdown
+
+    assert result.citations == ["https://example.com/a"]
+    assert result.run_metadata["assistant_text_blocks"] == 3
+    assert result.run_metadata["num_turns"] == 3
+    assert result.run_metadata["denied_tools"] == ["Read"]
+    # Provenance reports the model that actually ran, not the sentinel default.
+    assert result.model == "claude-opus-5[1m]"
+
+
+@pytest.mark.asyncio
+async def test_research_raises_on_short_report(tmp_path):
+    """A run whose report is too short fails instead of returning an empty result."""
+    stdout = make_stream(
+        assistant_event("done"),
+        {"type": "result", "is_error": False, "result": "done"},
+    )
+    provider = make_provider(
+        ClaudeCodeParams(claude_executable=str(write_stub_claude(tmp_path, stdout)))
+    )
+    with pytest.raises(ValueError, match="min_report_chars"):
+        await provider.research("anything")
+
+
+@pytest.mark.asyncio
+async def test_research_allows_short_report_when_guard_disabled(tmp_path):
+    """min_report_chars=0 opts out for callers that expect short answers."""
+    stdout = make_stream(
+        assistant_event("done"),
+        {"type": "result", "is_error": False, "result": "done"},
+    )
+    provider = make_provider(
+        ClaudeCodeParams(
+            claude_executable=str(write_stub_claude(tmp_path, stdout)),
+            min_report_chars=0,
+        )
+    )
+    result = await provider.research("anything")
+    assert result.markdown == "done"
 
 
 @pytest.mark.asyncio

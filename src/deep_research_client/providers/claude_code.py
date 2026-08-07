@@ -222,9 +222,10 @@ class ClaudeCodeProvider(ResearchProvider):
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
-        # How many separate assistant messages the report was assembled from. A
-        # value above 1 means the agent spoke again after its main output, the
-        # shape that used to truncate the report entirely.
+        # How many separate assistant messages the report was assembled from.
+        # More than one is normal for an agentic run (the model narrates between
+        # tool calls); the count is provenance for how the report was assembled,
+        # not a warning sign.
         run_metadata["assistant_text_blocks"] = len(assistant_texts)
         citations = self._extract_citations(markdown)
 
@@ -342,7 +343,19 @@ class ClaudeCodeProvider(ResearchProvider):
                 continue
 
             if event.get("type") == "assistant":
-                content = event.get("message", {}).get("content") or []
+                # `message` can be an explicit null, and `content` is a plain
+                # string in the single-text-block form the Anthropic message
+                # format permits. Neither is what the CLI emits today, but
+                # iterating a string would silently yield characters that the
+                # block guard below drops -- a truncated report with no signal.
+                message = event.get("message")
+                if not isinstance(message, dict):
+                    continue
+                content = message.get("content")
+                if isinstance(content, str):
+                    content = [{"type": "text", "text": content}]
+                elif not isinstance(content, list):
+                    continue
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "text":
                         block_text = str(block.get("text") or "")
@@ -373,6 +386,12 @@ class ClaudeCodeProvider(ResearchProvider):
         message, so preferring the joined blocks is what keeps a report from
         being truncated to its closing remark.
 
+        Joining everything means any narration the model emits between tool calls
+        ("Let me search for X...") lands in the report too. That is the deliberate
+        trade: including narration is a cosmetic cost, whereas picking a single
+        block risks dropping the research. Note that citation extraction runs over
+        the joined text, so a URL mentioned only in narration is counted.
+
         Args:
             assistant_texts: Assistant text blocks in emission order.
             data: The terminal ``result`` event.
@@ -386,7 +405,7 @@ class ClaudeCodeProvider(ResearchProvider):
         result = data.get("result")
         if not result or not str(result).strip():
             raise ValueError("Claude Code output contained no result text.")
-        return str(result)
+        return str(result).strip()
 
     @staticmethod
     def _check_report_length(markdown: str, min_chars: int) -> None:
@@ -396,21 +415,38 @@ class ClaudeCodeProvider(ResearchProvider):
         gets a well-formed file with real provenance and no content. Failing here
         turns that into a non-zero exit.
 
+        This is an emptiness check, not a quality one: a short "I could not find
+        sufficient information" reply passes it.
+
+        Because the run that failed has already been paid for, the rejected text
+        is logged in full and previewed in the exception, so the cause is
+        diagnosable without a second run.
+
         Raises:
             ValueError: If ``markdown`` is shorter than ``min_chars``.
         """
         if min_chars <= 0:
             return
 
-        length = len(markdown.strip())
-        if length < min_chars:
-            raise ValueError(
-                f"Claude Code returned a {length}-character report, below the "
-                f"min_report_chars threshold of {min_chars}. This usually means "
-                "the run failed, was cut short, or produced no research. Lower or "
-                "disable the threshold (min_report_chars=0) if short answers are "
-                "expected."
-            )
+        report = markdown.strip()
+        if len(report) >= min_chars:
+            return
+
+        logger.warning(
+            "Claude Code report is below the min_report_chars threshold (%d < %d). "
+            "Full text of the rejected report: %s",
+            len(report),
+            min_chars,
+            report or "<empty>",
+        )
+        preview = report[:200] + ("..." if len(report) > 200 else "")
+        raise ValueError(
+            f"Claude Code returned a {len(report)}-character report, below the "
+            f"min_report_chars threshold of {min_chars}. This usually means the "
+            "run failed, was cut short, or produced no research. Lower or disable "
+            "the threshold (min_report_chars=0) if short answers are expected. "
+            f"Report text: {preview!r}"
+        )
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:
@@ -451,10 +487,21 @@ class ClaudeCodeProvider(ResearchProvider):
             metadata["stop_reason"] = data["stop_reason"]
 
         # Denied tool calls are a common cause of a thin report: the agent asked
-        # for a tool outside the allowlist, was refused, and gave up.
+        # for a tool outside the allowlist, was refused, and gave up. Which tool
+        # was refused is the actionable half -- it names what to add to
+        # allowed_tools -- so record the names alongside the count.
         denials = data.get("permission_denials")
         if denials:
             metadata["permission_denials"] = len(denials)
+            denied_tools = sorted(
+                {
+                    denial["tool_name"]
+                    for denial in denials
+                    if isinstance(denial, dict) and denial.get("tool_name")
+                }
+            )
+            if denied_tools:
+                metadata["denied_tools"] = denied_tools
 
         return metadata
 

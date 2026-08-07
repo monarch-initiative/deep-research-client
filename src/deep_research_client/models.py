@@ -2,7 +2,22 @@
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+import re
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
+_UNSAFE_ARTIFACT_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_REPEATED_UNDERSCORES = re.compile(r"_+")
+
+
+def sanitize_artifact_filename(raw_name: str, fallback: str = "artifact") -> str:
+    """Return a filesystem-safe basename for an artifact filename."""
+    safe_name = _UNSAFE_ARTIFACT_FILENAME_CHARS.sub("_", str(raw_name or fallback))
+    safe_name = safe_name.replace("..", "_").strip(". ")
+    safe_name = _REPEATED_UNDERSCORES.sub("_", safe_name)
+    return safe_name or fallback
 
 
 class EditHistoryEntry(BaseModel):
@@ -20,11 +35,46 @@ class QueryMetadata(BaseModel):
     contributors: List[str] = Field(default_factory=list, description="List of contributors")
 
 
+class ResearchArtifact(BaseModel):
+    """A non-text artifact produced alongside a research report."""
+
+    filename: str = Field(..., description="Artifact filename")
+    content_base64: str = Field(..., description="Base64-encoded artifact content")
+    media_type: Optional[str] = Field(default=None, description="Artifact MIME/media type")
+    path: Optional[str] = Field(default=None, description="Relative path used in formatted markdown")
+    source: Optional[str] = Field(default=None, description="Provider-specific artifact source")
+    data_storage_id: Optional[str] = Field(default=None, description="Provider data storage identifier")
+    description: Optional[str] = Field(default=None, description="Human-readable artifact description")
+
+    @field_validator("filename")
+    @classmethod
+    def sanitize_filename(cls, value: str) -> str:
+        """Sanitize artifact filenames before they reach filesystem output."""
+        return sanitize_artifact_filename(value)
+
+    @model_validator(mode="after")
+    def validate_artifact_size(self) -> "ResearchArtifact":
+        """Reject artifacts that are too large to safely hold in memory."""
+        estimated_size = len(self.content_base64) * 3 // 4
+        if estimated_size > MAX_ARTIFACT_BYTES:
+            raise ValueError(
+                f"Artifact too large: estimated {estimated_size} bytes exceeds "
+                f"{MAX_ARTIFACT_BYTES} byte limit"
+            )
+        return self
+
+    @property
+    def is_image(self) -> bool:
+        """Return whether this artifact can be embedded as a Markdown image."""
+        return (self.media_type or "").startswith("image/")
+
+
 class ResearchResult(BaseModel):
     """Result from a deep research query."""
 
     markdown: str = Field(..., description="Research report in markdown format")
     citations: List[str] = Field(default_factory=list, description="List of citations/references")
+    artifacts: List[ResearchArtifact] = Field(default_factory=list, description="Non-text artifacts produced with the report")
     provider: str = Field(..., description="Name of the research provider used")
     cached: bool = Field(default=False, description="Whether result was retrieved from cache")
     query: str = Field(..., description="Original query that generated this result")
@@ -48,6 +98,14 @@ class ResearchResult(BaseModel):
     # Provider configuration
     model: Optional[str] = Field(default=None, description="Model used by provider")
     provider_config: Optional[Dict[str, Any]] = Field(default=None, description="Provider configuration")
+    run_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Provider-reported provenance about the actual run (e.g. model(s) used, "
+            "token/cost usage, number of turns). Distinct from the requested "
+            "configuration in provider_config."
+        ),
+    )
 
 
 class ProviderConfig(BaseModel):

@@ -1,15 +1,20 @@
 """Tests for the OpenScientist provider."""
 
 import asyncio
+import base64
 import io
 import os
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
+import yaml
 
-from deep_research_client.models import ProviderConfig
+from deep_research_client.cli import _write_result_artifacts
+from deep_research_client.models import ProviderConfig, ResearchArtifact, ResearchResult
+from deep_research_client.processing.result_formatter import ResultFormatter
 from deep_research_client.provider_params import OpenScientistParams
 from deep_research_client.providers.openscientist import OpenScientistProvider
 
@@ -34,7 +39,7 @@ def _load_openscientist_base_url() -> str:
     return os.getenv("OPENSCIENTIST_URL", "https://www.openscientist.io").strip()
 
 
-def create_zip_bytes(files: dict[str, str]) -> bytes:
+def create_zip_bytes(files: dict[str, str | bytes]) -> bytes:
     """Create an in-memory ZIP archive for artifact download tests."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
@@ -321,6 +326,106 @@ class TestOpenScientistProvider:
 
         assert markdown == "# Final Report\n\nPMID: 12345678"
 
+    def test_extract_markdown_from_artifacts_prefers_final_report(self):
+        """Runtime skill files mentioning reports should not shadow the real report."""
+        zip_bytes = create_zip_bytes(
+            {
+                ".claude/skills/clinical-reports--clinical-reports.md": "wrong",
+                "final_report.md": "# Final Report\n\nPMID: 12345678",
+            }
+        )
+
+        report_name, markdown = self.provider._extract_markdown_from_artifact_zip(
+            zip_bytes,
+            "job-123",
+        )
+
+        assert report_name == "final_report.md"
+        assert markdown == "# Final Report\n\nPMID: 12345678"
+
+    def test_extract_artifacts_from_zip_filters_useful_files(self):
+        """OpenScientist artifact ZIP extraction should keep useful review artifacts."""
+        png_content = b"\x89PNG\r\n\x1a\nimage"
+        zip_bytes = create_zip_bytes(
+            {
+                ".claude/skills/runtime.md": "runtime scaffolding",
+                "agent-container.log": "log output",
+                "final_report.md": "# Report",
+                "final_report.pdf": b"%PDF-1.4 fake",
+                "provenance/evidence_matrix.json": '{"rows":[]}',
+                "provenance/evidence_matrix.png": png_content,
+                "provenance/iter1_transcript.json": '{"messages":[]}',
+                "raw/archive.zip": b"PK",
+                "results/table.csv": "gene,score\nATP7B,0.9\n",
+            }
+        )
+
+        artifacts = self.provider._extract_artifacts_from_artifact_zip(
+            zip_bytes,
+            report_names={"final_report.md"},
+        )
+
+        assert [artifact.filename for artifact in artifacts] == [
+            "final_report.pdf",
+            "provenance_evidence_matrix.json",
+            "provenance_evidence_matrix.png",
+            "results_table.csv",
+        ]
+        assert [artifact.source for artifact in artifacts] == [
+            "openscientist_artifacts_zip",
+            "openscientist_artifacts_zip",
+            "openscientist_artifacts_zip",
+            "openscientist_artifacts_zip",
+        ]
+        assert artifacts[2].media_type == "image/png"
+        assert base64.b64decode(artifacts[2].content_base64) == png_content
+
+    def test_extract_artifacts_from_zip_enforces_size_limit(self):
+        """Artifacts larger than the configured limit should be skipped before readout."""
+        provider = OpenScientistProvider(
+            self.config,
+            OpenScientistParams(artifact_max_bytes=3),
+        )
+        zip_bytes = create_zip_bytes(
+            {
+                "provenance/large.png": b"1234",
+                "provenance/small.json": "{}",
+            }
+        )
+
+        artifacts = provider._extract_artifacts_from_artifact_zip(zip_bytes)
+
+        assert [artifact.filename for artifact in artifacts] == [
+            "provenance_small.json"
+        ]
+
+    def test_openscientist_artifacts_write_and_render(self, tmp_path):
+        """OpenScientist artifacts should become sidecars, frontmatter, and links."""
+        zip_bytes = create_zip_bytes(
+            {
+                "provenance/evidence_matrix.json": '{"rows":[]}',
+                "provenance/evidence_matrix.png": b"\x89PNG\r\n\x1a\nimage",
+            }
+        )
+        artifacts = self.provider._extract_artifacts_from_artifact_zip(zip_bytes)
+        result = ResearchResult(
+            markdown="# Report",
+            provider="openscientist",
+            query="query",
+            artifacts=artifacts,
+        )
+
+        _write_result_artifacts(result, tmp_path / "report.md")
+        rendered = ResultFormatter().format_full_markdown(result)
+        frontmatter = yaml.safe_load(rendered.split("---", 2)[1])
+
+        assert (tmp_path / "report_artifacts" / "provenance_evidence_matrix.png").exists()
+        assert frontmatter["artifact_count"] == 2
+        assert frontmatter["artifact_sources"] == {"openscientist_artifacts_zip": 2}
+        assert frontmatter["artifacts"][0]["path"].startswith("report_artifacts/")
+        assert "- [OpenScientist evidence matrix](report_artifacts/provenance_evidence_matrix.json)" in rendered
+        assert "![OpenScientist evidence matrix](report_artifacts/provenance_evidence_matrix.png)" in rendered
+
     async def test_research_success(self, monkeypatch):
         """Test the main research orchestration path."""
         async def fake_health_check(self, client) -> None:
@@ -337,9 +442,19 @@ class TestOpenScientistProvider:
             assert poll_interval == 30
             return "completed"
 
-        async def fake_download_report(self, client, job_id: str) -> str:
+        async def fake_download_report_with_artifacts(self, client, job_id: str):
             assert job_id == "job-123"
-            return "# Report\n\nPMID: 12345678\n\nPMID: 23456789"
+            return SimpleNamespace(
+                markdown="# Report\n\nPMID: 12345678\n\nPMID: 23456789",
+                artifacts=[
+                    ResearchArtifact(
+                        filename="figure.png",
+                        content_base64="aW1hZ2U=",
+                        media_type="image/png",
+                        source="openscientist_artifacts_zip",
+                    )
+                ],
+            )
 
         monkeypatch.setattr(
             "deep_research_client.providers.openscientist.httpx.AsyncClient",
@@ -348,7 +463,11 @@ class TestOpenScientistProvider:
         monkeypatch.setattr(OpenScientistProvider, "_health_check", fake_health_check)
         monkeypatch.setattr(OpenScientistProvider, "_submit_job", fake_submit_job)
         monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
-        monkeypatch.setattr(OpenScientistProvider, "_download_report", fake_download_report)
+        monkeypatch.setattr(
+            OpenScientistProvider,
+            "_download_report_with_artifacts",
+            fake_download_report_with_artifacts,
+        )
 
         result = await self.provider.research("What is autophagy?")
 
@@ -357,6 +476,7 @@ class TestOpenScientistProvider:
         assert result.model == "openscientist-autonomous"
         assert result.markdown == "# Report\n\nPMID: 12345678\n\nPMID: 23456789"
         assert result.citations == ["PMID:12345678", "PMID:23456789"]
+        assert [artifact.filename for artifact in result.artifacts] == ["figure.png"]
 
     async def test_research_timeout_cancels_job(self, monkeypatch):
         """Test timeout handling cancels the submitted job."""

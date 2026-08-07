@@ -12,6 +12,9 @@ import pytest
 from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
 from deep_research_client.providers import ResearchProvider
 from deep_research_client.providers.asta import AstaProvider
+from deep_research_client.providers.falcon import FalconProvider
+from deep_research_client.providers.openscientist import OpenScientistProvider
+from deep_research_client.providers.claude_code import ClaudeCodeProvider
 
 
 class MockProvider(ResearchProvider):
@@ -166,6 +169,47 @@ def test_asta_cache_params_include_version_tag():
         "paper_limit": 20,
         "_cache_version": "snippet-v5",
     }
+
+
+def test_falcon_cache_params_include_artifact_version_tag():
+    """Falcon cache keys should invalidate stale no-artifact Edison entries."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = FalconProvider(ProviderConfig(
+        name="falcon", api_key="edison-key", enabled=True))
+    cache_params = client._get_cache_provider_params(provider)
+
+    assert cache_params == {"_cache_version": "artifacts-v1"}
+
+
+def test_openscientist_cache_params_include_artifact_version_tag():
+    """OpenScientist cache keys should invalidate stale no-artifact entries."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = OpenScientistProvider(
+        ProviderConfig(name="openscientist", api_key="opensci-key", enabled=True)
+    )
+    cache_params = client._get_cache_provider_params(provider)
+
+    assert cache_params == {"_cache_version": "artifacts-v1"}
+
+
+def test_claude_code_cache_params_include_version_tag():
+    """Claude Code cache keys should invalidate entries from older prompt scaffolding."""
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    provider = ClaudeCodeProvider(
+        ProviderConfig(name="claude_code", api_key=None, enabled=True)
+    )
+    cache_params = client._get_cache_provider_params(provider)
+
+    assert cache_params == {"_cache_version": "inline-report-v1"}
 
 
 async def test_research_with_mock_provider():

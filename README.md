@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, and OpenScientist autonomous research.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, and Claude Code.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), and OpenScientist (autonomous)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -62,6 +62,10 @@ export OPENSCIENTIST_URL="https://www.openscientist.io"
 # For Cyberian (agent-based research) - requires cyberian installation
 pip install deep-research-client[cyberian]
 # Cyberian uses your local AI agents (Claude, etc.) - no separate API key needed
+
+# For Claude Code - just install the `claude` CLI and have it authenticated.
+# Auto-detected when `claude` is on PATH; no separate API key needed.
+# Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -80,6 +84,9 @@ deep-research-client research "Explain quantum computing" --provider perplexity 
 
 # Save to file (citations included by default)
 deep-research-client research "Machine learning trends 2024" --output report.md
+
+# Retrieve an existing Edison trajectory by ID
+deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 --output edison-report.md
 
 # Save citations to separate file
 deep-research-client research "AI trends 2024" --output report.md --separate-citations
@@ -295,6 +302,38 @@ print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
 - 🖥️ **Local compute**: Requires agentapi and agent setup
 - 🎯 **Thorough**: More comprehensive than API-based providers
 
+#### Claude Code-Specific Parameters (Local CLI)
+
+Claude Code is a local command-line tool rather than an HTTP API. This provider runs the `claude` binary in non-interactive ("print") mode, pipes the prompt to it via stdin, and lets Claude Code's own agentic tools (web search, web fetch, file reading) carry out the research.
+
+```python
+from deep_research_client.provider_params import ClaudeCodeParams
+
+params = ClaudeCodeParams(
+    model="opus",                  # optional; forwarded to `claude --model`
+    allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
+    skip_permissions=False,        # default; True bypasses ALL checks (see below)
+    add_dirs=["/data/papers"],     # optional --add-dir entries
+    working_dir=None,              # optional cwd for the run
+    min_report_chars=200,          # fail loudly on an implausibly short report (0 disables)
+    extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
+)
+
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="claude_code",
+    provider_params=params
+)
+```
+
+**Notes:**
+- No API key required — auth/billing is handled by your local Claude Code installation.
+- Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
+- **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
+- **Reading local documents:** the default toolset is web-only and omits the `Read` tool. To research over files you supply (e.g. via `add_dirs`), add `Read` to `allowed_tools` explicitly: `allowed_tools=["WebSearch", "WebFetch", "Read"]`. It is left out by default because filesystem read access is unnecessary for web research and is a mild information-disclosure surface for untrusted queries.
+- **Empty-report guard (behavior change):** a report shorter than `min_report_chars` (default 200) now raises instead of writing a well-formed file containing no research. Runs that previously returned a short answer successfully will now fail — set `min_report_chars=0` if you expect short answers. This is an emptiness check, not a quality check.
+- **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
+
 #### OpenScientist-Specific Parameters (Autonomous Research)
 
 OpenScientist is an autonomous AI research agent from Berkeley Lab that runs iterative hypothesis-driven research using PubMed search and code execution. Jobs are submitted to a hosted instance and take 10-60+ minutes to complete.
@@ -323,6 +362,8 @@ params = OpenScientistParams(
     investigation_mode="autonomous",  # "autonomous" or "coinvestigate"
     poll_interval=30,              # Seconds between status checks
     timeout=3600,                  # Max wait time in seconds (default 1 hour)
+    save_artifacts=True,           # Preserve useful ZIP artifacts
+    artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
 )
 
 result = client.research(
@@ -333,6 +374,7 @@ result = client.research(
 
 # OpenScientist returns PMID citations
 print(f"Citations: {result.citations}")  # ['PMID:12345678', 'PMID:87654321', ...]
+print(f"Artifacts: {len(result.artifacts)}")
 print(f"Research took: {result.duration_seconds / 60:.1f} minutes")
 ```
 
@@ -897,10 +939,12 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Provider | Environment Variable | Model/Service | Strengths |
 |----------|---------------------|---------------|-----------|
 | OpenAI | `OPENAI_API_KEY` | o3-deep-research-2025-06-26 | Deep research, comprehensive reports |
-| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3 |
+| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
-| OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations |
+| OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
+
+When Edison or OpenScientist produces diagrams, charts, figures, or other useful output artifacts, saved reports include an `Artifacts` section. The standard `research` command materializes recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
 
 ## Development
 

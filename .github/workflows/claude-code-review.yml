@@ -27,21 +27,23 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
-          # model: "claude-opus-4-1-20250805"
+          # In v1, providing a `prompt` runs in automation mode, which does NOT
+          # post a comment by default. track_progress restores the v0.x
+          # "post the review as a PR comment" behavior and auto-injects PR context.
+          track_progress: true
 
-          # Direct prompt for automated review (no @claude mention needed)
-          direct_prompt: |
+          # Prompt for the automated review (no @claude mention needed).
+          prompt: |
             Please review this pull request and provide feedback on:
             - Code quality and best practices
             - Potential bugs or issues
@@ -50,6 +52,12 @@ jobs:
             - Test coverage
             
             Be constructive and helpful in your feedback.
+
+          # Args passed through to the Claude CLI. Use the `opus` alias rather
+          # than a dated model id so the workflow tracks the current Opus and
+          # won't 404 when a specific version is retired.
+          claude_args: |
+            --model opus
 
           # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
           # use_sticky_comment: true
@@ -75,4 +83,3 @@ jobs:
           # if: |
           #   !contains(github.event.pull_request.title, '[skip-review]') &&
           #   !contains(github.event.pull_request.title, '[WIP]')
-

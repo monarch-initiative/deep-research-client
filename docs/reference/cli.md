@@ -47,6 +47,8 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--author TEXT` | Primary author of the research |
 | `--contributor TEXT` | Contributor to the research (repeatable) |
 
+When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
+
 #### Examples
 
 ```bash
@@ -97,6 +99,48 @@ deep-research-client research "CFAP300 gene function" \
 deep-research-client research "AI" \
   --base-url https://api.example.com \
   --api-key-env CUSTOM_API_KEY
+```
+
+---
+
+### edison-trajectory
+
+Retrieve an existing Edison trajectory by ID, preserving any report artifacts recovered from the verbose trajectory payload.
+
+```bash
+deep-research-client edison-trajectory [OPTIONS] TRAJECTORY_ID
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `TRAJECTORY_ID` | Existing Edison trajectory/task ID |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output PATH` | Output file path (prints to stdout if not provided) |
+| `--separate-citations PATH` | Save citations to a separate file |
+
+#### Notes
+
+- Requires `EDISON_API_KEY` (or legacy `FUTUREHOUSE_API_KEY`) to be set.
+- When `--output` is provided, recovered artifacts are written beside the report in an `OUTPUT_STEM_artifacts/` directory.
+- Frontmatter includes `trajectory_id` and `artifact_sources` so it is clear where recovered artifacts came from.
+
+#### Examples
+
+```bash
+# Retrieve an Edison trajectory into the current directory
+deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
+  --output edison-report.md
+
+# Write citations separately
+deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
+  --output edison-report.md \
+  --separate-citations edison-report.citations.md
 ```
 
 ---

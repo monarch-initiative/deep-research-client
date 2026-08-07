@@ -13,6 +13,7 @@ Complete reference for all supported research providers.
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
+| Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 
 ## OpenAI Deep Research
@@ -127,6 +128,7 @@ params = FalconParams(
 - **Cost**: High
 - **Speed**: 2-5 minutes
 - **Capabilities**: Scientific literature, powered by PaperQA3
+- **Artifacts**: Edison output artifacts are fetched from the completed task. Image artifacts such as diagrams, charts, and figures are written beside saved reports and embedded in the generated Markdown; other artifact files are linked from an `Artifacts` section.
 
 ---
 
@@ -219,6 +221,8 @@ params = OpenScientistParams(
     investigation_mode="autonomous",  # "autonomous" or "coinvestigate"
     poll_interval=30,              # Seconds between status checks
     timeout=3600,                  # Max wait time (1-2 hours recommended)
+    save_artifacts=True,           # Preserve useful ZIP artifacts
+    artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
 )
 ```
 
@@ -228,6 +232,7 @@ params = OpenScientistParams(
 - **Speed**: 10-60+ minutes (iterative multi-step research)
 - **Capabilities**: PubMed search, code execution, hypothesis-driven research
 - **Citations**: PMID format with deduplication
+- **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default.
 
 ### When to Use
 
@@ -304,6 +309,146 @@ This is useful for:
 - **Testing**: Run a quick verification without full research
 - **Cost control**: Limit agent API calls
 - **Debugging**: Inspect intermediate results after fixed iterations
+
+---
+
+## Claude Code
+
+Claude Code is a local command-line tool rather than an HTTP API. This provider
+shells out to the `claude` binary in non-interactive ("print") mode, pipes the
+research prompt to it via stdin, and lets Claude Code's own agentic tools (web
+search, web fetch, file reading) carry out the research. The response comes back
+as a cited markdown report.
+
+Output is read as a `stream-json` event stream so that *every* assistant message
+becomes part of the report. The simpler `json` output format exposes only a
+`result` field holding the agent's final message, so an agent that wrote its
+report and then emitted any closing remark would lose the whole report while
+still exiting 0 with valid provenance ([#59](https://github.com/monarch-initiative/deep-research-client/issues/59)).
+
+Because every assistant message is kept, any narration the agent emits between
+tool calls ("Let me search for X…") appears in the report alongside the research.
+That is a deliberate trade — including narration is cosmetic, whereas selecting a
+single message risks dropping the report — but it has one consequence worth
+knowing: citations are extracted from the joined text, so a URL mentioned only in
+passing is counted in `citation_count`.
+
+### Setup
+
+No API key is needed — authentication and billing are handled by your local
+Claude Code installation. Just make sure the CLI is installed and on your PATH:
+
+```bash
+claude --version   # should succeed
+```
+
+The provider is auto-detected whenever `claude` is found on PATH. Set
+`DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out of auto-detection.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import ClaudeCodeParams
+
+params = ClaudeCodeParams(
+    model="opus",                 # optional; forwarded to `claude --model`
+    allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
+    skip_permissions=False,       # default; True bypasses ALL checks (see Security)
+    add_dirs=["/data/papers"],    # optional --add-dir entries
+    working_dir="/tmp/research",  # optional cwd for the run
+    min_report_chars=200,         # fail on an implausibly short report (0 disables)
+    extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
+)
+```
+
+When `skip_permissions` is `False` (the default), you can also set
+`permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+### Failing loudly on an empty report
+
+A run that produces no research is the expensive failure mode, because it still
+writes a well-formed file with real cost and provenance metadata — easy to skim
+past and mistake for a real report. `min_report_chars` (default 200) turns that
+into a raised `ValueError` and a non-zero exit. The rejected text is logged in
+full and previewed in the exception, so a failed run is diagnosable without
+paying for a second one.
+
+!!! warning "This default is a behavior change"
+
+    Runs that previously returned a short answer successfully now raise. A
+    one-sentence reply is typically under 200 characters. Set
+    `min_report_chars=0` if you expect short answers.
+
+This is an emptiness check, not a quality one — a 250-character *"I was unable to
+find sufficient information on this topic"* passes it cleanly.
+
+Three `run_metadata` fields help diagnose a thin result after the fact:
+
+- `assistant_text_blocks` — how many separate assistant messages the report was
+  assembled from. More than one is normal for an agentic run; this is provenance
+  for how the report was assembled, not a warning sign.
+- `permission_denials` — how many tool calls were refused.
+- `denied_tools` — which tools were refused. A non-zero count often explains a
+  thin report: the agent asked for a tool outside `allowed_tools` and gave up,
+  and this names what to add.
+
+### Security
+
+In non-interactive mode the run is driven by an agent, and
+`get_first_available()` may select this provider for an arbitrary query whenever
+`claude` is on PATH. To keep that safe by default:
+
+- `allowed_tools` defaults to a **read-only research set** (`["WebSearch", "WebFetch"]`),
+  passed via `--allowedTools`. Tools not on the list are auto-denied (without
+  blocking the run), so the agent cannot edit files or run shell commands.
+- `skip_permissions` defaults to **`False`**. Setting it `True` adds
+  `--dangerously-skip-permissions`, which bypasses every permission check and
+  **makes `allowed_tools` a no-op** (all tools become available). Only enable it
+  in trusted, sandboxed environments.
+
+Widen `allowed_tools` if a task genuinely needs more. The most common case is
+**research over local documents**: the default set is web-only and deliberately
+omits the `Read` tool, so to let Claude Code read files you have supplied (for
+example in an `add_dirs` path) you must add it explicitly:
+
+```python
+params = ClaudeCodeParams(
+    allowed_tools=["WebSearch", "WebFetch", "Read"],
+    add_dirs=["/data/papers"],
+)
+```
+
+`Read` is left out of the default because it grants the agent read access to the
+local filesystem, which is unnecessary for purely web-based research and is a
+mild information-disclosure surface if the query is untrusted. Add it only when
+reading local documents is actually part of the task.
+
+### Usage
+
+```bash
+deep-research-client research --provider claude_code "your research question"
+```
+
+See [a full example report](../examples/claude-code-deep-research-example.md)
+produced by this provider, including the YAML frontmatter that records the
+actual model(s) used and run provenance (`run_metadata`).
+
+### Characteristics
+
+- **Cost**: Handled by your Claude Code subscription / API key
+- **Speed**: Slow (agentic, multi-step)
+- **Capabilities**: Web search, citation tracking, code interpretation
+- **Auth**: None required by this client; relies on local Claude Code
+
+### Limitations
+
+- Requires the `claude` CLI installed and authenticated locally
+- Restricted to a read-only research toolset by default; broaden `allowed_tools`
+  (or enable `skip_permissions` in a sandbox) for tasks that need more
+- Non-deterministic results
+- The `stream-json` output carries every tool result, including full fetched page
+  bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
+  correctness problem, but worth knowing for long runs.
 
 ---
 

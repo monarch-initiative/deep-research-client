@@ -1,5 +1,7 @@
 """CLI interface for deep-research-client."""
 
+import base64
+import binascii
 from dataclasses import dataclass
 import logging
 import os
@@ -19,12 +21,24 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
+from .models import ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
 
 app = typer.Typer(
     help="deep-research-client: Wrapper for multiple deep research tools")
+
+PROVIDER_CREDENTIAL_HINTS = {
+    "openai": ("OPENAI_API_KEY", "OpenAI Deep Research"),
+    "falcon": ("EDISON_API_KEY", "Edison Scientific"),
+    "asta": ("ASTA_API_KEY", "Asta"),
+    "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
+    "consensus": ("CONSENSUS_API_KEY", "Consensus"),
+    "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
+    "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
+    "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
+}
 
 
 def setup_logging(verbosity: int) -> None:
@@ -172,6 +186,51 @@ def _effective_research_options(
     )
 
 
+def _unique_artifact_filename(filename: str, used_filenames: set[str], index: int) -> str:
+    """Return a filesystem-safe artifact filename unique within one result."""
+    safe_name = sanitize_artifact_filename(filename, fallback=f"artifact-{index}")
+    if safe_name in {".", ".."}:
+        safe_name = f"artifact-{index}"
+
+    candidate = safe_name
+    suffix = Path(safe_name).suffix
+    stem = Path(safe_name).stem or f"artifact-{index}"
+    counter = 2
+    while candidate in used_filenames:
+        candidate = f"{stem}-{counter}{suffix}"
+        counter += 1
+
+    used_filenames.add(candidate)
+    return candidate
+
+
+def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
+    """Write research artifacts beside a report and set their relative paths."""
+    if not result.artifacts:
+        return
+
+    artifact_dir = output.parent / f"{output.stem}_artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    used_filenames: set[str] = set()
+    for index, artifact in enumerate(result.artifacts, 1):
+        filename = _unique_artifact_filename(artifact.filename, used_filenames, index)
+        artifact_path = artifact_dir / filename
+        try:
+            content = base64.b64decode(artifact.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"Invalid base64 content for artifact {artifact.filename}") from exc
+        artifact_path.write_bytes(content)
+        artifact.path = artifact_path.relative_to(output.parent).as_posix()
+
+
+def _echo_credential_hints(provider_names: list[str]) -> None:
+    """Print credential hints for providers by canonical provider name."""
+    for provider_name in provider_names:
+        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
+        typer.echo(f"  - {env_var} for {label}")
+
+
 @app.callback()
 def main_callback(
     verbose: Annotated[int, typer.Option(
@@ -186,7 +245,7 @@ def research(
     query: Annotated[Optional[str], typer.Argument(
         help="Research query or question (not needed if using --template)")] = None,
     provider: Annotated[Optional[str], typer.Option(
-        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, mock)")] = None,
+        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     output: Annotated[Optional[Path], typer.Option(
@@ -464,6 +523,9 @@ def research(
         # Determine if we're separating citations
         should_separate_citations = separate_citations is not None
 
+        if output:
+            _write_result_artifacts(result, output)
+
         # Format output using processor
         logger.debug("Formatting research result")
         output_content = processor.format_research_result(
@@ -503,6 +565,74 @@ def research(
                 typer.echo("\n" + "="*60)
                 typer.echo(output_content)
 
+    except ValueError as exc:
+        logger.error(f"Error: {exc}")
+        raise typer.Exit(1)
+    except OSError as exc:
+        logger.error(f"Filesystem error: {exc}")
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
+
+
+@app.command()
+def edison_trajectory(
+    trajectory_id: Annotated[str, typer.Argument(help="Existing Edison trajectory/task ID")],
+    output: Annotated[Optional[Path], typer.Option(
+        help="Output file path (prints to stdout if not provided)")] = None,
+    separate_citations: Annotated[Optional[Path], typer.Option(
+        "--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
+):
+    """Retrieve an existing Edison trajectory report and artifacts by ID."""
+    from .models import ProviderConfig
+    from .providers.falcon import FalconProvider
+
+    api_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
+    if not api_key:
+        logger.error("EDISON_API_KEY is required to retrieve an Edison trajectory")
+        raise typer.Exit(1)
+
+    processor = ResearchProcessor()
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key=api_key, enabled=True))
+
+    try:
+        result = provider.retrieve_trajectory(trajectory_id)
+        should_separate_citations = separate_citations is not None
+
+        if output:
+            _write_result_artifacts(result, output)
+
+        output_content = processor.format_research_result(
+            result,
+            separate_citations=should_separate_citations,
+        )
+
+        if output:
+            output.write_text(output_content, encoding="utf-8")
+            logger.info(f"Result saved to: {output}")
+
+            if should_separate_citations and result.citations:
+                if isinstance(separate_citations, Path):
+                    citations_output = separate_citations
+                else:
+                    citations_output = output.with_suffix('.citations.md')
+
+                citations_content = processor.format_citations_only(result)
+                citations_output.write_text(citations_content, encoding="utf-8")
+                logger.info(f"Citations saved to: {citations_output}")
+
+            if result.citations:
+                logger.info(f"Found {len(result.citations)} citations")
+            if result.artifacts:
+                logger.info(f"Recovered {len(result.artifacts)} artifacts")
+        else:
+            typer.echo("\n" + "=" * 60)
+            typer.echo(output_content)
+            if should_separate_citations and result.citations:
+                typer.echo("\n" + "=" * 60)
+                typer.echo("CITATIONS:")
+                typer.echo("=" * 60)
+                typer.echo(processor.format_citations_only(result))
+
     except Exception as e:
         logger.error(f"Error: {e}")
         logger.debug("Exception details:", exc_info=True)
@@ -537,17 +667,9 @@ def providers(
 
         if not is_available:
             # Show required environment variable
-            env_vars = {
-                "openai": "OPENAI_API_KEY",
-                "falcon": "EDISON_API_KEY",
-                "asta": "ASTA_API_KEY",
-                "perplexity": "PERPLEXITY_API_KEY",
-                "consensus": "CONSENSUS_API_KEY",
-                "openscientist": "OPENSCIENTIST_API_KEY",
-                "mock": "ENABLE_MOCK_PROVIDER=true"
-            }
-            if provider in env_vars:
-                typer.echo(f"Required: {env_vars[provider]}")
+            if provider in PROVIDER_CREDENTIAL_HINTS:
+                env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
+                typer.echo(f"Required: {env_var}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]
@@ -586,15 +708,18 @@ def providers(
                             continue
                         typer.echo(
                             f"    {field_name}: {field_info.description}")
+
+        missing_credential_providers = [
+            provider_name
+            for provider_name in PROVIDER_CREDENTIAL_HINTS
+            if provider_name not in available
+        ]
+        if missing_credential_providers:
+            typer.echo("\nUnavailable providers requiring credentials:")
+            _echo_credential_hints(missing_credential_providers)
     else:
         logger.error("No providers available. Please set API keys:")
-        typer.echo("  - OPENAI_API_KEY for OpenAI Deep Research")
-        typer.echo("  - EDISON_API_KEY for Edison Scientific")
-        typer.echo("  - ASTA_API_KEY for Asta")
-        typer.echo("  - PERPLEXITY_API_KEY for Perplexity AI")
-        typer.echo("  - CONSENSUS_API_KEY for Consensus")
-        typer.echo("  - OPENSCIENTIST_API_KEY for OpenScientist")
-        typer.echo("  - ENABLE_MOCK_PROVIDER=true for Mock provider")
+        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
 
     if not show_params and not provider:
         typer.echo(

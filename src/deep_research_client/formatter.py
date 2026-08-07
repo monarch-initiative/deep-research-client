@@ -1,5 +1,6 @@
 """Output formatting utilities for research results."""
 
+from collections import Counter
 import yaml
 from typing import Dict, Any
 
@@ -47,10 +48,34 @@ class ResultFormatter:
         # Add provider configuration
         if result.provider_config:
             metadata["provider_config"] = result.provider_config
+            trajectory_id = result.provider_config.get("trajectory_id")
+            if trajectory_id:
+                metadata["trajectory_id"] = trajectory_id
+
+        # Add run provenance metadata (e.g. actual model(s) used, cost, turns)
+        if result.run_metadata:
+            metadata["run_metadata"] = result.run_metadata
 
         # Add citation count
         if result.citations:
             metadata["citation_count"] = len(result.citations)
+
+        if result.artifacts:
+            metadata["artifact_count"] = len(result.artifacts)
+            metadata["artifact_sources"] = dict(
+                Counter((artifact.source or "unknown") for artifact in result.artifacts)
+            )
+            metadata["artifacts"] = [
+                {
+                    "filename": artifact.filename,
+                    "path": artifact.path or artifact.filename,
+                    "media_type": artifact.media_type,
+                    "source": artifact.source,
+                    "data_storage_id": artifact.data_storage_id,
+                    "description": artifact.description,
+                }
+                for artifact in result.artifacts
+            ]
 
         # Convert metadata to YAML frontmatter
         frontmatter_yaml = yaml.dump(metadata, default_flow_style=False, sort_keys=False)
@@ -74,6 +99,18 @@ class ResultFormatter:
         parts.append("## Output")
         parts.append("")
         parts.append(result.markdown)
+
+        if result.artifacts:
+            parts.append("")
+            parts.append("## Artifacts")
+            parts.append("")
+            for artifact in result.artifacts:
+                artifact_path = artifact.path or artifact.filename
+                label = artifact.description or artifact.filename
+                if artifact.is_image:
+                    parts.append(f"![{label}]({artifact_path})")
+                else:
+                    parts.append(f"- [{label}]({artifact_path})")
 
         # Add citations section (unless separated)
         if result.citations and not separate_citations:

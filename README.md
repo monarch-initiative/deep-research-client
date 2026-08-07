@@ -315,6 +315,7 @@ params = ClaudeCodeParams(
     skip_permissions=False,        # default; True bypasses ALL checks (see below)
     add_dirs=["/data/papers"],     # optional --add-dir entries
     working_dir=None,              # optional cwd for the run
+    min_report_chars=200,          # fail loudly on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
 
@@ -330,6 +331,8 @@ result = client.research(
 - Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
 - **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
 - **Reading local documents:** the default toolset is web-only and omits the `Read` tool. To research over files you supply (e.g. via `add_dirs`), add `Read` to `allowed_tools` explicitly: `allowed_tools=["WebSearch", "WebFetch", "Read"]`. It is left out by default because filesystem read access is unnecessary for web research and is a mild information-disclosure surface for untrusted queries.
+- **Empty-report guard (behavior change):** a report shorter than `min_report_chars` (default 200) now raises instead of writing a well-formed file containing no research. Runs that previously returned a short answer successfully will now fail — set `min_report_chars=0` if you expect short answers. This is an emptiness check, not a quality check.
+- **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

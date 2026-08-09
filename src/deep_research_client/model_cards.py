@@ -31,6 +31,7 @@ class ModelCapability(str, Enum):
     CODE_INTERPRETATION = "code_interpretation"
     VISUAL_ANALYSIS = "visual_analysis"
     MULTI_LANGUAGE = "multi_language"
+    STRUCTURED_OUTPUT = "structured_output"
 
 
 class ModelCard(BaseModel):
@@ -307,13 +308,48 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         ]
     )
 
+    sonar_reasoning_pro = ModelCard(
+        name="sonar-reasoning-pro",
+        display_name="Perplexity Sonar Reasoning Pro",
+        description=(
+            "Advanced reasoning model with structured output support and JSON schema compliance. "
+            "Features enhanced reasoning capabilities with response format control for "
+            "structured data extraction and analysis."
+        ),
+        cost_level=CostLevel.HIGH,
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ModelCapability.WEB_SEARCH,
+            ModelCapability.REAL_TIME_DATA,
+            ModelCapability.CITATION_TRACKING,
+            ModelCapability.STRUCTURED_OUTPUT
+        ],
+        aliases=["reasoning-pro", "srp", "reasoning"],
+        context_window=200000,
+        pricing_notes="Higher cost due to advanced reasoning and structured output capabilities",
+        use_cases=[
+            "JSON schema compliance",
+            "Structured data extraction",
+            "Complex reasoning tasks",
+            "API response formatting",
+            "Data analysis workflows"
+        ],
+        limitations=[
+            "Requires reasoning_effort='high' for structured output",
+            "Higher cost than basic models",
+            "Slower response times due to reasoning overhead",
+            "response_format only works with this model"
+        ]
+    )
+
     return ProviderModelCards(
         provider_name="perplexity",
         default_model="sonar-deep-research",
         models={
             "sonar-deep-research": sonar_deep_research,
             "sonar-pro": sonar_pro,
-            "sonar": sonar
+            "sonar": sonar,
+            "sonar-reasoning-pro": sonar_reasoning_pro
         }
     )
 

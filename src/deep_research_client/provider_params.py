@@ -71,6 +71,14 @@ class PerplexityParams(BaseProviderParams):
         le=2.0,
         description="Temperature for response generation"
     )
+    response_format: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Response format specification for structured output. "
+            "Only supported with sonar-reasoning-pro model and reasoning_effort='high'. "
+            "Example: {'type': 'json_object'} or {'type': 'json_schema', 'json_schema': {...}}"
+        )
+    )
 
     @model_validator(mode='after')
     def sync_domain_filters(self):
@@ -81,6 +89,37 @@ class PerplexityParams(BaseProviderParams):
         """
         if self.allowed_domains and not self.search_domain_filter:
             self.search_domain_filter = self.allowed_domains
+        return self
+
+    @model_validator(mode='after')
+    def validate_response_format(self):
+        """Validate response_format compatibility with other parameters."""
+        if self.response_format:
+            # Require reasoning_effort="high" for response_format
+            if self.reasoning_effort != "high":
+                raise ValueError(
+                    "response_format requires reasoning_effort='high'. "
+                    "Set reasoning_effort='high' when using response_format."
+                )
+
+            # Validate response_format structure
+            if not isinstance(self.response_format, dict):
+                raise ValueError("response_format must be a dictionary")
+
+            if 'type' not in self.response_format:
+                raise ValueError("response_format must include a 'type' field")
+
+            format_type = self.response_format.get('type')
+            if format_type not in ['json_object', 'json_schema']:
+                raise ValueError(
+                    "response_format.type must be 'json_object' or 'json_schema'"
+                )
+
+            if format_type == 'json_schema' and 'json_schema' not in self.response_format:
+                raise ValueError(
+                    "response_format with type 'json_schema' must include 'json_schema' field"
+                )
+
         return self
 
 

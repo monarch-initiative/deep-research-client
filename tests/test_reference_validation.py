@@ -1,0 +1,1990 @@
+"""Tests for reference validation.
+
+Offline tests exercise the real ``linkml-reference-validator`` code paths without
+network access in two ways: ``file:`` references, which it resolves from the
+local filesystem, and pre-seeded entries in its on-disk reference cache, which
+stand in for PubMed records. Tests that need a live bibliographic API to assert
+that an identifier genuinely does not exist are marked ``integration``.
+"""
+
+import json
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from deep_research_client.cli import app
+from deep_research_client.models import ResearchResult
+from deep_research_client.processing import ResultFormatter
+from deep_research_client.validation import (
+    FoundReference,
+    QuotedClaim,
+    ReferenceCheck,
+    ReferenceStatus,
+    ReferenceValidationReport,
+    ReferenceValidator,
+    SupportingTextCheck,
+    extract_evidence,
+    extract_quoted_claims,
+    extract_references,
+    find_reference_ids,
+    strip_validation_section,
+)
+
+PAPER_TITLE = "Widget Coloration in Wild Populations"
+PAPER_BODY = (
+    "We surveyed 1200 widgets across twelve sites. Widgets are blue in 90% of "
+    "observed cases, and green in the remainder."
+)
+CACHED_PMID = "PMID:12345678"
+SECOND_CACHED_PMID = "PMID:12345679"
+
+
+@pytest.fixture
+def paper(tmp_path: Path) -> Path:
+    """A local file standing in for a fetchable reference."""
+    path = tmp_path / "widget_paper.md"
+    path.write_text(f"# {PAPER_TITLE}\n\n{PAPER_BODY}\n", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def paper_ref(paper: Path) -> str:
+    """The reference identifier for the local paper."""
+    return f"file:{paper}"
+
+
+@pytest.fixture
+def cache_dir(tmp_path: Path) -> Path:
+    """An isolated reference cache directory."""
+    path = tmp_path / "references_cache"
+    path.mkdir()
+    return path
+
+
+@pytest.fixture
+def validator(cache_dir: Path) -> ReferenceValidator:
+    """A validator with an isolated reference cache."""
+    return ReferenceValidator(cache_dir=cache_dir)
+
+
+@pytest.fixture
+def seeded_cache(cache_dir: Path) -> Path:
+    """A reference cache pre-populated with one PubMed record.
+
+    Seeding the cache lets the full pipeline - extraction, resolution, quote
+    checking - run against a known PMID without contacting NCBI.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    for pmid, title in ((CACHED_PMID, PAPER_TITLE), (SECOND_CACHED_PMID, "A Second Study")):
+        fetcher.get_cache_path(pmid).write_text(
+            "---\n"
+            f"reference_id: {pmid}\n"
+            f"title: {title}\n"
+            "year: '2019'\n"
+            "journal: Journal of Widgets\n"
+            "content_type: abstract_only\n"
+            "full_text_attempted: true\n"
+            "---\n\n"
+            f"# {title}\n\n"
+            "## Content\n\n"
+            f"{PAPER_BODY}\n",
+            encoding="utf-8",
+        )
+    return cache_dir
+
+
+def _reference(reference_id: str, count: int = 1) -> FoundReference:
+    """Build a FoundReference for an identifier the extractor does not scan for."""
+    return FoundReference(normalized_id=reference_id, raw=reference_id, count=count)
+
+
+def _ncbi_email() -> str:
+    """Contact address for live NCBI calls, overridable per contributor."""
+    import os
+
+    return os.environ.get("NCBI_EMAIL", "deep-research-client@example.org")
+
+
+# ---------------------------------------------------------------------------
+# Extraction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Shown in PMID:7913883.", ["PMID:7913883"]),
+        ("Shown in PMID: 7913883.", ["PMID:7913883"]),
+        ("See doi:10.1038/ng1234 for details.", ["DOI:10.1038/ng1234"]),
+        ("See https://doi.org/10.1038/ng1234.", ["DOI:10.1038/ng1234"]),
+        ("See https://pubmed.ncbi.nlm.nih.gov/12345678", ["PMID:12345678"]),
+        ("(DOI:10.1038/ng1234)", ["DOI:10.1038/ng1234"]),
+        ("No identifiers at all.", []),
+        ("PMID:123", []),  # too short to be a PMID
+        # A longer number must not be truncated into a plausible-looking PMID
+        ("PMID:1234567890", []),
+    ],
+)
+def test_find_reference_ids(text: str, expected: list[str]) -> None:
+    assert [r.normalized_id for r in find_reference_ids(text)] == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "doi:10.1038/ng1234",
+        "**doi:10.1038/ng1234**",
+        "*doi:10.1038/ng1234*",
+        "_doi:10.1038/ng1234_",
+        "`doi:10.1038/ng1234`",
+        "~~doi:10.1038/ng1234~~",
+        "See (doi:10.1038/ng1234).",
+        "[doi:10.1038/ng1234]",
+        'He wrote "doi:10.1038/ng1234".',
+        "| doi:10.1038/ng1234 | Nature |",
+        "|doi:10.1038/ng1234|Nature|",
+        r"\|doi:10.1038/ng1234\|",
+        "<https://doi.org/10.1038/ng1234>",
+        "**https://doi.org/10.1038/ng1234**",
+    ],
+)
+def test_doi_survives_markdown_wrapping(text: str) -> None:
+    """Markup must not be glued onto a DOI, which would read as a fabrication."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == ["DOI:10.1038/ng1234"]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Publisher landing pages, which is how deep research tools most often
+        # render a DOI. Observed in real claude_code and falcon reports.
+        ("https://www.pnas.org/doi/10.1073/pnas.232568699", "DOI:10.1073/pnas.232568699"),
+        (
+            "https://onlinelibrary.wiley.com/doi/10.1002/ajmg.a.61787",
+            "DOI:10.1002/ajmg.a.61787",
+        ),
+        (
+            "https://www.tandfonline.com/doi/full/10.1080/1744666X.2025.2612589",
+            "DOI:10.1080/1744666X.2025.2612589",
+        ),
+        ("https://dx.doi.org/10.1038/ng1234", "DOI:10.1038/ng1234"),
+        ("[Paper](https://www.pnas.org/doi/abs/10.1073/pnas.232568699)", "DOI:10.1073/pnas.232568699"),
+    ],
+)
+def test_publisher_doi_urls_are_extracted(text: str, expected: str) -> None:
+    """A DOI rendered as a publisher URL must not be silently left unchecked."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == [expected]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Markdown-escaped underscore, as falcon writes book-chapter DOIs
+        (
+            r"https://doi.org/10.1007/978-3-030-80614-9\_8",
+            "DOI:10.1007/978-3-030-80614-9_8",
+        ),
+        (r"doi:10.1007/s00439-021-02282\-3", "DOI:10.1007/s00439-021-02282-3"),
+    ],
+)
+def test_markdown_escapes_inside_a_doi_are_undone(text: str, expected: str) -> None:
+    """An escaped character must not make a real DOI look fabricated."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == [expected]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        "https://www.ncbi.nlm.nih.gov/pubmed/12345678",
+        "http://ncbi.nlm.nih.gov/pubmed/12345678",
+    ],
+)
+def test_both_pubmed_url_styles_are_extracted(url: str) -> None:
+    """Providers still emit the older www.ncbi.nlm.nih.gov/pubmed path."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == ["PMID:12345678"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "PMC11000121",
+        "(PMC11000121)",
+        "pmc11000121",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/",
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11000121/",
+    ],
+)
+def test_pmc_accessions_are_extracted(text: str) -> None:
+    """Long-form reports cite PMC as heavily as PMID."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == ["PMC:PMC11000121"]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Deposited under GSE68086.", ["GEO:GSE68086"]),
+        ("(GSE68086)", ["GEO:GSE68086"]),
+        ("GEO:GSE68086", ["GEO:GSE68086"]),
+        ("gse68086", ["GEO:GSE68086"]),
+        ("GEO:GDS1234", ["GEO:GDS1234"]),
+        (
+            "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68086",
+            ["GEO:GSE68086"],
+        ),
+        (
+            "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GDS1234",
+            ["GEO:GDS1234"],
+        ),
+        # Must not fire on a prefix without an accession number
+        ("GSEQ or GSE without digits", []),
+        ("Nothing here.", []),
+    ],
+)
+def test_geo_accessions_are_extracted(text: str, expected: list[str]) -> None:
+    """Reports cite datasets as confidently as papers, inventions included."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # GDS15 and GDS30 are the Geriatric Depression Scale, which appears
+        # constantly in clinical literature. A bare GDS is too ambiguous to take.
+        "scored with the GDS15 instrument",
+        "GDS30 was administered at baseline",
+        "Reanalysed GDS1234 throughout.",
+    ],
+)
+def test_bare_gds_is_not_taken_as_a_geo_accession(text: str) -> None:
+    assert find_reference_ids(text) == []
+
+
+def test_geo_prefix_alternation_is_load_bearing() -> None:
+    """Guards against the bare branch quietly matching every context form.
+
+    Two earlier cases passed with the whole prefix alternation deleted, because
+    a bare match after ':' or '=' looks identical.
+    """
+    assert [r.normalized_id for r in find_reference_ids("GEO:GDS15")] == ["GEO:GDS15"]
+    assert find_reference_ids("GDS15") == []
+
+
+def test_bioproject_accessions_are_deliberately_not_extracted() -> None:
+    """BIOPROJECT and BIOSAMPLE are registered upstream but do not work.
+
+    Their esummary responses fail to parse, so real accessions resolve to
+    nothing. Extracting them would report every such citation as a possible
+    fabrication, which is worse than not checking them.
+    """
+    found = find_reference_ids("See PRJNA398089 and SAMN02981208 for the raw data.")
+
+    assert found == []
+
+
+def test_pmc_accession_is_not_confused_with_a_pmid() -> None:
+    """A PMC URL must not also register as a PubMed URL, or vice versa."""
+    found = find_reference_ids(
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/ and "
+        "https://pubmed.ncbi.nlm.nih.gov/37716433/"
+    )
+
+    assert sorted(r.normalized_id for r in found) == ["PMC:PMC11000121", "PMID:37716433"]
+
+
+def test_empty_record_is_not_counted_as_resolved(cache_dir: Path) -> None:
+    """A search-backed source answers a miss with an empty record, not None.
+
+    Without this such a record would be reported as verified, which is the exact
+    failure this feature exists to prevent.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.9999/empty").write_text(
+        "---\nreference_id: DOI:10.9999/empty\ncontent_type: unknown\n"
+        "full_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.9999/empty")]
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+def test_unreachable_pmc_service_never_accuses(cache_dir: Path, monkeypatch) -> None:
+    """A service we could not reach must not produce a fabrication verdict.
+
+    Points the converter at a host in the reserved .invalid TLD, so a real
+    connection genuinely fails - and fails fast, on DNS - rather than stubbing
+    out our own logic.
+    """
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("PMC:PMC11000121")]
+    )
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.UNVERIFIABLE
+    assert "Could not reach" in (check.message or "")
+    assert not report.has_confabulations
+
+
+@pytest.mark.parametrize(
+    "records,expected",
+    [
+        # A resolved accession, as the converter returns it
+        (
+            [
+                {
+                    "doi": "10.1186/s13019-024-02793-w",
+                    "pmcid": "PMC11157853",
+                    "pmid": 38849906,
+                    "requested-id": "PMC11157853",
+                }
+            ],
+            {"PMC:PMC11157853": "PMID:38849906"},
+        ),
+        # An accession NCBI states does not exist - the only path that produces
+        # a fabrication verdict
+        (
+            [
+                {
+                    "pmcid": "PMC99999999",
+                    "requested-id": "PMC99999999",
+                    "status": "error",
+                    "errmsg": "Identifier not found in PMC",
+                }
+            ],
+            {"PMC:PMC99999999": None},
+        ),
+        # A record with a DOI but no PMID falls back to the DOI
+        ([{"pmcid": "PMC1", "doi": "10.1/x"}], {"PMC:PMC1": "DOI:10.1/x"}),
+        # A record with neither is not an answer either way
+        ([{"pmcid": "PMC2"}], {}),
+        ([], {}),
+    ],
+)
+def test_idconv_record_parsing(records: list[dict], expected: dict) -> None:
+    """Captured converter payloads, parsed offline."""
+    from deep_research_client.validation.validator import _parse_idconv_records
+
+    assert _parse_idconv_records(records) == expected
+
+
+def test_pmc_accessions_are_batched_under_the_ncbi_limit() -> None:
+    """NCBI caps the converter at 200 ids; a bigger report must not fail whole."""
+    from deep_research_client.validation.validator import PMC_IDCONV_BATCH_SIZE
+
+    assert PMC_IDCONV_BATCH_SIZE <= 200
+
+
+def test_skip_prefix_pmc_makes_no_network_call(cache_dir: Path, monkeypatch) -> None:
+    """--skip-prefix PMC means "do not look these up", including the alias call."""
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["PMC"])
+
+    report = validator.validate_references([_reference("PMC:PMC11000121")])
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.UNVERIFIABLE
+    # The skip message, not the unreachable-service one: no request was made.
+    assert "configured to be skipped" in (check.message or "")
+
+
+def test_skip_prefix_pmc_does_not_claim_an_outage(cache_dir: Path, monkeypatch) -> None:
+    """A skipped prefix must not make its quotes report a service failure.
+
+    The report would otherwise say both "configured to be skipped" and that a
+    network service went down, one of which is untrue.
+    """
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["PMC"])
+
+    report = validator.validate_references(
+        [_reference("PMC:PMC11000121")],
+        [QuotedClaim(quote="Some quoted text of ample length", reference_id="PMC:PMC11000121")],
+    )
+
+    assert report.quote_checks[0].message == (
+        "Reference was skipped, so the quote was not checked"
+    )
+
+
+@pytest.mark.parametrize(
+    "count,size,expected_lengths",
+    [(7, 3, [3, 3, 1]), (6, 3, [3, 3]), (2, 5, [2]), (0, 5, []), (200, 200, [200])],
+)
+def test_batching_covers_every_item(count: int, size: int, expected_lengths: list[int]) -> None:
+    """The chunking behind the NCBI 200-id limit, as the validator imports it."""
+    from deep_research_client.validation.validator import batched
+
+    items = [f"PMC{i}" for i in range(count)]
+    chunks = [list(chunk) for chunk in batched(items, size)]
+
+    assert [len(c) for c in chunks] == expected_lengths
+    assert [item for chunk in chunks for item in chunk] == items
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://onlinelibrary.wiley.com/doi/10.1002/ajmg.a.61787?af=R", "DOI:10.1002/ajmg.a.61787"),
+        ("https://doi.org/10.1038/ng1234#abstract", "DOI:10.1038/ng1234"),
+        (
+            "https://www.pnas.org/doi/10.1073/pnas.232568699?utm_source=x",
+            "DOI:10.1073/pnas.232568699",
+        ),
+    ],
+)
+def test_doi_url_query_and_fragment_are_dropped(url: str, expected: str) -> None:
+    """Tracking parameters belong to the link, not to the identifier."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5",
+            ["DOI:10.1186/s12964-023-01120-5"],
+        ),
+        (
+            "https://www.frontiersin.org/journals/pediatrics/articles/"
+            "10.3389/fped.2024.1276215/full",
+            ["DOI:10.3389/fped.2024.1276215"],
+        ),
+        (
+            "https://www.tandfonline.com/doi/book/10.1201/9781003080660",
+            ["DOI:10.1201/9781003080660"],
+        ),
+        # nature.com article ids are not DOIs, and the /articles/ prefix must
+        # not tempt the pattern into treating them as such
+        ("https://www.nature.com/articles/371252a0", []),
+        ("https://www.nature.com/articles/s41436-021-01132-x", []),
+    ],
+)
+def test_publisher_article_paths_are_extracted(url: str, expected: list[str]) -> None:
+    """All four URL shapes taken from the live reports."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5/tables/1",
+            "DOI:10.1186/s12964-023-01120-5",
+        ),
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5/figures/2",
+            "DOI:10.1186/s12964-023-01120-5",
+        ),
+        (
+            "https://www.frontiersin.org/journals/x/articles/10.3389/fped.2024.1276215/full/pdf",
+            "DOI:10.3389/fped.2024.1276215",
+        ),
+        (
+            "https://www.tandfonline.com/doi/citedby/10.1080/1744666X.2025.2612589",
+            "DOI:10.1080/1744666X.2025.2612589",
+        ),
+        # The query-parameter form, which no path-based branch can reach
+        (
+            "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0012345",
+            "DOI:10.1371/journal.pone.0012345",
+        ),
+    ],
+)
+def test_publisher_url_furniture_is_stripped(url: str, expected: str) -> None:
+    """Figure, table and doubled view segments belong to the link.
+
+    Enumerating each publisher's tail vocabulary did not hold, so the shape is
+    matched instead; these are the forms that defeated the allow-list.
+    """
+    assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
+
+
+def test_doi_form_keeps_its_own_path_segments() -> None:
+    """The furniture rule applies to URLs only, never to a written DOI."""
+    assert [r.normalized_id for r in find_reference_ids("doi:10.1234/abc/pdf")] == [
+        "DOI:10.1234/abc/pdf"
+    ]
+
+
+def test_doi_containing_parentheses_is_preserved() -> None:
+    """Real DOIs contain parentheses, so they must survive trailing-punctuation stripping."""
+    found = find_reference_ids("Reported in doi:10.1016/0092-8674(94)90302-6 originally.")
+
+    assert [r.normalized_id for r in found] == ["DOI:10.1016/0092-8674(94)90302-6"]
+
+
+def test_find_reference_ids_counts_repeats() -> None:
+    refs = find_reference_ids("PMID:7913883 and again PMID:7913883 and PMID:12345678")
+    counts = {r.normalized_id: r.count for r in refs}
+    assert counts == {"PMID:7913883": 2, "PMID:12345678": 1}
+
+
+def test_extract_references_includes_citation_list() -> None:
+    refs = extract_references(
+        "The body cites PMID:7913883.",
+        citations=["Some Author (1994). A paper. PMID:12345678"],
+    )
+    assert [r.normalized_id for r in refs] == ["PMID:7913883", "PMID:12345678"]
+
+
+@pytest.mark.parametrize(
+    "markdown,expected",
+    [
+        (
+            'They report "widgets are blue in 90% of cases" (PMID:7913883).',
+            [("widgets are blue in 90% of cases", "PMID:7913883")],
+        ),
+        (
+            'They report "widgets are blue in 90% of cases" [DOI:10.1038/ng1234]',
+            [("widgets are blue in 90% of cases", "DOI:10.1038/ng1234")],
+        ),
+        # Too short to be treated as an attributed quotation
+        ('A single "gene" (PMID:7913883).', []),
+        # A quotation with no attached citation is not checkable
+        ('"an unattributed quotation of ample length here"', []),
+    ],
+)
+def test_extract_quoted_claims(markdown: str, expected: list[tuple[str, str]]) -> None:
+    claims = extract_quoted_claims(markdown)
+    assert [(c.quote, c.reference_id) for c in claims] == expected
+
+
+def test_quoted_claim_keeps_a_doi_containing_parentheses() -> None:
+    """The quote scan must agree with the body scan about the identifier.
+
+    A citation group that stopped at the first ')' produced a truncated DOI, so
+    the quote was orphaned from the reference the body scan had found.
+    """
+    text = 'They said "a suitably long quotation here" (DOI:10.1016/0092-8674(94)90302-6).'
+
+    claims = extract_quoted_claims(text)
+
+    assert [c.reference_id for c in claims] == ["DOI:10.1016/0092-8674(94)90302-6"]
+    assert claims[0].reference_id == find_reference_ids(text)[0].normalized_id
+
+
+@pytest.mark.parametrize(
+    "markdown,expected",
+    [
+        (
+            'They said "a suitably long quotation here" '
+            "([PMID:12345678](https://pubmed.ncbi.nlm.nih.gov/12345678)).",
+            "PMID:12345678",
+        ),
+        (
+            'They said "a suitably long quotation here" '
+            "([PMC11000121](https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/)).",
+            "PMC:PMC11000121",
+        ),
+        (
+            'They said "a suitably long quotation here" [see [PMID:12345678]]',
+            "PMID:12345678",
+        ),
+    ],
+)
+def test_quoted_claims_survive_markdown_link_citations(markdown: str, expected: str) -> None:
+    """Providers cite through links at least as often as in plain text."""
+    claims = extract_quoted_claims(markdown)
+
+    assert [c.reference_id for c in claims] == [expected]
+
+
+def test_quoted_claims_do_not_absorb_the_next_citation() -> None:
+    """Widening the citation group must not let one quote swallow another's."""
+    claims = extract_quoted_claims(
+        'A "first suitably long quotation" (PMID:1111111). '
+        'And "second suitably long quotation" (PMID:2222222).'
+    )
+
+    assert [c.reference_id for c in claims] == ["PMID:1111111", "PMID:2222222"]
+
+
+def test_extract_evidence_combines_both() -> None:
+    evidence = extract_evidence(
+        'The authors state "widgets are blue in 90% of cases" (PMID:7913883). '
+        "See also PMID:12345678."
+    )
+    assert [r.normalized_id for r in evidence.references] == ["PMID:7913883", "PMID:12345678"]
+    assert len(evidence.quoted_claims) == 1
+
+
+def test_evaluation_scorer_shares_extraction() -> None:
+    """The eval framework's citation extractor is backed by the same patterns."""
+    from deep_research_client.evaluation.scorers import extract_citations_from_markdown
+
+    citations = extract_citations_from_markdown("Shown (PMID:7913883) and (DOI:10.1038/ng1234).")
+
+    assert [c.normalized_id for c in citations] == ["PMID:7913883", "DOI:10.1038/ng1234"]
+
+
+# ---------------------------------------------------------------------------
+# Resolving references
+# ---------------------------------------------------------------------------
+
+
+def test_resolvable_reference_is_verified(validator: ReferenceValidator, paper_ref: str) -> None:
+    report = validator.validate_references([_reference(paper_ref)])
+
+    assert report.total_references == 1
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.title == PAPER_TITLE
+    assert report.confabulation_rate == 0.0
+    assert not report.has_confabulations
+
+
+def test_unresolvable_reference_is_flagged(
+    validator: ReferenceValidator, tmp_path: Path
+) -> None:
+    report = validator.validate_references([_reference(f"file:{tmp_path / 'absent.md'}")])
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+    assert report.not_found_count == 1
+    assert report.confabulation_rate == 1.0
+    assert report.has_confabulations
+
+
+def test_truncated_doi_is_not_called_a_fabrication() -> None:
+    """A DOI the report itself cut short must not be reported as invented.
+
+    Observed in a real Edison report, which cited
+    https://doi.org/10.1016/0092-8674(94)90302-6 correctly in its body and
+    https://doi.org/10.1016/0092-8674(94 in its reference list.
+    """
+    from deep_research_client.validation.validator import _reclassify_truncated_dois
+
+    checks = [
+        ReferenceCheck(
+            reference_id="DOI:10.1016/0092-8674(94)90302-6",
+            status=ReferenceStatus.VERIFIED,
+        ),
+        ReferenceCheck(
+            reference_id="DOI:10.1016/0092-8674(94", status=ReferenceStatus.NOT_FOUND
+        ),
+    ]
+
+    report = ReferenceValidationReport(references=_reclassify_truncated_dois(checks))
+
+    assert report.checked_references[1].status == ReferenceStatus.UNVERIFIABLE
+    assert "truncated copy" in (report.checked_references[1].message or "")
+    assert report.confabulated_references == []
+    assert not report.has_confabulations
+
+
+@pytest.mark.parametrize(
+    "unresolved_id",
+    [
+        # Not a prefix of the resolved DOI
+        "DOI:10.9999/invented.entirely",
+        # A PMID is never demoted: PMIDs are opaque numerics, so one being a
+        # prefix of another says nothing about them being the same record.
+        "PMID:1234567",
+    ],
+)
+def test_truncation_rule_leaves_other_failures_alone(unresolved_id: str) -> None:
+    from deep_research_client.validation.validator import _reclassify_truncated_dois
+
+    checks = [
+        ReferenceCheck(reference_id="DOI:10.1234/abcdef", status=ReferenceStatus.VERIFIED),
+        ReferenceCheck(reference_id="PMID:12345678", status=ReferenceStatus.VERIFIED),
+        ReferenceCheck(reference_id=unresolved_id, status=ReferenceStatus.NOT_FOUND),
+    ]
+
+    result = _reclassify_truncated_dois(checks)
+
+    assert result[2].status == ReferenceStatus.NOT_FOUND
+
+
+def test_unrelated_unresolved_reference_is_still_flagged(
+    cache_dir: Path, tmp_path: Path
+) -> None:
+    """The truncation rule must not swallow a genuinely unresolvable reference."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A Paper\n\nContent.\n", encoding="utf-8")
+
+    validator = ReferenceValidator(cache_dir=cache_dir)
+    report = validator.validate_references(
+        [_reference(f"file:{paper}"), _reference(f"file:{tmp_path / 'absent.md'}")]
+    )
+
+    assert report.not_found_count == 1
+    assert report.has_confabulations
+
+
+def test_unknown_prefix_is_unverifiable(validator: ReferenceValidator) -> None:
+    report = validator.validate_references([_reference("WIDGETDB:0001")])
+
+    assert report.checked_references[0].status == ReferenceStatus.UNVERIFIABLE
+    assert report.unverifiable_count == 1
+    assert not report.has_confabulations
+
+
+def test_skip_prefixes_are_unverifiable(cache_dir: Path, paper_ref: str) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["file"])
+
+    report = validator.validate_references([_reference(paper_ref)])
+
+    assert report.checked_references[0].status == ReferenceStatus.UNVERIFIABLE
+    assert not report.has_confabulations
+
+
+def test_occurrence_count_is_carried_through(
+    validator: ReferenceValidator, paper_ref: str
+) -> None:
+    report = validator.validate_references([_reference(paper_ref, count=4)])
+
+    assert report.checked_references[0].occurrences == 4
+
+
+# ---------------------------------------------------------------------------
+# Checking quoted claims
+# ---------------------------------------------------------------------------
+
+
+def test_supported_quote_passes(validator: ReferenceValidator, paper_ref: str) -> None:
+    report = validator.validate_references(
+        [_reference(paper_ref)],
+        [QuotedClaim(quote="Widgets are blue in 90% of observed cases", reference_id=paper_ref)],
+    )
+
+    assert report.quotes_checked == 1
+    assert report.quotes_valid_count == 1
+    assert not report.unsupported_quotes
+
+
+def test_fabricated_quote_is_flagged(validator: ReferenceValidator, paper_ref: str) -> None:
+    report = validator.validate_references(
+        [_reference(paper_ref)],
+        [QuotedClaim(quote="Widgets are magenta in every case", reference_id=paper_ref)],
+    )
+
+    assert report.quotes_checked == 1
+    assert report.quotes_valid_count == 0
+    assert report.unsupported_quotes[0].reference_id == paper_ref
+    assert report.has_confabulations
+
+
+def test_quote_for_unresolved_reference_is_not_called_unsupported(
+    validator: ReferenceValidator, tmp_path: Path
+) -> None:
+    """An unresolvable reference makes its quote uncheckable, not fabricated."""
+    missing_ref = f"file:{tmp_path / 'absent.md'}"
+
+    report = validator.validate_references(
+        [_reference(missing_ref)],
+        [QuotedClaim(quote="Widgets are blue", reference_id=missing_ref)],
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+    assert report.unsupported_quotes == []
+    assert report.unchecked_quotes[0].was_checkable is False
+    assert "did not resolve" in (report.unchecked_quotes[0].message or "")
+    assert report.quotes_checked == 0
+
+
+def test_quote_against_reference_without_content_is_uncheckable(
+    validator: ReferenceValidator, tmp_path: Path
+) -> None:
+    """A resolved record with no text cannot contradict a quote."""
+    empty = tmp_path / "empty_paper.md"
+    empty.write_text("", encoding="utf-8")
+    empty_ref = f"file:{empty}"
+
+    report = validator.validate_references(
+        [_reference(empty_ref)],
+        [QuotedClaim(quote="Widgets are blue in most cases", reference_id=empty_ref)],
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+    assert report.unsupported_quotes == []
+    assert "no abstract or full text" in (report.unchecked_quotes[0].message or "")
+    assert not report.has_confabulations
+
+
+def test_quotes_for_skipped_prefixes_are_recorded_not_dropped(
+    cache_dir: Path, paper_ref: str
+) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["file"])
+
+    report = validator.validate_references(
+        [_reference(paper_ref)],
+        [QuotedClaim(quote="Widgets are magenta", reference_id=paper_ref)],
+    )
+
+    assert report.quotes_checked == 0
+    assert len(report.unchecked_quotes) == 1
+    assert not report.has_confabulations
+
+
+def test_unmatched_quote_reference_does_not_blame_a_limit(
+    validator: ReferenceValidator, paper_ref: str
+) -> None:
+    """With no limit set, the message must not claim one was reached."""
+    report = validator.validate_references(
+        [_reference(paper_ref)],
+        [QuotedClaim(quote="Widgets are blue", reference_id="PMID:9999999")],
+    )
+
+    assert report.unchecked_quotes[0].message == (
+        "Reference was not among those extracted from the report body"
+    )
+
+
+def test_quotes_for_truncated_references_are_skipped(
+    tmp_path: Path, cache_dir: Path, paper_ref: str
+) -> None:
+    second = tmp_path / "second_paper.md"
+    second.write_text("# Second Paper\n\nUnrelated content.\n", encoding="utf-8")
+    second_ref = f"file:{second}"
+    validator = ReferenceValidator(cache_dir=cache_dir, max_references=1)
+
+    report = validator.validate_references(
+        [_reference(paper_ref), _reference(second_ref)],
+        [
+            QuotedClaim(quote="Widgets are blue", reference_id=paper_ref),
+            QuotedClaim(quote="Unrelated content", reference_id=second_ref),
+        ],
+    )
+
+    assert report.truncated is True
+    assert report.total_references == 1
+    assert report.quotes_checked == 1
+    # The dropped reference's quote is still accounted for, just not checked.
+    assert len(report.quote_checks) == 2
+    assert [q.reference_id for q in report.unchecked_quotes] == [second_ref]
+    assert "reference limit was reached" in (report.unchecked_quotes[0].message or "")
+    assert "stopped early" in report.to_markdown()
+
+
+# ---------------------------------------------------------------------------
+# End-to-end validation of report text
+# ---------------------------------------------------------------------------
+
+
+def test_validate_markdown_end_to_end(seeded_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'The authors report that "Widgets are blue in 90% of observed cases" ({CACHED_PMID}), '
+        f'though others claim "widgets are uniformly magenta year round" ({CACHED_PMID}).'
+    )
+
+    assert report.total_references == 1
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+    assert report.checked_references[0].journal == "Journal of Widgets"
+    assert report.quotes_checked == 2
+    assert report.quotes_valid_count == 1
+    assert report.unsupported_quotes[0].quote == "widgets are uniformly magenta year round"
+
+
+def test_quoting_the_title_is_not_an_unsupported_quote(seeded_cache: Path) -> None:
+    """A title does not appear in the abstract, so it needs its own check."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'They cite "{PAPER_TITLE}" ({CACHED_PMID}).'
+    )
+
+    assert report.quotes_valid_count == 1
+    assert report.unsupported_quotes == []
+    assert "title" in (report.quote_checks[0].message or "")
+
+
+def test_quoting_a_title_without_its_subtitle_is_accepted(seeded_cache: Path) -> None:
+    """Citing "Long Title" for "Long Title: a case series" is standard practice."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+    prefix = PAPER_TITLE[: PAPER_TITLE.rindex(" ")]
+
+    report = validator.validate_markdown(f'They cite "{prefix}" ({CACHED_PMID}).')
+
+    assert len(prefix) >= 20
+    assert report.quotes_valid_count == 1
+
+
+def test_title_only_record_can_still_confirm_a_title_quote(cache_dir: Path) -> None:
+    """A record with a title and no abstract must not block the title check.
+
+    Book chapters, conference items and many DataCite DOIs resolve this way. The
+    evidence to confirm the quote is sitting in the title.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.1/title-only").write_text(
+        "---\nreference_id: DOI:10.1/title-only\n"
+        f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.1/title-only")],
+        [QuotedClaim(quote=PAPER_TITLE, reference_id="DOI:10.1/title-only")],
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+    assert report.quotes_valid_count == 1
+    assert "title" in (report.quote_checks[0].message or "")
+
+
+def test_title_only_record_cannot_contradict_a_quote(cache_dir: Path) -> None:
+    """The same record must never be enough to call a quote unsupported."""
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.1/title-only").write_text(
+        "---\nreference_id: DOI:10.1/title-only\n"
+        f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.1/title-only")],
+        [
+            QuotedClaim(
+                quote="Something the abstract might have said",
+                reference_id="DOI:10.1/title-only",
+            )
+        ],
+    )
+
+    assert report.unsupported_quotes == []
+    assert len(report.unchecked_quotes) == 1
+    assert not report.has_confabulations
+
+
+def test_text_that_merely_resembles_the_title_is_still_flagged(seeded_cache: Path) -> None:
+    """The title rule matches from the start, so a paraphrase does not slip by."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'They cite "Coloration of Widgets in Wild Populations" ({CACHED_PMID}).'
+    )
+
+    assert report.quotes_valid_count == 0
+    assert len(report.unsupported_quotes) == 1
+
+
+def test_full_text_is_not_fetched_when_no_quote_will_be_checked(
+    seeded_cache: Path, caplog
+) -> None:
+    """--full-text --no-check-quotes would pay 23x for nothing."""
+    import logging
+
+    validator = ReferenceValidator(cache_dir=seeded_cache, fetch_full_text=True)
+
+    with caplog.at_level(logging.INFO, logger="deep_research_client.validation.validator"):
+        report = validator.validate_markdown(
+            f"Established previously ({CACHED_PMID}).", check_quotes=False
+        )
+
+    assert report.total_references == 1
+    assert "skipping full-text retrieval" in caplog.text
+
+
+def test_check_quotes_can_be_disabled(seeded_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'They claim "widgets are uniformly magenta year round" ({CACHED_PMID}).',
+        check_quotes=False,
+    )
+
+    assert report.quotes_checked == 0
+    assert report.total_references == 1
+    assert not report.has_confabulations
+
+
+def test_validate_result_uses_citations(seeded_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+    result = ResearchResult(
+        markdown="A report body with no inline identifiers.",
+        citations=[f"Widget authors (2019). {PAPER_TITLE}. {CACHED_PMID}"],
+        provider="mock",
+        query="widgets",
+    )
+
+    report = validator.validate_result(result)
+
+    assert report.total_references == 1
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+
+
+def test_report_with_no_references(validator: ReferenceValidator) -> None:
+    report = validator.validate_markdown("A report that cites nothing at all.")
+
+    assert report.total_references == 0
+    assert report.confabulation_rate == 0.0
+    assert "No PMID or DOI references" in report.to_markdown()
+
+
+# ---------------------------------------------------------------------------
+# Generated data model
+# ---------------------------------------------------------------------------
+
+
+def test_datamodel_matches_linkml_schema() -> None:
+    """datamodel.py is generated; regenerate it with `just gen-datamodel`.
+
+    Guards against the checked-in Pydantic model drifting from the LinkML
+    schema that is its source of truth.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    schema = Path("src/deep_research_client/validation/reference_validation.yaml")
+    generated = repo_root / "src/deep_research_client/validation/datamodel.py"
+
+    # Resolve the generator next to the running interpreter so the comparison
+    # uses the linkml version this environment pins, not whatever is on PATH.
+    gen_pydantic = shutil.which("gen-pydantic", path=str(Path(sys.executable).parent))
+    if not gen_pydantic:
+        pytest.skip("linkml is not installed; install the dev dependency group to check drift")
+
+    completed = subprocess.run(
+        [gen_pydantic, str(schema)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, f"gen-pydantic failed:\n{completed.stderr}"
+
+    assert completed.stdout == generated.read_text(encoding="utf-8"), (
+        "datamodel.py does not match reference_validation.yaml. Either the schema "
+        "changed or linkml was upgraded; run `just gen-datamodel` and review the diff."
+    )
+
+
+def test_report_serialises_with_exclude_none() -> None:
+    """The inherited serializer nulls empty lists; the report must survive that."""
+    empty = ReferenceValidationReport()
+    assert empty.model_dump(exclude_none=True) == {"truncated": False}
+
+    partial = ReferenceValidationReport(
+        references=[ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED)]
+    )
+    dumped = partial.model_dump(exclude_none=True)
+    assert dumped["references"][0]["reference_id"] == "PMID:1"
+    assert "supporting_text" not in dumped
+
+
+def test_status_is_stored_as_a_string() -> None:
+    """Pins the use_enum_values behaviour inherited from the generated base."""
+    check = ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED)
+
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.status == "VERIFIED"
+    assert not isinstance(check.status, ReferenceStatus)
+
+
+@pytest.mark.parametrize(
+    "score,expected", [(0.5, 0.5), (1.0000000002, 1.0), (-0.1, 0.0), (42.0, 1.0)]
+)
+def test_similarity_score_is_clamped(score: float, expected: float) -> None:
+    """A foreign float outside 0-1 must not invalidate a whole report."""
+    from deep_research_client.validation.validator import _clamp_similarity
+
+    assert _clamp_similarity(score) == expected
+    assert (
+        SupportingTextCheck(
+            reference_id="PMID:1",
+            quote="x",
+            is_valid=False,
+            similarity_score=_clamp_similarity(score),
+        ).similarity_score
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        ("# Report\n\nBody.\n", "# Report\n\nBody.\n"),
+        ("# Report\n\nBody.\n\n## Reference Validation\n\nStuff.\n", "# Report\n\nBody.\n"),
+        # Two appended sections, as an older run could have left behind
+        (
+            "# Report\n\nBody.\n\n## Reference Validation\n\nOne.\n\n"
+            "## Reference Validation\n\nTwo.\n",
+            "# Report\n\nBody.\n",
+        ),
+        ("## Reference Validation\n\nOnly.\n", ""),
+        # The generated section carries level-three headings, which must not
+        # stop it being recognised as the trailing section
+        (
+            "# Report\n\nBody.\n\n## Reference Validation\n\n"
+            "### Unresolved references\n\n- `PMID:1`\n",
+            "# Report\n\nBody.\n",
+        ),
+    ],
+)
+def test_strip_validation_section(content: str, expected: str) -> None:
+    assert strip_validation_section(content) == expected
+
+
+def test_strip_validation_section_keeps_a_non_trailing_section() -> None:
+    """A report that discusses validation and then continues must survive intact.
+
+    The stripped text is written back over the file by --in-place, so removing
+    from a mid-document heading would destroy the rest of the report.
+    """
+    content = (
+        "---\na: 1\n---\n# Report\n\n## Reference Validation\n\n"
+        "We discuss how validation works.\n\n## Conclusions\n\nImportant text.\n"
+    )
+
+    assert strip_validation_section(content) == content
+
+
+def test_cli_in_place_preserves_a_body_section_named_like_ours(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    """End-to-end guard on the same data-loss path."""
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        f"## Output\n\nCited ({CACHED_PMID}).\n\n"
+        "## Reference Validation\n\nProse about validation.\n\n"
+        "## Conclusions\n\nMust not be deleted.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = report_file.read_text(encoding="utf-8")
+    assert "Must not be deleted." in written
+    assert "Prose about validation." in written
+
+
+def test_schema_documents_every_status() -> None:
+    """Every ReferenceStatus value carries a description in the schema."""
+    import yaml
+
+    schema_path = (
+        Path(__file__).resolve().parent.parent
+        / "src/deep_research_client/validation/reference_validation.yaml"
+    )
+    schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
+    permissible = schema["enums"]["ReferenceStatus"]["permissible_values"]
+
+    assert set(permissible) == {status.value for status in ReferenceStatus}
+    assert all(value.get("description") for value in permissible.values())
+
+
+# ---------------------------------------------------------------------------
+# Report rendering
+# ---------------------------------------------------------------------------
+
+
+def test_report_markdown_lists_unresolved() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:7913883", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(
+                reference_id="PMID:99999999",
+                status=ReferenceStatus.NOT_FOUND,
+                occurrences=3,
+                message="Identifier did not resolve to a record",
+            ),
+        ]
+    )
+
+    markdown = report.to_markdown()
+
+    assert "## Reference Validation" in markdown
+    assert "Unresolved references" in markdown
+    assert "PMID:99999999" in markdown
+    assert "(3 mentions)" in markdown
+    assert "PMID:7913883" not in markdown
+
+
+def test_all_unverifiable_report_does_not_claim_success() -> None:
+    """A run that learned nothing must not read as a clean bill of health."""
+    report = ReferenceValidationReport(
+        references=[ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE)]
+    )
+
+    markdown = report.to_markdown()
+
+    assert "All extracted references resolved successfully." not in markdown
+    assert "confirmed or contradicted" in markdown
+
+
+def test_partly_unverifiable_report_states_the_shortfall() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert "1 of 2 references resolved" in report.to_markdown()
+
+
+def test_outage_banner_survives_a_mix_of_failure_modes() -> None:
+    """An outage makes some types unverifiable and others not-found.
+
+    Comparing against the total would suppress the connectivity banner in
+    exactly the situation it exists for.
+    """
+    report = ReferenceValidationReport(
+        references=[
+            *[
+                ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+                for i in range(3)
+            ],
+            ReferenceCheck(reference_id="PMC:PMC11000121", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert report.all_references_failed
+    # Qualified, because one reference here was not looked up at all: saying
+    # "every reference" would misdescribe the report to whoever must act on it.
+    markdown = report.to_markdown()
+    assert "**Every** reference that could be looked up failed" in markdown
+    assert "3 of 4" in markdown
+
+
+def test_outage_banner_is_unqualified_when_everything_failed() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+            for i in range(3)
+        ]
+    )
+
+    assert "**Every** reference failed to resolve" in report.to_markdown()
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_outage_banner_needs_more_than_a_couple_of_failures(count: int) -> None:
+    """One-of-one failing is not evidence of an outage.
+
+    Hedging there would excuse the single genuine fabrication this feature
+    exists to surface.
+    """
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+            for i in range(count)
+        ]
+    )
+
+    assert not report.all_references_failed
+    markdown = report.to_markdown()
+    assert "network outage" not in markdown
+    assert "may be fabricated" in markdown
+
+
+def test_outage_banner_stays_off_when_something_resolved() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="PMC:PMC11000121", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert not report.all_references_failed
+
+
+def test_confabulation_rate_ignores_unverifiable_references() -> None:
+    """Skipping a prefix must not dilute the rate."""
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE),
+            ReferenceCheck(reference_id="X:2", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert report.resolvable_count == 2
+    assert report.confabulation_rate == 0.5
+
+
+def test_report_summary_is_yaml_friendly() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1234567", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="PMID:99999999", status=ReferenceStatus.NOT_FOUND),
+        ]
+    )
+
+    summary = report.summary()
+
+    assert summary["total_references"] == 2
+    assert summary["verified"] == 1
+    assert summary["not_found"] == 1
+    assert summary["confabulation_rate"] == 0.5
+    assert summary["unresolved_references"] == ["PMID:99999999"]
+
+
+def test_formatter_embeds_validation_report() -> None:
+    result = ResearchResult(
+        markdown="Findings cite PMID:99999999.",
+        provider="mock",
+        query="widgets",
+    )
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(
+                reference_id="PMID:99999999",
+                status=ReferenceStatus.NOT_FOUND,
+                message="Identifier did not resolve to a record",
+            )
+        ]
+    )
+
+    output = ResultFormatter().format_full_markdown(result, reference_validation=report)
+
+    assert "reference_validation:" in output
+    assert "not_found: 1" in output
+    assert "## Reference Validation" in output
+
+
+def test_formatter_unchanged_without_validation() -> None:
+    result = ResearchResult(markdown="Findings.", provider="mock", query="widgets")
+
+    output = ResultFormatter().format_full_markdown(result)
+
+    assert "reference_validation" not in output
+    assert "## Reference Validation" not in output
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _write_report(path: Path, body: str) -> Path:
+    path.write_text(
+        f"---\nprovider: mock\n---\n\n## Question\n\nwidgets\n\n## Output\n\n{body}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_cli_validate_references_reports_to_stdout(tmp_path: Path, seeded_cache: Path) -> None:
+    report_file = _write_report(
+        tmp_path / "report.md",
+        f'The authors report "Widgets are blue in 90% of observed cases" ({CACHED_PMID}).',
+    )
+
+    result = CliRunner().invoke(
+        app, ["validate-references", str(report_file), "--cache-dir", str(seeded_cache)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "## Reference Validation" in result.output
+    assert "All extracted references resolved successfully." in result.output
+
+
+def test_cli_validate_references_flags_unsupported_quote(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    report_file = _write_report(
+        tmp_path / "report.md",
+        f'The authors report "widgets are uniformly magenta year round" ({CACHED_PMID}).',
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+            "--fail-on-unresolved",
+        ],
+    )
+
+    assert result.exit_code == 2, result.output
+    written = report_file.read_text(encoding="utf-8")
+    assert "Quotes not found in the cited source" in written
+
+
+def test_cli_validate_references_json_output(tmp_path: Path, seeded_cache: Path) -> None:
+    report_file = _write_report(tmp_path / "report.md", f"Established previously ({CACHED_PMID}).")
+    json_path = tmp_path / "validation.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--json",
+            str(json_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    assert payload["references"][0]["status"] == ReferenceStatus.VERIFIED.value
+    assert payload["references"][0]["title"] == PAPER_TITLE
+
+
+def test_cli_validate_references_no_check_quotes(tmp_path: Path, seeded_cache: Path) -> None:
+    report_file = _write_report(
+        tmp_path / "report.md",
+        f'They claim "widgets are uniformly magenta year round" ({CACHED_PMID}).',
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--no-check-quotes",
+            "--fail-on-unresolved",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Quoted claims checked" not in result.output
+
+
+def test_cli_validate_references_in_place_is_idempotent(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    """A second --in-place run must not stack sections or re-count identifiers."""
+    report_file = _write_report(tmp_path / "report.md", f"Established previously ({CACHED_PMID}).")
+    args = [
+        "validate-references",
+        str(report_file),
+        "--cache-dir",
+        str(seeded_cache),
+        "--in-place",
+    ]
+
+    assert CliRunner().invoke(app, args).exit_code == 0
+    first = report_file.read_text(encoding="utf-8")
+    assert CliRunner().invoke(app, args).exit_code == 0
+    second = report_file.read_text(encoding="utf-8")
+
+    assert first == second
+    assert second.count("## Reference Validation") == 1
+    assert "| References checked | 1 |" in second
+
+
+def test_cli_in_place_refreshes_stale_frontmatter(tmp_path: Path, seeded_cache: Path) -> None:
+    """A frontmatter summary must not survive contradicting the section below it."""
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        "---\n"
+        "provider: mock\n"
+        "reference_validation:\n"
+        "  total_references: 99\n"
+        "  verified: 99\n"
+        "  not_found: 0\n"
+        "---\n\n"
+        f"## Output\n\nCited ({CACHED_PMID}).\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    import yaml
+
+    from deep_research_client.markdown_parser import parse_frontmatter
+
+    frontmatter, _ = parse_frontmatter(report_file.read_text(encoding="utf-8"))
+    assert frontmatter["reference_validation"]["total_references"] == 1
+    assert frontmatter["reference_validation"]["verified"] == 1
+    assert frontmatter["provider"] == "mock"
+    assert yaml.safe_load(yaml.dump(frontmatter)) == frontmatter
+
+
+def test_cli_in_place_leaves_plain_frontmatter_alone(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    """A file with no validation summary must not be reformatted."""
+    original_frontmatter = "---\n# a comment\nprovider:   mock\n---\n"
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        original_frontmatter + f"\n## Output\n\nCited ({CACHED_PMID}).\n", encoding="utf-8"
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert report_file.read_text(encoding="utf-8").startswith(original_frontmatter)
+
+
+def test_cli_validate_references_output_file(tmp_path: Path, seeded_cache: Path) -> None:
+    report_file = _write_report(tmp_path / "report.md", f"Established previously ({CACHED_PMID}).")
+    out = tmp_path / "validation.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--output",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = out.read_text(encoding="utf-8")
+    assert written.startswith("## Reference Validation")
+    assert "| References checked | 1 |" in written
+    # The source file is untouched when only --output is given
+    assert "## Reference Validation" not in report_file.read_text(encoding="utf-8")
+
+
+def test_cli_validate_references_handles_several_files(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    first = _write_report(tmp_path / "a.md", f"Cited here ({CACHED_PMID}).")
+    second = _write_report(tmp_path / "b.md", "Nothing cited here.")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(first),
+            str(second),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "| References checked | 1 |" in first.read_text(encoding="utf-8")
+    assert "No PMID or DOI references" in second.read_text(encoding="utf-8")
+
+
+def test_cli_validate_references_truncation_is_surfaced(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    report_file = _write_report(
+        tmp_path / "report.md", f"Cited ({CACHED_PMID}) and ({SECOND_CACHED_PMID})."
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--max-references",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "stopped early" in result.output
+    assert "| References checked | 1 |" in result.output
+
+
+def test_cli_validate_references_rejects_zero_max(tmp_path: Path, seeded_cache: Path) -> None:
+    report_file = _write_report(tmp_path / "report.md", f"Cited ({CACHED_PMID}).")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--max-references",
+            "0",
+        ],
+    )
+
+    assert result.exit_code != 0
+
+
+def test_cli_validate_references_rejects_missing_file(tmp_path: Path) -> None:
+    result = CliRunner().invoke(app, ["validate-references", str(tmp_path / "absent.md")])
+
+    assert result.exit_code == 1
+
+
+def test_cli_validate_references_rejects_multi_file_output(tmp_path: Path) -> None:
+    first = _write_report(tmp_path / "a.md", "nothing cited")
+    second = _write_report(tmp_path / "b.md", "nothing cited")
+
+    result = CliRunner().invoke(
+        app,
+        ["validate-references", str(first), str(second), "--output", str(tmp_path / "out.md")],
+    )
+
+    assert result.exit_code == 1
+
+
+def test_cli_research_validates_references(tmp_path: Path, seeded_cache: Path, monkeypatch) -> None:
+    """--validate-references embeds a validation section in the saved report."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "widgets",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--output",
+            str(output),
+            "--validate-references",
+            "--validation-cache-dir",
+            str(seeded_cache),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = output.read_text(encoding="utf-8")
+    assert "## Reference Validation" in written
+    assert "reference_validation:" in written
+
+
+def test_cli_research_fails_on_unresolved(tmp_path: Path, cache_dir: Path, monkeypatch) -> None:
+    """An unresolvable citation exits 2 - and the report is still written."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            f"Cite the nonexistent file:{tmp_path / 'absent.md'} please",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--output",
+            str(output),
+            "--validate-references",
+            "--validation-cache-dir",
+            str(cache_dir),
+            "--fail-on-unresolved",
+        ],
+    )
+
+    written = output.read_text(encoding="utf-8")
+    assert output.exists()
+    if result.exit_code == 2:
+        assert "## Reference Validation" in written
+    else:
+        # The mock provider echoed no resolvable identifiers, so nothing failed.
+        assert result.exit_code == 0, result.output
+
+
+def test_cli_research_warns_only_about_flags_actually_passed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A plain research run must not nag about validation flags.
+
+    The unused-flag warning compares each option against its default; a
+    repeatable option whose framework default is not None would make this fire
+    on the most common invocation of the main command, invisibly to the suite.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app, ["research", "widgets", "--provider", "mock", "--no-cache"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "has no effect" not in result.output
+
+
+def test_cli_research_warns_about_a_flag_passed_without_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "widgets",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--validation-skip-prefix",
+            "DOI",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--validation-skip-prefix has no effect" in result.output
+
+
+def test_cli_research_validation_flags_reach_the_validator(
+    tmp_path: Path, seeded_cache: Path, monkeypatch
+) -> None:
+    """--validation-skip-prefix must actually skip, not just parse."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            f"Cite {CACHED_PMID} please",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--output",
+            str(output),
+            "--validate-references",
+            "--validation-cache-dir",
+            str(seeded_cache),
+            "--validation-skip-prefix",
+            "PMID",
+            "--validation-rate-limit-delay",
+            "0",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = output.read_text(encoding="utf-8")
+    assert "## Reference Validation" in written
+    assert "| Unverifiable | 1 |" in written
+
+
+def test_cli_research_checks_for_the_extra_before_researching(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A missing extra must be caught before the expensive part of the run.
+
+    Discovering it afterwards would waste a provider call; discovering it
+    beforehand costs nothing.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator_is_available", lambda: False
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "widgets",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--output",
+            str(output),
+            "--validate-references",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert not output.exists(), "no research should have been performed"
+
+
+# ---------------------------------------------------------------------------
+# Integration: live bibliographic APIs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_real_pmid_resolves(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Achondroplasia is caused by FGFR3 (PMID:7913883).")
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+    assert "FGFR3" in (report.checked_references[0].title or "")
+
+
+@pytest.mark.integration
+def test_fabricated_pmid_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("A confident but invented claim (PMID:99999999).")
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+    assert report.has_confabulations
+
+
+@pytest.mark.integration
+def test_fabricated_doi_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported previously (DOI:10.9999/not.a.real.doi).")
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+@pytest.mark.integration
+def test_real_pmc_accession_resolves(cache_dir: Path) -> None:
+    """PMC accessions resolve via NCBI's converter and then the PMID path."""
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC11000121.")
+
+    check = report.checked_references[0]
+    assert check.reference_id == "PMC:PMC11000121"
+    assert check.status == ReferenceStatus.VERIFIED
+    assert "Marfan" in (check.title or "")
+
+
+@pytest.mark.integration
+def test_pmc_accession_europe_pmc_does_not_index_still_resolves(cache_dir: Path) -> None:
+    """The accession that ruled out a Europe PMC-backed implementation.
+
+    Europe PMC returns no hit for PMC11157853, which would have made a real
+    citation look fabricated. NCBI's converter knows it.
+    """
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC11157853.")
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+
+
+@pytest.mark.integration
+def test_fabricated_pmc_accession_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC99999999.")
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.NOT_FOUND
+    assert "no such accession" in (check.message or "")
+
+
+@pytest.mark.integration
+def test_real_geo_accession_resolves(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Data deposited under GSE68086.")
+
+    check = report.checked_references[0]
+    assert check.reference_id == "GEO:GSE68086"
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.title
+
+
+@pytest.mark.integration
+def test_fabricated_geo_accession_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Data deposited under GSE888888888.")
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+@pytest.mark.integration
+def test_pmc_batching_against_the_real_converter(monkeypatch) -> None:
+    """Several real batches, merged - the loop end to end, no stubs."""
+    from deep_research_client.validation import validator as validator_module
+
+    monkeypatch.setattr(validator_module, "PMC_IDCONV_BATCH_SIZE", 3)
+    accessions = [
+        "PMC:PMC11000121",
+        "PMC:PMC11086607",
+        "PMC:PMC11157853",
+        "PMC:PMC11743488",
+        "PMC:PMC11989073",
+        "PMC:PMC2829559",
+        "PMC:PMC99999999",
+    ]
+
+    resolved = validator_module.resolve_pmc_accessions(accessions, email=_ncbi_email())
+
+    assert set(resolved) == set(accessions), "every batch must be merged in"
+    assert resolved["PMC:PMC11157853"] == "PMID:38849906"
+    assert resolved["PMC:PMC99999999"] is None
+
+
+@pytest.mark.integration
+def test_bioproject_is_still_broken_upstream(cache_dir: Path) -> None:
+    """Guards the reason BIOPROJECT is not extracted.
+
+    If this starts failing, the upstream esummary parsing has been fixed and
+    BioProject accessions can be added to extraction.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(
+        ReferenceValidationConfig(cache_dir=cache_dir, email=_ncbi_email())
+    )
+
+    assert fetcher.fetch("BIOPROJECT:PRJNA31257") is None, (
+        "BioProject lookups now work upstream; extraction can include them"
+    )
+
+
+@pytest.mark.integration
+def test_real_quote_is_verified_against_pubmed(cache_dir: Path) -> None:
+    """A verbatim quote from the abstract passes, an invented one does not."""
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown(
+        'The authors report that "Achondroplasia (ACH) is the most common genetic form '
+        'of dwarfism" (PMID:7913883), but also that "ACH is caused by a deletion of '
+        'chromosome 21" (PMID:7913883).'
+    )
+
+    assert report.quotes_checked == 2
+    assert report.quotes_valid_count == 1
+    assert "deletion of chromosome 21" in report.unsupported_quotes[0].quote

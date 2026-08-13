@@ -73,8 +73,8 @@ class TemplateManager:
 
         Examples:
             >>> tm = TemplateManager()
-            >>> tm.get_template_variables("Research {gene} and {protein} in {organism}")
-            {'gene', 'protein', 'organism'}
+            >>> sorted(tm.get_template_variables("Research {gene} and {protein} in {organism}"))
+            ['gene', 'organism', 'protein']
         """
         return set(re.findall(r'{(\w+)}', template))
 

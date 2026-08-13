@@ -7,8 +7,11 @@ import logging
 import os
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from typing_extensions import Annotated
+
+if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .validation import ReferenceValidationReport, ReferenceValidator
 
 from .client import DeepResearchClient
 from .processing import ResearchProcessor
@@ -250,6 +253,106 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+def _build_reference_validator(
+    cache_dir: Optional[Path],
+    email: Optional[str],
+    full_text: bool,
+    max_references: Optional[int],
+    skip_prefix: Optional[List[str]] = None,
+    rate_limit_delay: Optional[float] = None,
+) -> "ReferenceValidator":
+    """Build a ReferenceValidator, exiting with a hint if the extra is missing."""
+    from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
+
+    if not validator_is_available():
+        logger.error(INSTALL_HINT)
+        raise typer.Exit(1)
+
+    kwargs: dict = {
+        "cache_dir": cache_dir,
+        "email": email or os.getenv("NCBI_EMAIL"),
+        "fetch_full_text": full_text,
+        "max_references": max_references,
+        "skip_prefixes": list(skip_prefix or []),
+    }
+    if rate_limit_delay is not None:
+        kwargs["rate_limit_delay"] = rate_limit_delay
+    return ReferenceValidator(**kwargs)
+
+
+def _refresh_validation_frontmatter(
+    content: str,
+    frontmatter: dict,
+    report: "ReferenceValidationReport",
+) -> str:
+    """Bring a stale ``reference_validation`` frontmatter summary up to date.
+
+    A report produced by ``research --validate-references`` carries a summary in
+    its frontmatter. Re-validating it would otherwise leave that summary
+    contradicting the section written below it.
+
+    The frontmatter is only rewritten when such a summary is already present, so
+    a hand-written file is never reformatted by a tool that was asked to check
+    citations.
+
+    Args:
+        content: The report text, with any previous validation section removed.
+        frontmatter: Frontmatter already parsed from that text.
+        report: The fresh validation report.
+
+    Returns:
+        The report text, with the summary refreshed if there was one.
+    """
+    if "reference_validation" not in frontmatter:
+        return content
+
+    import yaml
+
+    from .markdown_parser import parse_frontmatter
+
+    updated = dict(frontmatter)
+    updated["reference_validation"] = report.summary()
+    _, body = parse_frontmatter(content)
+    rendered = yaml.dump(updated, default_flow_style=False, sort_keys=False).rstrip()
+    return f"---\n{rendered}\n---\n{body}"
+
+
+def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
+    """Log a one-line-per-outcome summary of a reference validation report."""
+    if not report.checked_references:
+        logger.info("No PMID or DOI references found to validate")
+        return
+
+    logger.info(
+        "Validated %d references: %d resolved, %d unresolved, %d unverifiable",
+        report.total_references,
+        report.verified_count,
+        report.not_found_count,
+        report.unverifiable_count,
+    )
+    if report.all_references_failed:
+        logger.warning(
+            "Every reference failed to resolve, which usually means a network or "
+            "rate-limit problem rather than a report full of fabrications"
+        )
+    for check in report.confabulated_references:
+        logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
+    if report.quote_checks:
+        logger.info(
+            "Checked %d quoted claims: %d found in the cited source",
+            report.quotes_checked,
+            report.quotes_valid_count,
+        )
+    for quote_check in report.unsupported_quotes:
+        logger.warning(
+            "Quote not found in %s: %r", quote_check.reference_id, quote_check.quote[:120]
+        )
+    if report.unchecked_quotes:
+        logger.info(
+            "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
+        )
+
+
 @app.callback()
 def main_callback(
     verbose: Annotated[int, typer.Option(
@@ -300,6 +403,23 @@ def research(
         "--author", help="Primary author of the research")] = None,
     contributor: Annotated[Optional[List[str]], typer.Option(
         "--contributor", help="Contributor to the research (can be used multiple times)")] = None,
+    # Reference validation options
+    validate_references: Annotated[bool, typer.Option(
+        "--validate-references", help="Resolve every cited identifier and append a validation section (requires the 'validation' extra)")] = False,
+    validation_cache_dir: Annotated[Optional[Path], typer.Option(
+        "--validation-cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+    validation_email: Annotated[Optional[str], typer.Option(
+        "--validation-email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
+    validation_full_text: Annotated[bool, typer.Option(
+        "--validation-full-text", help="Fetch full text as well as abstracts when validating (~23x slower, better quote checks)")] = False,
+    validation_max_references: Annotated[Optional[int], typer.Option(
+        "--validation-max-references", min=1, help="Stop after validating this many references")] = None,
+    validation_skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--validation-skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable); skipping DOI is the largest saving after caching")] = None,
+    validation_rate_limit_delay: Annotated[Optional[float], typer.Option(
+        "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
+    fail_on_unresolved: Annotated[bool, typer.Option(
+        "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
 ):
     """Perform deep research on a query.
 
@@ -334,6 +454,9 @@ def research(
 
       # Use CBORG with explicit API key environment variable
       deep-research-client research "Climate models" --use-cborg --api-key-env MY_CBORG_KEY
+
+      # Check every cited PMID/DOI before trusting the report
+      deep-research-client research "Statins and myopathy" --validate-references --output report.md
     """
     from .models import CacheConfig
 
@@ -519,6 +642,31 @@ def research(
         if contributor:
             metadata['contributors'] = contributor
 
+    if not validate_references:
+        # Compared against the option default rather than truthiness, so that a
+        # falsy-but-explicit value such as --validation-email "" still warns.
+        unused_validation_flags: tuple[tuple[str, object, object], ...] = (
+            ("--validation-cache-dir", validation_cache_dir, None),
+            ("--validation-email", validation_email, None),
+            ("--validation-full-text", validation_full_text, False),
+            ("--validation-max-references", validation_max_references, None),
+            ("--validation-skip-prefix", validation_skip_prefix, None),
+            ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
+            ("--fail-on-unresolved", fail_on_unresolved, False),
+        )
+        for flag_name, flag_value, default in unused_validation_flags:
+            if flag_value != default:
+                logger.warning(f"{flag_name} has no effect without --validate-references")
+
+    if validate_references:
+        # Checked before the provider call: discovering a missing extra after a
+        # run that took minutes and real money would be a poor trade.
+        from .validation import INSTALL_HINT, validator_is_available
+
+        if not validator_is_available():
+            logger.error(INSTALL_HINT)
+            raise typer.Exit(1)
+
     logger.info("Researching...")
 
     try:
@@ -548,7 +696,9 @@ def research(
         # Format output using processor
         logger.debug("Formatting research result")
         output_content = processor.format_research_result(
-            result, separate_citations=should_separate_citations)
+            result,
+            separate_citations=should_separate_citations,
+        )
 
         # Output result
         if output:
@@ -591,6 +741,187 @@ def research(
         logger.error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    if not validate_references:
+        return
+
+    # Validation runs only after the report has been written or printed. It is
+    # network-bound and can fail long after the expensive part of the run has
+    # succeeded; losing a report that cost minutes and real money to an NCBI
+    # outage would be a poor trade for a citation check.
+    reference_validator = _build_reference_validator(
+        cache_dir=validation_cache_dir,
+        email=validation_email,
+        full_text=validation_full_text,
+        max_references=validation_max_references,
+        skip_prefix=validation_skip_prefix,
+        rate_limit_delay=validation_rate_limit_delay,
+    )
+    logger.info("Validating references...")
+    try:
+        validation_report = reference_validator.validate_result(result)
+    except (OSError, ValueError) as exc:
+        # urllib raises OSError subclasses for network failures. The report is
+        # already saved, so report the real cause rather than letting it surface
+        # as a filesystem error.
+        logger.error(f"Reference validation failed: {exc}")
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(3)
+
+    _echo_validation_summary(validation_report)
+
+    validated_content = processor.format_research_result(
+        result,
+        separate_citations=should_separate_citations,
+        reference_validation=validation_report,
+    )
+    if output:
+        try:
+            output.write_text(validated_content, encoding='utf-8')
+        except OSError as exc:
+            # The report without its validation section is already on disk, so
+            # this loses the section, not the research.
+            logger.error(f"Could not add the validation section to {output}: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
+        logger.info(f"Validation results added to: {output}")
+    else:
+        typer.echo("\n" + "=" * 60)
+        typer.echo(validation_report.to_markdown())
+
+    if fail_on_unresolved and validation_report.has_confabulations:
+        logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
+
+
+@app.command(name="validate-references")
+def validate_references_command(
+    files: Annotated[List[Path], typer.Argument(
+        help="Markdown report file(s) to validate")],
+    check_quotes: Annotated[bool, typer.Option(
+        "--check-quotes/--no-check-quotes",
+        help="Also check quoted claims against the text of the reference they cite")] = True,
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+    email: Annotated[Optional[str], typer.Option(
+        "--email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
+    full_text: Annotated[bool, typer.Option(
+        "--full-text", help="Fetch full text as well as abstracts (~23x slower, better quote checks)")] = False,
+    max_references: Annotated[Optional[int], typer.Option(
+        "--max-references", min=1, help="Stop after validating this many references per file")] = None,
+    skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable)")] = None,
+    rate_limit_delay: Annotated[Optional[float], typer.Option(
+        "--rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5)")] = None,
+    in_place: Annotated[bool, typer.Option(
+        "--in-place", help="Replace or append the validation section in each input file")] = False,
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", help="Write the markdown validation report to this file (single input file only)")] = None,
+    json_output: Annotated[Optional[Path], typer.Option(
+        "--json", help="Write the validation report as JSON to this file (single input file only)")] = None,
+    fail_on_unresolved: Annotated[bool, typer.Option(
+        "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
+):
+    """Check that the references cited in a report actually exist.
+
+    Every PMID and DOI in the report is resolved against PubMed, Crossref and
+    DataCite; identifiers that do not resolve are flagged as likely
+    confabulations. Quotes attributed to a reference are additionally checked
+    against the text of that reference.
+
+    Requires the optional 'validation' extra:
+    pip install "deep_research_client[validation]"
+
+    \b
+    Examples:
+      # Validate a saved report
+      deep-research-client validate-references report.md
+
+      # Validate several reports and append the results to each
+      deep-research-client validate-references reports/*.md --in-place
+
+      # Fail a pipeline when any citation is fabricated
+      deep-research-client validate-references report.md --fail-on-unresolved
+
+      # Existence checks only, no quote checking, capped at 20 references
+      deep-research-client validate-references report.md --no-check-quotes --max-references 20
+    """
+    from .markdown_parser import parse_frontmatter
+    from .validation import strip_validation_section
+
+    if not files:
+        logger.error("Provide at least one markdown file to validate")
+        raise typer.Exit(1)
+
+    if len(files) > 1 and (output or json_output):
+        logger.error("--output and --json require exactly one input file")
+        raise typer.Exit(1)
+
+    missing = [f for f in files if not f.is_file()]
+    if missing:
+        for path in missing:
+            logger.error(f"File not found: {path}")
+        raise typer.Exit(1)
+
+    validator = _build_reference_validator(
+        cache_dir=cache_dir,
+        email=email,
+        full_text=full_text,
+        max_references=max_references,
+        skip_prefix=skip_prefix,
+        rate_limit_delay=rate_limit_delay,
+    )
+
+    any_problems = False
+
+    for path in files:
+        content = strip_validation_section(path.read_text(encoding="utf-8"))
+        # Scan the whole body rather than the Output section alone: identifiers
+        # routinely appear in the Citations section and in provider-specific
+        # sections that sit alongside it.
+        frontmatter, body = parse_frontmatter(content)
+
+        logger.info(f"Validating references in {path}")
+        try:
+            report = validator.validate_markdown(body, check_quotes=check_quotes)
+        except (OSError, ValueError) as exc:
+            # urllib raises OSError subclasses for network failures. Reported as
+            # what it is, rather than as a filesystem problem or a traceback.
+            # OSError covers network failures (urllib raises subclasses of it);
+            # ValueError covers a malformed cached record. Neither should reach
+            # the user as a traceback when every neighbouring path exits cleanly.
+            logger.error(f"Reference validation failed: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
+        _echo_validation_summary(report)
+        any_problems = any_problems or report.has_confabulations
+
+        markdown_report = report.to_markdown()
+
+        try:
+            if in_place:
+                updated = _refresh_validation_frontmatter(content, frontmatter, report)
+                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                logger.info(f"Wrote validation section to {path}")
+
+            if output:
+                output.write_text(markdown_report, encoding="utf-8")
+                logger.info(f"Validation report written to {output}")
+
+            if json_output:
+                json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+                logger.info(f"Validation report written to {json_output}")
+        except OSError as exc:
+            logger.error(f"Filesystem error: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
+
+        if not in_place and not output and not json_output:
+            typer.echo(markdown_report)
+
+    if fail_on_unresolved and any_problems:
+        logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
 
 
 @app.command()

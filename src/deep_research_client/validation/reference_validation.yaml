@@ -1,0 +1,143 @@
+id: https://w3id.org/monarch-initiative/deep-research-client/reference-validation
+name: reference_validation
+title: Deep Research Client Reference Validation
+description: >-
+  Data model for the outcome of validating the references cited by a deep
+  research report: whether each cited identifier resolves to a real record, and
+  whether quotes attributed to a reference actually appear in it.
+
+  This schema is the source of truth for
+  deep_research_client/validation/datamodel.py, which is generated from it with
+  `just gen-datamodel`. Derived quantities (counts, rates) and markdown
+  rendering are added in deep_research_client/validation/models.py; they are
+  computed from these slots rather than stored.
+
+license: BSD-3-Clause
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  reference_validation: https://w3id.org/monarch-initiative/deep-research-client/reference-validation/
+
+default_prefix: reference_validation
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+
+  ReferenceStatus:
+    description: Outcome of resolving a single reference identifier.
+    permissible_values:
+      VERIFIED:
+        description: The identifier resolves to a real record.
+      NOT_FOUND:
+        description: >-
+          The identifier could not be resolved against any known source, so it
+          is likely to have been confabulated.
+      UNVERIFIABLE:
+        description: >-
+          The identifier was deliberately skipped, or no resolver exists for its
+          prefix. Distinct from NOT_FOUND: nothing was learned either way.
+
+classes:
+
+  ReferenceCheck:
+    description: Result of resolving one reference cited by a report.
+    attributes:
+      reference_id:
+        description: Normalized identifier, for example PMID:7913883.
+        required: true
+      status:
+        description: Resolution outcome.
+        range: ReferenceStatus
+        required: true
+      occurrences:
+        description: Number of times the identifier is mentioned in the report.
+        range: integer
+        required: true
+        minimum_value: 1
+        ifabsent: int(1)
+      title:
+        description: Title of the resolved record.
+      year:
+        description: Publication year of the resolved record.
+      journal:
+        description: Journal or venue of the resolved record.
+      doi:
+        description: DOI of the resolved record.
+      content_type:
+        description: >-
+          Kind of content retrieved, for example abstract_only or full_text_xml.
+      message:
+        description: Explanation of the outcome, present when not verified.
+
+  SupportingTextCheck:
+    description: >-
+      Result of checking a quoted claim against the text of the reference it is
+      attributed to.
+    attributes:
+      reference_id:
+        description: Normalized identifier the quote is attributed to.
+        required: true
+      quote:
+        description: Quoted text as it appears in the report.
+        required: true
+      was_checkable:
+        description: >-
+          Whether there was anything to check the quote against. False when the
+          reference did not resolve, exposed no abstract or full text, was
+          skipped by prefix, or fell outside a reference limit. A quote that was
+          not checkable is not evidence of confabulation, so it is reported
+          separately from one that was checked and not found.
+        range: boolean
+        required: true
+        ifabsent: "True"
+      is_valid:
+        description: >-
+          Whether the quote was found in the reference. Always false when
+          was_checkable is false.
+        range: boolean
+        required: true
+      similarity_score:
+        description: >-
+          Similarity of the closest match found, from 0 to 1. Clamped to that
+          range, since it originates outside this codebase.
+        range: float
+        required: true
+        minimum_value: 0.0
+        maximum_value: 1.0
+        ifabsent: float(0.0)
+      matched_text:
+        description: The matching span in the reference, when the quote was found.
+      best_match:
+        description: >-
+          The closest non-matching span in the reference, when the quote was not
+          found.
+      suggested_fix:
+        description: Suggested correction reported by the underlying validator.
+      message:
+        description: Validator explanation of the outcome.
+
+  ReferenceValidationReport:
+    description: Aggregate result of validating every reference cited by a report.
+    attributes:
+      references:
+        description: Per-reference resolution results.
+        range: ReferenceCheck
+        multivalued: true
+        inlined_as_list: true
+      supporting_text:
+        description: Per-quote supporting text results.
+        range: SupportingTextCheck
+        multivalued: true
+        inlined_as_list: true
+      validator_version:
+        description: Version of linkml-reference-validator used to produce this report.
+      truncated:
+        description: >-
+          Whether validation stopped early because a reference limit was
+          reached, meaning the counts cover only part of the bibliography.
+        range: boolean
+        required: true
+        ifabsent: "False"

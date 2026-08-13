@@ -14,6 +14,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
+- ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier and check quoted claims against the source, catching confabulated citations
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -27,6 +28,9 @@ uvx deep-research-client research "What is CRISPR?"
 
 # Or add to a uv project
 uv add deep-research-client
+
+# With reference validation (checks cited identifiers actually exist)
+pip install "deep-research-client[validation]"
 
 # For development
 git clone <repo-url>
@@ -113,9 +117,31 @@ deep-research-client models --provider perplexity --detailed
 # Cache management
 deep-research-client list-cache   # Show cached files
 deep-research-client clear-cache  # Remove all cache
+
+# Check that cited identifiers exist and quotes are real (needs the `validation` extra)
+deep-research-client research "Statins and myopathy" --output report.md --validate-references
+deep-research-client validate-references report.md --fail-on-unresolved
 ```
 
 You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
+
+### Reference Validation
+
+Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference:
+
+```python
+from deep_research_client import DeepResearchClient, ReferenceValidator
+
+result = DeepResearchClient().research("Statins and myopathy risk")
+report = ReferenceValidator(email="you@example.org").validate_result(result)
+
+print(report.confabulation_rate)          # fraction of citations that do not resolve
+print(report.confabulated_references)     # the identifiers that failed
+print(report.unsupported_quotes)          # quotes not found in their cited source
+print(report.to_markdown())               # renderable summary section
+```
+
+On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
 
 ### Python Library Usage
 

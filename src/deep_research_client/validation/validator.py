@@ -14,6 +14,7 @@ its references already checked rather than with an unverified identifier list.
 import logging
 import re
 import time
+from itertools import batched
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
@@ -536,7 +537,7 @@ PMC_IDCONV_BATCH_SIZE = 200
 def resolve_pmc_accessions(
     pmc_ids: Iterable[str],
     email: Optional[str] = None,
-    rate_limit_delay: float = 0.0,
+    rate_limit_delay: float = 0.5,
 ) -> dict[str, Optional[str]]:
     """Map PMC accessions onto identifiers the underlying validator can fetch.
 
@@ -557,7 +558,9 @@ def resolve_pmc_accessions(
         pmc_ids: Accessions in ``PMC:PMC12345678`` form.
         email: Contact address, which NCBI asks callers to send.
         rate_limit_delay: Seconds to pause between batches, for the rare report
-            that needs more than one.
+            that needs more than one. Defaults to match
+            :attr:`ReferenceValidator.rate_limit_delay`, so a direct caller does
+            not get an unthrottled loop against NCBI.
 
     Returns:
         A mapping from each accession to the identifier to fetch instead
@@ -607,29 +610,6 @@ def resolve_pmc_accessions(
         resolved.update(batch_result)
 
     return resolved
-
-
-def batched(items: list[str], size: int) -> list[list[str]]:
-    """Split a list into consecutive chunks of at most ``size``.
-
-    Args:
-        items: The items to split.
-        size: Maximum chunk length.
-
-    Returns:
-        The chunks, in order, covering every item exactly once.
-
-    Examples:
-        >>> batched(["a", "b", "c", "d", "e"], 2)
-        [['a', 'b'], ['c', 'd'], ['e']]
-        >>> batched(["a", "b"], 5)
-        [['a', 'b']]
-        >>> batched([], 3)
-        []
-        >>> sum(len(chunk) for chunk in batched(list("abcdefg"), 3))
-        7
-    """
-    return [items[start : start + size] for start in range(0, len(items), size)]
 
 
 def _parse_idconv_records(records: list[dict]) -> dict[str, Optional[str]]:

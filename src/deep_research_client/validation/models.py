@@ -36,6 +36,7 @@ from .datamodel import ReferenceCheck, ReferenceStatus, SupportingTextCheck
 from .datamodel import ReferenceValidationReport as GeneratedReferenceValidationReport
 
 __all__ = [
+    "OUTAGE_HINT_MIN_REFERENCES",
     "VALIDATION_SECTION_HEADING",
     "ReferenceCheck",
     "ReferenceStatus",
@@ -45,6 +46,11 @@ __all__ = [
 ]
 
 VALIDATION_SECTION_HEADING = "## Reference Validation"
+
+# Below this many resolvable references, a clean sweep of failures is not
+# evidence of an outage - it is as likely to be a short bibliography in which
+# the citations really are wrong.
+OUTAGE_HINT_MIN_REFERENCES = 3
 
 _H2_HEADING_RE = re.compile(r"^##[ \t]+\S.*$", re.MULTILINE)
 
@@ -217,7 +223,7 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
 
     @property
     def all_references_failed(self) -> bool:
-        """Whether every reference a lookup answered about failed to resolve.
+        """Whether enough references failed at once to suggest an outage.
 
         A whole bibliography failing at once is far more often a network or
         rate-limit problem than a report in which every citation is invented, so
@@ -228,18 +234,33 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         the rest become not-found, so comparing against the total would suppress
         this banner in exactly the situation it was written for.
 
+        A floor applies. One reference out of one failing is very weak evidence
+        of an outage, and hedging there would excuse the single genuine
+        fabrication this feature exists to surface.
+
         Examples:
             >>> ReferenceValidationReport().all_references_failed
             False
             >>> ReferenceValidationReport(
             ...     references=[
+            ...         ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND)
+            ...     ]
+            ... ).all_references_failed
+            False
+            >>> ReferenceValidationReport(
+            ...     references=[
             ...         ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ...         ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND),
+            ...         ReferenceCheck(reference_id="PMID:3", status=ReferenceStatus.NOT_FOUND),
             ...         ReferenceCheck(reference_id="PMC:PMC99999", status=ReferenceStatus.UNVERIFIABLE),
             ...     ]
             ... ).all_references_failed
             True
         """
-        return bool(self.resolvable_count) and self.not_found_count == self.resolvable_count
+        return (
+            self.resolvable_count >= OUTAGE_HINT_MIN_REFERENCES
+            and self.not_found_count == self.resolvable_count
+        )
 
     @property
     def quotes_checked(self) -> int:

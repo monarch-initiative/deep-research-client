@@ -28,20 +28,30 @@ _PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
 # rather than a /doi/ one - link.springer.com/article/10.1186/…,
 # frontiersin.org/…/articles/10.3389/… . It can only fire immediately before a
 # DOI, so nature.com/articles/371252a0, whose id is not a DOI, is left alone.
+# The URL branches are grouped so that a DOI lifted out of a link can be told
+# apart from one written as doi:10.x/y. Only the former gets its trailing path
+# furniture stripped, since in a doi: form those characters are the identifier.
 _DOI_PATTERN = re.compile(
     r"(?:"
     r"doi[:\s]*"
-    r"|https?://(?:dx\.)?doi\.org/"
-    r"|/doi/(?:abs/|full/|pdf/|epdf/|epub/|book/|chapter/)?"
+    r"|(?P<url>"
+    r"https?://(?:dx\.)?doi\.org/"
+    r"|/doi/(?:[a-z]+/)*"
     r"|/articles?/"
-    r")(10\.\d{4,}/[^\s|`\"<>]+)",
+    r"|\?id="
+    r")"
+    r")(?P<doi>10\.\d{4,}/[^\s|`\"<>]+)",
     re.IGNORECASE,
 )
 
-# Landing pages append a view segment after the DOI. Stripping it is the reverse
-# of the risk the prefix widening introduces: without this, every Frontiers link
-# in a report resolves to nothing and is reported as possibly fabricated.
-_DOI_VIEW_SUFFIX = re.compile(r"/(?:full|abstract|pdf|epdf|html|meta|references)$", re.IGNORECASE)
+# Trailing path segments a publisher appends to a DOI-bearing URL: /full, /pdf,
+# /tables/1, /figures/2 and so on. Enumerating the vocabulary was tried first and
+# does not hold - each publisher family this pattern reaches brings its own - so
+# the shape is matched instead: a lowercase word, optionally followed by a
+# number. A DOI suffix whose own final segment looks like that would be trimmed
+# too, which is the accepted cost; such DOIs are rare, and the alternative is
+# reporting every figure or table link in a report as possibly fabricated.
+_DOI_URL_FURNITURE = re.compile(r"(?:/[a-z]+(?:/\d+)?)+$", re.IGNORECASE)
 # Both the current pubmed.ncbi.nlm.nih.gov host and the older
 # www.ncbi.nlm.nih.gov/pubmed path, which providers still emit.
 _URL_PATTERN = re.compile(
@@ -154,11 +164,13 @@ class QuotedClaim:
     reference_id: str
 
 
-def normalize_doi(doi: str) -> str:
+def normalize_doi(doi: str, from_url: bool = False) -> str:
     """Undo markdown escaping and strip punctuation that trails a DOI.
 
     Args:
         doi: A raw DOI string, possibly with trailing punctuation or markup.
+        from_url: Whether the DOI was lifted out of a link, in which case
+            trailing path segments belong to the URL rather than the identifier.
 
     Returns:
         The DOI as the publisher registered it.
@@ -187,10 +199,17 @@ def normalize_doi(doi: str) -> str:
         >>> normalize_doi("10.1038/ng1234#abstract")
         '10.1038/ng1234'
 
-        A landing page's view segment likewise belongs to the URL:
+        A landing page's path furniture likewise belongs to the URL, but only
+        when the DOI came from one:
 
-        >>> normalize_doi("10.3389/fped.2024.1276215/full")
+        >>> normalize_doi("10.3389/fped.2024.1276215/full", from_url=True)
         '10.3389/fped.2024.1276215'
+        >>> normalize_doi("10.3389/fped.2024.1276215/full/pdf", from_url=True)
+        '10.3389/fped.2024.1276215'
+        >>> normalize_doi("10.1186/s12964-023-01120-5/tables/1", from_url=True)
+        '10.1186/s12964-023-01120-5'
+        >>> normalize_doi("10.1234/abc/pdf")
+        '10.1234/abc/pdf'
     """
     unescaped = _MARKDOWN_ESCAPE.sub(r"\1", doi)
     # Publisher links carry tracking parameters and anchors. A registered DOI
@@ -198,7 +217,12 @@ def normalize_doi(doi: str) -> str:
     # citation into an unresolvable identifier reported as possibly fabricated.
     unescaped = re.split(r"[?#]", unescaped, maxsplit=1)[0]
     unescaped = unescaped.rstrip(_DOI_TRAILING_CHARS)
-    return _DOI_VIEW_SUFFIX.sub("", unescaped)
+    if from_url:
+        trimmed = _DOI_URL_FURNITURE.sub("", unescaped)
+        # Never trim away the identifier itself.
+        if re.fullmatch(r"10\.\d{4,}/.+", trimmed):
+            return trimmed
+    return unescaped
 
 
 def find_reference_ids(text: str) -> list[FoundReference]:
@@ -256,7 +280,8 @@ def find_reference_ids(text: str) -> list[FoundReference]:
         _add(f"PMID:{match.group(1)}", match.group(0), url=match.group(0))
 
     for match in _DOI_PATTERN.finditer(text):
-        _add(f"DOI:{normalize_doi(match.group(1))}", match.group(0))
+        doi = normalize_doi(match.group("doi"), from_url=bool(match.group("url")))
+        _add(f"DOI:{doi}", match.group(0))
 
     for match in _PMC_PATTERN.finditer(text):
         _add(f"PMC:{match.group(1).upper()}", match.group(0))

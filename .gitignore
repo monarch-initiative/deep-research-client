@@ -140,3 +140,6 @@ dmypy.json
 .idea
 # Local vscode editor config
 .vscode
+
+# linkml-reference-validator reference cache (deep-research-client validate-references)
+references_cache/

@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
+import httpx
+
 from .extraction import FoundReference, QuotedClaim, extract_quoted_claims, extract_references
 from .models import (
     ReferenceCheck,
@@ -146,10 +148,17 @@ class ReferenceValidator:
 
         text_validator = self._build_text_validator()
 
-        # PMC accessions are resolved to a PMID (or DOI) in one batched call, so
-        # the rest of the run uses identifiers the library already handles.
+        # PMC accessions are resolved to a PMID (or DOI) in batched calls, so the
+        # rest of the run uses identifiers the library already handles. Prefixes
+        # the caller asked to skip are left out: --skip-prefix PMC means "do not
+        # look these up", which has to include this lookup.
+        skipped = {p.upper() for p in self.skip_prefixes}
         pmc_aliases = resolve_pmc_accessions(
-            [r.normalized_id for r in references if r.normalized_id.upper().startswith("PMC:")],
+            [
+                r.normalized_id
+                for r in references
+                if r.normalized_id.upper().startswith("PMC:") and "PMC" not in skipped
+            ],
             email=self.email,
         )
 
@@ -224,24 +233,50 @@ class ReferenceValidator:
             )
             return self._unchecked_quote(claim, reason)
         if status == ReferenceStatus.UNVERIFIABLE:
-            return self._unchecked_quote(
-                claim, "Reference was skipped, so the quote was not checked"
+            unverifiable_reason = (
+                "The PMC ID service was unreachable, so the quote was not checked"
+                if claim.reference_id.upper().startswith("PMC:")
+                and claim.reference_id not in pmc_aliases
+                else "Reference was skipped, so the quote was not checked"
             )
+            return self._unchecked_quote(claim, unverifiable_reason)
         if status == ReferenceStatus.NOT_FOUND:
             # The reference is already reported as unresolved; re-fetching it to
             # confirm the quote cannot be checked would just repeat the miss.
             return self._unchecked_quote(
                 claim, "Reference did not resolve, so the quote could not be checked"
             )
+
+        lookup_id = pmc_aliases.get(claim.reference_id) or claim.reference_id
+
         if not has_content.get(claim.reference_id, False):
+            # No body text to search - but the title is still evidence, and a
+            # record that resolved with a title and no abstract is ordinary for
+            # book chapters, conference items and many DataCite DOIs. Confirming
+            # against a title is safe here; contradicting a quote on the strength
+            # of a title alone would not be, hence the fall-through.
+            if self._quotes_the_title(text_validator, claim, lookup_id):
+                return self._title_quote(claim)
             return self._unchecked_quote(
                 claim,
                 "Reference resolved but exposes no abstract or full text to search",
             )
 
         logger.info("Checking quoted claim attributed to %s", claim.reference_id)
-        lookup_id = pmc_aliases.get(claim.reference_id) or claim.reference_id
         return self._check_quote(text_validator, claim, lookup_id)
+
+    @staticmethod
+    def _title_quote(claim: QuotedClaim) -> SupportingTextCheck:
+        """Build a result for a quote that is the cited reference's title."""
+        return SupportingTextCheck(
+            reference_id=claim.reference_id,
+            quote=claim.quote,
+            was_checkable=True,
+            is_valid=True,
+            similarity_score=1.0,
+            matched_text=claim.quote,
+            message="Quoted text is the title of the cited reference",
+        )
 
     @staticmethod
     def _unchecked_quote(claim: QuotedClaim, message: str) -> SupportingTextCheck:
@@ -406,7 +441,9 @@ class ReferenceValidator:
         Returns:
             True if the quote is the title, or the start of it.
         """
-        # Already in the fetcher's in-memory cache from the reference pass.
+        # Free: ReferenceFetcher memoises in a process-local dict keyed on the
+        # normalised id (reference_fetcher.py:126), and the reference pass has
+        # already fetched this one, so no request is issued here.
         reference = text_validator.fetcher.fetch(lookup_id)
         if reference is None or not reference.title:
             return False
@@ -436,15 +473,7 @@ class ReferenceValidator:
         match = result.match_result
 
         if not result.is_valid and self._quotes_the_title(text_validator, claim, lookup_id):
-            return SupportingTextCheck(
-                reference_id=claim.reference_id,
-                quote=claim.quote,
-                was_checkable=True,
-                is_valid=True,
-                similarity_score=1.0,
-                matched_text=claim.quote,
-                message="Quoted text is the title of the cited reference",
-            )
+            return self._title_quote(claim)
 
         return SupportingTextCheck(
             reference_id=claim.reference_id,
@@ -460,6 +489,11 @@ class ReferenceValidator:
 
 
 PMC_IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+
+# NCBI caps the ID converter at 200 identifiers per request. Past that the
+# service errors, which would otherwise turn a large bibliography into a
+# report-wide "could not reach the service" that is not true.
+PMC_IDCONV_BATCH_SIZE = 200
 
 
 def resolve_pmc_accessions(
@@ -499,22 +533,65 @@ def resolve_pmc_accessions(
     if not accessions:
         return {}
 
-    import httpx
+    resolved: dict[str, Optional[str]] = {}
+    for start in range(0, len(accessions), PMC_IDCONV_BATCH_SIZE):
+        batch = accessions[start : start + PMC_IDCONV_BATCH_SIZE]
+        params = {"ids": ",".join(batch), "format": "json", "tool": "deep-research-client"}
+        if email:
+            params["email"] = email
 
-    params = {"ids": ",".join(accessions), "format": "json", "tool": "deep-research-client"}
-    if email:
-        params["email"] = email
+        try:
+            response = httpx.get(
+                PMC_IDCONV_URL, params=params, timeout=30, follow_redirects=True
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            # Deliberately non-fatal and deliberately not a verdict: without an
+            # answer these references become unverifiable, never fabricated.
+            logger.warning("Could not reach the PMC ID converter: %s", exc)
+            continue
 
-    try:
-        response = httpx.get(PMC_IDCONV_URL, params=params, timeout=30, follow_redirects=True)
-        response.raise_for_status()
-        records = response.json().get("records", [])
-    except (httpx.HTTPError, ValueError) as exc:
-        # Deliberately non-fatal and deliberately not a verdict: without an
-        # answer these references become unverifiable, never fabricated.
-        logger.warning("Could not reach the PMC ID converter: %s", exc)
-        return {}
+        batch_result = _parse_idconv_records(payload.get("records") or [])
+        unanswered = {f"PMC:{a.upper()}" for a in batch} - set(batch_result)
+        if unanswered:
+            logger.warning(
+                "The PMC ID converter returned nothing for %d accession(s): %s",
+                len(unanswered),
+                ", ".join(sorted(unanswered)),
+            )
+        resolved.update(batch_result)
 
+    return resolved
+
+
+def _parse_idconv_records(records: list[dict]) -> dict[str, Optional[str]]:
+    """Turn ID converter records into a lookup mapping.
+
+    Args:
+        records: The ``records`` array from an ID converter response.
+
+    Returns:
+        Accession to replacement identifier, or to ``None`` when the service
+        states the accession does not exist.
+
+    Examples:
+        >>> _parse_idconv_records([
+        ...     {"pmcid": "PMC11157853", "pmid": 38849906, "doi": "10.1186/s13019-024-02793-w"},
+        ... ])
+        {'PMC:PMC11157853': 'PMID:38849906'}
+        >>> _parse_idconv_records([
+        ...     {"pmcid": "PMC99999999", "status": "error",
+        ...      "errmsg": "Identifier not found in PMC"},
+        ... ])
+        {'PMC:PMC99999999': None}
+        >>> _parse_idconv_records([{"pmcid": "PMC1", "doi": "10.1/only-a-doi"}])
+        {'PMC:PMC1': 'DOI:10.1/only-a-doi'}
+        >>> _parse_idconv_records([{"requested-id": "PMC2", "pmid": 7}])
+        {'PMC:PMC2': 'PMID:7'}
+        >>> _parse_idconv_records([])
+        {}
+    """
     resolved: dict[str, Optional[str]] = {}
     for record in records:
         accession = record.get("pmcid") or record.get("requested-id")

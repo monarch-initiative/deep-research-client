@@ -217,17 +217,29 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
 
     @property
     def all_references_failed(self) -> bool:
-        """Whether every checked reference failed to resolve.
+        """Whether every reference a lookup answered about failed to resolve.
 
         A whole bibliography failing at once is far more often a network or
         rate-limit problem than a report in which every citation is invented, so
         the rendered report hedges when this is true.
 
+        Measured against :attr:`resolvable_count`, not the total. During an
+        outage the identifier types that fail closed become unverifiable while
+        the rest become not-found, so comparing against the total would suppress
+        this banner in exactly the situation it was written for.
+
         Examples:
             >>> ReferenceValidationReport().all_references_failed
             False
+            >>> ReferenceValidationReport(
+            ...     references=[
+            ...         ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ...         ReferenceCheck(reference_id="PMC:PMC99999", status=ReferenceStatus.UNVERIFIABLE),
+            ...     ]
+            ... ).all_references_failed
+            True
         """
-        return bool(self.checked_references) and self.not_found_count == self.total_references
+        return bool(self.resolvable_count) and self.not_found_count == self.resolvable_count
 
     @property
     def quotes_checked(self) -> int:

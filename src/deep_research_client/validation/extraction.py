@@ -45,6 +45,9 @@ _MARKDOWN_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 # PMC accessions, bare or as one of the two article URL hosts. Long-form reports
 # cite these heavily - a Marfan report from claude_code carried 17 distinct PMC
 # accessions against 18 PMIDs - so leaving them out halves real coverage.
+# The five-digit floor was checked against NCBI rather than assumed: PMC1000,
+# PMC2500, PMC5000, PMC7777 and PMC9999 do not exist, and the range starts at
+# PMC13900. The trailing boundary is what stops a longer number being clipped.
 _PMC_PATTERN = re.compile(
     r"(?:https?://(?:www\.ncbi\.nlm\.nih\.gov/pmc|pmc\.ncbi\.nlm\.nih\.gov)/articles/)?"
     r"\b(PMC\d{5,9})\b",
@@ -83,10 +86,14 @@ _DOI_TRAILING_CHARS = ".,;:)]}>\"'*_`|~^\\"
 # containing them - 10.1016/0092-8674(94)90302-6 - is not cut short at its first
 # closing bracket. It stays bracket-delimited rather than running to end of line,
 # which would let one quote absorb the citation of the next sentence.
+# The citation group also admits a bracketed run, so a markdown link stays intact:
+# "quote" ([PMID:1](https://…)) is two repetitions - one bracketed, one
+# parenthesised - which is why the repetition floor is 1 rather than 3. A group
+# that matches no identifier yields no claim, so a loose floor costs nothing.
 _QUOTED_CLAIM_PATTERN = re.compile(
     r"[\"“”]([^\"“”\n]{20,600})[\"“”]"
     r"[\s,;:—-]*"
-    r"[(\[]((?:[^()\[\]\n]|\([^()\n]*\)){3,200})[)\]]"
+    r"[(\[]((?:[^()\[\]\n]|\([^()\n]*\)|\[[^\[\]\n]*\]){1,200})[)\]]"
 )
 
 
@@ -155,8 +162,20 @@ def normalize_doi(doi: str) -> str:
 
         >>> normalize_doi(r"10.1007/978-3-030-80614-9\\_8")
         '10.1007/978-3-030-80614-9_8'
+
+        A landing-page query string or fragment belongs to the URL, not the DOI:
+
+        >>> normalize_doi("10.1002/ajmg.a.61787?af=R")
+        '10.1002/ajmg.a.61787'
+        >>> normalize_doi("10.1038/ng1234#abstract")
+        '10.1038/ng1234'
     """
-    return _MARKDOWN_ESCAPE.sub(r"\1", doi).rstrip(_DOI_TRAILING_CHARS)
+    unescaped = _MARKDOWN_ESCAPE.sub(r"\1", doi)
+    # Publisher links carry tracking parameters and anchors. A registered DOI
+    # essentially never contains '?' or '#', and keeping one turns a real
+    # citation into an unresolvable identifier reported as possibly fabricated.
+    unescaped = re.split(r"[?#]", unescaped, maxsplit=1)[0]
+    return unescaped.rstrip(_DOI_TRAILING_CHARS)
 
 
 def find_reference_ids(text: str) -> list[FoundReference]:

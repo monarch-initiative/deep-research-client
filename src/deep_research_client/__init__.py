@@ -21,6 +21,15 @@ from .model_cards import (
     resolve_model_alias,
     list_all_aliases
 )
+from .validation import (
+    ReferenceCheck,
+    ReferenceStatus,
+    ReferenceValidationReport,
+    ReferenceValidator,
+    SupportingTextCheck,
+    extract_references,
+    validator_is_available,
+)
 
 __all__ = [
     "DeepResearchClient",
@@ -44,5 +53,12 @@ __all__ = [
     "resolve_model_alias",
     "list_all_aliases",
     "extract_title_from_markdown",
-    "preprocess_markdown"
+    "preprocess_markdown",
+    "ReferenceCheck",
+    "ReferenceStatus",
+    "ReferenceValidationReport",
+    "ReferenceValidator",
+    "SupportingTextCheck",
+    "extract_references",
+    "validator_is_available",
 ]

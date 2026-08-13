@@ -46,12 +46,7 @@ __all__ = [
 
 VALIDATION_SECTION_HEADING = "## Reference Validation"
 
-# Matches a validation section and everything after it. Validation sections are
-# always appended last, so the final occurrence marks where a previous run began.
-_VALIDATION_SECTION_RE = re.compile(
-    rf"\n*^{re.escape(VALIDATION_SECTION_HEADING)}\s*$.*\Z",
-    re.MULTILINE | re.DOTALL,
-)
+_H2_HEADING_RE = re.compile(r"^##[ \t]+\S.*$", re.MULTILINE)
 
 
 def strip_validation_section(markdown: str) -> str:
@@ -61,12 +56,23 @@ def strip_validation_section(markdown: str) -> str:
     the identifiers that section lists, re-fetching flagged references and
     inflating the counts, so a second run must start from the original text.
 
+    Only a *trailing* section is removed: a generated section is always appended
+    last and contains no further level-two headings, so it is safe to strip
+    exactly when the final ``##`` heading in the document is the validation
+    heading. A report that discusses reference validation in its body and then
+    continues with another section keeps everything, which matters because the
+    caller writes this result back over the file.
+
+    The one case it cannot see through is a validation heading inside a fenced
+    code block that happens to be the last ``##`` in the file. Recognising that
+    would mean parsing markdown rather than scanning it.
+
     Args:
         markdown: Report text, possibly ending in a validation section.
 
     Returns:
-        The report without its validation section, with trailing blank lines
-        normalised to a single newline.
+        The report without its trailing validation section, with trailing blank
+        lines normalised to a single newline.
 
     Examples:
         >>> strip_validation_section("# Report\\n\\nBody text.\\n")
@@ -77,9 +83,26 @@ def strip_validation_section(markdown: str) -> str:
         '# Report\\n\\nBody text.\\n'
         >>> strip_validation_section("## Reference Validation\\n\\nOnly a section.\\n")
         ''
+
+        A validation heading that is not the last section is left alone, along
+        with everything after it:
+
+        >>> strip_validation_section(
+        ...     "# Report\\n\\n## Reference Validation\\n\\nWe discuss it.\\n"
+        ...     "\\n## Conclusions\\n\\nImportant text.\\n"
+        ... )
+        '# Report\\n\\n## Reference Validation\\n\\nWe discuss it.\\n\\n## Conclusions\\n\\nImportant text.\\n'
     """
-    stripped = _VALIDATION_SECTION_RE.sub("", markdown)
-    return stripped.rstrip() + "\n" if stripped.strip() else ""
+    text = markdown
+    while True:
+        headings = _H2_HEADING_RE.findall(text)
+        if not headings or headings[-1].strip() != VALIDATION_SECTION_HEADING:
+            break
+        # Repeat, so a file left with stacked sections by an older run is cleaned
+        # up rather than losing only the last of them.
+        last_start = text.rindex(headings[-1])
+        text = text[:last_start]
+    return text.rstrip() + "\n" if text.strip() else ""
 
 
 class ReferenceValidationReport(GeneratedReferenceValidationReport):
@@ -158,18 +181,39 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         )
 
     @property
-    def confabulation_rate(self) -> float:
-        """Fraction of references that failed to resolve.
+    def resolvable_count(self) -> int:
+        """Number of references a lookup actually returned an answer about.
 
-        Returns ``0.0`` when there are no references to check.
+        Excludes unverifiable references, about which nothing was learned.
+        """
+        return self.verified_count + self.not_found_count
+
+    @property
+    def confabulation_rate(self) -> float:
+        """Fraction of the references we got an answer about that failed to resolve.
+
+        Unverifiable references are excluded from the denominator. Counting them
+        as successes would let ``--skip-prefix`` silently dilute the rate, so
+        that skipping the half of a bibliography that is fabricated would halve
+        the reported figure.
+
+        Returns ``0.0`` when nothing was resolvable.
 
         Examples:
             >>> ReferenceValidationReport().confabulation_rate
             0.0
+            >>> ReferenceValidationReport(
+            ...     references=[
+            ...         ReferenceCheck(reference_id="A:1", status=ReferenceStatus.NOT_FOUND),
+            ...         ReferenceCheck(reference_id="A:2", status=ReferenceStatus.VERIFIED),
+            ...         ReferenceCheck(reference_id="A:3", status=ReferenceStatus.UNVERIFIABLE),
+            ...     ]
+            ... ).confabulation_rate
+            0.5
         """
-        if not self.checked_references:
+        if not self.resolvable_count:
             return 0.0
-        return self.not_found_count / len(self.checked_references)
+        return self.not_found_count / self.resolvable_count
 
     @property
     def all_references_failed(self) -> bool:
@@ -388,7 +432,18 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
             lines.append("")
 
         if not self.has_confabulations:
-            lines.append("All extracted references resolved successfully.")
+            if self.verified_count == self.total_references:
+                lines.append("All extracted references resolved successfully.")
+            elif self.verified_count:
+                lines.append(
+                    f"{self.verified_count} of {self.total_references} references "
+                    "resolved; the rest could not be looked up either way."
+                )
+            else:
+                lines.append(
+                    "No reference could be looked up either way, so nothing here "
+                    "was confirmed or contradicted."
+                )
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"

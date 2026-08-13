@@ -157,6 +157,29 @@ def test_doi_survives_markdown_wrapping(text: str) -> None:
     assert [r.normalized_id for r in find_reference_ids(text)] == ["DOI:10.1038/ng1234"]
 
 
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Publisher landing pages, which is how deep research tools most often
+        # render a DOI. Observed in real claude_code and falcon reports.
+        ("https://www.pnas.org/doi/10.1073/pnas.232568699", "DOI:10.1073/pnas.232568699"),
+        (
+            "https://onlinelibrary.wiley.com/doi/10.1002/ajmg.a.61787",
+            "DOI:10.1002/ajmg.a.61787",
+        ),
+        (
+            "https://www.tandfonline.com/doi/full/10.1080/1744666X.2025.2612589",
+            "DOI:10.1080/1744666X.2025.2612589",
+        ),
+        ("https://dx.doi.org/10.1038/ng1234", "DOI:10.1038/ng1234"),
+        ("[Paper](https://www.pnas.org/doi/abs/10.1073/pnas.232568699)", "DOI:10.1073/pnas.232568699"),
+    ],
+)
+def test_publisher_doi_urls_are_extracted(text: str, expected: str) -> None:
+    """A DOI rendered as a publisher URL must not be silently left unchecked."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == [expected]
+
+
 def test_doi_containing_parentheses_is_preserved() -> None:
     """Real DOIs contain parentheses, so they must survive trailing-punctuation stripping."""
     found = find_reference_ids("Reported in doi:10.1016/0092-8674(94)90302-6 originally.")
@@ -266,6 +289,73 @@ def test_unresolvable_reference_is_flagged(
     assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
     assert report.not_found_count == 1
     assert report.confabulation_rate == 1.0
+    assert report.has_confabulations
+
+
+def test_truncated_doi_is_not_called_a_fabrication() -> None:
+    """A DOI the report itself cut short must not be reported as invented.
+
+    Observed in a real Edison report, which cited
+    https://doi.org/10.1016/0092-8674(94)90302-6 correctly in its body and
+    https://doi.org/10.1016/0092-8674(94 in its reference list.
+    """
+    from deep_research_client.validation.validator import _reclassify_truncated_dois
+
+    checks = [
+        ReferenceCheck(
+            reference_id="DOI:10.1016/0092-8674(94)90302-6",
+            status=ReferenceStatus.VERIFIED,
+        ),
+        ReferenceCheck(
+            reference_id="DOI:10.1016/0092-8674(94", status=ReferenceStatus.NOT_FOUND
+        ),
+    ]
+
+    report = ReferenceValidationReport(references=_reclassify_truncated_dois(checks))
+
+    assert report.checked_references[1].status == ReferenceStatus.UNVERIFIABLE
+    assert "truncated copy" in (report.checked_references[1].message or "")
+    assert report.confabulated_references == []
+    assert not report.has_confabulations
+
+
+@pytest.mark.parametrize(
+    "unresolved_id",
+    [
+        # Not a prefix of the resolved DOI
+        "DOI:10.9999/invented.entirely",
+        # A PMID is never demoted: PMIDs are opaque numerics, so one being a
+        # prefix of another says nothing about them being the same record.
+        "PMID:1234567",
+    ],
+)
+def test_truncation_rule_leaves_other_failures_alone(unresolved_id: str) -> None:
+    from deep_research_client.validation.validator import _reclassify_truncated_dois
+
+    checks = [
+        ReferenceCheck(reference_id="DOI:10.1234/abcdef", status=ReferenceStatus.VERIFIED),
+        ReferenceCheck(reference_id="PMID:12345678", status=ReferenceStatus.VERIFIED),
+        ReferenceCheck(reference_id=unresolved_id, status=ReferenceStatus.NOT_FOUND),
+    ]
+
+    result = _reclassify_truncated_dois(checks)
+
+    assert result[2].status == ReferenceStatus.NOT_FOUND
+
+
+def test_unrelated_unresolved_reference_is_still_flagged(
+    cache_dir: Path, tmp_path: Path
+) -> None:
+    """The truncation rule must not swallow a genuinely unresolvable reference."""
+    paper = tmp_path / "paper.md"
+    paper.write_text("# A Paper\n\nContent.\n", encoding="utf-8")
+
+    validator = ReferenceValidator(cache_dir=cache_dir)
+    report = validator.validate_references(
+        [_reference(f"file:{paper}"), _reference(f"file:{tmp_path / 'absent.md'}")]
+    )
+
+    assert report.not_found_count == 1
     assert report.has_confabulations
 
 

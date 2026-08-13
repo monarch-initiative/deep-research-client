@@ -160,6 +160,7 @@ class ReferenceValidator:
             reference_checks.append(check)
             has_content[check.reference_id] = checkable
 
+        reference_checks = _reclassify_truncated_dois(reference_checks)
         status_by_id = {check.reference_id: check.status for check in reference_checks}
 
         quote_checks = [
@@ -364,6 +365,89 @@ class ReferenceValidator:
             suggested_fix=match.suggested_fix if match else None,
             message=result.message,
         )
+
+
+def _reclassify_truncated_dois(checks: list[ReferenceCheck]) -> list[ReferenceCheck]:
+    """Demote a DOI that is a cut-short copy of another DOI in the same report.
+
+    Deep research tools mangle their own citation lists: an Edison report was
+    observed citing ``https://doi.org/10.1016/0092-8674(94)90302-6`` correctly in
+    its body and ``https://doi.org/10.1016/0092-8674(94`` in its reference list.
+    The truncated form resolves to nothing, so it would be listed as a possible
+    fabrication - a false accusation against a citation the report got right
+    elsewhere.
+
+    When an unresolved DOI is a strict prefix of a DOI that did resolve, it is
+    almost certainly the same identifier, mangled. Such a reference becomes
+    UNVERIFIABLE: reported, but not counted as a fabrication and not enough to
+    fail a build.
+
+    Args:
+        checks: Per-reference results, before quotes are resolved.
+
+    Returns:
+        The same results, with truncated duplicates demoted.
+
+    Examples:
+        >>> resolved = ReferenceCheck(
+        ...     reference_id="DOI:10.1016/0092-8674(94)90302-6",
+        ...     status=ReferenceStatus.VERIFIED,
+        ... )
+        >>> truncated = ReferenceCheck(
+        ...     reference_id="DOI:10.1016/0092-8674(94",
+        ...     status=ReferenceStatus.NOT_FOUND,
+        ... )
+        >>> out = _reclassify_truncated_dois([resolved, truncated])
+        >>> out[1].status == ReferenceStatus.UNVERIFIABLE
+        True
+        >>> "truncated" in out[1].message
+        True
+    """
+    verified_dois = [
+        check.reference_id
+        for check in checks
+        if check.status == ReferenceStatus.VERIFIED
+        and check.reference_id.upper().startswith("DOI:")
+    ]
+    if not verified_dois:
+        return checks
+
+    result: list[ReferenceCheck] = []
+    for check in checks:
+        longer = None
+        if check.status == ReferenceStatus.NOT_FOUND and check.reference_id.upper().startswith(
+            "DOI:"
+        ):
+            longer = next(
+                (
+                    candidate
+                    for candidate in verified_dois
+                    if candidate != check.reference_id
+                    and candidate.startswith(check.reference_id)
+                ),
+                None,
+            )
+        if longer is None:
+            result.append(check)
+            continue
+
+        logger.info(
+            "Treating %s as a truncated copy of %s rather than a fabrication",
+            check.reference_id,
+            longer,
+        )
+        result.append(
+            check.model_copy(
+                update={
+                    "status": ReferenceStatus.UNVERIFIABLE,
+                    "message": (
+                        f"Looks like a truncated copy of {longer}, which resolved; "
+                        "not counted as a possible fabrication"
+                    ),
+                }
+            )
+        )
+    return result
 
 
 def _clamp_similarity(score: float) -> float:

@@ -18,8 +18,18 @@ _PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
 # tight table cell (|doi:10.1/a|b|) does not swallow the next cell. Parentheses
 # are deliberately allowed through, since DOIs such as
 # 10.1016/0092-8674(94)90302-6 contain them; trailing ones are stripped below.
+#
+# The third alternative matches publisher landing pages - pnas.org/doi/10.1073/x,
+# onlinelibrary.wiley.com/doi/10.1002/x, tandfonline.com/doi/full/10.1080/x - which
+# is how deep research tools most often render a DOI. Without it those citations
+# are silently left unchecked, so the report understates its own coverage.
 _DOI_PATTERN = re.compile(
-    r"(?:doi[:\s]*|https?://doi\.org/)(10\.\d{4,}/[^\s|`\"<>]+)", re.IGNORECASE
+    r"(?:"
+    r"doi[:\s]*"
+    r"|https?://(?:dx\.)?doi\.org/"
+    r"|/doi/(?:abs/|full/|pdf/|epdf/|epub/)?"
+    r")(10\.\d{4,}/[^\s|`\"<>]+)",
+    re.IGNORECASE,
 )
 _URL_PATTERN = re.compile(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)")
 

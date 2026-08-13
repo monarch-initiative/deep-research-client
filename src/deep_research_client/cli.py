@@ -280,6 +280,43 @@ def _build_reference_validator(
     return ReferenceValidator(**kwargs)
 
 
+def _refresh_validation_frontmatter(
+    content: str,
+    frontmatter: dict,
+    report: "ReferenceValidationReport",
+) -> str:
+    """Bring a stale ``reference_validation`` frontmatter summary up to date.
+
+    A report produced by ``research --validate-references`` carries a summary in
+    its frontmatter. Re-validating it would otherwise leave that summary
+    contradicting the section written below it.
+
+    The frontmatter is only rewritten when such a summary is already present, so
+    a hand-written file is never reformatted by a tool that was asked to check
+    citations.
+
+    Args:
+        content: The report text, with any previous validation section removed.
+        frontmatter: Frontmatter already parsed from that text.
+        report: The fresh validation report.
+
+    Returns:
+        The report text, with the summary refreshed if there was one.
+    """
+    if "reference_validation" not in frontmatter:
+        return content
+
+    import yaml
+
+    from .markdown_parser import parse_frontmatter
+
+    updated = dict(frontmatter)
+    updated["reference_validation"] = report.summary()
+    _, body = parse_frontmatter(content)
+    rendered = yaml.dump(updated, default_flow_style=False, sort_keys=False).rstrip()
+    return f"---\n{rendered}\n---\n{body}"
+
+
 def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
     """Log a one-line-per-outcome summary of a reference validation report."""
     if not report.checked_references:
@@ -602,8 +639,8 @@ def research(
             metadata['contributors'] = contributor
 
     if not validate_references:
-        # Compared against the option default rather than truthiness, so that an
-        # explicit --validation-max-references 0 still warns.
+        # Compared against the option default rather than truthiness, so that a
+        # falsy-but-explicit value such as --validation-email "" still warns.
         unused_validation_flags: tuple[tuple[str, object, object], ...] = (
             ("--validation-cache-dir", validation_cache_dir, None),
             ("--validation-email", validation_email, None),
@@ -818,7 +855,7 @@ def validate_references_command(
         # Scan the whole body rather than the Output section alone: identifiers
         # routinely appear in the Citations section and in provider-specific
         # sections that sit alongside it.
-        _, body = parse_frontmatter(content)
+        frontmatter, body = parse_frontmatter(content)
 
         logger.info(f"Validating references in {path}")
         report = validator.validate_markdown(body, check_quotes=check_quotes)
@@ -828,7 +865,8 @@ def validate_references_command(
         markdown_report = report.to_markdown()
 
         if in_place:
-            path.write_text(content.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+            updated = _refresh_validation_frontmatter(content, frontmatter, report)
+            path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
             logger.info(f"Wrote validation section to {path}")
 
         if output:

@@ -1,98 +1,30 @@
-"""Data models for reference validation reports.
+"""Derived views over the reference validation data model.
 
-These models are plain Pydantic and carry no dependency on the optional
-``linkml-reference-validator`` package, so a report can be loaded, serialised and
-rendered anywhere.
+The data shape lives in ``reference_validation.yaml`` and is generated into
+:mod:`deep_research_client.validation.datamodel` with ``just gen-datamodel``.
+This module adds what a schema cannot express: quantities computed from those
+slots, and rendering of a report as markdown or as frontmatter.
+
+:class:`ReferenceCheck` and :class:`SupportingTextCheck` are re-exported from the
+generated model unchanged; only the report gains behaviour.
 """
 
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from .datamodel import ReferenceCheck, ReferenceStatus, SupportingTextCheck
+from .datamodel import ReferenceValidationReport as GeneratedReferenceValidationReport
 
-class ReferenceStatus(str, Enum):
-    """Outcome of resolving a single reference identifier.
-
-    Examples:
-        >>> ReferenceStatus.NOT_FOUND.value
-        'not_found'
-    """
-
-    VERIFIED = "verified"
-    """The identifier resolves to a real record."""
-
-    NOT_FOUND = "not_found"
-    """The identifier could not be resolved; likely confabulated."""
-
-    UNVERIFIABLE = "unverifiable"
-    """The identifier was skipped, or resolves but exposes no checkable content."""
+__all__ = [
+    "ReferenceCheck",
+    "ReferenceStatus",
+    "ReferenceValidationReport",
+    "SupportingTextCheck",
+]
 
 
-class ReferenceCheck(BaseModel):
-    """Result of resolving one reference cited by a report.
-
-    Examples:
-        >>> check = ReferenceCheck(
-        ...     reference_id="PMID:7913883",
-        ...     status=ReferenceStatus.VERIFIED,
-        ...     title="Mutations in the transmembrane domain of FGFR3",
-        ...     year="1994",
-        ... )
-        >>> check.status
-        <ReferenceStatus.VERIFIED: 'verified'>
-        >>> check.is_confabulated
-        False
-    """
-
-    reference_id: str = Field(..., description="Normalized identifier, e.g. PMID:7913883")
-    status: ReferenceStatus = Field(..., description="Resolution outcome")
-    occurrences: int = Field(default=1, description="Times the identifier is cited in the report")
-    title: Optional[str] = Field(default=None, description="Title of the resolved record")
-    year: Optional[str] = Field(default=None, description="Publication year of the resolved record")
-    journal: Optional[str] = Field(default=None, description="Journal or venue of the resolved record")
-    doi: Optional[str] = Field(default=None, description="DOI of the resolved record")
-    content_type: Optional[str] = Field(
-        default=None, description="Kind of content retrieved (abstract_only, full_text_xml, ...)"
-    )
-    message: Optional[str] = Field(default=None, description="Explanation, present when not verified")
-
-    @property
-    def is_confabulated(self) -> bool:
-        """Whether this identifier failed to resolve at all.
-
-        Examples:
-            >>> ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND).is_confabulated
-            True
-        """
-        return self.status == ReferenceStatus.NOT_FOUND
-
-
-class SupportingTextCheck(BaseModel):
-    """Result of checking a quoted claim against the text of its reference.
-
-    Examples:
-        >>> check = SupportingTextCheck(
-        ...     reference_id="PMID:7913883",
-        ...     quote="widgets are blue",
-        ...     is_valid=False,
-        ...     message="Text part not found as substring",
-        ... )
-        >>> check.is_valid
-        False
-    """
-
-    reference_id: str = Field(..., description="Normalized identifier the quote is attributed to")
-    quote: str = Field(..., description="Quoted text as it appears in the report")
-    is_valid: bool = Field(..., description="Whether the quote was found in the reference")
-    similarity_score: float = Field(default=0.0, description="Similarity of the closest match (0-1)")
-    matched_text: Optional[str] = Field(default=None, description="Matching span in the reference")
-    best_match: Optional[str] = Field(default=None, description="Closest non-matching span, if any")
-    suggested_fix: Optional[str] = Field(default=None, description="Suggested correction from the validator")
-    message: Optional[str] = Field(default=None, description="Validator explanation")
-
-
-class ReferenceValidationReport(BaseModel):
+class ReferenceValidationReport(GeneratedReferenceValidationReport):
     """Aggregate result of validating every reference in a report.
 
     Examples:
@@ -114,17 +46,18 @@ class ReferenceValidationReport(BaseModel):
         True
     """
 
+    # The generated slots are Optional[list] with a [] default, which would force
+    # every accessor below to test for None. Narrow them here, reusing the
+    # generated descriptions so the schema stays the single source of that prose.
     references: List[ReferenceCheck] = Field(
-        default_factory=list, description="Per-reference resolution results"
+        default_factory=list,
+        description=GeneratedReferenceValidationReport.model_fields["references"].description,
     )
     supporting_text: List[SupportingTextCheck] = Field(
-        default_factory=list, description="Per-quote supporting text results"
-    )
-    validator_version: Optional[str] = Field(
-        default=None, description="Version of linkml-reference-validator used"
-    )
-    truncated: bool = Field(
-        default=False, description="Whether validation stopped early due to a reference limit"
+        default_factory=list,
+        description=GeneratedReferenceValidationReport.model_fields[
+            "supporting_text"
+        ].description,
     )
 
     @property
@@ -145,11 +78,11 @@ class ReferenceValidationReport(BaseModel):
     @property
     def not_found_count(self) -> int:
         """Number of references that failed to resolve."""
-        return sum(1 for r in self.references if r.status == ReferenceStatus.NOT_FOUND)
+        return len(self.confabulated_references)
 
     @property
     def unverifiable_count(self) -> int:
-        """Number of references that were skipped or exposed no content."""
+        """Number of references that were skipped or have no resolver."""
         return sum(1 for r in self.references if r.status == ReferenceStatus.UNVERIFIABLE)
 
     @property
@@ -183,8 +116,18 @@ class ReferenceValidationReport(BaseModel):
 
     @property
     def confabulated_references(self) -> List[ReferenceCheck]:
-        """References that failed to resolve."""
-        return [r for r in self.references if r.is_confabulated]
+        """References that failed to resolve, and so may have been fabricated.
+
+        Examples:
+            >>> report = ReferenceValidationReport(
+            ...     references=[
+            ...         ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND)
+            ...     ]
+            ... )
+            >>> [r.reference_id for r in report.confabulated_references]
+            ['PMID:2']
+        """
+        return [r for r in self.references if r.status == ReferenceStatus.NOT_FOUND]
 
     @property
     def has_confabulations(self) -> bool:

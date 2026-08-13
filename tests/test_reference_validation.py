@@ -363,6 +363,59 @@ def test_report_with_no_references(validator: ReferenceValidator) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Generated data model
+# ---------------------------------------------------------------------------
+
+
+def test_datamodel_matches_linkml_schema() -> None:
+    """datamodel.py is generated; regenerate it with `just gen-datamodel`.
+
+    Guards against the checked-in Pydantic model drifting from the LinkML
+    schema that is its source of truth.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    schema = Path("src/deep_research_client/validation/reference_validation.yaml")
+    generated = repo_root / "src/deep_research_client/validation/datamodel.py"
+
+    # Resolve the generator next to the running interpreter so the comparison
+    # uses the linkml version this environment pins, not whatever is on PATH.
+    gen_pydantic = shutil.which("gen-pydantic", path=str(Path(sys.executable).parent))
+    assert gen_pydantic, "gen-pydantic not found; install the dev dependency group"
+
+    regenerated = subprocess.run(
+        [gen_pydantic, str(schema)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    assert regenerated == generated.read_text(encoding="utf-8"), (
+        "datamodel.py is out of date with reference_validation.yaml; "
+        "run `just gen-datamodel`"
+    )
+
+
+def test_schema_documents_every_status() -> None:
+    """Every ReferenceStatus value carries a description in the schema."""
+    import yaml
+
+    schema_path = (
+        Path(__file__).resolve().parent.parent
+        / "src/deep_research_client/validation/reference_validation.yaml"
+    )
+    schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
+    permissible = schema["enums"]["ReferenceStatus"]["permissible_values"]
+
+    assert set(permissible) == {status.value for status in ReferenceStatus}
+    assert all(value.get("description") for value in permissible.values())
+
+
+# ---------------------------------------------------------------------------
 # Report rendering
 # ---------------------------------------------------------------------------
 
@@ -509,7 +562,7 @@ def test_cli_validate_references_json_output(tmp_path: Path, seeded_cache: Path)
 
     assert result.exit_code == 0, result.output
     payload = json.loads(json_path.read_text(encoding="utf-8"))
-    assert payload["references"][0]["status"] == "verified"
+    assert payload["references"][0]["status"] == ReferenceStatus.VERIFIED.value
     assert payload["references"][0]["title"] == PAPER_TITLE
 
 

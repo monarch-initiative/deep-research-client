@@ -143,3 +143,5 @@ dmypy.json
 
 # linkml-reference-validator reference cache (deep-research-client validate-references)
 references_cache/
+# Intermediate output of `just gen-datamodel`
+*.py.tmp

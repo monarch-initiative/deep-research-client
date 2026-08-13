@@ -11,9 +11,9 @@ report's references can be checked as soon as it is produced.
 
 Two things are checked:
 
-1. **Existence.** Every PMID and DOI in the report is resolved against PubMed, Crossref
-   and DataCite. Identifiers that do not resolve are flagged as suspect - see
-   [what the outcomes mean](#what-the-outcomes-mean) for how much weight that carries.
+1. **Existence.** Every PMID, DOI and PMC accession in the report is resolved against
+   PubMed, Crossref and DataCite. Identifiers that do not resolve are flagged as suspect -
+   see [what the outcomes mean](#what-the-outcomes-mean) for how much weight that carries.
 2. **Supporting text.** Any quote directly attributed to a reference - written as
    `"quoted text" (PMID:12345678)` - is checked against the abstract or full text of that
    reference using deterministic substring matching.
@@ -198,7 +198,12 @@ dwarfism" (PMID:7913883).
 ```
 
 Both straight and typographic quotation marks work, as do square brackets. A report that
-paraphrases rather than quotes gets existence checking only. If your reports use a
+paraphrases rather than quotes gets existence checking only.
+
+A quote is matched against the abstract, any full text retrieved, and the reference's
+title. The title check exists because reports habitually quote a paper's title before
+citing it, and a title never appears in its own abstract; it matches from the start of the
+title, so quoting one without its subtitle is accepted. If your reports use a
 different convention, pass your own pattern to
 `ReferenceValidator.validate_markdown(..., quote_pattern=...)`; capture group 1 must be the
 quote and group 2 the citation.
@@ -231,6 +236,21 @@ when there was a source to search: if the reference did not resolve, exposed no 
 full text, was skipped by prefix, or fell outside `--max-references`, the quote is listed
 under "could not be checked" instead. Those do not count towards `--fail-on-unresolved`,
 because an unavailable source is not evidence against a quote.
+
+## PMC accessions
+
+`linkml-reference-validator` has no metadata source registered for PMC, so
+`PMC12345678` would otherwise go unchecked - and long reports cite PMC heavily. A Marfan
+report from `claude_code` carried 17 distinct PMC accessions against 18 PMIDs.
+
+Accessions are therefore resolved to a PMID (or DOI) through NCBI's ID converter in one
+batched call, after which the ordinary PubMed path applies, full text and quote checking
+included. Europe PMC was measured as an alternative and rejected: it returned no hit for 1
+of 17 real accessions taken from that report, and a lookup gap in a tool that accuses
+citations of being fabricated is worse than the coverage gap it closes.
+
+If the converter cannot be reached, those references are reported as unverifiable, never as
+missing.
 
 ## A note on enum values
 

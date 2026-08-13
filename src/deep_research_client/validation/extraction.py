@@ -42,6 +42,15 @@ _URL_PATTERN = re.compile(
 # a backslash of its own, so unescaping is safe.
 _MARKDOWN_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 
+# PMC accessions, bare or as one of the two article URL hosts. Long-form reports
+# cite these heavily - a Marfan report from claude_code carried 17 distinct PMC
+# accessions against 18 PMIDs - so leaving them out halves real coverage.
+_PMC_PATTERN = re.compile(
+    r"(?:https?://(?:www\.ncbi\.nlm\.nih\.gov/pmc|pmc\.ncbi\.nlm\.nih\.gov)/articles/)?"
+    r"\b(PMC\d{5,9})\b",
+    re.IGNORECASE,
+)
+
 # Characters that markdown routinely glues onto the end of a DOI and that a DOI
 # will never legitimately end with. The emphasis and code characters matter most:
 # a DOI written as **doi:10.1234/abc** or `doi:10.1234/abc` would otherwise keep
@@ -160,6 +169,8 @@ def find_reference_ids(text: str) -> list[FoundReference]:
         ['DOI:10.1038/ng1234']
         >>> [r.normalized_id for r in find_reference_ids("https://pubmed.ncbi.nlm.nih.gov/12345678")]
         ['PMID:12345678']
+        >>> [r.normalized_id for r in find_reference_ids("See PMC11000121 for details.")]
+        ['PMC:PMC11000121']
         >>> find_reference_ids("no references here")
         []
     """
@@ -187,6 +198,9 @@ def find_reference_ids(text: str) -> list[FoundReference]:
 
     for match in _DOI_PATTERN.finditer(text):
         _add(f"DOI:{normalize_doi(match.group(1))}", match.group(0))
+
+    for match in _PMC_PATTERN.finditer(text):
+        _add(f"PMC:{match.group(1).upper()}", match.group(0))
 
     return list(found.values())
 

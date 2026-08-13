@@ -146,6 +146,13 @@ class ReferenceValidator:
 
         text_validator = self._build_text_validator()
 
+        # PMC accessions are resolved to a PMID (or DOI) in one batched call, so
+        # the rest of the run uses identifiers the library already handles.
+        pmc_aliases = resolve_pmc_accessions(
+            [r.normalized_id for r in references if r.normalized_id.upper().startswith("PMC:")],
+            email=self.email,
+        )
+
         reference_checks: list[ReferenceCheck] = []
         # Records whether each reference offered any text to match a quote
         # against, so a quote is never called "not found" when in truth there was
@@ -156,7 +163,7 @@ class ReferenceValidator:
             logger.info(
                 "Resolving reference %d/%d: %s", index, len(references), reference.normalized_id
             )
-            check, checkable = self._check_reference(text_validator, reference)
+            check, checkable = self._check_reference(text_validator, reference, pmc_aliases)
             reference_checks.append(check)
             has_content[check.reference_id] = checkable
 
@@ -164,7 +171,9 @@ class ReferenceValidator:
         status_by_id = {check.reference_id: check.status for check in reference_checks}
 
         quote_checks = [
-            self._resolve_quote(text_validator, claim, status_by_id, has_content, truncated)
+            self._resolve_quote(
+                text_validator, claim, status_by_id, has_content, truncated, pmc_aliases
+            )
             for claim in quoted_claims
         ]
 
@@ -182,6 +191,7 @@ class ReferenceValidator:
         status_by_id: dict[str, ReferenceStatus],
         has_content: dict[str, bool],
         truncated: bool,
+        pmc_aliases: dict[str, Optional[str]],
     ) -> SupportingTextCheck:
         """Check one quoted claim, or record why it could not be checked.
 
@@ -230,7 +240,8 @@ class ReferenceValidator:
             )
 
         logger.info("Checking quoted claim attributed to %s", claim.reference_id)
-        return self._check_quote(text_validator, claim)
+        lookup_id = pmc_aliases.get(claim.reference_id) or claim.reference_id
+        return self._check_quote(text_validator, claim, lookup_id)
 
     @staticmethod
     def _unchecked_quote(claim: QuotedClaim, message: str) -> SupportingTextCheck:
@@ -270,12 +281,14 @@ class ReferenceValidator:
         self,
         text_validator: "SupportingTextValidator",
         reference: FoundReference,
+        pmc_aliases: dict[str, Optional[str]],
     ) -> tuple[ReferenceCheck, bool]:
         """Resolve a single reference identifier.
 
         Args:
             text_validator: The underlying supporting text validator.
             reference: The reference to resolve.
+            pmc_aliases: PMC accessions mapped to a fetchable identifier.
 
         Returns:
             The per-reference result, and whether the record exposed any text
@@ -294,8 +307,30 @@ class ReferenceValidator:
                 message=f"Prefix '{prefix}' is configured to be skipped",
             ), False
 
+        lookup_id = reference_id
+        if prefix.upper() == "PMC":
+            if reference_id not in pmc_aliases:
+                return ReferenceCheck(
+                    reference_id=reference_id,
+                    status=ReferenceStatus.UNVERIFIABLE,
+                    occurrences=reference.count,
+                    message=(
+                        "Could not reach the PMC ID service, so this accession was "
+                        "neither confirmed nor ruled out"
+                    ),
+                ), False
+            alias = pmc_aliases[reference_id]
+            if alias is None:
+                return ReferenceCheck(
+                    reference_id=reference_id,
+                    status=ReferenceStatus.NOT_FOUND,
+                    occurrences=reference.count,
+                    message="NCBI reports no such accession in PMC",
+                ), False
+            lookup_id = alias
+
         fetcher = text_validator.fetcher
-        if ReferenceSourceRegistry.get_source(fetcher.normalize_reference_id(reference_id)) is None:
+        if ReferenceSourceRegistry.get_source(fetcher.normalize_reference_id(lookup_id)) is None:
             return ReferenceCheck(
                 reference_id=reference_id,
                 status=ReferenceStatus.UNVERIFIABLE,
@@ -303,7 +338,14 @@ class ReferenceValidator:
                 message=f"No resolver is available for prefix '{prefix}'",
             ), False
 
-        content = fetcher.fetch(reference_id)
+        content = fetcher.fetch(lookup_id)
+
+        # A search-backed source answers a miss with an empty record rather than
+        # None, so a record carrying neither a title nor any text is a failed
+        # lookup, not a resolved reference with nothing to show for it. Without
+        # this, a fabricated PMC accession would be reported as verified.
+        if content is not None and not content.title and not content.content:
+            content = None
 
         if content is None:
             return ReferenceCheck(
@@ -337,22 +379,72 @@ class ReferenceValidator:
             message=message,
         ), has_content
 
+    @staticmethod
+    def _quotes_the_title(
+        text_validator: "SupportingTextValidator",
+        claim: QuotedClaim,
+        lookup_id: str,
+    ) -> bool:
+        """Return whether a quote is really the cited paper's title.
+
+        Reports routinely quote a title before citing it, and a title does not
+        appear in the abstract, so the substring check fails and an ordinary
+        citation is presented as an unsupported quotation. This happened four
+        times in a single live report.
+
+        A leading-substring comparison rather than equality, because quoting a
+        title without its subtitle is standard practice: one of those four
+        citations gave "…aortic disease in a middle-income country" for a paper
+        registered as "…in a middle-income country: a case series study." The
+        20-character floor on quote extraction keeps short generic prefixes out.
+
+        Args:
+            text_validator: The underlying supporting text validator.
+            claim: The quote and the reference it is attributed to.
+            lookup_id: Identifier to fetch the record under.
+
+        Returns:
+            True if the quote is the title, or the start of it.
+        """
+        # Already in the fetcher's in-memory cache from the reference pass.
+        reference = text_validator.fetcher.fetch(lookup_id)
+        if reference is None or not reference.title:
+            return False
+
+        title = text_validator.normalize_text(reference.title)
+        quote = text_validator.normalize_text(claim.quote)
+        return bool(quote) and title.startswith(quote)
+
     def _check_quote(
         self,
         text_validator: "SupportingTextValidator",
         claim: QuotedClaim,
+        lookup_id: str,
     ) -> SupportingTextCheck:
         """Check one quoted claim against the text of its reference.
 
         Args:
             text_validator: The underlying supporting text validator.
             claim: The quote and the reference it is attributed to.
+            lookup_id: Identifier to fetch, which differs from the cited one for
+                a PMC accession resolved to a PMID.
 
         Returns:
             The per-quote result.
         """
-        result = text_validator.validate(claim.quote, claim.reference_id)
+        result = text_validator.validate(claim.quote, lookup_id)
         match = result.match_result
+
+        if not result.is_valid and self._quotes_the_title(text_validator, claim, lookup_id):
+            return SupportingTextCheck(
+                reference_id=claim.reference_id,
+                quote=claim.quote,
+                was_checkable=True,
+                is_valid=True,
+                similarity_score=1.0,
+                matched_text=claim.quote,
+                message="Quoted text is the title of the cited reference",
+            )
 
         return SupportingTextCheck(
             reference_id=claim.reference_id,
@@ -365,6 +457,77 @@ class ReferenceValidator:
             suggested_fix=match.suggested_fix if match else None,
             message=result.message,
         )
+
+
+PMC_IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+
+
+def resolve_pmc_accessions(
+    pmc_ids: Iterable[str], email: Optional[str] = None
+) -> dict[str, Optional[str]]:
+    """Map PMC accessions onto identifiers the underlying validator can fetch.
+
+    ``linkml-reference-validator`` can already *use* a PMC ID - its full-text
+    provider fetches article bodies from one, and ``build_identifiers``
+    understands a ``PMCID:`` prefix - but it registers no metadata source for the
+    prefix, so ``ReferenceFetcher.fetch`` gives up before any of that runs.
+
+    The obvious fix, registering Europe PMC as a JSON API source, was measured
+    and rejected: it returned no hit for 1 of 17 real accessions taken from a
+    live report, and a lookup gap in a tool that accuses citations of being
+    fabricated is worse than the coverage gap it closes. NCBI's own ID converter
+    resolved all 17, and says so explicitly when an accession does not exist, so
+    it is used instead. Everything downstream then runs through the well-worn
+    PMID path.
+
+    Args:
+        pmc_ids: Accessions in ``PMC:PMC12345678`` form.
+        email: Contact address, which NCBI asks callers to send.
+
+    Returns:
+        A mapping from each accession to the identifier to fetch instead
+        (``PMID:...``, or ``DOI:...`` when the record has no PMID), or to
+        ``None`` when NCBI states the accession does not exist. Accessions the
+        service could not be asked about are absent from the mapping, so a
+        network failure is never mistaken for a missing record.
+
+    Examples:
+        >>> resolve_pmc_accessions([])
+        {}
+    """
+    accessions = [pmc_id.split(":", 1)[-1] for pmc_id in pmc_ids]
+    if not accessions:
+        return {}
+
+    import httpx
+
+    params = {"ids": ",".join(accessions), "format": "json", "tool": "deep-research-client"}
+    if email:
+        params["email"] = email
+
+    try:
+        response = httpx.get(PMC_IDCONV_URL, params=params, timeout=30, follow_redirects=True)
+        response.raise_for_status()
+        records = response.json().get("records", [])
+    except (httpx.HTTPError, ValueError) as exc:
+        # Deliberately non-fatal and deliberately not a verdict: without an
+        # answer these references become unverifiable, never fabricated.
+        logger.warning("Could not reach the PMC ID converter: %s", exc)
+        return {}
+
+    resolved: dict[str, Optional[str]] = {}
+    for record in records:
+        accession = record.get("pmcid") or record.get("requested-id")
+        if not accession:
+            continue
+        key = f"PMC:{accession.upper()}"
+        if record.get("status") == "error":
+            resolved[key] = None
+        elif record.get("pmid"):
+            resolved[key] = f"PMID:{record['pmid']}"
+        elif record.get("doi"):
+            resolved[key] = f"DOI:{record['doi']}"
+    return resolved
 
 
 def _reclassify_truncated_dois(checks: list[ReferenceCheck]) -> list[ReferenceCheck]:

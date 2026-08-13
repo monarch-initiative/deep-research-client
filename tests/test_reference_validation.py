@@ -209,6 +209,83 @@ def test_both_pubmed_url_styles_are_extracted(url: str) -> None:
     assert [r.normalized_id for r in find_reference_ids(url)] == ["PMID:12345678"]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "PMC11000121",
+        "(PMC11000121)",
+        "pmc11000121",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/",
+        "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11000121/",
+    ],
+)
+def test_pmc_accessions_are_extracted(text: str) -> None:
+    """Long-form reports cite PMC as heavily as PMID."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == ["PMC:PMC11000121"]
+
+
+def test_pmc_accession_is_not_confused_with_a_pmid() -> None:
+    """A PMC URL must not also register as a PubMed URL, or vice versa."""
+    found = find_reference_ids(
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/ and "
+        "https://pubmed.ncbi.nlm.nih.gov/37716433/"
+    )
+
+    assert sorted(r.normalized_id for r in found) == ["PMC:PMC11000121", "PMID:37716433"]
+
+
+def test_empty_record_is_not_counted_as_resolved(cache_dir: Path) -> None:
+    """A search-backed source answers a miss with an empty record, not None.
+
+    Without this such a record would be reported as verified, which is the exact
+    failure this feature exists to prevent.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.9999/empty").write_text(
+        "---\nreference_id: DOI:10.9999/empty\ncontent_type: unknown\n"
+        "full_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.9999/empty")]
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+def test_unreachable_pmc_service_never_accuses(cache_dir: Path, monkeypatch) -> None:
+    """A service we could not reach must not produce a fabrication verdict.
+
+    Points the converter at a host in the reserved .invalid TLD, so a real
+    connection genuinely fails - and fails fast, on DNS - rather than stubbing
+    out our own logic.
+    """
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("PMC:PMC11000121")]
+    )
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.UNVERIFIABLE
+    assert "Could not reach" in (check.message or "")
+    assert not report.has_confabulations
+
+
+def test_pmc_alias_parsing() -> None:
+    """The converter's two answer shapes map to a lookup id or an absence."""
+    from deep_research_client.validation.validator import resolve_pmc_accessions
+
+    assert resolve_pmc_accessions([]) == {}
+
+
 def test_doi_containing_parentheses_is_preserved() -> None:
     """Real DOIs contain parentheses, so they must survive trailing-punctuation stripping."""
     found = find_reference_ids("Reported in doi:10.1016/0092-8674(94)90302-6 originally.")
@@ -552,6 +629,42 @@ def test_validate_markdown_end_to_end(seeded_cache: Path) -> None:
     assert report.quotes_checked == 2
     assert report.quotes_valid_count == 1
     assert report.unsupported_quotes[0].quote == "widgets are uniformly magenta year round"
+
+
+def test_quoting_the_title_is_not_an_unsupported_quote(seeded_cache: Path) -> None:
+    """A title does not appear in the abstract, so it needs its own check."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'They cite "{PAPER_TITLE}" ({CACHED_PMID}).'
+    )
+
+    assert report.quotes_valid_count == 1
+    assert report.unsupported_quotes == []
+    assert "title" in (report.quote_checks[0].message or "")
+
+
+def test_quoting_a_title_without_its_subtitle_is_accepted(seeded_cache: Path) -> None:
+    """Citing "Long Title" for "Long Title: a case series" is standard practice."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+    prefix = PAPER_TITLE[: PAPER_TITLE.rindex(" ")]
+
+    report = validator.validate_markdown(f'They cite "{prefix}" ({CACHED_PMID}).')
+
+    assert len(prefix) >= 20
+    assert report.quotes_valid_count == 1
+
+
+def test_text_that_merely_resembles_the_title_is_still_flagged(seeded_cache: Path) -> None:
+    """The title rule matches from the start, so a paraphrase does not slip by."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'They cite "Coloration of Widgets in Wild Populations" ({CACHED_PMID}).'
+    )
+
+    assert report.quotes_valid_count == 0
+    assert len(report.unsupported_quotes) == 1
 
 
 def test_check_quotes_can_be_disabled(seeded_cache: Path) -> None:
@@ -1276,6 +1389,44 @@ def test_fabricated_doi_is_flagged(cache_dir: Path) -> None:
     report = validator.validate_markdown("Reported previously (DOI:10.9999/not.a.real.doi).")
 
     assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+@pytest.mark.integration
+def test_real_pmc_accession_resolves(cache_dir: Path) -> None:
+    """PMC accessions resolve via NCBI's converter and then the PMID path."""
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC11000121.")
+
+    check = report.checked_references[0]
+    assert check.reference_id == "PMC:PMC11000121"
+    assert check.status == ReferenceStatus.VERIFIED
+    assert "Marfan" in (check.title or "")
+
+
+@pytest.mark.integration
+def test_pmc_accession_europe_pmc_does_not_index_still_resolves(cache_dir: Path) -> None:
+    """The accession that ruled out a Europe PMC-backed implementation.
+
+    Europe PMC returns no hit for PMC11157853, which would have made a real
+    citation look fabricated. NCBI's converter knows it.
+    """
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC11157853.")
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+
+
+@pytest.mark.integration
+def test_fabricated_pmc_accession_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Reported in PMC99999999.")
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.NOT_FOUND
+    assert "no such accession" in (check.message or "")
 
 
 @pytest.mark.integration

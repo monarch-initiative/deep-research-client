@@ -409,6 +409,12 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         if self.unsupported_quotes:
             lines.append("### Quotes not found in the cited source")
             lines.append("")
+            lines.append(
+                "Searched the abstract, any retrieved full text, and the title. A "
+                "quote drawn from a part of the paper that was not retrieved will "
+                "appear here too, so check before treating one as invented:"
+            )
+            lines.append("")
             for quote_check in self.unsupported_quotes:
                 lines.append(f"- `{quote_check.reference_id}`: \"{quote_check.quote}\"")
                 if quote_check.best_match:

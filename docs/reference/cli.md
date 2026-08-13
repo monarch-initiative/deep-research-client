@@ -46,7 +46,7 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--keyword TEXT` | Keyword/tag for the research (repeatable) |
 | `--author TEXT` | Primary author of the research |
 | `--contributor TEXT` | Contributor to the research (repeatable) |
-| `--validate-references` | Resolve every cited PMID/DOI and append a validation section |
+| `--validate-references` | Resolve every cited identifier and append a validation section |
 | `--validation-cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
 | `--validation-email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
 | `--validation-full-text` | Fetch full text as well as abstracts when validating |
@@ -108,7 +108,7 @@ deep-research-client research "AI" \
   --base-url https://api.example.com \
   --api-key-env CUSTOM_API_KEY
 
-# Check every cited PMID/DOI before trusting the report
+# Check every cited identifier before trusting the report
 deep-research-client research "Statins and myopathy risk" \
   --output statins.md \
   --validate-references
@@ -118,7 +118,7 @@ deep-research-client research "Statins and myopathy risk" \
 
 ### validate-references
 
-Check that the references cited in a saved report actually exist, and that quotes attributed to them really appear in the source.
+Check that the references cited in a saved report actually exist, and that quotes attributed to them really appear in the source. Handles PMIDs, DOIs, PMC accessions and GEO accessions.
 
 ```bash
 deep-research-client validate-references [OPTIONS] FILES...
@@ -154,11 +154,11 @@ pip install "deep_research_client[validation]"
 
 #### Notes
 
-- Every PMID and DOI in the file is resolved against PubMed, Crossref and DataCite. Identifiers that do not resolve are reported as likely confabulations — but see the caveat on [what the outcomes mean](../how-to/validate-references.md#what-the-outcomes-mean), since a lookup that failed for network reasons is indistinguishable from one that failed because the record does not exist.
+- Every PMID, DOI, PMC accession and GEO accession in the file is resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are reported as likely confabulations — but see the caveat on [what the outcomes mean](../how-to/validate-references.md#what-the-outcomes-mean), since a lookup that failed for network reasons is indistinguishable from one that failed because the record does not exist.
 - Quotes are checked only when they are directly attributed, as in `"quoted text" (PMID:12345678)`. A quote whose reference could not be fetched is reported as *not checked* rather than as unsupported.
 - Fetched references are cached on disk, so re-running over the same corpus is fast and polite to the upstream APIs.
 - `--in-place` is idempotent: an existing validation section is replaced rather than appended to, so repeated runs neither stack sections nor re-count the identifiers a previous run listed.
-- Exit codes: `0` success, `1` usage or input error, `2` validation found problems (only with `--fail-on-unresolved`).
+- Exit codes: `0` success, `1` usage, input or filesystem error, `2` validation found problems (only with `--fail-on-unresolved`), `3` a lookup service was unreachable.
 
 #### Examples
 

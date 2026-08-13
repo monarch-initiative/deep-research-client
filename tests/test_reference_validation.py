@@ -313,11 +313,85 @@ def test_unreachable_pmc_service_never_accuses(cache_dir: Path, monkeypatch) -> 
     assert not report.has_confabulations
 
 
-def test_pmc_alias_parsing() -> None:
-    """The converter's two answer shapes map to a lookup id or an absence."""
-    from deep_research_client.validation.validator import resolve_pmc_accessions
+@pytest.mark.parametrize(
+    "records,expected",
+    [
+        # A resolved accession, as the converter returns it
+        (
+            [
+                {
+                    "doi": "10.1186/s13019-024-02793-w",
+                    "pmcid": "PMC11157853",
+                    "pmid": 38849906,
+                    "requested-id": "PMC11157853",
+                }
+            ],
+            {"PMC:PMC11157853": "PMID:38849906"},
+        ),
+        # An accession NCBI states does not exist - the only path that produces
+        # a fabrication verdict
+        (
+            [
+                {
+                    "pmcid": "PMC99999999",
+                    "requested-id": "PMC99999999",
+                    "status": "error",
+                    "errmsg": "Identifier not found in PMC",
+                }
+            ],
+            {"PMC:PMC99999999": None},
+        ),
+        # A record with a DOI but no PMID falls back to the DOI
+        ([{"pmcid": "PMC1", "doi": "10.1/x"}], {"PMC:PMC1": "DOI:10.1/x"}),
+        # A record with neither is not an answer either way
+        ([{"pmcid": "PMC2"}], {}),
+        ([], {}),
+    ],
+)
+def test_idconv_record_parsing(records: list[dict], expected: dict) -> None:
+    """Captured converter payloads, parsed offline."""
+    from deep_research_client.validation.validator import _parse_idconv_records
 
-    assert resolve_pmc_accessions([]) == {}
+    assert _parse_idconv_records(records) == expected
+
+
+def test_pmc_accessions_are_batched_under_the_ncbi_limit() -> None:
+    """NCBI caps the converter at 200 ids; a bigger report must not fail whole."""
+    from deep_research_client.validation.validator import PMC_IDCONV_BATCH_SIZE
+
+    assert PMC_IDCONV_BATCH_SIZE <= 200
+
+
+def test_skip_prefix_pmc_makes_no_network_call(cache_dir: Path, monkeypatch) -> None:
+    """--skip-prefix PMC means "do not look these up", including the alias call."""
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["PMC"])
+
+    report = validator.validate_references([_reference("PMC:PMC11000121")])
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.UNVERIFIABLE
+    # The skip message, not the unreachable-service one: no request was made.
+    assert "configured to be skipped" in (check.message or "")
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://onlinelibrary.wiley.com/doi/10.1002/ajmg.a.61787?af=R", "DOI:10.1002/ajmg.a.61787"),
+        ("https://doi.org/10.1038/ng1234#abstract", "DOI:10.1038/ng1234"),
+        (
+            "https://www.pnas.org/doi/10.1073/pnas.232568699?utm_source=x",
+            "DOI:10.1073/pnas.232568699",
+        ),
+    ],
+)
+def test_doi_url_query_and_fragment_are_dropped(url: str, expected: str) -> None:
+    """Tracking parameters belong to the link, not to the identifier."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
 
 
 def test_doi_containing_parentheses_is_preserved() -> None:
@@ -375,6 +449,32 @@ def test_quoted_claim_keeps_a_doi_containing_parentheses() -> None:
 
     assert [c.reference_id for c in claims] == ["DOI:10.1016/0092-8674(94)90302-6"]
     assert claims[0].reference_id == find_reference_ids(text)[0].normalized_id
+
+
+@pytest.mark.parametrize(
+    "markdown,expected",
+    [
+        (
+            'They said "a suitably long quotation here" '
+            "([PMID:12345678](https://pubmed.ncbi.nlm.nih.gov/12345678)).",
+            "PMID:12345678",
+        ),
+        (
+            'They said "a suitably long quotation here" '
+            "([PMC11000121](https://pmc.ncbi.nlm.nih.gov/articles/PMC11000121/)).",
+            "PMC:PMC11000121",
+        ),
+        (
+            'They said "a suitably long quotation here" [see [PMID:12345678]]',
+            "PMID:12345678",
+        ),
+    ],
+)
+def test_quoted_claims_survive_markdown_link_citations(markdown: str, expected: str) -> None:
+    """Providers cite through links at least as often as in plain text."""
+    claims = extract_quoted_claims(markdown)
+
+    assert [c.reference_id for c in claims] == [expected]
 
 
 def test_quoted_claims_do_not_absorb_the_next_citation() -> None:
@@ -689,6 +789,59 @@ def test_quoting_a_title_without_its_subtitle_is_accepted(seeded_cache: Path) ->
     assert report.quotes_valid_count == 1
 
 
+def test_title_only_record_can_still_confirm_a_title_quote(cache_dir: Path) -> None:
+    """A record with a title and no abstract must not block the title check.
+
+    Book chapters, conference items and many DataCite DOIs resolve this way. The
+    evidence to confirm the quote is sitting in the title.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.1/title-only").write_text(
+        "---\nreference_id: DOI:10.1/title-only\n"
+        f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.1/title-only")],
+        [QuotedClaim(quote=PAPER_TITLE, reference_id="DOI:10.1/title-only")],
+    )
+
+    assert report.checked_references[0].status == ReferenceStatus.VERIFIED
+    assert report.quotes_valid_count == 1
+    assert "title" in (report.quote_checks[0].message or "")
+
+
+def test_title_only_record_cannot_contradict_a_quote(cache_dir: Path) -> None:
+    """The same record must never be enough to call a quote unsupported."""
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path("DOI:10.1/title-only").write_text(
+        "---\nreference_id: DOI:10.1/title-only\n"
+        f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
+        encoding="utf-8",
+    )
+
+    report = ReferenceValidator(cache_dir=cache_dir).validate_references(
+        [_reference("DOI:10.1/title-only")],
+        [
+            QuotedClaim(
+                quote="Something the abstract might have said",
+                reference_id="DOI:10.1/title-only",
+            )
+        ],
+    )
+
+    assert report.unsupported_quotes == []
+    assert len(report.unchecked_quotes) == 1
+    assert not report.has_confabulations
+
+
 def test_text_that_merely_resembles_the_title_is_still_flagged(seeded_cache: Path) -> None:
     """The title rule matches from the start, so a paraphrase does not slip by."""
     validator = ReferenceValidator(cache_dir=seeded_cache)
@@ -948,6 +1101,36 @@ def test_partly_unverifiable_report_states_the_shortfall() -> None:
     )
 
     assert "1 of 2 references resolved" in report.to_markdown()
+
+
+def test_outage_banner_survives_a_mix_of_failure_modes() -> None:
+    """An outage makes some types unverifiable and others not-found.
+
+    Comparing against the total would suppress the connectivity banner in
+    exactly the situation it exists for.
+    """
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMC:PMC11000121", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert report.all_references_failed
+    assert "**Every** reference failed to resolve" in report.to_markdown()
+
+
+def test_outage_banner_stays_off_when_something_resolved() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="PMC:PMC11000121", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert not report.all_references_failed
 
 
 def test_confabulation_rate_ignores_unverifiable_references() -> None:
@@ -1362,10 +1545,14 @@ def test_cli_research_fails_on_unresolved(tmp_path: Path, cache_dir: Path, monke
         assert result.exit_code == 0, result.output
 
 
-def test_cli_research_keeps_report_when_validation_is_unavailable(
+def test_cli_research_checks_for_the_extra_before_researching(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """A validation problem must never cost the user their research result."""
+    """A missing extra must be caught before the expensive part of the run.
+
+    Discovering it afterwards would waste a provider call; discovering it
+    beforehand costs nothing.
+    """
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
     monkeypatch.setattr(
         "deep_research_client.validation.validator_is_available", lambda: False
@@ -1387,8 +1574,7 @@ def test_cli_research_keeps_report_when_validation_is_unavailable(
     )
 
     assert result.exit_code == 1
-    assert output.exists(), "the research result must survive a validation failure"
-    assert "## Question" in output.read_text(encoding="utf-8")
+    assert not output.exists(), "no research should have been performed"
 
 
 # ---------------------------------------------------------------------------

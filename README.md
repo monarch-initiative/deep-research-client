@@ -14,7 +14,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
-- ✅ **Reference Validation**: Resolve every cited PMID/DOI and check quoted claims against the source, catching confabulated citations
+- ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier and check quoted claims against the source, catching confabulated citations
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -29,7 +29,7 @@ uvx deep-research-client research "What is CRISPR?"
 # Or add to a uv project
 uv add deep-research-client
 
-# With reference validation (checks cited PMIDs/DOIs actually exist)
+# With reference validation (checks cited identifiers actually exist)
 pip install "deep-research-client[validation]"
 
 # For development
@@ -118,7 +118,7 @@ deep-research-client models --provider perplexity --detailed
 deep-research-client list-cache   # Show cached files
 deep-research-client clear-cache  # Remove all cache
 
-# Check that cited PMIDs/DOIs exist and quotes are real (needs the `validation` extra)
+# Check that cited identifiers exist and quotes are real (needs the `validation` extra)
 deep-research-client research "Statins and myopathy" --output report.md --validate-references
 deep-research-client validate-references report.md --fail-on-unresolved
 ```
@@ -127,7 +127,7 @@ You can provide the research question directly as a positional argument, read it
 
 ### Reference Validation
 
-Deep research tools confabulate citations. With the `validation` extra installed, every PMID and DOI in a report is resolved against PubMed, Crossref and DataCite, and any quote written as `"quoted text" (PMID:12345678)` is checked against the abstract or full text of that reference:
+Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference:
 
 ```python
 from deep_research_client import DeepResearchClient, ReferenceValidator

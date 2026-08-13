@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/use-cyberian-codex/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/validate-references/">
       
       
-        <link rel="prev" href="../choose-provider/">
+        <link rel="prev" href="../templates/">
       
       
-        <link rel="next" href="../templates/">
+        <link rel="next" href="../cache/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -22,7 +22,7 @@
     
     
       
-        <title>Use Cyberian + Codex - deep-research-client</title>
+        <title>Validate References - deep-research-client</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-to-use-cyberian-with-codex" class="md-skip">
+        <a href="#validate-references" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Use Cyberian + Codex
+              Validate References
             
           </span>
         </div>
@@ -411,32 +411,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Use Cyberian + Codex
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../use-cyberian-codex/" class="md-nav__link">
         
   
   
@@ -447,287 +425,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      Overview
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      Prerequisites
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Prerequisites">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-install-deep-research-client-with-cyberian" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Install deep-research-client with cyberian
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-install-agentapi" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Install agentapi
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-install-codex" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Install Codex
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Basic Usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Basic Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#simple-query" class="md-nav__link">
-    <span class="md-ellipsis">
-      Simple Query
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#with-output-file" class="md-nav__link">
-    <span class="md-ellipsis">
-      With Output File
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Configuration Options
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration Options">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-workdir_base-for-trusted-workspace" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using workdir_base for Trusted Workspace
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#limiting-iterations" class="md-nav__link">
-    <span class="md-ellipsis">
-      Limiting Iterations
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-port" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Port
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Advanced Usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Advanced Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-an-external-agentapi-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using an External agentapi Server
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#running-parallel-queries" class="md-nav__link">
-    <span class="md-ellipsis">
-      Running Parallel Queries
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-claude-instead-of-codex" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using Claude Instead of Codex
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#workflow-customization" class="md-nav__link">
-    <span class="md-ellipsis">
-      Workflow Customization
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Workflow Customization">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-a-custom-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using a Custom Workflow
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#agentapi-not-found-in-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      "agentapi not found in PATH"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#codex-startup-can-take-longer" class="md-nav__link">
-    <span class="md-ellipsis">
-      "Codex startup can take longer"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#connection-refused" class="md-nav__link">
-    <span class="md-ellipsis">
-      Connection Refused
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#research-takes-too-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      Research Takes Too Long
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#comparison-with-other-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      Comparison with Other Providers
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      See Also
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -760,10 +457,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../validate-references/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Validate References
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -774,6 +493,158 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      Install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validate-a-report-you-already-have" class="md-nav__link">
+    <span class="md-ellipsis">
+      Validate a report you already have
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validate-as-part-of-the-research-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Validate as part of the research run
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-a-pipeline-on-bad-citations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fail a pipeline on bad citations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-it-takes" class="md-nav__link">
+    <span class="md-ellipsis">
+      How long it takes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How long it takes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cost-is-driven-by-identifier-type-not-reference-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cost is driven by identifier type, not reference count
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-each-option-is-worth" class="md-nav__link">
+    <span class="md-ellipsis">
+      What each option is worth
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-it-from-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use it from Python
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      The data model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-quotes-are-recognised" class="md-nav__link">
+    <span class="md-ellipsis">
+      How quotes are recognised
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-outcomes-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the outcomes mean
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pmc-accessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      PMC accessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset-accessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dataset accessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-note-on-enum-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      A note on enum values
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1216,46 +1087,64 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#install" class="md-nav__link">
     <span class="md-ellipsis">
-      Overview
+      Install
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#validate-a-report-you-already-have" class="md-nav__link">
     <span class="md-ellipsis">
-      Prerequisites
+      Validate a report you already have
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Prerequisites">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validate-as-part-of-the-research-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Validate as part of the research run
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-a-pipeline-on-bad-citations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fail a pipeline on bad citations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-long-it-takes" class="md-nav__link">
+    <span class="md-ellipsis">
+      How long it takes
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How long it takes">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-install-deep-research-client-with-cyberian" class="md-nav__link">
+  <a href="#cost-is-driven-by-identifier-type-not-reference-count" class="md-nav__link">
     <span class="md-ellipsis">
-      1. Install deep-research-client with cyberian
+      Cost is driven by identifier type, not reference count
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-install-agentapi" class="md-nav__link">
+  <a href="#what-each-option-is-worth" class="md-nav__link">
     <span class="md-ellipsis">
-      2. Install agentapi
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-install-codex" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Install Codex
+      What each option is worth
     </span>
   </a>
   
@@ -1267,210 +1156,63 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
+  <a href="#use-it-from-python" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Basic Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#simple-query" class="md-nav__link">
-    <span class="md-ellipsis">
-      Simple Query
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#with-output-file" class="md-nav__link">
-    <span class="md-ellipsis">
-      With Output File
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configuration-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Configuration Options
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration Options">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-workdir_base-for-trusted-workspace" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using workdir_base for Trusted Workspace
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#limiting-iterations" class="md-nav__link">
-    <span class="md-ellipsis">
-      Limiting Iterations
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-port" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Port
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Advanced Usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Advanced Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-an-external-agentapi-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using an External agentapi Server
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#running-parallel-queries" class="md-nav__link">
-    <span class="md-ellipsis">
-      Running Parallel Queries
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-claude-instead-of-codex" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using Claude Instead of Codex
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#workflow-customization" class="md-nav__link">
-    <span class="md-ellipsis">
-      Workflow Customization
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Workflow Customization">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#using-a-custom-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using a Custom Workflow
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#agentapi-not-found-in-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      "agentapi not found in PATH"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#codex-startup-can-take-longer" class="md-nav__link">
-    <span class="md-ellipsis">
-      "Codex startup can take longer"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#connection-refused" class="md-nav__link">
-    <span class="md-ellipsis">
-      Connection Refused
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#research-takes-too-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      Research Takes Too Long
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#comparison-with-other-providers" class="md-nav__link">
-    <span class="md-ellipsis">
-      Comparison with Other Providers
+      Use it from Python
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
+  <a href="#the-data-model" class="md-nav__link">
     <span class="md-ellipsis">
-      See Also
+      The data model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-quotes-are-recognised" class="md-nav__link">
+    <span class="md-ellipsis">
+      How quotes are recognised
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-outcomes-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the outcomes mean
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pmc-accessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      PMC accessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset-accessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dataset accessions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-note-on-enum-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      A note on enum values
     </span>
   </a>
   
@@ -1495,232 +1237,385 @@
   
 
 
-<h1 id="how-to-use-cyberian-with-codex">How to Use Cyberian with Codex</h1>
-<p>This guide shows how to use the Cyberian provider with OpenAI Codex for agent-based deep research.</p>
-<h2 id="overview">Overview</h2>
-<p>Cyberian is an agent-based research provider that uses AI coding assistants (like Codex or Claude) to perform iterative research tasks. Unlike API-based providers, Cyberian:</p>
-<ul>
-<li>Runs locally using agentapi to communicate with AI agents</li>
-<li>Creates files (PLAN.md, REPORT.md, citations/) in a workspace</li>
-<li>Can iterate on research, refining results over multiple passes</li>
-<li>Supports multiple agent backends (Codex, Claude, Aider, etc.)</li>
-</ul>
-<h2 id="prerequisites">Prerequisites</h2>
-<h3 id="1-install-deep-research-client-with-cyberian">1. Install deep-research-client with cyberian</h3>
-<pre><code class="language-bash">pip install &quot;deep-research-client[cyberian]&quot;
-# or with uv
-uv pip install &quot;deep-research-client[cyberian]&quot;
-</code></pre>
-<h3 id="2-install-agentapi">2. Install agentapi</h3>
-<p>Cyberian uses <a href="https://github.com/coder/agentapi">agentapi</a> to communicate with AI agents:</p>
-<pre><code class="language-bash"># macOS
-brew install coder/tap/agentapi
-
-# Or download from releases
-# https://github.com/coder/agentapi/releases
-</code></pre>
-<h3 id="3-install-codex">3. Install Codex</h3>
-<pre><code class="language-bash">npm install -g @openai/codex
-# or
-brew install openai-codex
-</code></pre>
-<p>Verify installation:</p>
-<pre><code class="language-bash">which agentapi  # Should show path
-which codex     # Should show path
-</code></pre>
-<h2 id="basic-usage">Basic Usage</h2>
-<h3 id="simple-query">Simple Query</h3>
-<pre><code class="language-bash">deep-research-client research &quot;What is the function of the TP53 gene?&quot; \
-  --provider cyberian \
-  --param agent_type=codex
-</code></pre>
-<h3 id="with-output-file">With Output File</h3>
-<pre><code class="language-bash">deep-research-client research &quot;Review CRISPR base editing mechanisms&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --output crispr-review.md
-</code></pre>
-<h2 id="configuration-options">Configuration Options</h2>
-<h3 id="using-workdir_base-for-trusted-workspace">Using workdir_base for Trusted Workspace</h3>
-<p>By default, Cyberian creates temporary directories for each research task. Use <code>workdir_base</code> to place workspaces in a trusted location (useful for Codex sandbox bypass):</p>
-<pre><code class="language-bash">deep-research-client research &quot;Analyze autophagy pathways&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --param workdir_base=/path/to/trusted/workspace
-</code></pre>
-<h3 id="limiting-iterations">Limiting Iterations</h3>
-<p>Use <code>max_iterations</code> to limit how many times the research loop runs (useful for testing or cost control):</p>
-<pre><code class="language-bash"># Run at most 2 iterations
-deep-research-client research &quot;Brief overview of BRCA1&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --param max_iterations=2
-</code></pre>
-<h3 id="custom-port">Custom Port</h3>
-<p>If the default port (3284) is in use:</p>
-<pre><code class="language-bash">deep-research-client research &quot;Query here&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --param port=4000
-</code></pre>
-<h2 id="advanced-usage">Advanced Usage</h2>
-<h3 id="using-an-external-agentapi-server">Using an External agentapi Server</h3>
-<p>For debugging or custom configurations, run agentapi manually:</p>
-<pre><code class="language-bash"># Terminal 1: Start agentapi with Codex
-agentapi server codex --port 3299 -- --dangerously-bypass-approvals-and-sandbox
-
-# Terminal 2: Run research with manage_server=false
-deep-research-client research &quot;Your query&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --param port=3299 \
-  --param manage_server=false
-</code></pre>
-<h3 id="running-parallel-queries">Running Parallel Queries</h3>
-<p>Run multiple research queries concurrently using different ports:</p>
-<pre><code class="language-python">import asyncio
-from deep_research_client import DeepResearchClient
-from deep_research_client.provider_params import CyberianParams
-
-async def parallel_research():
-    client = DeepResearchClient()
-
-    # Configure two providers with different ports
-    params1 = CyberianParams(
-        agent_type=&quot;codex&quot;,
-        port=3284,
-        workdir_base=&quot;./research/query1&quot;,
-        max_iterations=3,
-    )
-
-    params2 = CyberianParams(
-        agent_type=&quot;codex&quot;,
-        port=3285,
-        workdir_base=&quot;./research/query2&quot;,
-        max_iterations=3,
-    )
-
-    # Run concurrently
-    results = await asyncio.gather(
-        client.research_async(
-            &quot;What is the role of p53 in cancer?&quot;,
-            provider=&quot;cyberian&quot;,
-            provider_params=params1,
-        ),
-        client.research_async(
-            &quot;How does BRCA1 affect DNA repair?&quot;,
-            provider=&quot;cyberian&quot;,
-            provider_params=params2,
-        ),
-    )
-
-    for result in results:
-        print(f&quot;Query: {result.query}&quot;)
-        print(f&quot;Duration: {result.duration_seconds:.1f}s&quot;)
-        print(f&quot;Report length: {len(result.markdown)} chars&quot;)
-        print(&quot;---&quot;)
-
-asyncio.run(parallel_research())
-</code></pre>
-<h3 id="using-claude-instead-of-codex">Using Claude Instead of Codex</h3>
-<pre><code class="language-bash">deep-research-client research &quot;Your query&quot; \
-  --provider cyberian \
-  --param agent_type=claude
-</code></pre>
-<h2 id="workflow-customization">Workflow Customization</h2>
-<p>Cyberian uses YAML workflow files to define research tasks. The default <code>deep-research.yaml</code> workflow includes:</p>
+<h1 id="validate-references">Validate References</h1>
+<p>Deep research providers confabulate. A report will happily attach <code>PMID:41258632</code> to a
+claim when no such record exists, or quote a sentence that never appeared in the paper it
+cites. Shipping a report with an unverified list of PMIDs and DOIs pushes that problem
+downstream.</p>
+<p><code>deep-research-client</code> integrates
+<a href="https://pypi.org/project/linkml-reference-validator/">linkml-reference-validator</a> so a
+report's references can be checked as soon as it is produced.</p>
+<p>Two things are checked:</p>
 <ol>
-<li>Initial search and planning</li>
-<li>Iterative refinement until quality criteria are met</li>
-<li>Final report generation with citations</li>
+<li><strong>Existence.</strong> Every PMID, DOI, PMC accession and GEO accession in the report is
+   resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are flagged as suspect -
+   see <a href="#what-the-outcomes-mean">what the outcomes mean</a> for how much weight that carries.</li>
+<li><strong>Supporting text.</strong> Any quote directly attributed to a reference - written as
+   <code>"quoted text" (PMID:12345678)</code> - is checked against the abstract or full text of that
+   reference using deterministic substring matching.</li>
 </ol>
-<h3 id="using-a-custom-workflow">Using a Custom Workflow</h3>
-<pre><code class="language-bash">deep-research-client research &quot;Your query&quot; \
-  --provider cyberian \
-  --param agent_type=codex \
-  --param workflow_file=/path/to/custom-workflow.yaml
+<h2 id="install">Install</h2>
+<p>Reference validation pulls in bibliographic tooling that most users do not need, so it is
+an optional extra:</p>
+<pre><code class="language-bash">pip install &quot;deep_research_client[validation]&quot;
 </code></pre>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="agentapi-not-found-in-path">"agentapi not found in PATH"</h3>
-<p>Ensure agentapi is installed and in your PATH:</p>
-<pre><code class="language-bash">which agentapi
-# If not found, install it or add to PATH
-export PATH=&quot;$PATH:/path/to/agentapi&quot;
+<p>Or, in a uv project:</p>
+<pre><code class="language-bash">uv add &quot;deep_research_client[validation]&quot;
 </code></pre>
-<h3 id="codex-startup-can-take-longer">"Codex startup can take longer"</h3>
-<p>Codex may take 10-30 seconds to start. If you see timeouts, either:</p>
-<ol>
-<li>Increase the timeout in provider config</li>
-<li>Use an external server with <code>manage_server=false</code></li>
-</ol>
-<h3 id="connection-refused">Connection Refused</h3>
-<p>If agentapi fails to start:</p>
-<pre><code class="language-bash"># Check if port is in use
-lsof -i :3284
+<p>NCBI asks for a contact address on Entrez requests. Set it once:</p>
+<pre><code class="language-bash">export NCBI_EMAIL=&quot;you@example.org&quot;
+</code></pre>
+<h2 id="validate-a-report-you-already-have">Validate a report you already have</h2>
+<pre><code class="language-bash">deep-research-client validate-references report.md
+</code></pre>
+<pre><code class="language-markdown">## Reference Validation
 
-# Kill existing process if needed
-kill $(lsof -t -i :3284)
+Checked with `linkml-reference-validator` 0.2.1.
+
+| Outcome | Count |
+| --- | --- |
+| References checked | 3 |
+| Resolved | 1 |
+| Unresolved (possible confabulation) | 2 |
+| Unverifiable | 0 |
+| Quoted claims checked | 1 |
+| Quoted claims found in source | 1 |
+| Quoted claims with nothing to check against | 1 |
+
+### Unresolved references
+
+These identifiers did not resolve to a record and may be fabricated. A lookup that failed
+for transport reasons is indistinguishable from one that failed because the record does not
+exist, so spot-check before acting on them:
+
+- `PMID:99999998` (2 mentions) - Identifier did not resolve to a record
+- `DOI:10.9999/totally.made.up` (1 mention) - Identifier did not resolve to a record
+
+### Quotes that could not be checked
+
+There was no text to compare these against, so they are neither confirmed nor contradicted:
+
+- `PMID:99999998`: &quot;widget-based therapy reverses achondroplasia in adults&quot;
+  - Reference did not resolve, so the quote could not be checked
 </code></pre>
-<h3 id="research-takes-too-long">Research Takes Too Long</h3>
-<p>Use <code>max_iterations</code> to limit the research loop:</p>
-<pre><code class="language-bash">--param max_iterations=2
+<p>Use <code>--in-place</code> to write that section into the report itself, or <code>--json</code> to get the same
+result as structured data. <code>--in-place</code> replaces any section a previous run left behind, so
+it is safe to re-run over a whole corpus. It replaces a <em>trailing</em> section only: a report
+that discusses reference validation in its body and then continues with another section
+keeps everything.</p>
+<h2 id="validate-as-part-of-the-research-run">Validate as part of the research run</h2>
+<pre><code class="language-bash">deep-research-client research &quot;Statins and myopathy risk&quot; \
+  --output statins.md \
+  --validate-references
 </code></pre>
-<p>Or use a simpler workflow for quick tests.</p>
-<h2 id="comparison-with-other-providers">Comparison with Other Providers</h2>
+<p>The saved report gains both a <code>## Reference Validation</code> section and a frontmatter summary:</p>
+<pre><code class="language-yaml">reference_validation:
+  total_references: 42
+  verified: 40
+  not_found: 2
+  unverifiable: 0
+  confabulation_rate: 0.048
+  quotes_checked: 6
+  quotes_valid: 5
+  quotes_not_checkable: 1
+  unresolved_references:
+  - PMID:99999998
+  - DOI:10.9999/totally.made.up
+  validator_version: 0.2.1
+</code></pre>
+<h2 id="fail-a-pipeline-on-bad-citations">Fail a pipeline on bad citations</h2>
+<p>Both commands accept <code>--fail-on-unresolved</code>, which exits with code <code>2</code> when any reference
+fails to resolve or any attributed quote is checked and not found in its source. Quotes
+that could not be checked at all do not trip it:</p>
+<pre><code class="language-bash">deep-research-client validate-references report.md --fail-on-unresolved
+</code></pre>
+<h2 id="how-long-it-takes">How long it takes</h2>
+<p>Measured against four live reports produced for this purpose - <code>claude_code</code> and <code>falcon</code>,
+a short prompt and a long templated one - on an ordinary broadband connection. Numbers will
+move with network conditions and upstream load, but the ratios are stable.</p>
 <table>
 <thead>
 <tr>
-<th>Aspect</th>
-<th>Cyberian + Codex</th>
-<th>OpenAI Deep Research</th>
-<th>Perplexity</th>
+<th>Report</th>
+<th style="text-align: right;">References</th>
+<th>Mix</th>
+<th style="text-align: right;">Research call</th>
+<th style="text-align: right;">Validation, cold</th>
+<th style="text-align: right;">Validation, warm</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Speed</td>
-<td>Slow (10-30 min)</td>
-<td>Slow (5-15 min)</td>
-<td>Fast (seconds)</td>
+<td>Achondroplasia, <code>claude_code</code></td>
+<td style="text-align: right;">31</td>
+<td>25 PMID, 4 DOI, 2 PMC</td>
+<td style="text-align: right;">283s</td>
+<td style="text-align: right;">70s</td>
+<td style="text-align: right;">1.1s</td>
 </tr>
 <tr>
-<td>Cost</td>
-<td>Variable</td>
-<td>High</td>
-<td>Low-Medium</td>
+<td>Achondroplasia, <code>falcon</code></td>
+<td style="text-align: right;">18</td>
+<td>6 PMID, 12 DOI</td>
+<td style="text-align: right;">356s</td>
+<td style="text-align: right;">76s</td>
+<td style="text-align: right;">2.0s</td>
 </tr>
 <tr>
-<td>Depth</td>
-<td>Very thorough</td>
-<td>Thorough</td>
-<td>Variable</td>
+<td>Marfan template, <code>claude_code</code></td>
+<td style="text-align: right;">33</td>
+<td>11 PMID, 5 DOI, 17 PMC</td>
+<td style="text-align: right;">743s</td>
+<td style="text-align: right;">74s</td>
+<td style="text-align: right;">1.2s</td>
 </tr>
 <tr>
-<td>Citations</td>
-<td>Creates files</td>
-<td>Inline</td>
-<td>Inline</td>
-</tr>
-<tr>
-<td>Offline</td>
-<td>Local execution</td>
-<td>API call</td>
-<td>API call</td>
-</tr>
-<tr>
-<td>Customizable</td>
-<td>Yes (workflows)</td>
-<td>Limited</td>
-<td>Limited</td>
+<td>Marfan template, <code>falcon</code></td>
+<td style="text-align: right;">13</td>
+<td>13 DOI</td>
+<td style="text-align: right;">742s</td>
+<td style="text-align: right;">68s</td>
+<td style="text-align: right;">1.0s</td>
 </tr>
 </tbody>
 </table>
-<h2 id="see-also">See Also</h2>
+<p>Two things follow from this. Validation costs roughly <strong>10-25% of the research call</strong> the
+first time, which is a small addition to a run that already takes minutes. And on a warm
+cache it costs <strong>essentially nothing</strong> - a second pass over the same corpus is one or two
+seconds, a 35-70x speed-up.</p>
+<h3 id="cost-is-driven-by-identifier-type-not-reference-count">Cost is driven by identifier type, not reference count</h3>
+<p>The four cold timings above barely track reference count: thirteen references took 68s
+while thirty-three took 74s. What separates them is what those references are.</p>
+<table>
+<thead>
+<tr>
+<th>Identifier</th>
+<th>Resolved via</th>
+<th style="text-align: right;">Cold cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PMID</td>
+<td>NCBI Entrez</td>
+<td style="text-align: right;">1.6s each</td>
+</tr>
+<tr>
+<td>PMC</td>
+<td>NCBI ID converter, batched, then Entrez</td>
+<td style="text-align: right;">1.5s each</td>
+</tr>
+<tr>
+<td>DOI</td>
+<td>Crossref, falling back to DataCite</td>
+<td style="text-align: right;">6.5s each</td>
+</tr>
+</tbody>
+</table>
+<p>A DOI costs about four times what a PMID does, so budget per DOI rather than per
+reference. PMC accessions are as cheap as PMIDs despite needing an extra hop, because the
+conversion is batched into one request for the whole report.</p>
+<p>The model is good for mixed reports and over-predicts for all-DOI ones: the first report's
+25 PMID + 4 DOI + 2 PMC predicts 69s against 70s measured, while the last report's 13 DOI
+predicts 85s against 68s - Crossref is quicker in bulk than the isolated measurement
+suggests. Treat 6.5s per DOI as an upper bound. It is also why thirteen references took
+longer than thirty-three: they were all DOIs.</p>
+<p>The delay applies per upstream request, not per reference, and a single reference can take
+more than one request: removing the 0.5s delay from ten PMIDs saved 7.7s, implying about
+fifteen requests for ten references.</p>
+<h3 id="what-each-option-is-worth">What each option is worth</h3>
+<p>Every option below except <code>--no-check-quotes</code> exists on both commands. On <code>research</code> they
+take a <code>--validation-</code> prefix - <code>--validation-rate-limit-delay</code>,
+<code>--validation-skip-prefix</code> and so on - so that they cannot be confused with the research
+options they sit beside. <code>--no-check-quotes</code> is <code>validate-references</code> only: it changes what
+is reported rather than what is fetched, and the run it would speed up is already fast.</p>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Effect on 10 references, cold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td>15.6s</td>
+</tr>
+<tr>
+<td><code>--rate-limit-delay 0</code></td>
+<td>7.9s</td>
+</tr>
+<tr>
+<td><code>--rate-limit-delay 2</code></td>
+<td>44.3s</td>
+</tr>
+<tr>
+<td><code>--full-text</code></td>
+<td>354.5s</td>
+</tr>
+</tbody>
+</table>
 <ul>
-<li><a href="../../reference/providers/">Provider Reference</a> - Full provider documentation</li>
-<li><a href="../../reference/configuration/">Configuration Reference</a> - CyberianParams details</li>
-<li><a href="../choose-provider/">Choose a Provider</a> - Provider comparison guide</li>
+<li><strong>Cache, above all.</strong> Fetched references are written to <code>./references_cache</code> by default
+  and reused on later runs. Point <code>--cache-dir</code> at a shared directory - or commit it - to
+  make repeated validation across a corpus nearly free. This is worth more than every other
+  option combined. Two caveats: PMC accessions still need one request to NCBI's ID
+  converter on every run, which is not cached, so a warm run is fast but not offline; and a
+  cached abstract-only record <em>is</em> upgraded on a later <code>--full-text</code> run, so that first
+  full-text pass over a warm corpus pays the full cost.</li>
+<li><strong>Full text is the expensive one.</strong> <code>--full-text</code> took <strong>23x</strong> longer on the same ten
+  references. It is off by default for that reason. Turn it on when quote checking matters:
+  without it, a quote drawn from the body of a paper is reported as not found, because only
+  the title and abstract were searched.</li>
+<li><strong>Rate limiting is about half the default cost, and lowering it risks false results.</strong>
+  <code>--rate-limit-delay</code> sets the pause between lookups, 0.5s by default. Setting it to 0
+  roughly halves cold runtime - but NCBI caps unkeyed clients at 3 requests per second, and
+  a rate-limited lookup comes back from the underlying library indistinguishable from a
+  record that does not exist. It is then reported as an unresolved reference under
+  <em>"may be fabricated"</em>. So this option trades speed against false accusations, not merely
+  against politeness. Lower it for a one-off small run; raise it if an API starts
+  rejecting requests. See <a href="#what-the-outcomes-mean">what the outcomes mean</a>.</li>
+<li><strong>Cap the work.</strong> <code>--max-references 20</code> stops after the first twenty; the report says so
+  explicitly rather than implying it covered everything.</li>
+<li><strong>Skip a whole identifier type.</strong> <code>--skip-prefix DOI</code> marks those references unverifiable
+  without looking them up, which given the table above is the single biggest saving after
+  caching - a DOI-heavy report validates in seconds rather than minutes. Extraction produces <code>PMID:</code>, <code>DOI:</code>, <code>PMC:</code> and <code>GEO:</code> identifiers, so those are
+  the prefixes this can skip; other prefixes apply to reports validated through the Python
+  API, which accepts any identifier the underlying library can resolve.</li>
+<li><strong><code>--no-check-quotes</code> saves little.</strong> Quote checking reuses references already fetched
+  for the existence check, so it adds no requests. Use it to change what is reported, not
+  to go faster. Combining it with <code>--full-text</code> would be pure waste, so full text is not
+  retrieved at all when no quote will be checked.</li>
 </ul>
+<p>Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven minutes on
+a cold cache, against under three for a hundred PMIDs. Validating as part of <code>research --validate-references</code> adds that time to a run
+that is already slow; validating afterwards with <code>validate-references</code> lets you do it once
+across a whole corpus against a shared cache.</p>
+<h2 id="use-it-from-python">Use it from Python</h2>
+<pre><code class="language-python">from deep_research_client import DeepResearchClient, ReferenceValidator
+
+client = DeepResearchClient()
+result = client.research(&quot;Statins and myopathy risk&quot;)
+
+validator = ReferenceValidator(cache_dir=&quot;references_cache&quot;, email=&quot;you@example.org&quot;)
+report = validator.validate_result(result)
+
+print(report.confabulation_rate)
+for check in report.confabulated_references:
+    print(check.reference_id, check.message)
+for check in report.unsupported_quotes:
+    print(check.reference_id, check.quote)
+</code></pre>
+<p><code>report.to_markdown()</code> renders the section shown above, and <code>report.summary()</code> gives the
+frontmatter dictionary. <code>ReferenceValidationReport</code> is a Pydantic model, so
+<code>model_dump_json()</code> works as usual.</p>
+<h2 id="the-data-model">The data model</h2>
+<p>The shape of a validation report is defined in LinkML, at
+<code>src/deep_research_client/validation/reference_validation.yaml</code>. That schema is the source
+of truth: <code>datamodel.py</code> is generated from it with</p>
+<pre><code class="language-bash">just gen-datamodel
+</code></pre>
+<p>Edit the YAML, regenerate, and commit both. A test compares the checked-in Pydantic model
+against a fresh generation and fails if they have drifted, so the two cannot quietly
+diverge.</p>
+<p><code>models.py</code> sits on top of the generated model and adds what a schema cannot express:
+counts, <code>confabulation_rate</code>, and the markdown and frontmatter rendering. Those are
+computed from the schema's slots rather than stored, so they never need to be kept in sync
+by hand.</p>
+<p>Because the schema is LinkML, the usual tooling applies to it - <code>gen-json-schema</code>,
+<code>gen-docs</code>, <code>linkml-validate</code> against a serialised report, and so on.</p>
+<h2 id="how-quotes-are-recognised">How quotes are recognised</h2>
+<p>Only quotes with an adjacent citation are checkable, so the extractor looks for a
+double-quoted span of at least 20 characters followed by a parenthesised or bracketed
+identifier:</p>
+<pre><code class="language-markdown">The authors report that &quot;Achondroplasia (ACH) is the most common genetic form of
+dwarfism&quot; (PMID:7913883).
+</code></pre>
+<p>Both straight and typographic quotation marks work, as do square brackets. A report that
+paraphrases rather than quotes gets existence checking only.</p>
+<p>A quote is matched against the abstract, any full text retrieved, and the reference's
+title. The title check exists because reports habitually quote a paper's title before
+citing it, and a title never appears in its own abstract; it matches from the start of the
+title, so quoting one without its subtitle is accepted. If your reports use a
+different convention, pass your own pattern to
+<code>ReferenceValidator.validate_markdown(..., quote_pattern=...)</code>; capture group 1 must be the
+quote and group 2 the citation.</p>
+<h2 id="what-the-outcomes-mean">What the outcomes mean</h2>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Resolved</td>
+<td>The identifier corresponds to a real record</td>
+</tr>
+<tr>
+<td>Unresolved</td>
+<td>The identifier did not resolve; treat it as suspect until shown otherwise</td>
+</tr>
+<tr>
+<td>Unverifiable</td>
+<td>The prefix was skipped, or no resolver exists for it — nothing was learned either way</td>
+</tr>
+</tbody>
+</table>
+<p>A resolved reference means the paper is real. It does not mean the paper supports the
+claim attached to it - that is what quote checking, and the LLM-judged scorers in
+<code>deep_research_client.evaluation</code>, are for.</p>
+<p><code>confabulation_rate</code> is computed over resolved plus unresolved references only.
+Unverifiable ones are left out of the denominator, so skipping a prefix cannot dilute the
+figure.</p>
+<p><strong>"Unresolved" is not proof of fabrication.</strong> The underlying fetcher returns nothing both
+for an identifier that does not exist and for a lookup that failed in transit - a timeout,
+an HTTP 500, an NCBI rate limit. The two are indistinguishable from here. In practice a
+handful of unresolved references among many resolved ones is a strong signal; a report in
+which <em>every</em> reference failed is almost always a network problem, and the rendered
+section says so rather than accusing the whole bibliography. Spot-check before acting.</p>
+<p>Quotes get a third outcome. A quote is only reported as <em>not found in the cited source</em>
+when there was a source to search: if the reference did not resolve, exposed no abstract or
+full text, was skipped by prefix, or fell outside <code>--max-references</code>, the quote is listed
+under "could not be checked" instead. Those do not count towards <code>--fail-on-unresolved</code>,
+because an unavailable source is not evidence against a quote.</p>
+<h2 id="pmc-accessions">PMC accessions</h2>
+<p><code>linkml-reference-validator</code> has no metadata source registered for PMC, so
+<code>PMC12345678</code> would otherwise go unchecked - and long reports cite PMC heavily. A Marfan
+report from <code>claude_code</code> carried 17 distinct PMC accessions against 18 PMIDs.</p>
+<p>Accessions are therefore resolved to a PMID (or DOI) through NCBI's ID converter in one
+batched call, after which the ordinary PubMed path applies, full text and quote checking
+included. Europe PMC was measured as an alternative and rejected: it returned no hit for 1
+of 17 real accessions taken from that report, and a lookup gap in a tool that accuses
+citations of being fabricated is worse than the coverage gap it closes.</p>
+<p>If the converter cannot be reached, those references are reported as unverifiable, never as
+missing.</p>
+<h2 id="dataset-accessions">Dataset accessions</h2>
+<p>GEO series and dataset accessions (<code>GSE68086</code>, <code>GDS1234</code>) are extracted and resolved
+through Entrez, bare or in the <code>acc.cgi</code> URL form. Reports cite datasets as confidently as
+they cite papers, and an invented accession misleads just as much as an invented PMID.</p>
+<p><code>BIOPROJECT</code> and <code>BIOSAMPLE</code> are deliberately <strong>not</strong> extracted, even though
+<code>linkml-reference-validator</code> registers sources for them. Their Entrez esummary responses
+currently fail to parse, so real accessions - <code>PRJNA31257</code>, <code>PRJEB1787</code>, <code>PRJNA13830</code>,
+<code>PRJDB1234</code> were all checked - resolve to nothing. Extracting them would report every
+BioProject citation as a possible fabrication. An integration test asserts the breakage, so
+it will start failing once upstream is fixed and the accessions can be added.</p>
+<p>Two DOI-bearing URL shapes are also not reached: bioRxiv's version suffix
+(<code>biorxiv.org/content/10.1101/…v1</code>, where the <code>v1</code> is part of no path segment) and any
+form that neither names the DOI after a path segment nor as an <code>id=</code> parameter.</p>
+<p><code>SRA</code>, <code>OMIM</code>, <code>MGNIFY</code>, <code>GTEX</code> and similar have no resolver at all. If you need one, the
+library takes custom JSON API sources through <code>.linkml-reference-validator-sources.yaml</code>,
+but this integration will not extract those identifiers from report text.</p>
+<h2 id="a-note-on-enum-values">A note on enum values</h2>
+<p>The generated model sets LinkML's <code>use_enum_values</code>, so <code>check.status</code> holds the enum's
+<em>value</em> rather than the member:</p>
+<pre><code class="language-python">check.status == ReferenceStatus.VERIFIED   # True - ReferenceStatus is a str enum
+isinstance(check.status, ReferenceStatus)  # False
+check.status.value                         # AttributeError
+</code></pre>
+<p>Compare against members; do not reach for attributes on them. Type checkers believe the
+annotation here, so this is one place where a clean <code>mypy</code> run will not save you.</p>
 
 
 

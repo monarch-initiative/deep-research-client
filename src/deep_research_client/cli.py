@@ -405,7 +405,7 @@ def research(
         "--contributor", help="Contributor to the research (can be used multiple times)")] = None,
     # Reference validation options
     validate_references: Annotated[bool, typer.Option(
-        "--validate-references", help="Resolve every cited PMID/DOI and append a validation section (requires the 'validation' extra)")] = False,
+        "--validate-references", help="Resolve every cited identifier and append a validation section (requires the 'validation' extra)")] = False,
     validation_cache_dir: Annotated[Optional[Path], typer.Option(
         "--validation-cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
     validation_email: Annotated[Optional[str], typer.Option(
@@ -652,6 +652,15 @@ def research(
             if flag_value != default:
                 logger.warning(f"{flag_name} has no effect without --validate-references")
 
+    if validate_references:
+        # Checked before the provider call: discovering a missing extra after a
+        # run that took minutes and real money would be a poor trade.
+        from .validation import INSTALL_HINT, validator_is_available
+
+        if not validator_is_available():
+            logger.error(INSTALL_HINT)
+            raise typer.Exit(1)
+
     logger.info("Researching...")
 
     try:
@@ -759,7 +768,14 @@ def research(
         reference_validation=validation_report,
     )
     if output:
-        output.write_text(validated_content, encoding='utf-8')
+        try:
+            output.write_text(validated_content, encoding='utf-8')
+        except OSError as exc:
+            # The report without its validation section is already on disk, so
+            # this loses the section, not the research.
+            logger.error(f"Could not add the validation section to {output}: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
     else:
         typer.echo("\n" + "=" * 60)
@@ -858,24 +874,36 @@ def validate_references_command(
         frontmatter, body = parse_frontmatter(content)
 
         logger.info(f"Validating references in {path}")
-        report = validator.validate_markdown(body, check_quotes=check_quotes)
+        try:
+            report = validator.validate_markdown(body, check_quotes=check_quotes)
+        except OSError as exc:
+            # urllib raises OSError subclasses for network failures. Reported as
+            # what it is, rather than as a filesystem problem or a traceback.
+            logger.error(f"Reference validation failed to reach a lookup service: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
         _echo_validation_summary(report)
         any_problems = any_problems or report.has_confabulations
 
         markdown_report = report.to_markdown()
 
-        if in_place:
-            updated = _refresh_validation_frontmatter(content, frontmatter, report)
-            path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
-            logger.info(f"Wrote validation section to {path}")
+        try:
+            if in_place:
+                updated = _refresh_validation_frontmatter(content, frontmatter, report)
+                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                logger.info(f"Wrote validation section to {path}")
 
-        if output:
-            output.write_text(markdown_report, encoding="utf-8")
-            logger.info(f"Validation report written to {output}")
+            if output:
+                output.write_text(markdown_report, encoding="utf-8")
+                logger.info(f"Validation report written to {output}")
 
-        if json_output:
-            json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
-            logger.info(f"Validation report written to {json_output}")
+            if json_output:
+                json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+                logger.info(f"Validation report written to {json_output}")
+        except OSError as exc:
+            logger.error(f"Filesystem error: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
 
         if not in_place and not output and not json_output:
             typer.echo(markdown_report)

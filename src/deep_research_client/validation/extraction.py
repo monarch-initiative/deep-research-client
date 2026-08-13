@@ -35,10 +35,15 @@ _DOI_TRAILING_CHARS = ".,;:)]}>\"'*_`|~^\\"
 #     "widgets are blue in most cases" (PMID:12345678)
 #
 # The 20-character minimum keeps single quoted terms ("gene X") out of the results.
+#
+# The citation group admits one level of nested parentheses so that a DOI
+# containing them - 10.1016/0092-8674(94)90302-6 - is not cut short at its first
+# closing bracket. It stays bracket-delimited rather than running to end of line,
+# which would let one quote absorb the citation of the next sentence.
 _QUOTED_CLAIM_PATTERN = re.compile(
     r"[\"“”]([^\"“”\n]{20,600})[\"“”]"
     r"[\s,;:—-]*"
-    r"[(\[]([^)\]\n]{3,200})[)\]]"
+    r"[(\[]((?:[^()\[\]\n]|\([^()\n]*\)){3,200})[)\]]"
 )
 
 
@@ -111,6 +116,11 @@ def find_reference_ids(text: str) -> list[FoundReference]:
 
     Identifiers are de-duplicated while preserving first-appearance order, and
     each result records how many times the identifier occurs.
+
+    ``count`` is a count of textual mentions, not of distinct citations. A
+    markdown link such as ``[PMID:1](https://pubmed.ncbi.nlm.nih.gov/1)`` spells
+    the identifier twice and counts twice, which is why the rendered report says
+    "mentions" rather than "cited".
 
     Args:
         text: Markdown or plain text to scan.

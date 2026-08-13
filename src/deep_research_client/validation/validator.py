@@ -163,7 +163,7 @@ class ReferenceValidator:
         status_by_id = {check.reference_id: check.status for check in reference_checks}
 
         quote_checks = [
-            self._resolve_quote(text_validator, claim, status_by_id, has_content)
+            self._resolve_quote(text_validator, claim, status_by_id, has_content, truncated)
             for claim in quoted_claims
         ]
 
@@ -180,6 +180,7 @@ class ReferenceValidator:
         claim: QuotedClaim,
         status_by_id: dict[str, ReferenceStatus],
         has_content: dict[str, bool],
+        truncated: bool,
     ) -> SupportingTextCheck:
         """Check one quoted claim, or record why it could not be checked.
 
@@ -192,6 +193,7 @@ class ReferenceValidator:
             claim: The quote and the reference it is attributed to.
             status_by_id: Resolution status of each reference already checked.
             has_content: Whether each reference exposed text to search.
+            truncated: Whether a reference limit dropped part of the bibliography.
 
         Returns:
             The per-quote result.
@@ -199,11 +201,17 @@ class ReferenceValidator:
         status = status_by_id.get(claim.reference_id)
 
         if status is None:
-            # Dropped by max_references. Checking it would re-open exactly the
-            # network work the cap exists to avoid.
-            return self._unchecked_quote(
-                claim, "Reference was not checked because the reference limit was reached"
+            # Usually dropped by max_references, in which case checking it would
+            # re-open exactly the network work the cap exists to avoid. Without a
+            # limit in play it means the quote's citation and the body scan
+            # disagreed about the identifier, which is worth saying plainly
+            # rather than blaming a limit that was never set.
+            reason = (
+                "Reference was not checked because the reference limit was reached"
+                if truncated
+                else "Reference was not among those extracted from the report body"
             )
+            return self._unchecked_quote(claim, reason)
         if status == ReferenceStatus.UNVERIFIABLE:
             return self._unchecked_quote(
                 claim, "Reference was skipped, so the quote was not checked"

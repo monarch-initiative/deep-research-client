@@ -13,6 +13,7 @@ its references already checked rather than with an unverified identifier list.
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
@@ -146,20 +147,31 @@ class ReferenceValidator:
             references = references[: self.max_references]
             truncated = True
 
-        text_validator = self._build_text_validator()
+        # Full text exists to be searched for quotes. Fetching it when there is
+        # no quote to check costs roughly twenty times the runtime and cannot
+        # change a single verdict, so --full-text --no-check-quotes does not pay
+        # for what it cannot use.
+        want_full_text = self.fetch_full_text and bool(quoted_claims)
+        if self.fetch_full_text and not quoted_claims:
+            logger.info("No quoted claims to check; skipping full-text retrieval")
+        text_validator = self._build_text_validator(fetch_full_text=want_full_text)
 
         # PMC accessions are resolved to a PMID (or DOI) in batched calls, so the
         # rest of the run uses identifiers the library already handles. Prefixes
         # the caller asked to skip are left out: --skip-prefix PMC means "do not
         # look these up", which has to include this lookup.
         skipped = {p.upper() for p in self.skip_prefixes}
+        pmc_skipped = "PMC" in skipped
         pmc_aliases = resolve_pmc_accessions(
-            [
+            []
+            if pmc_skipped
+            else [
                 r.normalized_id
                 for r in references
-                if r.normalized_id.upper().startswith("PMC:") and "PMC" not in skipped
+                if r.normalized_id.upper().startswith("PMC:")
             ],
             email=self.email,
+            rate_limit_delay=self.rate_limit_delay,
         )
 
         reference_checks: list[ReferenceCheck] = []
@@ -181,7 +193,13 @@ class ReferenceValidator:
 
         quote_checks = [
             self._resolve_quote(
-                text_validator, claim, status_by_id, has_content, truncated, pmc_aliases
+                text_validator,
+                claim,
+                status_by_id,
+                has_content,
+                truncated,
+                pmc_aliases,
+                pmc_skipped,
             )
             for claim in quoted_claims
         ]
@@ -201,6 +219,7 @@ class ReferenceValidator:
         has_content: dict[str, bool],
         truncated: bool,
         pmc_aliases: dict[str, Optional[str]],
+        pmc_skipped: bool,
     ) -> SupportingTextCheck:
         """Check one quoted claim, or record why it could not be checked.
 
@@ -214,6 +233,8 @@ class ReferenceValidator:
             status_by_id: Resolution status of each reference already checked.
             has_content: Whether each reference exposed text to search.
             truncated: Whether a reference limit dropped part of the bibliography.
+            pmc_skipped: Whether the caller asked for PMC to be skipped, which is
+                why its accessions are absent from ``pmc_aliases``.
 
         Returns:
             The per-quote result.
@@ -233,10 +254,18 @@ class ReferenceValidator:
             )
             return self._unchecked_quote(claim, reason)
         if status == ReferenceStatus.UNVERIFIABLE:
+            # A PMC accession missing from the alias map means the converter
+            # could not be reached - unless the caller asked to skip PMC, in
+            # which case no request was made and claiming an outage would be a
+            # false statement in a user-facing report.
+            unreachable = (
+                not pmc_skipped
+                and claim.reference_id.upper().startswith("PMC:")
+                and claim.reference_id not in pmc_aliases
+            )
             unverifiable_reason = (
                 "The PMC ID service was unreachable, so the quote was not checked"
-                if claim.reference_id.upper().startswith("PMC:")
-                and claim.reference_id not in pmc_aliases
+                if unreachable
                 else "Reference was skipped, so the quote was not checked"
             )
             return self._unchecked_quote(claim, unverifiable_reason)
@@ -289,8 +318,14 @@ class ReferenceValidator:
             message=message,
         )
 
-    def _build_text_validator(self) -> "SupportingTextValidator":
+    def _build_text_validator(
+        self, fetch_full_text: Optional[bool] = None
+    ) -> "SupportingTextValidator":
         """Construct the underlying ``SupportingTextValidator``.
+
+        Args:
+            fetch_full_text: Override for the configured setting, so a run with
+                nothing to search can skip the expensive retrieval.
 
         Returns:
             A configured ``linkml_reference_validator.SupportingTextValidator``.
@@ -301,7 +336,9 @@ class ReferenceValidator:
         )
 
         config_kwargs: dict = {
-            "fetch_full_text": self.fetch_full_text,
+            "fetch_full_text": (
+                self.fetch_full_text if fetch_full_text is None else fetch_full_text
+            ),
             "rate_limit_delay": self.rate_limit_delay,
             "skip_prefixes": list(self.skip_prefixes),
         }
@@ -497,7 +534,9 @@ PMC_IDCONV_BATCH_SIZE = 200
 
 
 def resolve_pmc_accessions(
-    pmc_ids: Iterable[str], email: Optional[str] = None
+    pmc_ids: Iterable[str],
+    email: Optional[str] = None,
+    rate_limit_delay: float = 0.0,
 ) -> dict[str, Optional[str]]:
     """Map PMC accessions onto identifiers the underlying validator can fetch.
 
@@ -517,6 +556,8 @@ def resolve_pmc_accessions(
     Args:
         pmc_ids: Accessions in ``PMC:PMC12345678`` form.
         email: Contact address, which NCBI asks callers to send.
+        rate_limit_delay: Seconds to pause between batches, for the rare report
+            that needs more than one.
 
     Returns:
         A mapping from each accession to the identifier to fetch instead
@@ -534,8 +575,11 @@ def resolve_pmc_accessions(
         return {}
 
     resolved: dict[str, Optional[str]] = {}
-    for start in range(0, len(accessions), PMC_IDCONV_BATCH_SIZE):
-        batch = accessions[start : start + PMC_IDCONV_BATCH_SIZE]
+    for index, batch in enumerate(batched(accessions, PMC_IDCONV_BATCH_SIZE)):
+        if index and rate_limit_delay:
+            # The rest of the validator honours this delay; a run long enough to
+            # need several batches should not machine-gun NCBI either.
+            time.sleep(rate_limit_delay)
         params = {"ids": ",".join(batch), "format": "json", "tool": "deep-research-client"}
         if email:
             params["email"] = email
@@ -563,6 +607,29 @@ def resolve_pmc_accessions(
         resolved.update(batch_result)
 
     return resolved
+
+
+def batched(items: list[str], size: int) -> list[list[str]]:
+    """Split a list into consecutive chunks of at most ``size``.
+
+    Args:
+        items: The items to split.
+        size: Maximum chunk length.
+
+    Returns:
+        The chunks, in order, covering every item exactly once.
+
+    Examples:
+        >>> batched(["a", "b", "c", "d", "e"], 2)
+        [['a', 'b'], ['c', 'd'], ['e']]
+        >>> batched(["a", "b"], 5)
+        [['a', 'b']]
+        >>> batched([], 3)
+        []
+        >>> sum(len(chunk) for chunk in batched(list("abcdefg"), 3))
+        7
+    """
+    return [items[start : start + size] for start in range(0, len(items), size)]
 
 
 def _parse_idconv_records(records: list[dict]) -> dict[str, Optional[str]]:

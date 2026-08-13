@@ -395,11 +395,23 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
             lines.append("### Unresolved references")
             lines.append("")
             if self.all_references_failed:
+                # Worded from resolvable_count, which is what the property
+                # measures: saying "every reference" when most were unverifiable
+                # would misdescribe the report to the person deciding whether to
+                # investigate.
+                scope = (
+                    "**Every** reference failed to resolve"
+                    if self.not_found_count == self.total_references
+                    else (
+                        f"**Every** reference that could be looked up failed to resolve "
+                        f"({self.not_found_count} of {self.total_references}; the rest "
+                        "were unverifiable)"
+                    )
+                )
                 lines.append(
-                    "**Every** reference failed to resolve. That is far more often a "
-                    "network outage or an API rate limit than a report in which every "
-                    "citation is invented - check connectivity and re-run before "
-                    "treating these as fabrications."
+                    f"{scope}. That is far more often a network outage or an API rate "
+                    "limit than a report in which every citation is invented - check "
+                    "connectivity and re-run before treating these as fabrications."
                 )
             else:
                 lines.append(

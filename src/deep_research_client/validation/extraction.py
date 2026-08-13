@@ -23,14 +23,25 @@ _PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
 # onlinelibrary.wiley.com/doi/10.1002/x, tandfonline.com/doi/full/10.1080/x - which
 # is how deep research tools most often render a DOI. Without it those citations
 # are silently left unchecked, so the report understates its own coverage.
+#
+# The last alternative covers publishers that put the DOI under an article path
+# rather than a /doi/ one - link.springer.com/article/10.1186/…,
+# frontiersin.org/…/articles/10.3389/… . It can only fire immediately before a
+# DOI, so nature.com/articles/371252a0, whose id is not a DOI, is left alone.
 _DOI_PATTERN = re.compile(
     r"(?:"
     r"doi[:\s]*"
     r"|https?://(?:dx\.)?doi\.org/"
-    r"|/doi/(?:abs/|full/|pdf/|epdf/|epub/)?"
+    r"|/doi/(?:abs/|full/|pdf/|epdf/|epub/|book/|chapter/)?"
+    r"|/articles?/"
     r")(10\.\d{4,}/[^\s|`\"<>]+)",
     re.IGNORECASE,
 )
+
+# Landing pages append a view segment after the DOI. Stripping it is the reverse
+# of the risk the prefix widening introduces: without this, every Frontiers link
+# in a report resolves to nothing and is reported as possibly fabricated.
+_DOI_VIEW_SUFFIX = re.compile(r"/(?:full|abstract|pdf|epdf|html|meta|references)$", re.IGNORECASE)
 # Both the current pubmed.ncbi.nlm.nih.gov host and the older
 # www.ncbi.nlm.nih.gov/pubmed path, which providers still emit.
 _URL_PATTERN = re.compile(
@@ -63,9 +74,15 @@ _PMC_PATTERN = re.compile(
 # ("Failed to find tag 'ERROR' in the DTD"), so PRJNA31257, PRJEB1787, PRJNA13830
 # and PRJDB1234 - all real - resolve to nothing. Extracting them would report
 # every BioProject citation as a possible fabrication.
+#
+# GSE is safe bare: nothing else is spelled that way with a number attached. GDS
+# is not - GDS15 and GDS30 are the Geriatric Depression Scale, which appears
+# constantly in clinical literature - so the bare form is only accepted with an
+# explicit GEO: prefix or the accession URL.
+_GEO_CONTEXT = r"(?:https?://www\.ncbi\.nlm\.nih\.gov/geo/query/acc\.cgi\?acc=|GEO:)"
 _GEO_PATTERN = re.compile(
-    r"(?:https?://www\.ncbi\.nlm\.nih\.gov/geo/query/acc\.cgi\?acc=|GEO:)?"
-    r"\b((?:GSE|GDS)\d{1,9})\b",
+    rf"(?:{_GEO_CONTEXT}\b(GDS\d{{1,9}})\b)"
+    rf"|(?:{_GEO_CONTEXT})?\b(GSE\d{{1,9}})\b",
     re.IGNORECASE,
 )
 
@@ -169,13 +186,19 @@ def normalize_doi(doi: str) -> str:
         '10.1002/ajmg.a.61787'
         >>> normalize_doi("10.1038/ng1234#abstract")
         '10.1038/ng1234'
+
+        A landing page's view segment likewise belongs to the URL:
+
+        >>> normalize_doi("10.3389/fped.2024.1276215/full")
+        '10.3389/fped.2024.1276215'
     """
     unescaped = _MARKDOWN_ESCAPE.sub(r"\1", doi)
     # Publisher links carry tracking parameters and anchors. A registered DOI
     # essentially never contains '?' or '#', and keeping one turns a real
     # citation into an unresolvable identifier reported as possibly fabricated.
     unescaped = re.split(r"[?#]", unescaped, maxsplit=1)[0]
-    return unescaped.rstrip(_DOI_TRAILING_CHARS)
+    unescaped = unescaped.rstrip(_DOI_TRAILING_CHARS)
+    return _DOI_VIEW_SUFFIX.sub("", unescaped)
 
 
 def find_reference_ids(text: str) -> list[FoundReference]:
@@ -239,7 +262,8 @@ def find_reference_ids(text: str) -> list[FoundReference]:
         _add(f"PMC:{match.group(1).upper()}", match.group(0))
 
     for match in _GEO_PATTERN.finditer(text):
-        _add(f"GEO:{match.group(1).upper()}", match.group(0))
+        accession = match.group(1) or match.group(2)
+        _add(f"GEO:{accession.upper()}", match.group(0))
 
     return list(found.values())
 

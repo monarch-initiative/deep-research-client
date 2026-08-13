@@ -411,9 +411,13 @@ def research(
     validation_email: Annotated[Optional[str], typer.Option(
         "--validation-email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
     validation_full_text: Annotated[bool, typer.Option(
-        "--validation-full-text", help="Fetch full text as well as abstracts when validating (slower, better quote checks)")] = False,
+        "--validation-full-text", help="Fetch full text as well as abstracts when validating (~23x slower, better quote checks)")] = False,
     validation_max_references: Annotated[Optional[int], typer.Option(
         "--validation-max-references", min=1, help="Stop after validating this many references")] = None,
+    validation_skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--validation-skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable); skipping DOI is the largest saving after caching")] = None,
+    validation_rate_limit_delay: Annotated[Optional[float], typer.Option(
+        "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
     fail_on_unresolved: Annotated[bool, typer.Option(
         "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
 ):
@@ -646,6 +650,8 @@ def research(
             ("--validation-email", validation_email, None),
             ("--validation-full-text", validation_full_text, False),
             ("--validation-max-references", validation_max_references, None),
+            ("--validation-skip-prefix", validation_skip_prefix, None),
+            ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
             ("--fail-on-unresolved", fail_on_unresolved, False),
         )
         for flag_name, flag_value, default in unused_validation_flags:
@@ -748,15 +754,17 @@ def research(
         email=validation_email,
         full_text=validation_full_text,
         max_references=validation_max_references,
+        skip_prefix=validation_skip_prefix,
+        rate_limit_delay=validation_rate_limit_delay,
     )
     logger.info("Validating references...")
     try:
         validation_report = reference_validator.validate_result(result)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         # urllib raises OSError subclasses for network failures. The report is
         # already saved, so report the real cause rather than letting it surface
         # as a filesystem error.
-        logger.error(f"Reference validation failed to reach a lookup service: {exc}")
+        logger.error(f"Reference validation failed: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(3)
 
@@ -798,7 +806,7 @@ def validate_references_command(
     email: Annotated[Optional[str], typer.Option(
         "--email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
     full_text: Annotated[bool, typer.Option(
-        "--full-text", help="Fetch full text as well as abstracts (slower, better quote checks)")] = False,
+        "--full-text", help="Fetch full text as well as abstracts (~23x slower, better quote checks)")] = False,
     max_references: Annotated[Optional[int], typer.Option(
         "--max-references", min=1, help="Stop after validating this many references per file")] = None,
     skip_prefix: Annotated[Optional[List[str]], typer.Option(
@@ -876,10 +884,13 @@ def validate_references_command(
         logger.info(f"Validating references in {path}")
         try:
             report = validator.validate_markdown(body, check_quotes=check_quotes)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             # urllib raises OSError subclasses for network failures. Reported as
             # what it is, rather than as a filesystem problem or a traceback.
-            logger.error(f"Reference validation failed to reach a lookup service: {exc}")
+            # OSError covers network failures (urllib raises subclasses of it);
+            # ValueError covers a malformed cached record. Neither should reach
+            # the user as a traceback when every neighbouring path exits cleanly.
+            logger.error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_validation_summary(report)

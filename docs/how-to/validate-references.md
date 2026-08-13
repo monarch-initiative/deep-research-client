@@ -11,8 +11,8 @@ report's references can be checked as soon as it is produced.
 
 Two things are checked:
 
-1. **Existence.** Every PMID, DOI and PMC accession in the report is resolved against
-   PubMed, Crossref and DataCite. Identifiers that do not resolve are flagged as suspect -
+1. **Existence.** Every PMID, DOI, PMC accession and GEO accession in the report is
+   resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are flagged as suspect -
    see [what the outcomes mean](#what-the-outcomes-mean) for how much weight that carries.
 2. **Supporting text.** Any quote directly attributed to a reference - written as
    `"quoted text" (PMID:12345678)` - is checked against the abstract or full text of that
@@ -251,6 +251,23 @@ citations of being fabricated is worse than the coverage gap it closes.
 
 If the converter cannot be reached, those references are reported as unverifiable, never as
 missing.
+
+## Dataset accessions
+
+GEO series and dataset accessions (`GSE68086`, `GDS1234`) are extracted and resolved
+through Entrez, bare or in the `acc.cgi` URL form. Reports cite datasets as confidently as
+they cite papers, and an invented accession misleads just as much as an invented PMID.
+
+`BIOPROJECT` and `BIOSAMPLE` are deliberately **not** extracted, even though
+`linkml-reference-validator` registers sources for them. Their Entrez esummary responses
+currently fail to parse, so real accessions - `PRJNA31257`, `PRJEB1787`, `PRJNA13830`,
+`PRJDB1234` were all checked - resolve to nothing. Extracting them would report every
+BioProject citation as a possible fabrication. An integration test asserts the breakage, so
+it will start failing once upstream is fixed and the accessions can be added.
+
+`SRA`, `OMIM`, `MGNIFY`, `GTEX` and similar have no resolver at all. If you need one, the
+library takes custom JSON API sources through `.linkml-reference-validator-sources.yaml`,
+but this integration will not extract those identifiers from report text.
 
 ## A note on enum values
 

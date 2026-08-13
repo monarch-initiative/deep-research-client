@@ -224,6 +224,40 @@ def test_pmc_accessions_are_extracted(text: str) -> None:
     assert [r.normalized_id for r in find_reference_ids(text)] == ["PMC:PMC11000121"]
 
 
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Deposited under GSE68086.", ["GEO:GSE68086"]),
+        ("(GSE68086)", ["GEO:GSE68086"]),
+        ("GEO:GSE68086", ["GEO:GSE68086"]),
+        ("gse68086", ["GEO:GSE68086"]),
+        ("Reanalysed GDS1234 throughout.", ["GEO:GDS1234"]),
+        (
+            "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68086",
+            ["GEO:GSE68086"],
+        ),
+        # Must not fire on a prefix without an accession number
+        ("GSEQ or GSE without digits", []),
+        ("Nothing here.", []),
+    ],
+)
+def test_geo_accessions_are_extracted(text: str, expected: list[str]) -> None:
+    """Reports cite datasets as confidently as papers, inventions included."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == expected
+
+
+def test_bioproject_accessions_are_deliberately_not_extracted() -> None:
+    """BIOPROJECT and BIOSAMPLE are registered upstream but do not work.
+
+    Their esummary responses fail to parse, so real accessions resolve to
+    nothing. Extracting them would report every such citation as a possible
+    fabrication, which is worse than not checking them.
+    """
+    found = find_reference_ids("See PRJNA398089 and SAMN02981208 for the raw data.")
+
+    assert found == []
+
+
 def test_pmc_accession_is_not_confused_with_a_pmid() -> None:
     """A PMC URL must not also register as a PubMed URL, or vice versa."""
     found = find_reference_ids(
@@ -1427,6 +1461,46 @@ def test_fabricated_pmc_accession_is_flagged(cache_dir: Path) -> None:
     check = report.checked_references[0]
     assert check.status == ReferenceStatus.NOT_FOUND
     assert "no such accession" in (check.message or "")
+
+
+@pytest.mark.integration
+def test_real_geo_accession_resolves(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Data deposited under GSE68086.")
+
+    check = report.checked_references[0]
+    assert check.reference_id == "GEO:GSE68086"
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.title
+
+
+@pytest.mark.integration
+def test_fabricated_geo_accession_is_flagged(cache_dir: Path) -> None:
+    validator = ReferenceValidator(cache_dir=cache_dir, email=_ncbi_email())
+
+    report = validator.validate_markdown("Data deposited under GSE888888888.")
+
+    assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+@pytest.mark.integration
+def test_bioproject_is_still_broken_upstream(cache_dir: Path) -> None:
+    """Guards the reason BIOPROJECT is not extracted.
+
+    If this starts failing, the upstream esummary parsing has been fixed and
+    BioProject accessions can be added to extraction.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(
+        ReferenceValidationConfig(cache_dir=cache_dir, email=_ncbi_email())
+    )
+
+    assert fetcher.fetch("BIOPROJECT:PRJNA31257") is None, (
+        "BioProject lookups now work upstream; extraction can include them"
+    )
 
 
 @pytest.mark.integration

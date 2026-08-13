@@ -51,6 +51,21 @@ _PMC_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# GEO series and dataset accessions, bare, prefixed, or in the NCBI URL form.
+# Reports cite datasets as confidently as papers, and an invented accession is as
+# misleading as an invented PMID.
+#
+# Only GEO is extracted from the Entrez family. BIOPROJECT and BIOSAMPLE are
+# registered upstream but do not currently work: esummary responses fail to parse
+# ("Failed to find tag 'ERROR' in the DTD"), so PRJNA31257, PRJEB1787, PRJNA13830
+# and PRJDB1234 - all real - resolve to nothing. Extracting them would report
+# every BioProject citation as a possible fabrication.
+_GEO_PATTERN = re.compile(
+    r"(?:https?://www\.ncbi\.nlm\.nih\.gov/geo/query/acc\.cgi\?acc=|GEO:)?"
+    r"\b((?:GSE|GDS)\d{1,9})\b",
+    re.IGNORECASE,
+)
+
 # Characters that markdown routinely glues onto the end of a DOI and that a DOI
 # will never legitimately end with. The emphasis and code characters matter most:
 # a DOI written as **doi:10.1234/abc** or `doi:10.1234/abc` would otherwise keep
@@ -171,6 +186,8 @@ def find_reference_ids(text: str) -> list[FoundReference]:
         ['PMID:12345678']
         >>> [r.normalized_id for r in find_reference_ids("See PMC11000121 for details.")]
         ['PMC:PMC11000121']
+        >>> [r.normalized_id for r in find_reference_ids("Deposited under GSE68086.")]
+        ['GEO:GSE68086']
         >>> find_reference_ids("no references here")
         []
     """
@@ -201,6 +218,9 @@ def find_reference_ids(text: str) -> list[FoundReference]:
 
     for match in _PMC_PATTERN.finditer(text):
         _add(f"PMC:{match.group(1).upper()}", match.group(0))
+
+    for match in _GEO_PATTERN.finditer(text):
+        _add(f"GEO:{match.group(1).upper()}", match.group(0))
 
     return list(found.values())
 

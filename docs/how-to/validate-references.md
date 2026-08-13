@@ -149,6 +149,28 @@ for check in report.unsupported_quotes:
 frontmatter dictionary. `ReferenceValidationReport` is a Pydantic model, so
 `model_dump_json()` works as usual.
 
+## The data model
+
+The shape of a validation report is defined in LinkML, at
+`src/deep_research_client/validation/reference_validation.yaml`. That schema is the source
+of truth: `datamodel.py` is generated from it with
+
+```bash
+just gen-datamodel
+```
+
+Edit the YAML, regenerate, and commit both. A test compares the checked-in Pydantic model
+against a fresh generation and fails if they have drifted, so the two cannot quietly
+diverge.
+
+`models.py` sits on top of the generated model and adds what a schema cannot express:
+counts, `confabulation_rate`, and the markdown and frontmatter rendering. Those are
+computed from the schema's slots rather than stored, so they never need to be kept in sync
+by hand.
+
+Because the schema is LinkML, the usual tooling applies to it - `gen-json-schema`,
+`gen-docs`, `linkml-validate` against a serialised report, and so on.
+
 ## How quotes are recognised
 
 Only quotes with an adjacent citation are checkable, so the extractor looks for a

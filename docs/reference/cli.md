@@ -46,8 +46,16 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--keyword TEXT` | Keyword/tag for the research (repeatable) |
 | `--author TEXT` | Primary author of the research |
 | `--contributor TEXT` | Contributor to the research (repeatable) |
+| `--validate-references` | Resolve every cited PMID/DOI and append a validation section |
+| `--validation-cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
+| `--validation-email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
+| `--validation-full-text` | Fetch full text as well as abstracts when validating |
+| `--max-references INT` | Stop after validating this many references |
+| `--fail-on-unresolved` | Exit with code 2 if any reference or quote fails validation |
 
 When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
+
+The `--validate-*` options require the optional `validation` extra; see [validate-references](#validate-references) and the [Validate References how-to](../how-to/validate-references.md).
 
 #### Examples
 
@@ -99,6 +107,74 @@ deep-research-client research "CFAP300 gene function" \
 deep-research-client research "AI" \
   --base-url https://api.example.com \
   --api-key-env CUSTOM_API_KEY
+
+# Check every cited PMID/DOI before trusting the report
+deep-research-client research "Statins and myopathy risk" \
+  --output statins.md \
+  --validate-references
+```
+
+---
+
+### validate-references
+
+Check that the references cited in a saved report actually exist, and that quotes attributed to them really appear in the source.
+
+```bash
+deep-research-client validate-references [OPTIONS] FILES...
+```
+
+Requires the optional `validation` extra:
+
+```bash
+pip install "deep_research_client[validation]"
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `FILES...` | One or more markdown report files to validate |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--check-quotes / --no-check-quotes` | Check quoted claims against the text of the reference they cite (default: on) |
+| `--cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
+| `--email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
+| `--full-text` | Fetch full text as well as abstracts (slower, better quote checks) |
+| `--max-references INT` | Stop after validating this many references per file |
+| `--skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
+| `--in-place` | Append the validation section to each input file |
+| `--output PATH` | Write the markdown validation report to a file (single input file only) |
+| `--json PATH` | Write the validation report as JSON (single input file only) |
+| `--fail-on-unresolved` | Exit with code 2 if any reference or quote fails validation |
+
+#### Notes
+
+- Every PMID and DOI in the file is resolved against PubMed, Crossref and DataCite. Identifiers that do not resolve are reported as likely confabulations.
+- Quotes are checked only when they are directly attributed, as in `"quoted text" (PMID:12345678)`.
+- Fetched references are cached on disk, so re-running over the same corpus is fast and polite to the upstream APIs.
+- Exit codes: `0` success, `1` usage or input error, `2` validation found problems (only with `--fail-on-unresolved`).
+
+#### Examples
+
+```bash
+# Validate a saved report
+deep-research-client validate-references report.md
+
+# Validate several reports and append the results to each
+deep-research-client validate-references reports/*.md --in-place
+
+# Fail a pipeline when any citation is fabricated
+deep-research-client validate-references report.md --fail-on-unresolved
+
+# Existence checks only, capped at 20 references
+deep-research-client validate-references report.md --no-check-quotes --max-references 20
+
+# Machine-readable output
+deep-research-client validate-references report.md --json validation.json
 ```
 
 ---

@@ -19,10 +19,12 @@ from .extraction import (
     find_reference_ids,
 )
 from .models import (
+    VALIDATION_SECTION_HEADING,
     ReferenceCheck,
     ReferenceStatus,
     ReferenceValidationReport,
     SupportingTextCheck,
+    strip_validation_section,
 )
 from .validator import INSTALL_HINT, ReferenceValidator, validator_is_available
 
@@ -36,9 +38,11 @@ __all__ = [
     "ReferenceValidationReport",
     "ReferenceValidator",
     "SupportingTextCheck",
+    "VALIDATION_SECTION_HEADING",
     "extract_evidence",
     "extract_quoted_claims",
     "extract_references",
     "find_reference_ids",
+    "strip_validation_section",
     "validator_is_available",
 ]

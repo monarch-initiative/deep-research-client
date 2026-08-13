@@ -128,7 +128,7 @@ class ReferenceCheck(ConfiguredBaseModel):
 
     reference_id: str = Field(default=..., description="""Normalized identifier, for example PMID:7913883.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck', 'SupportingTextCheck']} })
     status: ReferenceStatus = Field(default=..., description="""Resolution outcome.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
-    occurrences: Optional[int] = Field(default=1, description="""Number of times the identifier is cited in the report.""", ge=1, json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck'], 'ifabsent': 'int(1)'} })
+    occurrences: int = Field(default=1, description="""Number of times the identifier is mentioned in the report.""", ge=1, json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck'], 'ifabsent': 'int(1)'} })
     title: Optional[str] = Field(default=None, description="""Title of the resolved record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
     year: Optional[str] = Field(default=None, description="""Publication year of the resolved record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
     journal: Optional[str] = Field(default=None, description="""Journal or venue of the resolved record.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
@@ -145,8 +145,9 @@ class SupportingTextCheck(ConfiguredBaseModel):
 
     reference_id: str = Field(default=..., description="""Normalized identifier the quote is attributed to.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck', 'SupportingTextCheck']} })
     quote: str = Field(default=..., description="""Quoted text as it appears in the report.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
-    is_valid: bool = Field(default=..., description="""Whether the quote was found in the reference.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
-    similarity_score: Optional[float] = Field(default=0.0, description="""Similarity of the closest match found, from 0 to 1.""", ge=0.0, le=1.0, json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck'], 'ifabsent': 'float(0.0)'} })
+    was_checkable: bool = Field(default=True, description="""Whether there was anything to check the quote against. False when the reference did not resolve, exposed no abstract or full text, was skipped by prefix, or fell outside a reference limit. A quote that was not checkable is not evidence of confabulation, so it is reported separately from one that was checked and not found.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck'], 'ifabsent': 'True'} })
+    is_valid: bool = Field(default=..., description="""Whether the quote was found in the reference. Always false when was_checkable is false.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
+    similarity_score: float = Field(default=0.0, description="""Similarity of the closest match found, from 0 to 1. Clamped to that range, since it originates outside this codebase.""", ge=0.0, le=1.0, json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck'], 'ifabsent': 'float(0.0)'} })
     matched_text: Optional[str] = Field(default=None, description="""The matching span in the reference, when the quote was found.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
     best_match: Optional[str] = Field(default=None, description="""The closest non-matching span in the reference, when the quote was not found.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
     suggested_fix: Optional[str] = Field(default=None, description="""Suggested correction reported by the underlying validator.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SupportingTextCheck']} })
@@ -162,7 +163,7 @@ class ReferenceValidationReport(ConfiguredBaseModel):
     references: Optional[list[ReferenceCheck]] = Field(default=[], description="""Per-reference resolution results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
     supporting_text: Optional[list[SupportingTextCheck]] = Field(default=[], description="""Per-quote supporting text results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
     validator_version: Optional[str] = Field(default=None, description="""Version of linkml-reference-validator used to produce this report.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
-    truncated: Optional[bool] = Field(default=False, description="""Whether validation stopped early because a reference limit was reached, meaning the counts cover only part of the bibliography.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport'], 'ifabsent': 'False'} })
+    truncated: bool = Field(default=False, description="""Whether validation stopped early because a reference limit was reached, meaning the counts cover only part of the bibliography.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport'], 'ifabsent': 'False'} })
 
 
 # Model rebuild

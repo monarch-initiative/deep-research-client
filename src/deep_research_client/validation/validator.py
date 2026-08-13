@@ -25,7 +25,11 @@ from .models import (
     SupportingTextCheck,
 )
 
-if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from linkml_reference_validator.validation.supporting_text_validator import (
+        SupportingTextValidator,
+    )
+
     from ..models import ResearchResult
 
 logger = logging.getLogger(__name__)
@@ -142,45 +146,95 @@ class ReferenceValidator:
 
         text_validator = self._build_text_validator()
 
-        report = ReferenceValidationReport(
-            validator_version=validator_version(),
-            truncated=truncated,
-        )
+        reference_checks: list[ReferenceCheck] = []
+        # Records whether each reference offered any text to match a quote
+        # against, so a quote is never called "not found" when in truth there was
+        # nothing to look in.
+        has_content: dict[str, bool] = {}
 
         for index, reference in enumerate(references, start=1):
             logger.info(
                 "Resolving reference %d/%d: %s", index, len(references), reference.normalized_id
             )
-            report.references.append(self._check_reference(text_validator, reference))
+            check, checkable = self._check_reference(text_validator, reference)
+            reference_checks.append(check)
+            has_content[check.reference_id] = checkable
 
-        status_by_id = {check.reference_id: check.status for check in report.references}
+        status_by_id = {check.reference_id: check.status for check in reference_checks}
 
-        for claim in quoted_claims:
-            status = status_by_id.get(claim.reference_id)
-            if status is None:
-                # The reference was dropped by max_references; checking its quote
-                # would re-open the network work the cap exists to avoid.
-                continue
-            if status == ReferenceStatus.UNVERIFIABLE:
-                continue
-            if status == ReferenceStatus.NOT_FOUND:
-                # The reference itself is already reported as unresolved; re-fetching
-                # it to confirm the quote cannot be checked would just repeat the miss.
-                report.supporting_text.append(
-                    SupportingTextCheck(
-                        reference_id=claim.reference_id,
-                        quote=claim.quote,
-                        is_valid=False,
-                        message="Reference did not resolve, so the quote cannot be checked",
-                    )
-                )
-                continue
-            logger.info("Checking quoted claim attributed to %s", claim.reference_id)
-            report.supporting_text.append(self._check_quote(text_validator, claim))
+        quote_checks = [
+            self._resolve_quote(text_validator, claim, status_by_id, has_content)
+            for claim in quoted_claims
+        ]
 
-        return report
+        return ReferenceValidationReport(
+            references=reference_checks,
+            supporting_text=quote_checks,
+            validator_version=validator_version(),
+            truncated=truncated,
+        )
 
-    def _build_text_validator(self):
+    def _resolve_quote(
+        self,
+        text_validator: "SupportingTextValidator",
+        claim: QuotedClaim,
+        status_by_id: dict[str, ReferenceStatus],
+        has_content: dict[str, bool],
+    ) -> SupportingTextCheck:
+        """Check one quoted claim, or record why it could not be checked.
+
+        Every extracted quote produces a result, so a report never quietly omits
+        one. Cases with nothing to compare against are marked
+        ``was_checkable=False`` rather than being reported as unsupported.
+
+        Args:
+            text_validator: The underlying supporting text validator.
+            claim: The quote and the reference it is attributed to.
+            status_by_id: Resolution status of each reference already checked.
+            has_content: Whether each reference exposed text to search.
+
+        Returns:
+            The per-quote result.
+        """
+        status = status_by_id.get(claim.reference_id)
+
+        if status is None:
+            # Dropped by max_references. Checking it would re-open exactly the
+            # network work the cap exists to avoid.
+            return self._unchecked_quote(
+                claim, "Reference was not checked because the reference limit was reached"
+            )
+        if status == ReferenceStatus.UNVERIFIABLE:
+            return self._unchecked_quote(
+                claim, "Reference was skipped, so the quote was not checked"
+            )
+        if status == ReferenceStatus.NOT_FOUND:
+            # The reference is already reported as unresolved; re-fetching it to
+            # confirm the quote cannot be checked would just repeat the miss.
+            return self._unchecked_quote(
+                claim, "Reference did not resolve, so the quote could not be checked"
+            )
+        if not has_content.get(claim.reference_id, False):
+            return self._unchecked_quote(
+                claim,
+                "Reference resolved but exposes no abstract or full text to search",
+            )
+
+        logger.info("Checking quoted claim attributed to %s", claim.reference_id)
+        return self._check_quote(text_validator, claim)
+
+    @staticmethod
+    def _unchecked_quote(claim: QuotedClaim, message: str) -> SupportingTextCheck:
+        """Build a result for a quote there was nothing to check against."""
+        return SupportingTextCheck(
+            reference_id=claim.reference_id,
+            quote=claim.quote,
+            was_checkable=False,
+            is_valid=False,
+            message=message,
+        )
+
+    def _build_text_validator(self) -> "SupportingTextValidator":
         """Construct the underlying ``SupportingTextValidator``.
 
         Returns:
@@ -203,7 +257,11 @@ class ReferenceValidator:
 
         return SupportingTextValidator(ReferenceValidationConfig(**config_kwargs))
 
-    def _check_reference(self, text_validator, reference: FoundReference) -> ReferenceCheck:
+    def _check_reference(
+        self,
+        text_validator: "SupportingTextValidator",
+        reference: FoundReference,
+    ) -> tuple[ReferenceCheck, bool]:
         """Resolve a single reference identifier.
 
         Args:
@@ -211,7 +269,8 @@ class ReferenceValidator:
             reference: The reference to resolve.
 
         Returns:
-            The per-reference result.
+            The per-reference result, and whether the record exposed any text
+            that a quote could be searched for.
         """
         from linkml_reference_validator.etl.sources.base import ReferenceSourceRegistry
 
@@ -224,7 +283,7 @@ class ReferenceValidator:
                 status=ReferenceStatus.UNVERIFIABLE,
                 occurrences=reference.count,
                 message=f"Prefix '{prefix}' is configured to be skipped",
-            )
+            ), False
 
         fetcher = text_validator.fetcher
         if ReferenceSourceRegistry.get_source(fetcher.normalize_reference_id(reference_id)) is None:
@@ -233,7 +292,7 @@ class ReferenceValidator:
                 status=ReferenceStatus.UNVERIFIABLE,
                 occurrences=reference.count,
                 message=f"No resolver is available for prefix '{prefix}'",
-            )
+            ), False
 
         content = fetcher.fetch(reference_id)
 
@@ -242,12 +301,20 @@ class ReferenceValidator:
                 reference_id=reference_id,
                 status=ReferenceStatus.NOT_FOUND,
                 occurrences=reference.count,
+                # Deliberately non-committal: the upstream fetcher returns None
+                # both for "no such record" and for a transport failure it has
+                # already swallowed, and this message is quoted verbatim in a
+                # section that accuses citations of being fabricated.
                 message="Identifier did not resolve to a record",
-            )
+            ), False
 
+        has_content = bool(content.content)
         message = None
-        if not content.content:
-            message = "Record resolved but no abstract or full text is available to check quotes against"
+        if not has_content:
+            message = (
+                "Record resolved but no abstract or full text is available to "
+                "check quotes against"
+            )
 
         return ReferenceCheck(
             reference_id=reference_id,
@@ -259,9 +326,13 @@ class ReferenceValidator:
             doi=content.doi,
             content_type=content.content_type,
             message=message,
-        )
+        ), has_content
 
-    def _check_quote(self, text_validator, claim: QuotedClaim) -> SupportingTextCheck:
+    def _check_quote(
+        self,
+        text_validator: "SupportingTextValidator",
+        claim: QuotedClaim,
+    ) -> SupportingTextCheck:
         """Check one quoted claim against the text of its reference.
 
         Args:
@@ -277,13 +348,39 @@ class ReferenceValidator:
         return SupportingTextCheck(
             reference_id=claim.reference_id,
             quote=claim.quote,
+            was_checkable=True,
             is_valid=result.is_valid,
-            similarity_score=match.similarity_score if match else 0.0,
+            similarity_score=_clamp_similarity(match.similarity_score if match else 0.0),
             matched_text=match.matched_text if match else None,
             best_match=match.best_match if match else None,
             suggested_fix=match.suggested_fix if match else None,
             message=result.message,
         )
+
+
+def _clamp_similarity(score: float) -> float:
+    """Clamp a similarity score into the 0-1 range the schema enforces.
+
+    The score comes from ``linkml-reference-validator``, so the range is not
+    ours to guarantee. Without this, one out-of-range float would raise a
+    ``ValidationError`` mid-loop and discard a report that may have cost minutes
+    of network fetches.
+
+    Args:
+        score: Similarity score reported by the underlying validator.
+
+    Returns:
+        The score, constrained to 0.0-1.0.
+
+    Examples:
+        >>> _clamp_similarity(0.5)
+        0.5
+        >>> _clamp_similarity(1.0000000002)
+        1.0
+        >>> _clamp_similarity(-0.1)
+        0.0
+    """
+    return max(0.0, min(1.0, score))
 
 
 def validator_is_available() -> bool:

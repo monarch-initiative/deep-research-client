@@ -53,8 +53,9 @@ classes:
         range: ReferenceStatus
         required: true
       occurrences:
-        description: Number of times the identifier is cited in the report.
+        description: Number of times the identifier is mentioned in the report.
         range: integer
+        required: true
         minimum_value: 1
         ifabsent: int(1)
       title:
@@ -82,13 +83,28 @@ classes:
       quote:
         description: Quoted text as it appears in the report.
         required: true
+      was_checkable:
+        description: >-
+          Whether there was anything to check the quote against. False when the
+          reference did not resolve, exposed no abstract or full text, was
+          skipped by prefix, or fell outside a reference limit. A quote that was
+          not checkable is not evidence of confabulation, so it is reported
+          separately from one that was checked and not found.
+        range: boolean
+        required: true
+        ifabsent: "True"
       is_valid:
-        description: Whether the quote was found in the reference.
+        description: >-
+          Whether the quote was found in the reference. Always false when
+          was_checkable is false.
         range: boolean
         required: true
       similarity_score:
-        description: Similarity of the closest match found, from 0 to 1.
+        description: >-
+          Similarity of the closest match found, from 0 to 1. Clamped to that
+          range, since it originates outside this codebase.
         range: float
+        required: true
         minimum_value: 0.0
         maximum_value: 1.0
         ifabsent: float(0.0)
@@ -123,4 +139,5 @@ classes:
           Whether validation stopped early because a reference limit was
           reached, meaning the counts cover only part of the bibliography.
         range: boolean
+        required: true
         ifabsent: "False"

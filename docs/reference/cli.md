@@ -51,6 +51,8 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--validation-email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
 | `--validation-full-text` | Fetch full text as well as abstracts when validating (~23x slower) |
 | `--validation-max-references INT` | Stop after validating this many references |
+| `--validation-skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
+| `--validation-rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
 | `--fail-on-unresolved` | Exit with code 2 if any reference or quote fails validation |
 
 When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
@@ -146,7 +148,7 @@ pip install "deep_research_client[validation]"
 | `--full-text` | Fetch full text as well as abstracts (~23x slower, better quote checks) |
 | `--max-references INT` | Stop after validating this many references per file |
 | `--skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
-| `--rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
+| `--rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references |
 | `--in-place` | Replace or append the validation section in each input file |
 | `--output PATH` | Write the markdown validation report to a file (single input file only) |
 | `--json PATH` | Write the validation report as JSON (single input file only) |

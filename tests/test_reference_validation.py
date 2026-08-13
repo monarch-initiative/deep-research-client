@@ -231,10 +231,14 @@ def test_pmc_accessions_are_extracted(text: str) -> None:
         ("(GSE68086)", ["GEO:GSE68086"]),
         ("GEO:GSE68086", ["GEO:GSE68086"]),
         ("gse68086", ["GEO:GSE68086"]),
-        ("Reanalysed GDS1234 throughout.", ["GEO:GDS1234"]),
+        ("GEO:GDS1234", ["GEO:GDS1234"]),
         (
             "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68086",
             ["GEO:GSE68086"],
+        ),
+        (
+            "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GDS1234",
+            ["GEO:GDS1234"],
         ),
         # Must not fire on a prefix without an accession number
         ("GSEQ or GSE without digits", []),
@@ -244,6 +248,30 @@ def test_pmc_accessions_are_extracted(text: str) -> None:
 def test_geo_accessions_are_extracted(text: str, expected: list[str]) -> None:
     """Reports cite datasets as confidently as papers, inventions included."""
     assert [r.normalized_id for r in find_reference_ids(text)] == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # GDS15 and GDS30 are the Geriatric Depression Scale, which appears
+        # constantly in clinical literature. A bare GDS is too ambiguous to take.
+        "scored with the GDS15 instrument",
+        "GDS30 was administered at baseline",
+        "Reanalysed GDS1234 throughout.",
+    ],
+)
+def test_bare_gds_is_not_taken_as_a_geo_accession(text: str) -> None:
+    assert find_reference_ids(text) == []
+
+
+def test_geo_prefix_alternation_is_load_bearing() -> None:
+    """Guards against the bare branch quietly matching every context form.
+
+    Two earlier cases passed with the whole prefix alternation deleted, because
+    a bare match after ':' or '=' looks identical.
+    """
+    assert [r.normalized_id for r in find_reference_ids("GEO:GDS15")] == ["GEO:GDS15"]
+    assert find_reference_ids("GDS15") == []
 
 
 def test_bioproject_accessions_are_deliberately_not_extracted() -> None:
@@ -378,6 +406,43 @@ def test_skip_prefix_pmc_makes_no_network_call(cache_dir: Path, monkeypatch) -> 
     assert "configured to be skipped" in (check.message or "")
 
 
+def test_skip_prefix_pmc_does_not_claim_an_outage(cache_dir: Path, monkeypatch) -> None:
+    """A skipped prefix must not make its quotes report a service failure.
+
+    The report would otherwise say both "configured to be skipped" and that a
+    network service went down, one of which is untrue.
+    """
+    monkeypatch.setattr(
+        "deep_research_client.validation.validator.PMC_IDCONV_URL",
+        "http://pmc-idconv.invalid/",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir, skip_prefixes=["PMC"])
+
+    report = validator.validate_references(
+        [_reference("PMC:PMC11000121")],
+        [QuotedClaim(quote="Some quoted text of ample length", reference_id="PMC:PMC11000121")],
+    )
+
+    assert report.quote_checks[0].message == (
+        "Reference was skipped, so the quote was not checked"
+    )
+
+
+@pytest.mark.parametrize(
+    "count,size,expected_lengths",
+    [(7, 3, [3, 3, 1]), (6, 3, [3, 3]), (2, 5, [2]), (0, 5, []), (200, 200, [200])],
+)
+def test_batching_covers_every_item(count: int, size: int, expected_lengths: list[int]) -> None:
+    """The slice arithmetic behind the NCBI 200-id limit."""
+    from deep_research_client.validation.validator import batched
+
+    items = [f"PMC{i}" for i in range(count)]
+    chunks = batched(items, size)
+
+    assert [len(c) for c in chunks] == expected_lengths
+    assert [item for chunk in chunks for item in chunk] == items
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [
@@ -389,9 +454,38 @@ def test_skip_prefix_pmc_makes_no_network_call(cache_dir: Path, monkeypatch) -> 
         ),
     ],
 )
+
+
 def test_doi_url_query_and_fragment_are_dropped(url: str, expected: str) -> None:
     """Tracking parameters belong to the link, not to the identifier."""
     assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5",
+            ["DOI:10.1186/s12964-023-01120-5"],
+        ),
+        (
+            "https://www.frontiersin.org/journals/pediatrics/articles/"
+            "10.3389/fped.2024.1276215/full",
+            ["DOI:10.3389/fped.2024.1276215"],
+        ),
+        (
+            "https://www.tandfonline.com/doi/book/10.1201/9781003080660",
+            ["DOI:10.1201/9781003080660"],
+        ),
+        # nature.com article ids are not DOIs, and the /articles/ prefix must
+        # not tempt the pattern into treating them as such
+        ("https://www.nature.com/articles/371252a0", []),
+        ("https://www.nature.com/articles/s41436-021-01132-x", []),
+    ],
+)
+def test_publisher_article_paths_are_extracted(url: str, expected: list[str]) -> None:
+    """All four URL shapes taken from the live reports."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == expected
 
 
 def test_doi_containing_parentheses_is_preserved() -> None:
@@ -854,6 +948,23 @@ def test_text_that_merely_resembles_the_title_is_still_flagged(seeded_cache: Pat
     assert len(report.unsupported_quotes) == 1
 
 
+def test_full_text_is_not_fetched_when_no_quote_will_be_checked(
+    seeded_cache: Path, caplog
+) -> None:
+    """--full-text --no-check-quotes would pay 23x for nothing."""
+    import logging
+
+    validator = ReferenceValidator(cache_dir=seeded_cache, fetch_full_text=True)
+
+    with caplog.at_level(logging.INFO, logger="deep_research_client.validation.validator"):
+        report = validator.validate_markdown(
+            f"Established previously ({CACHED_PMID}).", check_quotes=False
+        )
+
+    assert report.total_references == 1
+    assert "skipping full-text retrieval" in caplog.text
+
+
 def test_check_quotes_can_be_disabled(seeded_cache: Path) -> None:
     validator = ReferenceValidator(cache_dir=seeded_cache)
 
@@ -1118,6 +1229,21 @@ def test_outage_banner_survives_a_mix_of_failure_modes() -> None:
     )
 
     assert report.all_references_failed
+    # Qualified, because most references here were not looked up at all: saying
+    # "every reference" would misdescribe the report to whoever must act on it.
+    markdown = report.to_markdown()
+    assert "**Every** reference that could be looked up failed" in markdown
+    assert "2 of 3" in markdown
+
+
+def test_outage_banner_is_unqualified_when_everything_failed() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND),
+        ]
+    )
+
     assert "**Every** reference failed to resolve" in report.to_markdown()
 
 
@@ -1668,6 +1794,29 @@ def test_fabricated_geo_accession_is_flagged(cache_dir: Path) -> None:
     report = validator.validate_markdown("Data deposited under GSE888888888.")
 
     assert report.checked_references[0].status == ReferenceStatus.NOT_FOUND
+
+
+@pytest.mark.integration
+def test_pmc_batching_against_the_real_converter(monkeypatch) -> None:
+    """Several real batches, merged - the loop end to end, no stubs."""
+    from deep_research_client.validation import validator as validator_module
+
+    monkeypatch.setattr(validator_module, "PMC_IDCONV_BATCH_SIZE", 3)
+    accessions = [
+        "PMC:PMC11000121",
+        "PMC:PMC11086607",
+        "PMC:PMC11157853",
+        "PMC:PMC11743488",
+        "PMC:PMC11989073",
+        "PMC:PMC2829559",
+        "PMC:PMC99999999",
+    ]
+
+    resolved = validator_module.resolve_pmc_accessions(accessions, email=_ncbi_email())
+
+    assert set(resolved) == set(accessions), "every batch must be merged in"
+    assert resolved["PMC:PMC11157853"] == "PMID:38849906"
+    assert resolved["PMC:PMC99999999"] is None
 
 
 @pytest.mark.integration

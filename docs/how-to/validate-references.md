@@ -79,7 +79,9 @@ There was no text to compare these against, so they are neither confirmed nor co
 
 Use `--in-place` to write that section into the report itself, or `--json` to get the same
 result as structured data. `--in-place` replaces any section a previous run left behind, so
-it is safe to re-run over a whole corpus.
+it is safe to re-run over a whole corpus. It replaces a *trailing* section only: a report
+that discusses reference validation in its body and then continues with another section
+keeps everything.
 
 ## Validate as part of the research run
 
@@ -123,12 +125,12 @@ Measured against four live reports produced for this purpose - `claude_code` and
 a short prompt and a long templated one - on an ordinary broadband connection. Numbers will
 move with network conditions and upstream load, but the ratios are stable.
 
-| Report | References | Research call | Validation, cold cache | Validation, warm cache |
-|--------|-----------:|--------------:|-----------------------:|-----------------------:|
-| Achondroplasia, `claude_code` | 31 | 283s | 70s | 1.1s |
-| Achondroplasia, `falcon` | 18 | 356s | 76s | 2.0s |
-| Marfan template, `claude_code` | 33 | 743s | 74s | 1.2s |
-| Marfan template, `falcon` | 13 | 742s | 68s | 1.0s |
+| Report | References | Mix | Research call | Validation, cold | Validation, warm |
+|--------|-----------:|-----|--------------:|-----------------:|-----------------:|
+| Achondroplasia, `claude_code` | 31 | 25 PMID, 4 DOI, 2 PMC | 283s | 70s | 1.1s |
+| Achondroplasia, `falcon` | 18 | 6 PMID, 12 DOI | 356s | 76s | 2.0s |
+| Marfan template, `claude_code` | 33 | 11 PMID, 5 DOI, 17 PMC | 743s | 74s | 1.2s |
+| Marfan template, `falcon` | 13 | 13 DOI | 742s | 68s | 1.0s |
 
 Two things follow from this. Validation costs roughly **10-25% of the research call** the
 first time, which is a small addition to a run that already takes minutes. And on a warm
@@ -150,7 +152,19 @@ A DOI costs about four times what a PMID does, so budget per DOI rather than per
 reference. PMC accessions are as cheap as PMIDs despite needing an extra hop, because the
 conversion is batched into one request for the whole report.
 
+The two tables agree: the first report's 25 PMID + 4 DOI + 2 PMC predicts 69s against 70s
+measured, and the last report's 13 DOI predicts 85s against 68s. That is also why thirteen
+references took longer than thirty-three - they were all DOIs.
+
+The delay applies per upstream request, not per reference, and a single reference can take
+more than one request: removing the 0.5s delay from ten PMIDs saved 7.7s, implying about
+fifteen requests for ten references.
+
 ### What each option is worth
+
+Every option below exists on both commands. On `research` they take a `--validation-`
+prefix - `--validation-rate-limit-delay`, `--validation-skip-prefix` and so on - so that
+they cannot be confused with the research options they sit beside.
 
 | Change | Effect on 10 references, cold |
 |--------|------------------------------|
@@ -161,29 +175,37 @@ conversion is batched into one request for the whole report.
 
 - **Cache, above all.** Fetched references are written to `./references_cache` by default
   and reused on later runs. Point `--cache-dir` at a shared directory - or commit it - to
-  make repeated validation across a corpus effectively free. This is worth more than every
-  other option combined.
+  make repeated validation across a corpus nearly free. This is worth more than every other
+  option combined. Two caveats: PMC accessions still need one request to NCBI's ID
+  converter on every run, which is not cached, so a warm run is fast but not offline; and a
+  cached abstract-only record *is* upgraded on a later `--full-text` run, so that first
+  full-text pass over a warm corpus pays the full cost.
 - **Full text is the expensive one.** `--full-text` took **23x** longer on the same ten
   references. It is off by default for that reason. Turn it on when quote checking matters:
   without it, a quote drawn from the body of a paper is reported as not found, because only
   the title and abstract were searched.
-- **Rate limiting is about half the default cost.** `--rate-limit-delay` sets the pause
-  between lookups, 0.5s by default. Setting it to 0 roughly halves cold runtime, but the
-  delay exists to be a good citizen of free public APIs - lower it for a one-off small run,
-  not for a nightly sweep. Raise it if an API starts rejecting requests.
+- **Rate limiting is about half the default cost, and lowering it risks false results.**
+  `--rate-limit-delay` sets the pause between lookups, 0.5s by default. Setting it to 0
+  roughly halves cold runtime - but NCBI caps unkeyed clients at 3 requests per second, and
+  a rate-limited lookup comes back from the underlying library indistinguishable from a
+  record that does not exist. It is then reported as an unresolved reference under
+  *"may be fabricated"*. So this option trades speed against false accusations, not merely
+  against politeness. Lower it for a one-off small run; raise it if an API starts
+  rejecting requests. See [what the outcomes mean](#what-the-outcomes-mean).
 - **Cap the work.** `--max-references 20` stops after the first twenty; the report says so
   explicitly rather than implying it covered everything.
 - **Skip a whole identifier type.** `--skip-prefix DOI` marks those references unverifiable
   without looking them up, which given the table above is the single biggest saving after
-  caching. Extraction produces `PMID:`, `DOI:`, `PMC:` and `GEO:` identifiers, so those are
+  caching - a DOI-heavy report validates in seconds rather than minutes. Extraction produces `PMID:`, `DOI:`, `PMC:` and `GEO:` identifiers, so those are
   the prefixes this can skip; other prefixes apply to reports validated through the Python
   API, which accepts any identifier the underlying library can resolve.
 - **`--no-check-quotes` saves little.** Quote checking reuses references already fetched
   for the existence check, so it adds no requests. Use it to change what is reported, not
-  to go faster.
+  to go faster. Combining it with `--full-text` would be pure waste, so full text is not
+  retrieved at all when no quote will be checked.
 
-Resolution is sequential, so a bibliography of a hundred DOIs takes several minutes on a
-cold cache. Validating as part of `research --validate-references` adds that time to a run
+Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven minutes on
+a cold cache, against under three for a hundred PMIDs. Validating as part of `research --validate-references` adds that time to a run
 that is already slow; validating afterwards with `validate-references` lets you do it once
 across a whole corpus against a shared cache.
 

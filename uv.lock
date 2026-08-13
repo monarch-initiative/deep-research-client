@@ -668,6 +668,7 @@ browser = [
 ]
 dev = [
     { name = "jupyter" },
+    { name = "linkml" },
     { name = "linkml-reference-validator" },
     { name = "mkdocs-material" },
     { name = "mkdocs-mermaid2-plugin" },
@@ -704,6 +705,7 @@ browser = [
 ]
 dev = [
     { name = "jupyter", specifier = ">=1.0.0" },
+    { name = "linkml", specifier = ">=1.9" },
     { name = "linkml-reference-validator", specifier = ">=0.2.1" },
     { name = "mkdocs-material", specifier = ">=8.2.8" },
     { name = "mkdocs-mermaid2-plugin", specifier = ">=1.1.1" },

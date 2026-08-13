@@ -433,11 +433,11 @@ def test_skip_prefix_pmc_does_not_claim_an_outage(cache_dir: Path, monkeypatch) 
     [(7, 3, [3, 3, 1]), (6, 3, [3, 3]), (2, 5, [2]), (0, 5, []), (200, 200, [200])],
 )
 def test_batching_covers_every_item(count: int, size: int, expected_lengths: list[int]) -> None:
-    """The slice arithmetic behind the NCBI 200-id limit."""
+    """The chunking behind the NCBI 200-id limit, as the validator imports it."""
     from deep_research_client.validation.validator import batched
 
     items = [f"PMC{i}" for i in range(count)]
-    chunks = batched(items, size)
+    chunks = [list(chunk) for chunk in batched(items, size)]
 
     assert [len(c) for c in chunks] == expected_lengths
     assert [item for chunk in chunks for item in chunk] == items
@@ -454,8 +454,6 @@ def test_batching_covers_every_item(count: int, size: int, expected_lengths: lis
         ),
     ],
 )
-
-
 def test_doi_url_query_and_fragment_are_dropped(url: str, expected: str) -> None:
     """Tracking parameters belong to the link, not to the identifier."""
     assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
@@ -486,6 +484,48 @@ def test_doi_url_query_and_fragment_are_dropped(url: str, expected: str) -> None
 def test_publisher_article_paths_are_extracted(url: str, expected: list[str]) -> None:
     """All four URL shapes taken from the live reports."""
     assert [r.normalized_id for r in find_reference_ids(url)] == expected
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5/tables/1",
+            "DOI:10.1186/s12964-023-01120-5",
+        ),
+        (
+            "https://link.springer.com/article/10.1186/s12964-023-01120-5/figures/2",
+            "DOI:10.1186/s12964-023-01120-5",
+        ),
+        (
+            "https://www.frontiersin.org/journals/x/articles/10.3389/fped.2024.1276215/full/pdf",
+            "DOI:10.3389/fped.2024.1276215",
+        ),
+        (
+            "https://www.tandfonline.com/doi/citedby/10.1080/1744666X.2025.2612589",
+            "DOI:10.1080/1744666X.2025.2612589",
+        ),
+        # The query-parameter form, which no path-based branch can reach
+        (
+            "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0012345",
+            "DOI:10.1371/journal.pone.0012345",
+        ),
+    ],
+)
+def test_publisher_url_furniture_is_stripped(url: str, expected: str) -> None:
+    """Figure, table and doubled view segments belong to the link.
+
+    Enumerating each publisher's tail vocabulary did not hold, so the shape is
+    matched instead; these are the forms that defeated the allow-list.
+    """
+    assert [r.normalized_id for r in find_reference_ids(url)] == [expected]
+
+
+def test_doi_form_keeps_its_own_path_segments() -> None:
+    """The furniture rule applies to URLs only, never to a written DOI."""
+    assert [r.normalized_id for r in find_reference_ids("doi:10.1234/abc/pdf")] == [
+        "DOI:10.1234/abc/pdf"
+    ]
 
 
 def test_doi_containing_parentheses_is_preserved() -> None:
@@ -1222,29 +1262,51 @@ def test_outage_banner_survives_a_mix_of_failure_modes() -> None:
     """
     report = ReferenceValidationReport(
         references=[
-            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
-            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND),
+            *[
+                ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+                for i in range(3)
+            ],
             ReferenceCheck(reference_id="PMC:PMC11000121", status=ReferenceStatus.UNVERIFIABLE),
         ]
     )
 
     assert report.all_references_failed
-    # Qualified, because most references here were not looked up at all: saying
+    # Qualified, because one reference here was not looked up at all: saying
     # "every reference" would misdescribe the report to whoever must act on it.
     markdown = report.to_markdown()
     assert "**Every** reference that could be looked up failed" in markdown
-    assert "2 of 3" in markdown
+    assert "3 of 4" in markdown
 
 
 def test_outage_banner_is_unqualified_when_everything_failed() -> None:
     report = ReferenceValidationReport(
         references=[
-            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
-            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+            for i in range(3)
         ]
     )
 
     assert "**Every** reference failed to resolve" in report.to_markdown()
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_outage_banner_needs_more_than_a_couple_of_failures(count: int) -> None:
+    """One-of-one failing is not evidence of an outage.
+
+    Hedging there would excuse the single genuine fabrication this feature
+    exists to surface.
+    """
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id=f"PMID:{i}", status=ReferenceStatus.NOT_FOUND)
+            for i in range(count)
+        ]
+    )
+
+    assert not report.all_references_failed
+    markdown = report.to_markdown()
+    assert "network outage" not in markdown
+    assert "may be fabricated" in markdown
 
 
 def test_outage_banner_stays_off_when_something_resolved() -> None:
@@ -1669,6 +1731,80 @@ def test_cli_research_fails_on_unresolved(tmp_path: Path, cache_dir: Path, monke
     else:
         # The mock provider echoed no resolvable identifiers, so nothing failed.
         assert result.exit_code == 0, result.output
+
+
+def test_cli_research_warns_only_about_flags_actually_passed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A plain research run must not nag about validation flags.
+
+    The unused-flag warning compares each option against its default; a
+    repeatable option whose framework default is not None would make this fire
+    on the most common invocation of the main command, invisibly to the suite.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app, ["research", "widgets", "--provider", "mock", "--no-cache"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "has no effect" not in result.output
+
+
+def test_cli_research_warns_about_a_flag_passed_without_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "widgets",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--validation-skip-prefix",
+            "DOI",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--validation-skip-prefix has no effect" in result.output
+
+
+def test_cli_research_validation_flags_reach_the_validator(
+    tmp_path: Path, seeded_cache: Path, monkeypatch
+) -> None:
+    """--validation-skip-prefix must actually skip, not just parse."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            f"Cite {CACHED_PMID} please",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--output",
+            str(output),
+            "--validate-references",
+            "--validation-cache-dir",
+            str(seeded_cache),
+            "--validation-skip-prefix",
+            "PMID",
+            "--validation-rate-limit-delay",
+            "0",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = output.read_text(encoding="utf-8")
+    assert "## Reference Validation" in written
+    assert "| Unverifiable | 1 |" in written
 
 
 def test_cli_research_checks_for_the_extra_before_researching(

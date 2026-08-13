@@ -152,9 +152,11 @@ A DOI costs about four times what a PMID does, so budget per DOI rather than per
 reference. PMC accessions are as cheap as PMIDs despite needing an extra hop, because the
 conversion is batched into one request for the whole report.
 
-The two tables agree: the first report's 25 PMID + 4 DOI + 2 PMC predicts 69s against 70s
-measured, and the last report's 13 DOI predicts 85s against 68s. That is also why thirteen
-references took longer than thirty-three - they were all DOIs.
+The model is good for mixed reports and over-predicts for all-DOI ones: the first report's
+25 PMID + 4 DOI + 2 PMC predicts 69s against 70s measured, while the last report's 13 DOI
+predicts 85s against 68s - Crossref is quicker in bulk than the isolated measurement
+suggests. Treat 6.5s per DOI as an upper bound. It is also why thirteen references took
+longer than thirty-three: they were all DOIs.
 
 The delay applies per upstream request, not per reference, and a single reference can take
 more than one request: removing the 0.5s delay from ten PMIDs saved 7.7s, implying about
@@ -162,9 +164,11 @@ fifteen requests for ten references.
 
 ### What each option is worth
 
-Every option below exists on both commands. On `research` they take a `--validation-`
-prefix - `--validation-rate-limit-delay`, `--validation-skip-prefix` and so on - so that
-they cannot be confused with the research options they sit beside.
+Every option below except `--no-check-quotes` exists on both commands. On `research` they
+take a `--validation-` prefix - `--validation-rate-limit-delay`,
+`--validation-skip-prefix` and so on - so that they cannot be confused with the research
+options they sit beside. `--no-check-quotes` is `validate-references` only: it changes what
+is reported rather than what is fetched, and the run it would speed up is already fast.
 
 | Change | Effect on 10 references, cold |
 |--------|------------------------------|
@@ -331,6 +335,10 @@ currently fail to parse, so real accessions - `PRJNA31257`, `PRJEB1787`, `PRJNA1
 `PRJDB1234` were all checked - resolve to nothing. Extracting them would report every
 BioProject citation as a possible fabrication. An integration test asserts the breakage, so
 it will start failing once upstream is fixed and the accessions can be added.
+
+Two DOI-bearing URL shapes are also not reached: bioRxiv's version suffix
+(`biorxiv.org/content/10.1101/…v1`, where the `v1` is part of no path segment) and any
+form that neither names the DOI after a path segment nor as an `id=` parameter.
 
 `SRA`, `OMIM`, `MGNIFY`, `GTEX` and similar have no resolver at all. If you need one, the
 library takes custom JSON API sources through `.linkml-reference-validator-sources.yaml`,

@@ -10,13 +10,24 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-# Patterns for PMID and DOI references in markdown text.
-_PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})", re.IGNORECASE)
-_DOI_PATTERN = re.compile(r"(?:doi[:\s]*|https?://doi\.org/)(10\.\d{4,}/\S+)", re.IGNORECASE)
+# Patterns for PMID and DOI references in markdown text. The negative lookahead on
+# PMID stops a longer number (an accession, a phone number) from being truncated
+# into a plausible-looking nine-digit PMID.
+_PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
+# The capture stops at characters that never occur inside a DOI, so a DOI in a
+# tight table cell (|doi:10.1/a|b|) does not swallow the next cell. Parentheses
+# are deliberately allowed through, since DOIs such as
+# 10.1016/0092-8674(94)90302-6 contain them; trailing ones are stripped below.
+_DOI_PATTERN = re.compile(
+    r"(?:doi[:\s]*|https?://doi\.org/)(10\.\d{4,}/[^\s|`\"<>]+)", re.IGNORECASE
+)
 _URL_PATTERN = re.compile(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)")
 
-# Trailing characters that markdown punctuation commonly glues onto a DOI.
-_DOI_TRAILING_CHARS = ".,;:)]}>\"'"
+# Characters that markdown routinely glues onto the end of a DOI and that a DOI
+# will never legitimately end with. The emphasis and code characters matter most:
+# a DOI written as **doi:10.1234/abc** or `doi:10.1234/abc` would otherwise keep
+# its wrapper, fail to resolve, and be reported as a possible fabrication.
+_DOI_TRAILING_CHARS = ".,;:)]}>\"'*_`|~^\\"
 
 # A double-quoted span (straight or typographic quotes) immediately followed by a
 # parenthesised or bracketed citation, e.g.::
@@ -75,13 +86,19 @@ def normalize_doi(doi: str) -> str:
     """Strip markdown punctuation that commonly trails a DOI.
 
     Args:
-        doi: A raw DOI string, possibly with trailing punctuation.
+        doi: A raw DOI string, possibly with trailing punctuation or markup.
 
     Returns:
         The DOI without trailing punctuation.
 
     Examples:
         >>> normalize_doi("10.1038/ng1234).")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234**")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234`")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234|")
         '10.1038/ng1234'
         >>> normalize_doi("10.1038/ng1234")
         '10.1038/ng1234'

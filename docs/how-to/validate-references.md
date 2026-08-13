@@ -132,8 +132,11 @@ a few minutes on the first pass.
   from a warm cache.
 - **Skip existence-only checks you do not need.** `--no-check-quotes` skips supporting text
   validation.
-- **Skip prefixes you cannot resolve.** `--skip-prefix SRA --skip-prefix BIOPROJECT` marks
-  those identifiers unverifiable instead of reporting them as missing.
+- **Skip a whole identifier type.** `--skip-prefix DOI` marks those references unverifiable
+  without looking them up, which is useful when Crossref is slow and you only care about
+  PubMed. Extraction only ever produces `PMID:` and `DOI:` identifiers, so those are the
+  only two prefixes this can skip; it takes other prefixes for reports validated through
+  the Python API, which accepts any identifier the underlying library can resolve.
 
 Full text retrieval is off by default because it is much slower. Turn it on with
 `--full-text` when quote checking matters: without it, a quote drawn from the body of a
@@ -206,11 +209,15 @@ quote and group 2 the citation.
 |---------|---------|
 | Resolved | The identifier corresponds to a real record |
 | Unresolved | The identifier did not resolve; treat it as suspect until shown otherwise |
-| Unverifiable | The prefix was skipped, or no resolver exists for it |
+| Unverifiable | The prefix was skipped, or no resolver exists for it — nothing was learned either way |
 
 A resolved reference means the paper is real. It does not mean the paper supports the
 claim attached to it - that is what quote checking, and the LLM-judged scorers in
 `deep_research_client.evaluation`, are for.
+
+`confabulation_rate` is computed over resolved plus unresolved references only.
+Unverifiable ones are left out of the denominator, so skipping a prefix cannot dilute the
+figure.
 
 **"Unresolved" is not proof of fabrication.** The underlying fetcher returns nothing both
 for an identifier that does not exist and for a lookup that failed in transit - a timeout,

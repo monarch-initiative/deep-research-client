@@ -200,6 +200,30 @@ def test_extract_quoted_claims(markdown: str, expected: list[tuple[str, str]]) -
     assert [(c.quote, c.reference_id) for c in claims] == expected
 
 
+def test_quoted_claim_keeps_a_doi_containing_parentheses() -> None:
+    """The quote scan must agree with the body scan about the identifier.
+
+    A citation group that stopped at the first ')' produced a truncated DOI, so
+    the quote was orphaned from the reference the body scan had found.
+    """
+    text = 'They said "a suitably long quotation here" (DOI:10.1016/0092-8674(94)90302-6).'
+
+    claims = extract_quoted_claims(text)
+
+    assert [c.reference_id for c in claims] == ["DOI:10.1016/0092-8674(94)90302-6"]
+    assert claims[0].reference_id == find_reference_ids(text)[0].normalized_id
+
+
+def test_quoted_claims_do_not_absorb_the_next_citation() -> None:
+    """Widening the citation group must not let one quote swallow another's."""
+    claims = extract_quoted_claims(
+        'A "first suitably long quotation" (PMID:1111111). '
+        'And "second suitably long quotation" (PMID:2222222).'
+    )
+
+    assert [c.reference_id for c in claims] == ["PMID:1111111", "PMID:2222222"]
+
+
 def test_extract_evidence_combines_both() -> None:
     evidence = extract_evidence(
         'The authors state "widgets are blue in 90% of cases" (PMID:7913883). '
@@ -348,6 +372,20 @@ def test_quotes_for_skipped_prefixes_are_recorded_not_dropped(
     assert report.quotes_checked == 0
     assert len(report.unchecked_quotes) == 1
     assert not report.has_confabulations
+
+
+def test_unmatched_quote_reference_does_not_blame_a_limit(
+    validator: ReferenceValidator, paper_ref: str
+) -> None:
+    """With no limit set, the message must not claim one was reached."""
+    report = validator.validate_references(
+        [_reference(paper_ref)],
+        [QuotedClaim(quote="Widgets are blue", reference_id="PMID:9999999")],
+    )
+
+    assert report.unchecked_quotes[0].message == (
+        "Reference was not among those extracted from the report body"
+    )
 
 
 def test_quotes_for_truncated_references_are_skipped(
@@ -518,17 +556,67 @@ def test_similarity_score_is_clamped(score: float, expected: float) -> None:
     [
         ("# Report\n\nBody.\n", "# Report\n\nBody.\n"),
         ("# Report\n\nBody.\n\n## Reference Validation\n\nStuff.\n", "# Report\n\nBody.\n"),
-        # Two appended sections, as a pre-fix double run would have produced
+        # Two appended sections, as an older run could have left behind
         (
             "# Report\n\nBody.\n\n## Reference Validation\n\nOne.\n\n"
             "## Reference Validation\n\nTwo.\n",
             "# Report\n\nBody.\n",
         ),
         ("## Reference Validation\n\nOnly.\n", ""),
+        # The generated section carries level-three headings, which must not
+        # stop it being recognised as the trailing section
+        (
+            "# Report\n\nBody.\n\n## Reference Validation\n\n"
+            "### Unresolved references\n\n- `PMID:1`\n",
+            "# Report\n\nBody.\n",
+        ),
     ],
 )
 def test_strip_validation_section(content: str, expected: str) -> None:
     assert strip_validation_section(content) == expected
+
+
+def test_strip_validation_section_keeps_a_non_trailing_section() -> None:
+    """A report that discusses validation and then continues must survive intact.
+
+    The stripped text is written back over the file by --in-place, so removing
+    from a mid-document heading would destroy the rest of the report.
+    """
+    content = (
+        "---\na: 1\n---\n# Report\n\n## Reference Validation\n\n"
+        "We discuss how validation works.\n\n## Conclusions\n\nImportant text.\n"
+    )
+
+    assert strip_validation_section(content) == content
+
+
+def test_cli_in_place_preserves_a_body_section_named_like_ours(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    """End-to-end guard on the same data-loss path."""
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        f"## Output\n\nCited ({CACHED_PMID}).\n\n"
+        "## Reference Validation\n\nProse about validation.\n\n"
+        "## Conclusions\n\nMust not be deleted.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = report_file.read_text(encoding="utf-8")
+    assert "Must not be deleted." in written
+    assert "Prose about validation." in written
 
 
 def test_schema_documents_every_status() -> None:
@@ -571,6 +659,44 @@ def test_report_markdown_lists_unresolved() -> None:
     assert "PMID:99999999" in markdown
     assert "(3 mentions)" in markdown
     assert "PMID:7913883" not in markdown
+
+
+def test_all_unverifiable_report_does_not_claim_success() -> None:
+    """A run that learned nothing must not read as a clean bill of health."""
+    report = ReferenceValidationReport(
+        references=[ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE)]
+    )
+
+    markdown = report.to_markdown()
+
+    assert "All extracted references resolved successfully." not in markdown
+    assert "confirmed or contradicted" in markdown
+
+
+def test_partly_unverifiable_report_states_the_shortfall() -> None:
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert "1 of 2 references resolved" in report.to_markdown()
+
+
+def test_confabulation_rate_ignores_unverifiable_references() -> None:
+    """Skipping a prefix must not dilute the rate."""
+    report = ReferenceValidationReport(
+        references=[
+            ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.NOT_FOUND),
+            ReferenceCheck(reference_id="PMID:2", status=ReferenceStatus.VERIFIED),
+            ReferenceCheck(reference_id="X:1", status=ReferenceStatus.UNVERIFIABLE),
+            ReferenceCheck(reference_id="X:2", status=ReferenceStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert report.resolvable_count == 2
+    assert report.confabulation_rate == 0.5
 
 
 def test_report_summary_is_yaml_friendly() -> None:
@@ -740,6 +866,69 @@ def test_cli_validate_references_in_place_is_idempotent(
     assert first == second
     assert second.count("## Reference Validation") == 1
     assert "| References checked | 1 |" in second
+
+
+def test_cli_in_place_refreshes_stale_frontmatter(tmp_path: Path, seeded_cache: Path) -> None:
+    """A frontmatter summary must not survive contradicting the section below it."""
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        "---\n"
+        "provider: mock\n"
+        "reference_validation:\n"
+        "  total_references: 99\n"
+        "  verified: 99\n"
+        "  not_found: 0\n"
+        "---\n\n"
+        f"## Output\n\nCited ({CACHED_PMID}).\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    import yaml
+
+    from deep_research_client.markdown_parser import parse_frontmatter
+
+    frontmatter, _ = parse_frontmatter(report_file.read_text(encoding="utf-8"))
+    assert frontmatter["reference_validation"]["total_references"] == 1
+    assert frontmatter["reference_validation"]["verified"] == 1
+    assert frontmatter["provider"] == "mock"
+    assert yaml.safe_load(yaml.dump(frontmatter)) == frontmatter
+
+
+def test_cli_in_place_leaves_plain_frontmatter_alone(
+    tmp_path: Path, seeded_cache: Path
+) -> None:
+    """A file with no validation summary must not be reformatted."""
+    original_frontmatter = "---\n# a comment\nprovider:   mock\n---\n"
+    report_file = tmp_path / "report.md"
+    report_file.write_text(
+        original_frontmatter + f"\n## Output\n\nCited ({CACHED_PMID}).\n", encoding="utf-8"
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_file),
+            "--cache-dir",
+            str(seeded_cache),
+            "--in-place",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert report_file.read_text(encoding="utf-8").startswith(original_frontmatter)
 
 
 def test_cli_validate_references_output_file(tmp_path: Path, seeded_cache: Path) -> None:

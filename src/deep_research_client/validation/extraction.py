@@ -31,7 +31,16 @@ _DOI_PATTERN = re.compile(
     r")(10\.\d{4,}/[^\s|`\"<>]+)",
     re.IGNORECASE,
 )
-_URL_PATTERN = re.compile(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)")
+# Both the current pubmed.ncbi.nlm.nih.gov host and the older
+# www.ncbi.nlm.nih.gov/pubmed path, which providers still emit.
+_URL_PATTERN = re.compile(
+    r"https?://(?:pubmed\.ncbi\.nlm\.nih\.gov|(?:www\.)?ncbi\.nlm\.nih\.gov/pubmed)/(\d+)"
+)
+
+# A markdown escape: a backslash before an ASCII punctuation character. Providers
+# emit these inside DOIs (10.1007/978-3-030-80614-9\_8), and a DOI never contains
+# a backslash of its own, so unescaping is safe.
+_MARKDOWN_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
 
 # Characters that markdown routinely glues onto the end of a DOI and that a DOI
 # will never legitimately end with. The emphasis and code characters matter most:
@@ -98,13 +107,13 @@ class QuotedClaim:
 
 
 def normalize_doi(doi: str) -> str:
-    """Strip markdown punctuation that commonly trails a DOI.
+    """Undo markdown escaping and strip punctuation that trails a DOI.
 
     Args:
         doi: A raw DOI string, possibly with trailing punctuation or markup.
 
     Returns:
-        The DOI without trailing punctuation.
+        The DOI as the publisher registered it.
 
     Examples:
         >>> normalize_doi("10.1038/ng1234).")
@@ -117,8 +126,13 @@ def normalize_doi(doi: str) -> str:
         '10.1038/ng1234'
         >>> normalize_doi("10.1038/ng1234")
         '10.1038/ng1234'
+
+        An escaped underscore, as providers write DOIs for book chapters:
+
+        >>> normalize_doi(r"10.1007/978-3-030-80614-9\\_8")
+        '10.1007/978-3-030-80614-9_8'
     """
-    return doi.rstrip(_DOI_TRAILING_CHARS)
+    return _MARKDOWN_ESCAPE.sub(r"\1", doi).rstrip(_DOI_TRAILING_CHARS)
 
 
 def find_reference_ids(text: str) -> list[FoundReference]:

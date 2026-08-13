@@ -180,6 +180,35 @@ def test_publisher_doi_urls_are_extracted(text: str, expected: str) -> None:
     assert [r.normalized_id for r in find_reference_ids(text)] == [expected]
 
 
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Markdown-escaped underscore, as falcon writes book-chapter DOIs
+        (
+            r"https://doi.org/10.1007/978-3-030-80614-9\_8",
+            "DOI:10.1007/978-3-030-80614-9_8",
+        ),
+        (r"doi:10.1007/s00439-021-02282\-3", "DOI:10.1007/s00439-021-02282-3"),
+    ],
+)
+def test_markdown_escapes_inside_a_doi_are_undone(text: str, expected: str) -> None:
+    """An escaped character must not make a real DOI look fabricated."""
+    assert [r.normalized_id for r in find_reference_ids(text)] == [expected]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        "https://www.ncbi.nlm.nih.gov/pubmed/12345678",
+        "http://ncbi.nlm.nih.gov/pubmed/12345678",
+    ],
+)
+def test_both_pubmed_url_styles_are_extracted(url: str) -> None:
+    """Providers still emit the older www.ncbi.nlm.nih.gov/pubmed path."""
+    assert [r.normalized_id for r in find_reference_ids(url)] == ["PMID:12345678"]
+
+
 def test_doi_containing_parentheses_is_preserved() -> None:
     """Real DOIs contain parentheses, so they must survive trailing-punctuation stripping."""
     found = find_reference_ids("Reported in doi:10.1016/0092-8674(94)90302-6 originally.")

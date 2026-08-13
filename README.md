@@ -141,7 +141,7 @@ print(report.unsupported_quotes)          # quotes not found in their cited sour
 print(report.to_markdown())               # renderable summary section
 ```
 
-See the [Validate References guide](docs/how-to/validate-references.md) for details.
+On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
 
 ### Python Library Usage
 

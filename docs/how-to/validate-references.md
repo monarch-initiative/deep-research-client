@@ -117,30 +117,75 @@ that could not be checked at all do not trip it:
 deep-research-client validate-references report.md --fail-on-unresolved
 ```
 
-## Keep it fast
+## How long it takes
 
-Resolution is network-bound and sequential, so a bibliography of a hundred references takes
-a few minutes on the first pass.
+Measured against four live reports produced for this purpose - `claude_code` and `falcon`,
+a short prompt and a long templated one - on an ordinary broadband connection. Numbers will
+move with network conditions and upstream load, but the ratios are stable.
 
-- **Cache.** Fetched references are written to `./references_cache` by default and reused on
-  later runs. Point `--cache-dir` at a shared directory - or commit it - to make repeated
-  validation across a corpus effectively free.
-- **Cap the work.** `--max-references 20` stops after the first twenty references; the
-  report says so explicitly rather than pretending it covered everything.
-- **Slow down or speed up.** `--rate-limit-delay` sets the pause between lookups (0.5s by
-  default). Raise it if an API starts rejecting requests; lower it when working entirely
-  from a warm cache.
-- **Skip existence-only checks you do not need.** `--no-check-quotes` skips supporting text
-  validation.
+| Report | References | Research call | Validation, cold cache | Validation, warm cache |
+|--------|-----------:|--------------:|-----------------------:|-----------------------:|
+| Achondroplasia, `claude_code` | 31 | 283s | 70s | 1.1s |
+| Achondroplasia, `falcon` | 18 | 356s | 76s | 2.0s |
+| Marfan template, `claude_code` | 33 | 743s | 74s | 1.2s |
+| Marfan template, `falcon` | 13 | 742s | 68s | 1.0s |
+
+Two things follow from this. Validation costs roughly **10-25% of the research call** the
+first time, which is a small addition to a run that already takes minutes. And on a warm
+cache it costs **essentially nothing** - a second pass over the same corpus is one or two
+seconds, a 35-70x speed-up.
+
+### Cost is driven by identifier type, not reference count
+
+The four cold timings above barely track reference count: thirteen references took 68s
+while thirty-three took 74s. What separates them is what those references are.
+
+| Identifier | Resolved via | Cold cost |
+|------------|--------------|----------:|
+| PMID | NCBI Entrez | 1.6s each |
+| PMC | NCBI ID converter, batched, then Entrez | 1.5s each |
+| DOI | Crossref, falling back to DataCite | 6.5s each |
+
+A DOI costs about four times what a PMID does, so budget per DOI rather than per
+reference. PMC accessions are as cheap as PMIDs despite needing an extra hop, because the
+conversion is batched into one request for the whole report.
+
+### What each option is worth
+
+| Change | Effect on 10 references, cold |
+|--------|------------------------------|
+| Default | 15.6s |
+| `--rate-limit-delay 0` | 7.9s |
+| `--rate-limit-delay 2` | 44.3s |
+| `--full-text` | 354.5s |
+
+- **Cache, above all.** Fetched references are written to `./references_cache` by default
+  and reused on later runs. Point `--cache-dir` at a shared directory - or commit it - to
+  make repeated validation across a corpus effectively free. This is worth more than every
+  other option combined.
+- **Full text is the expensive one.** `--full-text` took **23x** longer on the same ten
+  references. It is off by default for that reason. Turn it on when quote checking matters:
+  without it, a quote drawn from the body of a paper is reported as not found, because only
+  the title and abstract were searched.
+- **Rate limiting is about half the default cost.** `--rate-limit-delay` sets the pause
+  between lookups, 0.5s by default. Setting it to 0 roughly halves cold runtime, but the
+  delay exists to be a good citizen of free public APIs - lower it for a one-off small run,
+  not for a nightly sweep. Raise it if an API starts rejecting requests.
+- **Cap the work.** `--max-references 20` stops after the first twenty; the report says so
+  explicitly rather than implying it covered everything.
 - **Skip a whole identifier type.** `--skip-prefix DOI` marks those references unverifiable
-  without looking them up, which is useful when Crossref is slow and you only care about
-  PubMed. Extraction only ever produces `PMID:` and `DOI:` identifiers, so those are the
-  only two prefixes this can skip; it takes other prefixes for reports validated through
-  the Python API, which accepts any identifier the underlying library can resolve.
+  without looking them up, which given the table above is the single biggest saving after
+  caching. Extraction produces `PMID:`, `DOI:`, `PMC:` and `GEO:` identifiers, so those are
+  the prefixes this can skip; other prefixes apply to reports validated through the Python
+  API, which accepts any identifier the underlying library can resolve.
+- **`--no-check-quotes` saves little.** Quote checking reuses references already fetched
+  for the existence check, so it adds no requests. Use it to change what is reported, not
+  to go faster.
 
-Full text retrieval is off by default because it is much slower. Turn it on with
-`--full-text` when quote checking matters: without it, a quote drawn from the body of a
-paper will be reported as not found because only the abstract was searched.
+Resolution is sequential, so a bibliography of a hundred DOIs takes several minutes on a
+cold cache. Validating as part of `research --validate-references` adds that time to a run
+that is already slow; validating afterwards with `validate-references` lets you do it once
+across a whole corpus against a shared cache.
 
 ## Use it from Python
 

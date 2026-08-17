@@ -32,20 +32,29 @@ rather than reaching for attributes on them.
 import re
 from typing import Any, Dict, List
 
-from .datamodel import ReferenceCheck, ReferenceStatus, SupportingTextCheck
+from .datamodel import ReferenceCheck, ReferenceStatus, SupportingTextCheck, TopicalRelevance
 from .datamodel import ReferenceValidationReport as GeneratedReferenceValidationReport
 
 __all__ = [
+    "ABSTRACT_ONLY_CONTENT_TYPES",
     "OUTAGE_HINT_MIN_REFERENCES",
     "VALIDATION_SECTION_HEADING",
     "ReferenceCheck",
     "ReferenceStatus",
     "ReferenceValidationReport",
     "SupportingTextCheck",
+    "TopicalRelevance",
     "strip_validation_section",
 ]
 
 VALIDATION_SECTION_HEADING = "## Reference Validation"
+
+# Content types that mean only a summary was searched. A quote failing against
+# one of these is much weaker evidence than a quote failing against retrieved
+# full text: four of the six quote failures in a live CHILD syndrome report were
+# quotes lifted correctly from the body of a GeneReviews chapter, of which
+# PubMed serves only the summary.
+ABSTRACT_ONLY_CONTENT_TYPES = frozenset({"abstract_only", "abstract", "unavailable"})
 
 # Below this many resolvable references, a clean sweep of failures is not
 # evidence of an outage - it is as likely to be a short bibliography in which
@@ -291,6 +300,56 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         return [q for q in self.quote_checks if not q.was_checkable]
 
     @property
+    def off_topic_references(self) -> List[ReferenceCheck]:
+        """References that resolved but share almost none of the report's vocabulary.
+
+        Not a fabrication and not counted as one: the record exists. It is a lead
+        to follow, because a citation to a real paper about an unrelated subject
+        is one of the failure modes an existence check cannot see.
+
+        Examples:
+            >>> report = ReferenceValidationReport(
+            ...     references=[
+            ...         ReferenceCheck(
+            ...             reference_id="PMID:1",
+            ...             status=ReferenceStatus.VERIFIED,
+            ...             relevance=TopicalRelevance.OFF_TOPIC,
+            ...         ),
+            ...         ReferenceCheck(
+            ...             reference_id="PMID:2",
+            ...             status=ReferenceStatus.VERIFIED,
+            ...             relevance=TopicalRelevance.ON_TOPIC,
+            ...         ),
+            ...     ]
+            ... )
+            >>> [r.reference_id for r in report.off_topic_references]
+            ['PMID:1']
+        """
+        return [
+            r for r in self.checked_references if r.relevance == TopicalRelevance.OFF_TOPIC
+        ]
+
+    @property
+    def relevance_assessed_count(self) -> int:
+        """Number of references topical relevance was actually judged for.
+
+        Excludes records that did not resolve, exposed nothing to read, or were
+        checked before the report had any keywords to check them against.
+        """
+        return sum(
+            1
+            for r in self.checked_references
+            if r.relevance != TopicalRelevance.NOT_ASSESSED
+        )
+
+    @property
+    def on_topic_count(self) -> int:
+        """Number of references whose metadata matches the report's vocabulary."""
+        return sum(
+            1 for r in self.checked_references if r.relevance == TopicalRelevance.ON_TOPIC
+        )
+
+    @property
     def confabulated_references(self) -> List[ReferenceCheck]:
         """References that failed to resolve, and so may have been fabricated.
 
@@ -318,6 +377,15 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
     def summary(self) -> Dict[str, Any]:
         """Return a compact, YAML-friendly summary suitable for frontmatter.
 
+        ``confabulation_rate`` measures identifier resolution and nothing else,
+        which is a trap for anyone skimming: a report whose every identifier
+        resolved but whose quotes did not match still shows ``0.0``. That is
+        exactly how a CHILD syndrome report with six mismatched quotes was read
+        as clean. So the counts that would contradict a reassuring rate -
+        unsupported quotes, off-topic references - are stated here outright
+        rather than left to be derived, and :attr:`has_confabulations` is
+        included whenever anything at all needs looking at.
+
         Examples:
             >>> report = ReferenceValidationReport(
             ...     references=[ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED)]
@@ -326,6 +394,21 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
             1
             >>> report.summary()["confabulation_rate"]
             0.0
+            >>> "quotes_unsupported" in report.summary()
+            False
+
+            A clean rate does not hide a failed quote:
+
+            >>> report.supporting_text = [
+            ...     SupportingTextCheck(
+            ...         reference_id="PMID:1", quote="never written", is_valid=False
+            ...     )
+            ... ]
+            >>> summary = report.summary()
+            >>> summary["confabulation_rate"], summary["quotes_unsupported"]
+            (0.0, 1)
+            >>> summary["needs_review"]
+            True
         """
         summary: Dict[str, Any] = {
             "total_references": self.total_references,
@@ -337,10 +420,27 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         if self.quote_checks:
             summary["quotes_checked"] = self.quotes_checked
             summary["quotes_valid"] = self.quotes_valid_count
+            if self.unsupported_quotes:
+                summary["quotes_unsupported"] = len(self.unsupported_quotes)
+                summary["unsupported_quote_references"] = sorted(
+                    {q.reference_id for q in self.unsupported_quotes}
+                )
             if self.unchecked_quotes:
                 summary["quotes_not_checkable"] = len(self.unchecked_quotes)
+        if self.relevance_assessed_count:
+            summary["relevance_assessed"] = self.relevance_assessed_count
+            summary["on_topic"] = self.on_topic_count
+            if self.off_topic_references:
+                summary["off_topic"] = len(self.off_topic_references)
+                summary["off_topic_references"] = [
+                    r.reference_id for r in self.off_topic_references
+                ]
         if self.confabulated_references:
             summary["unresolved_references"] = [r.reference_id for r in self.confabulated_references]
+        if self.has_confabulations:
+            # Stated rather than implied, so that reading one number off the
+            # frontmatter cannot produce a false all-clear.
+            summary["needs_review"] = True
         if self.validator_version:
             summary["validator_version"] = self.validator_version
         if self.truncated:
@@ -406,10 +506,19 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         if self.quote_checks:
             lines.append(f"| Quoted claims checked | {self.quotes_checked} |")
             lines.append(f"| Quoted claims found in source | {self.quotes_valid_count} |")
+            # Spelled out rather than left as the difference of the two rows
+            # above: a reader who subtracts is a reader who might not.
+            lines.append(
+                f"| Quoted claims **not** found in source | {len(self.unsupported_quotes)} |"
+            )
             if self.unchecked_quotes:
                 lines.append(
                     f"| Quoted claims with nothing to check against | {len(self.unchecked_quotes)} |"
                 )
+        if self.relevance_assessed_count:
+            lines.append(f"| References weighed for topical relevance | {self.relevance_assessed_count} |")
+            lines.append(f"| On topic | {self.on_topic_count} |")
+            lines.append(f"| Off topic | {len(self.off_topic_references)} |")
         lines.append("")
 
         if self.confabulated_references:
@@ -460,13 +569,69 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
                 "appear here too, so check before treating one as invented:"
             )
             lines.append("")
+            abstract_only = [
+                q
+                for q in self.unsupported_quotes
+                if q.source_content_type in ABSTRACT_ONLY_CONTENT_TYPES
+            ]
+            if abstract_only:
+                # Said once for the group rather than repeated under every entry:
+                # in a report where all six failures are abstract-only, six copies
+                # of the same caveat bury the six quotes it is about.
+                scope = (
+                    "Every one of these"
+                    if len(abstract_only) == len(self.unsupported_quotes)
+                    else f"{len(abstract_only)} of these"
+                )
+                lines.append(
+                    f"{scope} was searched against an abstract alone, with no full "
+                    "text retrieved - marked *abstract only* below. Re-run with full "
+                    "text before treating any of those as invented."
+                )
+                lines.append("")
             for quote_check in self.unsupported_quotes:
-                lines.append(f"- `{quote_check.reference_id}`: \"{quote_check.quote}\"")
+                marker = (
+                    " *(abstract only)*"
+                    if quote_check.source_content_type in ABSTRACT_ONLY_CONTENT_TYPES
+                    else ""
+                )
+                lines.append(
+                    f"- `{quote_check.reference_id}`{marker}: \"{quote_check.quote}\""
+                )
                 if quote_check.best_match:
                     lines.append(f"  - closest text in source: \"{quote_check.best_match}\"")
                 elif quote_check.message:
                     lines.append(f"  - {quote_check.message}")
             lines.append("")
+
+        if self.off_topic_references:
+            lines.append("### References that may not be about this subject")
+            lines.append("")
+            lines.append(
+                "These identifiers resolve, so they are not fabrications, but the "
+                "records they resolve to share almost none of this report's "
+                "vocabulary. That is a clue and not a verdict - a paper can be "
+                "relevant in ways its title and abstract do not spell out - so "
+                "read them before deciding:"
+            )
+            lines.append("")
+            for check in self.off_topic_references:
+                title = f" - {check.title}" if check.title else ""
+                lines.append(
+                    f"- `{check.reference_id}` ({check.occurrences} mention"
+                    f"{'' if check.occurrences == 1 else 's'}){title}"
+                )
+                matched = check.matched_keywords or []
+                shared = ", ".join(matched) if matched else "none"
+                lines.append(f"  - shared terms: {shared}")
+            lines.append("")
+            if self.report_keywords:
+                lines.append(
+                    "Weighed against this report's own most characteristic terms: "
+                    + ", ".join(f"`{term}`" for term in self.report_keywords)
+                    + "."
+                )
+                lines.append("")
 
         if self.unchecked_quotes:
             lines.append("### Quotes that could not be checked")
@@ -484,6 +649,9 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
 
         if not self.has_confabulations:
             if self.verified_count == self.total_references:
+                # Scoped to resolution, because that is all this sentence has
+                # ever measured. Written as a bare "all clear" it would sit
+                # directly below a list of off-topic references and contradict it.
                 lines.append("All extracted references resolved successfully.")
             elif self.verified_count:
                 lines.append(
@@ -494,6 +662,11 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
                 lines.append(
                     "No reference could be looked up either way, so nothing here "
                     "was confirmed or contradicted."
+                )
+            if self.off_topic_references:
+                lines.append(
+                    "Resolving is not the same as being relevant, though - see the "
+                    "references listed above as possibly off topic."
                 )
             lines.append("")
 

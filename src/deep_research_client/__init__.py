@@ -27,6 +27,7 @@ from .validation import (
     ReferenceValidationReport,
     ReferenceValidator,
     SupportingTextCheck,
+    TopicalRelevance,
     extract_references,
     validator_is_available,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "ReferenceValidationReport",
     "ReferenceValidator",
     "SupportingTextCheck",
+    "TopicalRelevance",
     "extract_references",
     "validator_is_available",
 ]

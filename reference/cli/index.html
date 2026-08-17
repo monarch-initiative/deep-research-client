@@ -1999,6 +1999,10 @@
 <td>Seconds to wait between lookups (default: 0.5)</td>
 </tr>
 <tr>
+<td><code>--validation-relevance / --validation-no-relevance</code></td>
+<td>Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups)</td>
+</tr>
+<tr>
 <td><code>--fail-on-unresolved</code></td>
 <td>Exit with code 2 if any reference or quote fails validation</td>
 </tr>
@@ -2097,6 +2101,10 @@ deep-research-client research &quot;Statins and myopathy risk&quot; \
 <td>Check quoted claims against the text of the reference they cite (default: on)</td>
 </tr>
 <tr>
+<td><code>--check-relevance / --no-check-relevance</code></td>
+<td>Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups)</td>
+</tr>
+<tr>
 <td><code>--cache-dir PATH</code></td>
 <td>Directory for cached reference lookups (default: <code>./references_cache</code>)</td>
 </tr>
@@ -2142,6 +2150,7 @@ deep-research-client research &quot;Statins and myopathy risk&quot; \
 <ul>
 <li>Every PMID, DOI, PMC accession and GEO accession in the file is resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are reported as likely confabulations — but see the caveat on <a href="../../how-to/validate-references/#what-the-outcomes-mean">what the outcomes mean</a>, since a lookup that failed for network reasons is indistinguishable from one that failed because the record does not exist.</li>
 <li>Quotes are checked only when they are directly attributed, as in <code>"quoted text" (PMID:12345678)</code>. A quote whose reference could not be fetched is reported as <em>not checked</em> rather than as unsupported.</li>
+<li>Every record that resolves is additionally weighed against the report's own vocabulary, so a citation that exists but is about an unrelated subject is flagged. That verdict is a clue rather than a finding: it is reported separately, excluded from <code>confabulation_rate</code>, and does not trip <code>--fail-on-unresolved</code>. See <a href="../../how-to/validate-references/#topical-relevance">topical relevance</a>.</li>
 <li>Fetched references are cached on disk, so re-running over the same corpus is fast and polite to the upstream APIs. A cold run costs roughly 1.6s per PMID or PMC accession and 6.5s per DOI; a warm one is 1-2s for a whole report. <code>--full-text</code> multiplies the cold cost by about 23. See <a href="../../how-to/validate-references/#how-long-it-takes">how long it takes</a>.</li>
 <li><code>--in-place</code> is idempotent: an existing validation section is replaced rather than appended to, so repeated runs neither stack sections nor re-count the identifiers a previous run listed.</li>
 <li>Exit codes: <code>0</code> success, <code>1</code> usage, input or filesystem error, <code>2</code> validation found problems (only with <code>--fail-on-unresolved</code>), <code>3</code> a lookup service was unreachable.</li>

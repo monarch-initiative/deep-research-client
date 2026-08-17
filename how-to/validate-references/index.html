@@ -606,6 +606,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#topical-relevance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Topical relevance
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Topical relevance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-thresholds-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the thresholds come from
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-whole-bibliography-matches-nothing" class="md-nav__link">
+    <span class="md-ellipsis">
+      When the whole bibliography matches nothing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-tf-idf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why not TF-IDF
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-prompt-is-not-the-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      The prompt is not the subject
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-outcomes-mean" class="md-nav__link">
     <span class="md-ellipsis">
       What the outcomes mean
@@ -1183,6 +1234,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#topical-relevance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Topical relevance
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Topical relevance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#where-the-thresholds-come-from" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the thresholds come from
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-the-whole-bibliography-matches-nothing" class="md-nav__link">
+    <span class="md-ellipsis">
+      When the whole bibliography matches nothing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-not-tf-idf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why not TF-IDF
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-prompt-is-not-the-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      The prompt is not the subject
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-outcomes-mean" class="md-nav__link">
     <span class="md-ellipsis">
       What the outcomes mean
@@ -1245,7 +1347,7 @@ downstream.</p>
 <p><code>deep-research-client</code> integrates
 <a href="https://pypi.org/project/linkml-reference-validator/">linkml-reference-validator</a> so a
 report's references can be checked as soon as it is produced.</p>
-<p>Two things are checked:</p>
+<p>Three things are checked:</p>
 <ol>
 <li><strong>Existence.</strong> Every PMID, DOI, PMC accession and GEO accession in the report is
    resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are flagged as suspect -
@@ -1253,6 +1355,10 @@ report's references can be checked as soon as it is produced.</p>
 <li><strong>Supporting text.</strong> Any quote directly attributed to a reference - written as
    <code>"quoted text" (PMID:12345678)</code> - is checked against the abstract or full text of that
    reference using deterministic substring matching.</li>
+<li><strong>Topical relevance.</strong> Every record that <em>did</em> resolve is weighed against the report's
+   own vocabulary, because a real identifier attached to a paper about something else
+   passes an existence check without complaint. See
+   <a href="#topical-relevance">topical relevance</a>.</li>
 </ol>
 <h2 id="install">Install</h2>
 <p>Reference validation pulls in bibliographic tooling that most users do not need, so it is
@@ -1280,7 +1386,11 @@ Checked with `linkml-reference-validator` 0.2.1.
 | Unverifiable | 0 |
 | Quoted claims checked | 1 |
 | Quoted claims found in source | 1 |
+| Quoted claims **not** found in source | 0 |
 | Quoted claims with nothing to check against | 1 |
+| References weighed for topical relevance | 1 |
+| On topic | 1 |
+| Off topic | 0 |
 
 ### Unresolved references
 
@@ -1317,12 +1427,31 @@ keeps everything.</p>
   confabulation_rate: 0.048
   quotes_checked: 6
   quotes_valid: 5
+  quotes_unsupported: 1
+  unsupported_quote_references:
+  - PMID:12345678
   quotes_not_checkable: 1
+  relevance_assessed: 40
+  on_topic: 38
+  off_topic: 1
+  off_topic_references:
+  - PMID:37958553
   unresolved_references:
   - PMID:99999998
   - DOI:10.9999/totally.made.up
+  needs_review: true
   validator_version: 0.2.1
 </code></pre>
+<p><code>confabulation_rate</code> counts identifier resolution and nothing else. A report can resolve
+every identifier it cites, score <code>0.0</code>, and still have quotes that do not match their
+source - that is exactly what happened to a CHILD syndrome report which resolved 36 of 36
+references while 6 of 33 quotes failed. So <code>quotes_unsupported</code>, <code>off_topic</code> and
+<code>needs_review</code> are written out whenever they apply, rather than left to be worked out by
+subtracting <code>quotes_valid</code> from <code>quotes_checked</code>. If <code>needs_review</code> is absent, nothing
+needed reviewing.</p>
+<p><code>needs_review</code> is deliberately wider than the thing that fails a build. An off-topic
+reference sets it, but does not make <code>--fail-on-unresolved</code> exit non-zero: it is a
+go-and-look, not a failure.</p>
 <h2 id="fail-a-pipeline-on-bad-citations">Fail a pipeline on bad citations</h2>
 <p>Both commands accept <code>--fail-on-unresolved</code>, which exits with code <code>2</code> when any reference
 fails to resolve or any attributed quote is checked and not found in its source. Quotes
@@ -1486,6 +1615,9 @@ is reported rather than what is fetched, and the run it would speed up is alread
   for the existence check, so it adds no requests. Use it to change what is reported, not
   to go faster. Combining it with <code>--full-text</code> would be pure waste, so full text is not
   retrieved at all when no quote will be checked.</li>
+<li><strong><code>--no-check-relevance</code> saves nothing at all.</strong> The relevance check reads metadata that
+  has already been fetched and does no network work of its own. Turn it off only if you do
+  not want the extra section.</li>
 </ul>
 <p>Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven minutes on
 a cold cache, against under three for a hundred PMIDs. Validating as part of <code>research --validate-references</code> adds that time to a run
@@ -1505,6 +1637,8 @@ for check in report.confabulated_references:
     print(check.reference_id, check.message)
 for check in report.unsupported_quotes:
     print(check.reference_id, check.quote)
+for check in report.off_topic_references:
+    print(check.reference_id, check.title, check.relevance_score, check.matched_keywords)
 </code></pre>
 <p><code>report.to_markdown()</code> renders the section shown above, and <code>report.summary()</code> gives the
 frontmatter dictionary. <code>ReferenceValidationReport</code> is a Pydantic model, so
@@ -1540,6 +1674,184 @@ title, so quoting one without its subtitle is accepted. If your reports use a
 different convention, pass your own pattern to
 <code>ReferenceValidator.validate_markdown(..., quote_pattern=...)</code>; capture group 1 must be the
 quote and group 2 the citation.</p>
+<h2 id="topical-relevance">Topical relevance</h2>
+<p>An existence check answers "is this a real record?". It cannot answer "is this record about
+what the report says it is about?", and it cannot tell you which question it just answered.
+A CHILD syndrome report - a human sterol-biosynthesis disorder - cited an <em>Arabidopsis</em>
+pollen-development paper among its sources. Real PMID, real paper, fetchable abstract,
+clean bill of health. On inspection that one is a defensible citation of the plant
+orthologue, but the validator had no way to distinguish it from a citation that was simply
+wrong, and a reader skimming the validation block had none either.</p>
+<p>So every record that resolves is also weighed against the report's own vocabulary:</p>
+<ol>
+<li>The prompt is set aside - both the <code>## Question</code> section and whatever the provider
+   echoed back into its own answer - so that a template's boilerplate cannot pass for the
+   report's subject. See <a href="#the-prompt-is-not-the-subject">why that matters</a>.</li>
+<li>The report's most characteristic terms are read off what remains, scored by frequency
+   and by how many of the report's sections they turn up in.</li>
+<li>Each reference's own metadata - title, journal, MeSH keywords, abstract - is searched
+   for those terms.</li>
+<li>The share of keyword weight that turns up decides the verdict.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>On topic</td>
+<td>The record carries a substantial share of the report's vocabulary</td>
+</tr>
+<tr>
+<td>Uncertain</td>
+<td>Some overlap, or too little metadata to judge from</td>
+</tr>
+<tr>
+<td>Off topic</td>
+<td>An abstract's worth of text carrying almost none of it</td>
+</tr>
+<tr>
+<td>Not assessed</td>
+<td>Relevance checking was off, the reference did not resolve, or the report yielded no keywords</td>
+</tr>
+</tbody>
+</table>
+<p>This costs <strong>nothing extra</strong>: the record has already been fetched to check that it
+resolves, so no new requests are made. It is on by default, and <code>--no-check-relevance</code>
+(<code>--validation-no-relevance</code> on <code>research</code>) turns it off.</p>
+<h3 id="where-the-thresholds-come-from">Where the thresholds come from</h3>
+<p>They were measured rather than guessed, against two sets that answer different questions.</p>
+<p><strong>Can it tell on topic from off?</strong> Two real report-and-bibliography pairs - a CHILD syndrome
+report with 34 fetched references and an antiphospholipid syndrome report with 47 - giving
+<strong>72 positives</strong> (each abstract against its own report) and <strong>144 negatives</strong> (each abstract
+against a different report's keywords, including a third report on the Parkinson's gut
+microbiome). Every positive scored at or above 0.35; negatives ran from 0.00 to 0.41.</p>
+<p><strong>How often would it accuse a good citation?</strong> 2,561 references from <strong>400 curated Falcon
+disease reports</strong>, 2,025 of them with enough text to judge. These are presumptively on
+topic, so every flag there is a cost.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>on topic</code> at ≥ 0.35</td>
+<td>confirms 72/72 positives, wrongly confirms 4/144 negatives</td>
+</tr>
+<tr>
+<td><code>off topic</code> at ≤ 0.08</td>
+<td>catches 27/144 negatives, flags <strong>1.5%</strong> of the Falcon set</td>
+</tr>
+<tr>
+<td><code>off topic</code> at ≤ 0.15 (rejected)</td>
+<td>catches 69/144, but flags <strong>5.6%</strong> of the Falcon set</td>
+</tr>
+</tbody>
+</table>
+<p>That second set is what set the threshold. At 0.15 the check was flagging a good citation
+roughly every other report - three were inspected and all three were plainly on topic,
+including a paper on neurofibromin signalling in a neurofibromatosis report. Recall was
+traded away for that: the two errors are not equally bad, because calling a good citation
+off topic is a false accusation printed in a user-facing report, while missing a bad one
+only leaves things where they were before this check existed.</p>
+<p>A record without an abstract is never called off topic. Over a fifth of those 2,561
+references resolved to under 300 characters of text, they score a median 0.16 with a tenth
+below 0.03, and without that gate they would have filled the flagged list while saying
+nothing.</p>
+<p>The gate measures the <strong>abstract alone</strong>, not everything that gets searched. Title, journal
+and MeSH headings are all searched and all count towards the score - a professional
+indexer's subject terms are good evidence when they match. But they are controlled
+vocabulary, and a paper can be squarely on topic while its MeSH headings share little with
+a report's prose, so a long heading list must not by itself license an accusation. A record
+with twenty headings and no abstract is reported as uncertain.</p>
+<h3 id="when-the-whole-bibliography-matches-nothing">When the whole bibliography matches nothing</h3>
+<p>One more guard, on the same principle as the existing outage hint. If <strong>no</strong> reference in a
+report comes out on topic, the off-topic verdicts are withheld and reported as uncertain: a
+keyword set that matches nothing in its own bibliography is far more likely to be a bad
+keyword set than a researcher who cited nothing relevant. This is not hypothetical either -
+a Falcon report on homocystinuria whose provider echoed its prompt yielded <code>provide</code>,
+<code>comprehensive</code>, <code>claim</code> and <code>authoritative</code> as keywords, matched none of its eight
+references, and flagged a paper titled <em>"Hyperhomocysteinemia in Adult Patients"</em>. The
+reason is recorded on each reference rather than silently dropped.</p>
+<p>A flagged reference is rendered with what the verdict rested on. This is real output, from
+a Parkinson's gut-microbiome report with three genuine CHILD syndrome papers spliced into
+its bibliography - every identifier resolves, and none of the report's own seventeen
+citations was flagged:</p>
+<pre><code class="language-markdown">### References that may not be about this subject
+
+- `PMID:16776722` (1 mention) - Abnormal lamellar granules in a case of CHILD syndrome.
+  - shared terms: change
+- `PMID:10710235` (1 mention) - Mutations in the NSDHL gene, encoding a 3beta-hydroxysteroid
+  dehydrogenase, cause CHILD syndrome.
+  - shared terms: patient, model, gene
+
+Weighed against this report's own most characteristic terms: `gut`, `microbiome`,
+`parkinson`, `disease`, `alpha-synuclein`, `patient`, `bacteria`, `symptom`, `brain`, ...
+</code></pre>
+<p>The shared-terms line is the point: <code>patient, model, gene</code> is what an unrelated biomedical
+paper shares with any other, and seeing that is what lets you dismiss or confirm the flag.</p>
+<p><strong>It is a clue, not a verdict, and the code is built to hedge that way.</strong> A low score is
+only treated as evidence when there was an abstract for a match to have been possible in,
+so a record that resolved without one is never called off topic however little it shares.
+An off-topic reference is reported in its own section, listed in the frontmatter, and
+deliberately kept out of <code>confabulation_rate</code> and <code>--fail-on-unresolved</code>: the citation is
+not fabricated, and a paper can be relevant in ways its abstract does not spell out. Read
+the flagged references before acting on the flag.</p>
+<p>The terms the verdict rested on are printed under the flagged list and stored in the report
+as <code>report_keywords</code>, so a wrong call can be diagnosed rather than merely disbelieved.</p>
+<h3 id="why-not-tf-idf">Why not TF-IDF</h3>
+<p>The obvious implementation is TF-IDF, and it was tried. It is the wrong tool here, and
+measurably so. TF-IDF exists to find the terms that distinguish one document from a corpus;
+a deep research report is a single document about a single subject, and its subject words
+are precisely the ones that recur in every section - the ones an inverse document frequency
+penalises hardest. Run against the 122-section CHILD syndrome report, inverting the
+document-frequency term returned <code>reproduced</code>, <code>kegg</code>, <code>rhea</code>, <code>uspstf</code> and <code>atlas</code>, each a
+single-section aside, while burying <code>nsdhl</code>, <code>cholesterol</code> and <code>ichthyosis</code>.</p>
+<p>Weighting by document frequency in the <em>forward</em> direction returns <code>child</code>, <code>disease</code>,
+<code>syndrome</code>, <code>nsdhl</code>, <code>skin</code>. Coverage across sections is the signal: a term that appears
+throughout a report is what the report is about. It also handles a case no stoplist can
+anticipate - a report that documents which databases it searched will say <code>search</code> more
+often than it says its own subject, but only inside one section, so coverage demotes it.</p>
+<h3 id="the-prompt-is-not-the-subject">The prompt is not the subject</h3>
+<p>Coverage has one blind spot, and templated research pipelines walk straight into it. A
+templated prompt is word-for-word identical across every report made from it, and it is
+spread evenly over every section by construction - the exact profile the weighting rewards.
+Measured on 1,188 real Edison/Falcon reports built from one disease template, the keywords
+for a neurofibromatosis report came out as:</p>
+<pre><code>page, disease, genetic, type, clinical, nf1, gene, tumor, guideline, model,
+omim, variant, peduto2023neurofibromatosistype1, treatment, applicable, ...
+</code></pre>
+<p>Two separate problems there. <code>page</code>, <code>omim</code>, <code>applicable</code> and <code>guideline</code> are the prompt's
+"Search first: OMIM, Orphanet, ICD-10/ICD-11, MeSH" scaffolding.
+<code>peduto2023neurofibromatosistype1</code> is Falcon's inline citation key, which no abstract can
+ever contain - so it permanently held keyword weight that no reference could win back,
+depressing every score in the report. Between them they pushed a paper titled <em>"The
+therapeutic potential of neurofibromin signalling pathways and binding partners"</em> below the
+off-topic line in a report about neurofibromatosis.</p>
+<p>Three things now happen before keywords are read:</p>
+<ul>
+<li>The <code>## Question</code> section is dropped.</li>
+<li>Any line appearing <strong>twice</strong> in the report is dropped, in every copy. Providers restate
+  the whole prompt inside their own answer, so cutting at <code>## Output</code> removes only the
+  first of two copies; a sentence of findings repeated word for word is vanishingly rare,
+  and short lines are exempt so that list items and table rules are unaffected.</li>
+<li>Tokens shaped like an author-year-title citation key are dropped: a surname, a plausible
+  publication year, then title words. Matching by shape rather than by "contains four
+  digits" is deliberate - that was the first attempt, and it silently ate the <code>KIAA####</code>
+  gene family (<code>KIAA0319</code> in dyslexia, <code>KIAA1109</code> in Alkuraya-Kučinskas, <code>KIAA0586</code> and
+  <code>KIAA0753</code> in Joubert). Dropping a report's most characteristic term depresses the score
+  of every reference that discusses it, which is the failure this rule exists to prevent,
+  running backwards.</li>
+</ul>
+<p>Afterwards the same report yields <code>nf1, tumor, genetic, mpnst, plexiform, neurofibromas,
+neurofibromatosis, optic</code>, and across a sample of twelve reports the share of references
+recognised as on topic rose from 52/125 to 77/125.</p>
 <h2 id="what-the-outcomes-mean">What the outcomes mean</h2>
 <table>
 <thead>
@@ -1564,11 +1876,13 @@ quote and group 2 the citation.</p>
 </tbody>
 </table>
 <p>A resolved reference means the paper is real. It does not mean the paper supports the
-claim attached to it - that is what quote checking, and the LLM-judged scorers in
+claim attached to it - that is what quote checking, <a href="#topical-relevance">topical
+relevance</a>, and the LLM-judged scorers in
 <code>deep_research_client.evaluation</code>, are for.</p>
 <p><code>confabulation_rate</code> is computed over resolved plus unresolved references only.
 Unverifiable ones are left out of the denominator, so skipping a prefix cannot dilute the
-figure.</p>
+figure. It says nothing at all about quotes or relevance: read <code>needs_review</code>, not the
+rate, to know whether anything wants a second look.</p>
 <p><strong>"Unresolved" is not proof of fabrication.</strong> The underlying fetcher returns nothing both
 for an identifier that does not exist and for a lookup that failed in transit - a timeout,
 an HTTP 500, an NCBI rate limit. The two are indistinguishable from here. In practice a
@@ -1580,6 +1894,14 @@ when there was a source to search: if the reference did not resolve, exposed no 
 full text, was skipped by prefix, or fell outside <code>--max-references</code>, the quote is listed
 under "could not be checked" instead. Those do not count towards <code>--fail-on-unresolved</code>,
 because an unavailable source is not evidence against a quote.</p>
+<p><strong>A quote that fails against an abstract has failed a weaker test.</strong> Without <code>--full-text</code>,
+only the title and abstract are searched, so a quote taken faithfully from the body of the
+paper lands under "not found in the cited source" all the same. This is not hypothetical:
+four of the six quote failures in the CHILD syndrome report that prompted this check were
+quotes lifted correctly from the body of a GeneReviews chapter, of which PubMed serves only
+the summary. Each such quote is now annotated with the fact that only the abstract was
+searched, and <code>source_content_type</code> records it in the structured output. Re-run with
+<code>--full-text</code> before treating one of those as invented.</p>
 <h2 id="pmc-accessions">PMC accessions</h2>
 <p><code>linkml-reference-validator</code> has no metadata source registered for PMC, so
 <code>PMC12345678</code> would otherwise go unchecked - and long reports cite PMC heavily. A Marfan

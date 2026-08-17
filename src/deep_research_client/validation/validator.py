@@ -6,6 +6,11 @@ not resolve, and quotes that do not appear in the paper they are attributed to.
 every attributed quote against the source text, so a report can be shipped with
 its references already checked rather than with an unverified identifier list.
 
+A resolved identifier is still only a proof of existence, so each resolved record
+is additionally weighed against the report's own vocabulary
+(:mod:`deep_research_client.validation.relevance`). That catches the citation
+that is real, quotable and about something else entirely.
+
 ``linkml-reference-validator`` is an optional dependency; install it with::
 
     pip install "deep_research_client[validation]"
@@ -17,7 +22,7 @@ import time
 from itertools import batched
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence, Union
 
 import httpx
 
@@ -27,6 +32,14 @@ from .models import (
     ReferenceStatus,
     ReferenceValidationReport,
     SupportingTextCheck,
+)
+from .relevance import (
+    DEFAULT_KEYWORD_COUNT,
+    ScoredTerm,
+    TopicalRelevance,
+    assess_relevance,
+    extract_keywords,
+    reference_text,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -59,11 +72,18 @@ class ReferenceValidator:
             attempting to resolve.
         max_references: Optional cap on the number of references resolved, for
             reports with very long bibliographies.
+        check_relevance: Whether to weigh each resolved record against the
+            report's own vocabulary. Costs no extra requests: the record has
+            already been fetched to check that it resolves.
+        keyword_count: How many of the report's terms relevance is judged
+            against.
 
     Examples:
         >>> validator = ReferenceValidator(email="me@example.org")
         >>> validator.rate_limit_delay
         0.5
+        >>> validator.check_relevance
+        True
     """
 
     cache_dir: Optional[Union[str, Path]] = None
@@ -72,6 +92,8 @@ class ReferenceValidator:
     rate_limit_delay: float = 0.5
     skip_prefixes: list[str] = field(default_factory=list)
     max_references: Optional[int] = None
+    check_relevance: bool = True
+    keyword_count: int = DEFAULT_KEYWORD_COUNT
 
     def validate_result(
         self,
@@ -113,18 +135,22 @@ class ReferenceValidator:
         """
         references = extract_references(markdown, citations)
         quoted_claims = extract_quoted_claims(markdown, quote_pattern) if check_quotes else []
-        return self.validate_references(references, quoted_claims)
+        return self.validate_references(references, quoted_claims, topic_text=markdown)
 
     def validate_references(
         self,
         references: Iterable[FoundReference],
         quoted_claims: Iterable[QuotedClaim] = (),
+        topic_text: Optional[str] = None,
     ) -> ReferenceValidationReport:
         """Validate an explicit set of references and quoted claims.
 
         Args:
             references: References to resolve.
             quoted_claims: Quotes to check against their cited reference.
+            topic_text: The report the references were cited by, used to judge
+                whether each resolved record is about the same subject. Without
+                it, relevance is reported as ``NOT_ASSESSED``.
 
         Returns:
             The validation report.
@@ -137,6 +163,11 @@ class ReferenceValidator:
 
         references = list(references)
         quoted_claims = list(quoted_claims)
+        keywords = (
+            extract_keywords(topic_text, self.keyword_count)
+            if self.check_relevance and topic_text
+            else []
+        )
 
         truncated = False
         if self.max_references is not None and len(references) > self.max_references:
@@ -185,12 +216,18 @@ class ReferenceValidator:
             logger.info(
                 "Resolving reference %d/%d: %s", index, len(references), reference.normalized_id
             )
-            check, checkable = self._check_reference(text_validator, reference, pmc_aliases)
+            check, checkable = self._check_reference(
+                text_validator, reference, pmc_aliases, keywords
+            )
             reference_checks.append(check)
             has_content[check.reference_id] = checkable
 
         reference_checks = _reclassify_truncated_dois(reference_checks)
+        reference_checks = _withhold_off_topic_when_nothing_matched(reference_checks)
         status_by_id = {check.reference_id: check.status for check in reference_checks}
+        content_type_by_id = {
+            check.reference_id: check.content_type for check in reference_checks
+        }
 
         quote_checks = [
             self._resolve_quote(
@@ -201,6 +238,7 @@ class ReferenceValidator:
                 truncated,
                 pmc_aliases,
                 pmc_skipped,
+                content_type_by_id,
             )
             for claim in quoted_claims
         ]
@@ -208,6 +246,7 @@ class ReferenceValidator:
         return ReferenceValidationReport(
             references=reference_checks,
             supporting_text=quote_checks,
+            report_keywords=[keyword.term for keyword in keywords],
             validator_version=validator_version(),
             truncated=truncated,
         )
@@ -221,6 +260,7 @@ class ReferenceValidator:
         truncated: bool,
         pmc_aliases: dict[str, Optional[str]],
         pmc_skipped: bool,
+        content_type_by_id: dict[str, Optional[str]],
     ) -> SupportingTextCheck:
         """Check one quoted claim, or record why it could not be checked.
 
@@ -236,6 +276,8 @@ class ReferenceValidator:
             truncated: Whether a reference limit dropped part of the bibliography.
             pmc_skipped: Whether the caller asked for PMC to be skipped, which is
                 why its accessions are absent from ``pmc_aliases``.
+            content_type_by_id: What kind of text each reference exposed, so a
+                failed quote can say how much of the paper was actually searched.
 
         Returns:
             The per-quote result.
@@ -293,7 +335,12 @@ class ReferenceValidator:
             )
 
         logger.info("Checking quoted claim attributed to %s", claim.reference_id)
-        return self._check_quote(text_validator, claim, lookup_id)
+        return self._check_quote(
+            text_validator,
+            claim,
+            lookup_id,
+            content_type_by_id.get(claim.reference_id),
+        )
 
     @staticmethod
     def _title_quote(claim: QuotedClaim) -> SupportingTextCheck:
@@ -355,6 +402,7 @@ class ReferenceValidator:
         text_validator: "SupportingTextValidator",
         reference: FoundReference,
         pmc_aliases: dict[str, Optional[str]],
+        keywords: Sequence[ScoredTerm] = (),
     ) -> tuple[ReferenceCheck, bool]:
         """Resolve a single reference identifier.
 
@@ -362,6 +410,8 @@ class ReferenceValidator:
             text_validator: The underlying supporting text validator.
             reference: The reference to resolve.
             pmc_aliases: PMC accessions mapped to a fetchable identifier.
+            keywords: The citing report's keywords, for the relevance check.
+                Empty when relevance is not being assessed.
 
         Returns:
             The per-reference result, and whether the record exposed any text
@@ -440,6 +490,16 @@ class ReferenceValidator:
                 "check quotes against"
             )
 
+        assessment = assess_relevance(
+            keywords,
+            reference_text(
+                title=content.title,
+                content=content.content,
+                journal=content.journal,
+                keywords=content.keywords,
+            ),
+        )
+
         return ReferenceCheck(
             reference_id=reference_id,
             status=ReferenceStatus.VERIFIED,
@@ -450,6 +510,9 @@ class ReferenceValidator:
             doi=content.doi,
             content_type=content.content_type,
             message=message,
+            relevance=assessment.relevance,
+            relevance_score=assessment.score,
+            matched_keywords=list(assessment.matched_terms),
         ), has_content
 
     @staticmethod
@@ -495,6 +558,7 @@ class ReferenceValidator:
         text_validator: "SupportingTextValidator",
         claim: QuotedClaim,
         lookup_id: str,
+        source_content_type: Optional[str] = None,
     ) -> SupportingTextCheck:
         """Check one quoted claim against the text of its reference.
 
@@ -503,6 +567,8 @@ class ReferenceValidator:
             claim: The quote and the reference it is attributed to.
             lookup_id: Identifier to fetch, which differs from the cited one for
                 a PMC accession resolved to a PMID.
+            source_content_type: What kind of text was searched, recorded so that
+                a failure against an abstract alone can be read for what it is.
 
         Returns:
             The per-quote result.
@@ -522,6 +588,7 @@ class ReferenceValidator:
             matched_text=match.matched_text if match else None,
             best_match=match.best_match if match else None,
             suggested_fix=match.suggested_fix if match else None,
+            source_content_type=source_content_type,
             message=result.message,
         )
 
@@ -735,6 +802,96 @@ def _reclassify_truncated_dois(checks: list[ReferenceCheck]) -> list[ReferenceCh
             )
         )
     return result
+
+
+# Below this many references weighed for relevance, a bibliography matching
+# nothing is too little to reason about either way. Mirrors the floor on the
+# outage hint in models.py, and for the same reason.
+RELEVANCE_SANITY_MIN_REFERENCES = 3
+
+
+def _withhold_off_topic_when_nothing_matched(
+    checks: list[ReferenceCheck],
+) -> list[ReferenceCheck]:
+    """Stop a bad keyword set from accusing a whole bibliography.
+
+    If not one reference in a report matches the vocabulary read off that report,
+    the likelier explanation is that the vocabulary is wrong - a provider that
+    echoed its prompt, a report too short to have a subject, a template whose
+    boilerplate crowded out the findings - rather than that a researcher cited
+    nothing relevant. This was measured: a Falcon report on homocystinuria
+    yielded ``cellular, mechanism, provide, comprehensive, claim`` as its
+    keywords, matched none of its eight references, and flagged a paper titled
+    "Hyperhomocysteinemia in Adult Patients" as off topic.
+
+    So an off-topic verdict has to be earned against a keyword set that demonstrably
+    works somewhere. Off-topic references become UNCERTAIN when nothing at all
+    came out on topic; the reasoning is recorded rather than silently dropped.
+
+    Args:
+        checks: Per-reference results, after relevance has been assessed.
+
+    Returns:
+        The same results, with unsupportable accusations withdrawn.
+
+    Examples:
+        >>> from .relevance import TopicalRelevance
+        >>> flagged = [
+        ...     ReferenceCheck(
+        ...         reference_id=f"PMID:{n}",
+        ...         status=ReferenceStatus.VERIFIED,
+        ...         relevance=TopicalRelevance.OFF_TOPIC,
+        ...     )
+        ...     for n in (1, 2, 3)
+        ... ]
+        >>> withheld = _withhold_off_topic_when_nothing_matched(flagged)
+        >>> all(c.relevance == TopicalRelevance.UNCERTAIN for c in withheld)
+        True
+        >>> "points at the vocabulary" in withheld[0].message
+        True
+
+        One reference matching is enough to show the keywords work:
+
+        >>> mixed = flagged[:2] + [
+        ...     ReferenceCheck(
+        ...         reference_id="PMID:4",
+        ...         status=ReferenceStatus.VERIFIED,
+        ...         relevance=TopicalRelevance.ON_TOPIC,
+        ...     )
+        ... ]
+        >>> sum(c.relevance == TopicalRelevance.OFF_TOPIC for c in
+        ...     _withhold_off_topic_when_nothing_matched(mixed))
+        2
+    """
+    assessed = [c for c in checks if c.relevance != TopicalRelevance.NOT_ASSESSED]
+    if (
+        len(assessed) < RELEVANCE_SANITY_MIN_REFERENCES
+        or any(c.relevance == TopicalRelevance.ON_TOPIC for c in assessed)
+        or not any(c.relevance == TopicalRelevance.OFF_TOPIC for c in assessed)
+    ):
+        return checks
+
+    logger.info(
+        "No reference matched this report's keywords, so the keywords are the "
+        "likelier problem; withholding %d off-topic verdict(s)",
+        sum(1 for c in assessed if c.relevance == TopicalRelevance.OFF_TOPIC),
+    )
+    return [
+        check.model_copy(
+            update={
+                "relevance": TopicalRelevance.UNCERTAIN,
+                "message": check.message
+                or (
+                    "Shares little of the report's vocabulary, but so did every "
+                    "other reference, which points at the vocabulary rather than "
+                    "at this citation"
+                ),
+            }
+        )
+        if check.relevance == TopicalRelevance.OFF_TOPIC
+        else check
+        for check in checks
+    ]
 
 
 def _clamp_similarity(score: float) -> float:

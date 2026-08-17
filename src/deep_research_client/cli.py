@@ -260,6 +260,7 @@ def _build_reference_validator(
     max_references: Optional[int],
     skip_prefix: Optional[List[str]] = None,
     rate_limit_delay: Optional[float] = None,
+    check_relevance: bool = True,
 ) -> "ReferenceValidator":
     """Build a ReferenceValidator, exiting with a hint if the extra is missing."""
     from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
@@ -274,6 +275,7 @@ def _build_reference_validator(
         "fetch_full_text": full_text,
         "max_references": max_references,
         "skip_prefixes": list(skip_prefix or []),
+        "check_relevance": check_relevance,
     }
     if rate_limit_delay is not None:
         kwargs["rate_limit_delay"] = rate_limit_delay
@@ -339,9 +341,10 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
         logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
     if report.quote_checks:
         logger.info(
-            "Checked %d quoted claims: %d found in the cited source",
+            "Checked %d quoted claims: %d found in the cited source, %d not",
             report.quotes_checked,
             report.quotes_valid_count,
+            len(report.unsupported_quotes),
         )
     for quote_check in report.unsupported_quotes:
         logger.warning(
@@ -350,6 +353,18 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
     if report.unchecked_quotes:
         logger.info(
             "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
+        )
+    if report.relevance_assessed_count:
+        logger.info(
+            "Weighed %d references against the report's own vocabulary: %d on topic",
+            report.relevance_assessed_count,
+            report.on_topic_count,
+        )
+    for check in report.off_topic_references:
+        logger.warning(
+            "Reference %s resolves but looks off topic: %s",
+            check.reference_id,
+            check.title or "(no title)",
         )
 
 
@@ -418,6 +433,8 @@ def research(
         "--validation-skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable); skipping DOI is the largest saving after caching")] = None,
     validation_rate_limit_delay: Annotated[Optional[float], typer.Option(
         "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
+    validation_relevance: Annotated[bool, typer.Option(
+        "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
     fail_on_unresolved: Annotated[bool, typer.Option(
         "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
 ):
@@ -652,6 +669,7 @@ def research(
             ("--validation-max-references", validation_max_references, None),
             ("--validation-skip-prefix", validation_skip_prefix, None),
             ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
+            ("--validation-no-relevance", validation_relevance, True),
             ("--fail-on-unresolved", fail_on_unresolved, False),
         )
         for flag_name, flag_value, default in unused_validation_flags:
@@ -756,6 +774,7 @@ def research(
         max_references=validation_max_references,
         skip_prefix=validation_skip_prefix,
         rate_limit_delay=validation_rate_limit_delay,
+        check_relevance=validation_relevance,
     )
     logger.info("Validating references...")
     try:
@@ -801,6 +820,9 @@ def validate_references_command(
     check_quotes: Annotated[bool, typer.Option(
         "--check-quotes/--no-check-quotes",
         help="Also check quoted claims against the text of the reference they cite")] = True,
+    check_relevance: Annotated[bool, typer.Option(
+        "--check-relevance/--no-check-relevance",
+        help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
     cache_dir: Annotated[Optional[Path], typer.Option(
         "--cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
     email: Annotated[Optional[str], typer.Option(
@@ -827,7 +849,9 @@ def validate_references_command(
     Every PMID and DOI in the report is resolved against PubMed, Crossref and
     DataCite; identifiers that do not resolve are flagged as likely
     confabulations. Quotes attributed to a reference are additionally checked
-    against the text of that reference.
+    against the text of that reference, and every resolved record is weighed
+    against the report's own vocabulary so that a citation which exists but is
+    about an unrelated subject is flagged too.
 
     Requires the optional 'validation' extra:
     pip install "deep_research_client[validation]"
@@ -870,6 +894,7 @@ def validate_references_command(
         max_references=max_references,
         skip_prefix=skip_prefix,
         rate_limit_delay=rate_limit_delay,
+        check_relevance=check_relevance,
     )
 
     any_problems = False

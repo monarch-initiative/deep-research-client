@@ -383,8 +383,15 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
         exactly how a CHILD syndrome report with six mismatched quotes was read
         as clean. So the counts that would contradict a reassuring rate -
         unsupported quotes, off-topic references - are stated here outright
-        rather than left to be derived, and :attr:`has_confabulations` is
-        included whenever anything at all needs looking at.
+        rather than left to be derived, and ``needs_review`` is set whenever any
+        of them is non-empty.
+
+        ``needs_review`` is deliberately wider than
+        :attr:`has_confabulations`. An off-topic reference is not a failure and
+        must not fail a build, so it stays out of ``has_confabulations`` and out
+        of ``--fail-on-unresolved`` - but it is a go-and-look, and leaving a
+        reader to infer that from an ``off_topic`` count would repeat in a new
+        place the mistake this method exists to correct.
 
         Examples:
             >>> report = ReferenceValidationReport(
@@ -422,8 +429,12 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
             summary["quotes_valid"] = self.quotes_valid_count
             if self.unsupported_quotes:
                 summary["quotes_unsupported"] = len(self.unsupported_quotes)
-                summary["unsupported_quote_references"] = sorted(
-                    {q.reference_id for q in self.unsupported_quotes}
+                # De-duplicated in first-appearance order, matching how
+                # unresolved_references and off_topic_references are built. A
+                # quote list can name one reference several times; the other two
+                # cannot, which is the only reason this one needs the dict.
+                summary["unsupported_quote_references"] = list(
+                    dict.fromkeys(q.reference_id for q in self.unsupported_quotes)
                 )
             if self.unchecked_quotes:
                 summary["quotes_not_checkable"] = len(self.unchecked_quotes)
@@ -437,7 +448,7 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
                 ]
         if self.confabulated_references:
             summary["unresolved_references"] = [r.reference_id for r in self.confabulated_references]
-        if self.has_confabulations:
+        if self.has_confabulations or self.off_topic_references:
             # Stated rather than implied, so that reading one number off the
             # frontmatter cannot produce a false all-clear.
             summary["needs_review"] = True
@@ -585,8 +596,11 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
                 )
                 lines.append(
                     f"{scope} was searched against an abstract alone, with no full "
-                    "text retrieved - marked *abstract only* below. Re-run with full "
-                    "text before treating any of those as invented."
+                    "text retrieved - marked *abstract only* below. Where full text "
+                    "can be fetched, re-running with it will settle them; where the "
+                    "source publishes only a summary to PubMed, as GeneReviews "
+                    "chapters do, it will not, and the quote has to be checked by "
+                    "hand against the chapter itself."
                 )
                 lines.append("")
             for quote_check in self.unsupported_quotes:

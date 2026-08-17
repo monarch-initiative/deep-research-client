@@ -32,6 +32,7 @@ from .models import (
     ReferenceStatus,
     ReferenceValidationReport,
     SupportingTextCheck,
+    strip_validation_section,
 )
 from .relevance import (
     DEFAULT_KEYWORD_COUNT,
@@ -124,6 +125,12 @@ class ReferenceValidator:
     ) -> ReferenceValidationReport:
         """Validate the references cited in a block of report markdown.
 
+        A validation section left by an earlier run is removed first. The CLI
+        already strips one before calling, but a library caller re-validating a
+        report annotated with ``--in-place`` would otherwise re-extract the
+        identifiers that section lists - and, now, feed the validator's own prose
+        about fabrication and relevance into the report's keywords.
+
         Args:
             markdown: The report body.
             citations: Optional citation strings scanned for identifiers.
@@ -133,6 +140,7 @@ class ReferenceValidator:
         Returns:
             The validation report.
         """
+        markdown = strip_validation_section(markdown)
         references = extract_references(markdown, citations)
         quoted_claims = extract_quoted_claims(markdown, quote_pattern) if check_quotes else []
         return self.validate_references(references, quoted_claims, topic_text=markdown)
@@ -498,6 +506,7 @@ class ReferenceValidator:
                 journal=content.journal,
                 keywords=content.keywords,
             ),
+            body=content.content,
         )
 
         return ReferenceCheck(
@@ -809,6 +818,11 @@ def _reclassify_truncated_dois(checks: list[ReferenceCheck]) -> list[ReferenceCh
 # outage hint in models.py, and for the same reason.
 RELEVANCE_SANITY_MIN_REFERENCES = 3
 
+WITHHELD_REASON = (
+    "shares little of the report's vocabulary, but so did every other reference, "
+    "which points at the vocabulary rather than at this citation"
+)
+
 
 def _withhold_off_topic_when_nothing_matched(
     checks: list[ReferenceCheck],
@@ -880,12 +894,11 @@ def _withhold_off_topic_when_nothing_matched(
         check.model_copy(
             update={
                 "relevance": TopicalRelevance.UNCERTAIN,
-                "message": check.message
-                or (
-                    "Shares little of the report's vocabulary, but so did every "
-                    "other reference, which points at the vocabulary rather than "
-                    "at this citation"
-                ),
+                # Appended, not substituted: a record that resolved without any
+                # fetchable text already carries a message, and that record is
+                # the one most likely to be withheld here. Or-ing would lose the
+                # reason in exactly the case it is most needed.
+                "message": "; ".join(filter(None, (check.message, WITHHELD_REASON))),
             }
         )
         if check.relevance == TopicalRelevance.OFF_TOPIC

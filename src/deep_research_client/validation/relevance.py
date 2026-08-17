@@ -80,13 +80,19 @@ ON_TOPIC_AT_OR_ABOVE = 0.35
 # against 5.6% at 0.15, which was what three inspected false positives cost.
 OFF_TOPIC_AT_OR_BELOW = 0.08
 
-# Characters of reference text below which a low score says more about how little
-# was retrieved than about the reference. A record that resolved to a title and
+# Characters of *abstract* below which a low score says more about how little was
+# retrieved than about the reference. A record that resolved to a title and
 # nothing else is the common case - 536 of the 2,561 Falcon references, over a
 # fifth - and a bare title cannot carry a fifth of a report's vocabulary however
 # relevant the paper is. Those short records have a median score of 0.16 and a
 # tenth of them score below 0.03, so without this gate they would dominate the
 # flagged list while saying nothing.
+#
+# Measured on the abstract alone, not on everything searched: subject headings
+# are searched, and are good evidence when they match, but they are controlled
+# vocabulary and a paper can be squarely on topic while its MeSH terms share
+# little with a report's prose. Letting a long heading list satisfy this gate
+# would convict on exactly that mismatch.
 MIN_TEXT_FOR_A_NEGATIVE = 300
 
 _FENCED_CODE = re.compile(r"```.*?```", re.DOTALL)
@@ -99,10 +105,14 @@ _URL = re.compile(r"https?://\S+")
 _OUTPUT_HEADING = re.compile(r"^##[ \t]+Output[ \t]*$", re.MULTILINE)
 
 # An author-year-title citation key, as Edison and Falcon write them inline:
-# "(peduto2023neurofibromatosistype1 pages 1-2)". Four consecutive digits is what
-# separates these from the gene and locus symbols that must survive - NF1,
-# POLR3A, PRKAR1A, HLD7 and CYP21A2 all carry digits, none carries four in a row.
-_CITATION_KEY = re.compile(r"\d{4}")
+# "(peduto2023neurofibromatosistype1 pages 1-2)". Matched by shape - a surname,
+# a plausible publication year, then title words - rather than by "contains four
+# digits", which was the first attempt and was wrong: KIAA0319, KIAA1109,
+# KIAA0586 and KIAA0753 are real HGNC symbols. Dropping one costs a report its
+# single most characteristic term, which then depresses the score of every
+# reference that does discuss the gene - the very failure this rule exists to
+# prevent, running backwards.
+_CITATION_KEY = re.compile(r"[a-z]{2,}(?:19|20)\d{2}[a-z]{3,}")
 _HEADING_SPLIT = re.compile(r"^#{1,6}[ \t]+", re.MULTILINE)
 _PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
 # A word, optionally hyphenated (x-linked, post-squalene), starting with a
@@ -287,10 +297,15 @@ def _terms(text: str) -> list[str]:
 
         >>> _terms("NF1 and POLR3A (peduto2023neurofibromatosistype1 pages 1-2)")
         ['nf1', 'polr3a']
+
+        A digit-bearing symbol is a term, however many digits it carries:
+
+        >>> _terms("KIAA0319 and KIAA1109 and CYP21A2")
+        ['kiaa0319', 'kiaa1109', 'cyp21a2']
     """
     terms = []
     for word in _WORD.findall(_strip_markup(text).lower()):
-        if len(word) < 3 or word in _STOPWORDS or _CITATION_KEY.search(word):
+        if len(word) < 3 or word in _STOPWORDS or _CITATION_KEY.match(word):
             continue
         singular = _singular(word)
         if singular in _STOPWORDS:
@@ -510,21 +525,32 @@ def reference_text(
 def assess_relevance(
     keywords: Sequence[ScoredTerm],
     text: str,
+    body: Optional[str] = None,
 ) -> RelevanceAssessment:
     """Judge one reference's metadata against a report's keywords.
 
     The score is the share of total keyword weight that appears in the text, so a
     reference that picks up the report's three heaviest terms scores higher than
-    one that picks up its three lightest.
+    one that picks up its three lightest. Everything the record offers is
+    searched - title, journal, subject headings and abstract alike.
 
     Verdicts are asymmetric on purpose. A high score is good evidence in one
-    direction; a low score is only evidence at all when there was enough text for
-    a match to have been possible, so a title-only record is never called
-    off topic no matter how little it shares.
+    direction; a low score is only evidence at all when there was an abstract to
+    have matched in, so a record that resolved to a title and a subject heading
+    list is never called off topic no matter how little it shares.
+
+    That gate is measured on ``body`` rather than on everything searched. A
+    PubMed record with no abstract but a full MeSH list clears any length bar you
+    care to set on the assembly, and would then be judged on controlled
+    vocabulary that need not resemble the report's prose even when the paper is
+    squarely on topic. Callers that pass only ``text`` get the safe reading: no
+    body, so no accusation.
 
     Args:
         keywords: The report's keywords, from :func:`extract_keywords`.
         text: The reference metadata, from :func:`reference_text`.
+        body: The abstract or retrieved full text alone, which is what decides
+            whether a low score is worth acting on.
 
     Returns:
         The verdict, the score, and the keywords that matched.
@@ -539,16 +565,23 @@ def assess_relevance(
         >>> assessment.matched_terms
         ('nsdhl', 'cholesterol')
 
-        Plenty of text, none of the report's vocabulary in it:
+        An abstract's worth of text, none of the report's vocabulary in it:
 
         >>> unrelated = "Pollen development in Arabidopsis thaliana anthers. " * 12
-        >>> assess_relevance(keywords, unrelated).relevance == TopicalRelevance.OFF_TOPIC
-        True
+        >>> assess_relevance(keywords, unrelated, body=unrelated).relevance
+        <TopicalRelevance.OFF_TOPIC: 'OFF_TOPIC'>
 
         The same words, but only a title's worth of them, is not enough to
         convict:
 
         >>> assess_relevance(keywords, "Pollen development in Arabidopsis").relevance
+        <TopicalRelevance.UNCERTAIN: 'UNCERTAIN'>
+
+        Nor is a title backed by a long list of subject headings, however much
+        text that adds up to - none of it is the paper's own prose:
+
+        >>> headings = "Pollen\\nArabidopsis\\nAnthers\\nPlant Infertility\\n" * 12
+        >>> assess_relevance(keywords, headings, body="").relevance
         <TopicalRelevance.UNCERTAIN: 'UNCERTAIN'>
 
         With nothing to compare, nothing is claimed:
@@ -568,7 +601,7 @@ def assess_relevance(
 
     if score >= ON_TOPIC_AT_OR_ABOVE:
         verdict = TopicalRelevance.ON_TOPIC
-    elif score <= OFF_TOPIC_AT_OR_BELOW and len(text) >= MIN_TEXT_FOR_A_NEGATIVE:
+    elif score <= OFF_TOPIC_AT_OR_BELOW and len(body or "") >= MIN_TEXT_FOR_A_NEGATIVE:
         verdict = TopicalRelevance.OFF_TOPIC
     else:
         verdict = TopicalRelevance.UNCERTAIN

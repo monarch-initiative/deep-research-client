@@ -53,6 +53,7 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--validation-max-references INT` | Stop after validating this many references |
 | `--validation-skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
 | `--validation-rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
+| `--validation-relevance / --validation-no-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
 | `--fail-on-unresolved` | Exit with code 2 if any reference or quote fails validation |
 
 When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
@@ -143,6 +144,7 @@ pip install "deep_research_client[validation]"
 | Option | Description |
 |--------|-------------|
 | `--check-quotes / --no-check-quotes` | Check quoted claims against the text of the reference they cite (default: on) |
+| `--check-relevance / --no-check-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
 | `--cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
 | `--email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
 | `--full-text` | Fetch full text as well as abstracts (~23x slower, better quote checks) |
@@ -158,6 +160,7 @@ pip install "deep_research_client[validation]"
 
 - Every PMID, DOI, PMC accession and GEO accession in the file is resolved against PubMed, Crossref, DataCite and Entrez. Identifiers that do not resolve are reported as likely confabulations — but see the caveat on [what the outcomes mean](../how-to/validate-references.md#what-the-outcomes-mean), since a lookup that failed for network reasons is indistinguishable from one that failed because the record does not exist.
 - Quotes are checked only when they are directly attributed, as in `"quoted text" (PMID:12345678)`. A quote whose reference could not be fetched is reported as *not checked* rather than as unsupported.
+- Every record that resolves is additionally weighed against the report's own vocabulary, so a citation that exists but is about an unrelated subject is flagged. That verdict is a clue rather than a finding: it is reported separately, excluded from `confabulation_rate`, and does not trip `--fail-on-unresolved`. See [topical relevance](../how-to/validate-references.md#topical-relevance).
 - Fetched references are cached on disk, so re-running over the same corpus is fast and polite to the upstream APIs. A cold run costs roughly 1.6s per PMID or PMC accession and 6.5s per DOI; a warm one is 1-2s for a whole report. `--full-text` multiplies the cold cost by about 23. See [how long it takes](../how-to/validate-references.md#how-long-it-takes).
 - `--in-place` is idempotent: an existing validation section is replaced rather than appended to, so repeated runs neither stack sections nor re-count the identifiers a previous run listed.
 - Exit codes: `0` success, `1` usage, input or filesystem error, `2` validation found problems (only with `--fail-on-unresolved`), `3` a lookup service was unreachable.

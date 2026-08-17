@@ -14,7 +14,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
-- ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier and check quoted claims against the source, catching confabulated citations
+- ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -127,7 +127,9 @@ You can provide the research question directly as a positional argument, read it
 
 ### Reference Validation
 
-Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference:
+Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference.
+
+Resolving is not the same as being relevant, so each resolved record is also weighed against the report's own vocabulary - which catches the citation that is real, quotable and about an entirely different subject:
 
 ```python
 from deep_research_client import DeepResearchClient, ReferenceValidator
@@ -138,6 +140,7 @@ report = ReferenceValidator(email="you@example.org").validate_result(result)
 print(report.confabulation_rate)          # fraction of citations that do not resolve
 print(report.confabulated_references)     # the identifiers that failed
 print(report.unsupported_quotes)          # quotes not found in their cited source
+print(report.off_topic_references)        # references that resolve but look off topic
 print(report.to_markdown())               # renderable summary section
 ```
 

@@ -1251,6 +1251,150 @@ def test_nothing_matching_withholds_the_accusation(abstract_cache: Path) -> None
     assert "points at the vocabulary" in (report.checked_references[0].message or "")
 
 
+def test_two_references_are_too_few_for_the_withholding_rule(abstract_cache: Path) -> None:
+    """Pins the floor, which is the easy half of the condition to 'simplify' away.
+
+    With two assessed references, both off topic and none on topic, the verdicts
+    stand: there is too little to conclude that the keywords are at fault, and a
+    two-reference report is small enough to read. Mirrors the floor on the outage
+    hint, and exists for the same reason.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=abstract_cache))
+    unrelated = [f"PMID:2200000{n}" for n in range(2)]
+    for pmid in unrelated:
+        fetcher.get_cache_path(pmid).write_text(
+            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
+            "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
+            + "Volcanic ash plume heights were retrieved by radar. " * 12
+            + "\n",
+            encoding="utf-8",
+        )
+    validator = ReferenceValidator(cache_dir=abstract_cache)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations.\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        "## Sites\n\nTwelve sites were surveyed for widget coloration.\n\n"
+        f"Prior work: {unrelated[0]} and {unrelated[1]}.\n"
+    )
+
+    assert report.on_topic_count == 0
+    assert report.relevance_assessed_count == 2
+    assert sorted(r.reference_id for r in report.off_topic_references) == unrelated
+
+
+def test_a_withheld_verdict_keeps_the_reason_it_already_had() -> None:
+    """The record most likely to be withheld is the one already carrying a message.
+
+    A reference that resolves to metadata but no fetchable text is told so by
+    _check_reference. Substituting the withholding reason rather than appending
+    it would drop that, in exactly the case it matters.
+    """
+    from deep_research_client.validation.validator import (
+        _withhold_off_topic_when_nothing_matched,
+    )
+
+    checks = [
+        ReferenceCheck(
+            reference_id=f"PMID:{n}",
+            status=ReferenceStatus.VERIFIED,
+            relevance=TopicalRelevance.OFF_TOPIC,
+            message="Record resolved but no abstract or full text is available",
+        )
+        for n in (1, 2, 3)
+    ]
+
+    withheld = _withhold_off_topic_when_nothing_matched(checks)
+
+    message = withheld[0].message or ""
+    assert "no abstract or full text" in message
+    assert "points at the vocabulary" in message
+
+
+def test_a_long_heading_list_alone_cannot_convict(cache_dir: Path) -> None:
+    """A record with no abstract is not judged, however much metadata it carries.
+
+    MeSH headings are searched and are good evidence when they match, but they
+    are controlled vocabulary: a paper can be squarely on topic while sharing
+    little with a report's prose. Letting them satisfy the length gate would
+    convict on that mismatch.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    headings = "\n".join(
+        f"- Ash Plume Dispersal Modelling Subheading {n}" for n in range(20)
+    )
+    fetcher.get_cache_path(CACHED_PMID).write_text(
+        f"---\nreference_id: {CACHED_PMID}\ntitle: Ash Plume Heights Over Iceland\n"
+        f"keywords:\n{headings}\n"
+        "content_type: unavailable\nfull_text_attempted: true\n---\n\n"
+        "# Ash Plume Heights Over Iceland\n\n## Content\n\n",
+        encoding="utf-8",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations.\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        f"## Sites\n\nTwelve sites were surveyed ({CACHED_PMID}).\n"
+    )
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.relevance == TopicalRelevance.UNCERTAIN
+
+
+def test_keyword_count_is_honoured(seeded_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=seeded_cache, keyword_count=5)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations.\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        f"## Sites\n\nTwelve sites were surveyed for widget coloration ({CACHED_PMID}).\n"
+    )
+
+    assert len(report.report_keywords or []) == 5
+
+
+def test_a_previous_validation_section_is_not_read_as_the_report(
+    seeded_cache: Path,
+) -> None:
+    """A library caller re-validating an --in-place report must not read our prose.
+
+    The CLI strips the section before calling; nothing stopped a direct caller
+    feeding the validator's own writing about fabrication and relevance back in
+    as the report's subject.
+    """
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+    report_text = (
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations.\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        f"## Sites\n\nTwelve sites were surveyed for widget coloration ({CACHED_PMID}).\n"
+    )
+
+    clean = validator.validate_markdown(report_text)
+    annotated = validator.validate_markdown(
+        report_text + "\n" + clean.to_markdown()
+    )
+
+    assert annotated.report_keywords == clean.report_keywords
+    assert annotated.total_references == clean.total_references
+
+
 def test_one_match_is_enough_to_let_the_accusation_stand(abstract_cache: Path) -> None:
     """The guard withdraws accusations; it must not disarm the check."""
     from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
@@ -1315,33 +1459,49 @@ def test_plural_in_the_report_matches_singular_in_the_abstract() -> None:
     assert "lesion" in assess_relevance(keywords, "A single lesion " * 30).matched_terms
 
 
+_LONG_UNRELATED = "Volcanic ash dispersal over the North Atlantic. " * 12
+
+
 @pytest.mark.parametrize(
-    "text,expected",
+    "text,body,expected",
     [
         pytest.param(
+            "Widget coloration in wild populations. " * 12,
             "Widget coloration in wild populations. " * 12,
             TopicalRelevance.ON_TOPIC,
             id="shares the report's vocabulary",
         ),
         pytest.param(
-            "Volcanic ash dispersal over the North Atlantic. " * 12,
+            _LONG_UNRELATED,
+            _LONG_UNRELATED,
             TopicalRelevance.OFF_TOPIC,
-            id="shares none of it, with room to have done",
+            id="shares none of it, with an abstract to have done so in",
         ),
         pytest.param(
             "Volcanic ash dispersal over the North Atlantic.",
+            "",
             TopicalRelevance.UNCERTAIN,
             id="shares none of it, but is only a title",
         ),
         pytest.param(
+            # Subject headings are searched and can add up to plenty of text,
+            # but they are controlled vocabulary rather than the paper's prose,
+            # so they must not license an accusation on their own.
+            "Ash Plumes\nIceland\nAtmospheric Dispersal\nAviation Safety\n" * 12,
+            "",
+            TopicalRelevance.UNCERTAIN,
+            id="shares none of it, but has only a heading list",
+        ),
+        pytest.param(
+            "Volcanic soils and their coloration by iron oxides. " * 12,
             "Volcanic soils and their coloration by iron oxides. " * 12,
             TopicalRelevance.UNCERTAIN,
             id="shares some of it, but not enough to call",
         ),
-        pytest.param("", TopicalRelevance.NOT_ASSESSED, id="nothing to read"),
+        pytest.param("", "", TopicalRelevance.NOT_ASSESSED, id="nothing to read"),
     ],
 )
-def test_relevance_verdicts(text: str, expected: TopicalRelevance) -> None:
+def test_relevance_verdicts(text: str, body: str, expected: TopicalRelevance) -> None:
     keywords = [
         ScoredTerm("widget", 3.0),
         ScoredTerm("coloration", 2.0),
@@ -1350,7 +1510,7 @@ def test_relevance_verdicts(text: str, expected: TopicalRelevance) -> None:
         ScoredTerm("altitude", 1.0),
     ]
 
-    assert assess_relevance(keywords, text).relevance == expected
+    assert assess_relevance(keywords, text, body=body).relevance == expected
 
 
 def test_relevance_is_not_assessed_without_keywords() -> None:

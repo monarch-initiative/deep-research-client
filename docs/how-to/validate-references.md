@@ -134,6 +134,10 @@ references while 6 of 33 quotes failed. So `quotes_unsupported`, `off_topic` and
 subtracting `quotes_valid` from `quotes_checked`. If `needs_review` is absent, nothing
 needed reviewing.
 
+`needs_review` is deliberately wider than the thing that fails a build. An off-topic
+reference sets it, but does not make `--fail-on-unresolved` exit non-zero: it is a
+go-and-look, not a failure.
+
 ## Fail a pipeline on bad citations
 
 Both commands accept `--fail-on-unresolved`, which exits with code `2` when any reference
@@ -368,9 +372,17 @@ traded away for that: the two errors are not equally bad, because calling a good
 off topic is a false accusation printed in a user-facing report, while missing a bad one
 only leaves things where they were before this check existed.
 
-A record with only a title is never judged at all. Over a fifth of those 2,561 references
-resolved to under 300 characters, they score a median 0.16 with a tenth below 0.03, and
-without that gate they would have filled the flagged list while saying nothing.
+A record without an abstract is never called off topic. Over a fifth of those 2,561
+references resolved to under 300 characters of text, they score a median 0.16 with a tenth
+below 0.03, and without that gate they would have filled the flagged list while saying
+nothing.
+
+The gate measures the **abstract alone**, not everything that gets searched. Title, journal
+and MeSH headings are all searched and all count towards the score - a professional
+indexer's subject terms are good evidence when they match. But they are controlled
+vocabulary, and a paper can be squarely on topic while its MeSH headings share little with
+a report's prose, so a long heading list must not by itself license an accusation. A record
+with twenty headings and no abstract is reported as uncertain.
 
 ### When the whole bibliography matches nothing
 
@@ -405,9 +417,9 @@ The shared-terms line is the point: `patient, model, gene` is what an unrelated 
 paper shares with any other, and seeing that is what lets you dismiss or confirm the flag.
 
 **It is a clue, not a verdict, and the code is built to hedge that way.** A low score is
-only treated as evidence when there was enough text for a match to have been possible, so a
-record that resolved to a bare title is never called off topic however little it shares. An
-off-topic reference is reported in its own section, listed in the frontmatter, and
+only treated as evidence when there was an abstract for a match to have been possible in,
+so a record that resolved without one is never called off topic however little it shares.
+An off-topic reference is reported in its own section, listed in the frontmatter, and
 deliberately kept out of `confabulation_rate` and `--fail-on-unresolved`: the citation is
 not fabricated, and a paper can be relevant in ways its abstract does not spell out. Read
 the flagged references before acting on the flag.
@@ -459,9 +471,13 @@ Three things now happen before keywords are read:
   the whole prompt inside their own answer, so cutting at `## Output` removes only the
   first of two copies; a sentence of findings repeated word for word is vanishingly rare,
   and short lines are exempt so that list items and table rules are unaffected.
-- Tokens containing four consecutive digits are dropped as citation keys. That spares the
-  gene and locus symbols which must survive - `NF1`, `POLR3A`, `PRKAR1A`, `HLD7` and
-  `CYP21A2` all carry digits, none carries four in a row.
+- Tokens shaped like an author-year-title citation key are dropped: a surname, a plausible
+  publication year, then title words. Matching by shape rather than by "contains four
+  digits" is deliberate - that was the first attempt, and it silently ate the `KIAA####`
+  gene family (`KIAA0319` in dyslexia, `KIAA1109` in Alkuraya-Kučinskas, `KIAA0586` and
+  `KIAA0753` in Joubert). Dropping a report's most characteristic term depresses the score
+  of every reference that discusses it, which is the failure this rule exists to prevent,
+  running backwards.
 
 Afterwards the same report yields `nf1, tumor, genetic, mpnst, plexiform, neurofibromas,
 neurofibromatosis, optic`, and across a sample of twelve reports the share of references

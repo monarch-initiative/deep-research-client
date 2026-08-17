@@ -23,8 +23,12 @@ from deep_research_client.validation import (
     ReferenceStatus,
     ReferenceValidationReport,
     ReferenceValidator,
+    ScoredTerm,
     SupportingTextCheck,
+    TopicalRelevance,
+    assess_relevance,
     extract_evidence,
+    extract_keywords,
     extract_quoted_claims,
     extract_references,
     find_reference_ids,
@@ -38,6 +42,47 @@ PAPER_BODY = (
 )
 CACHED_PMID = "PMID:12345678"
 SECOND_CACHED_PMID = "PMID:12345679"
+
+# A record with a real abstract's worth of text, which is what topical relevance
+# needs before it will call anything off topic. The shared PAPER_BODY is
+# deliberately short, and a short record is one this check declines to judge.
+ABSTRACT_PMID = "PMID:12345680"
+ABSTRACT_TITLE = "Widget Coloration Across Twelve Wild Populations"
+ABSTRACT_BODY = (
+    "Widget coloration varies between wild populations, but the sources of that "
+    "variation are poorly understood. We surveyed 1200 widgets across twelve "
+    "sites and scored the coloration of each. Blue widgets predominated at every "
+    "site, accounting for 90% of observed widgets, while green widgets made up "
+    "the remainder. Coloration was stable within a site across the sampling "
+    "season, and the proportion of green widgets rose with altitude. We conclude "
+    "that widget coloration is a population-level trait rather than a seasonal "
+    "one, and that surveys of widget populations should record altitude."
+)
+
+# A report about something the cached widget paper has nothing to do with, long
+# enough that its own keywords are stable.
+UNRELATED_REPORT = """# Volcanic Ash Dispersal in the North Atlantic
+
+## Eruption plumes
+
+Ash plumes from Icelandic eruptions rise into the troposphere and drift with
+prevailing winds. Plume height governs how far ash travels.
+
+## Dispersal modelling
+
+Dispersal models predict ash concentration downwind of an eruption. Model skill
+depends on plume height and on wind field resolution.
+
+## Aviation impact
+
+Ash concentration thresholds determine airspace closure. Eruption forecasts feed
+directly into aviation advisories across the North Atlantic.
+
+## Monitoring
+
+Radar and satellite retrievals constrain plume height during an eruption, and
+ash advisories are revised as dispersal proceeds.
+"""
 
 
 @pytest.fixture
@@ -95,6 +140,30 @@ def seeded_cache(cache_dir: Path) -> Path:
             encoding="utf-8",
         )
     return cache_dir
+
+
+@pytest.fixture
+def abstract_cache(seeded_cache: Path) -> Path:
+    """The seeded cache, plus one record carrying a full-length abstract."""
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=seeded_cache))
+    fetcher.get_cache_path(ABSTRACT_PMID).write_text(
+        "---\n"
+        f"reference_id: {ABSTRACT_PMID}\n"
+        f"title: {ABSTRACT_TITLE}\n"
+        "year: '2019'\n"
+        "journal: Journal of Widgets\n"
+        "content_type: abstract_only\n"
+        "full_text_attempted: true\n"
+        "---\n\n"
+        f"# {ABSTRACT_TITLE}\n\n"
+        "## Content\n\n"
+        f"{ABSTRACT_BODY}\n",
+        encoding="utf-8",
+    )
+    return seeded_cache
 
 
 def _reference(reference_id: str, count: int = 1) -> FoundReference:
@@ -1039,6 +1108,442 @@ def test_report_with_no_references(validator: ReferenceValidator) -> None:
     assert report.total_references == 0
     assert report.confabulation_rate == 0.0
     assert "No PMID or DOI references" in report.to_markdown()
+
+
+# ---------------------------------------------------------------------------
+# Topical relevance
+# ---------------------------------------------------------------------------
+
+
+def test_keywords_are_the_subject_not_the_search_log() -> None:
+    """A report that documents where it looked is not a report about looking.
+
+    Deep research reports carry long methods sections naming the databases they
+    queried. Those words can out-frequency the subject itself, so the keyword
+    weighting has to demote vocabulary that lives in only one section.
+    """
+    report = (
+        "# Widget Coloration\n\n"
+        "## Search strategy\n\n"
+        + "We searched every database. " * 12
+        + "\n\n## Findings\n\nBlue widgets predominate.\n\n"
+        "## Populations\n\nWidget populations differ in coloration.\n\n"
+        "## Altitude\n\nGreen widgets increase with altitude in each population.\n"
+    )
+
+    terms = [term.term for term in extract_keywords(report, top_n=5)]
+
+    assert "widget" in terms
+    assert "database" not in terms
+
+
+def test_pervasive_terms_outrank_localised_ones() -> None:
+    """Pins the direction of the document-frequency weighting.
+
+    Inverting it - classic TF-IDF - promotes whatever a report mentions once in
+    passing and buries its actual subject. Measured on a real 122-section report
+    about CHILD syndrome, inversion returned 'kegg', 'rhea' and 'uspstf' ahead
+    of 'nsdhl' and 'cholesterol'.
+    """
+    report = (
+        "# A\n\nWidgets are studied here.\n\n"
+        "# B\n\nWidgets appear again.\n\n"
+        "# C\n\nWidgets once more.\n\n"
+        "# D\n\nGrommets grommets grommets grommets grommets.\n"
+    )
+
+    terms = [term.term for term in extract_keywords(report, top_n=2)]
+
+    assert terms[0] == "widget"
+    assert "grommet" in terms
+
+
+def test_templated_prompt_does_not_become_the_subject() -> None:
+    """Found on 1188 real Edison/Falcon reports built from one template.
+
+    The prompt is echoed into every report verbatim, so its vocabulary is both
+    frequent and present in every section - the exact profile the weighting
+    rewards. Left in, `disease`, `omim` and `page` crowded out the gene symbols,
+    and a squarely on-topic paper was flagged as off topic because the junk
+    keywords had eaten the weight.
+    """
+    report = (
+        "## Question\n\n"
+        + "Search first: OMIM, Orphanet, MeSH. Cite primary literature. " * 20
+        + "\n\n## Output\n\n"
+        "## Genetics\n\nPOLR3A variants cause hypomyelinating leukodystrophy.\n\n"
+        "## Imaging\n\nMRI shows hypomyelinating change in leukodystrophy.\n\n"
+        "## Course\n\nPOLR3A leukodystrophy progresses slowly.\n\n"
+        "## Variants\n\nPOLR3A variants are biallelic.\n"
+    )
+
+    terms = [term.term for term in extract_keywords(report, top_n=5)]
+
+    assert "polr3a" in terms
+    assert "leukodystrophy" in terms
+    assert "orphanet" not in terms
+
+
+def test_a_prompt_echoed_into_the_answer_is_dropped_too() -> None:
+    """Falcon restates the whole prompt inside its own answer.
+
+    Cutting at ``## Output`` removes only the first of the two copies, and on a
+    report with a short answer the survivor is most of the text. The echo is
+    verbatim, which is what makes it findable.
+    """
+    prompt = (
+        "Please provide a comprehensive research report on the pathophysiology.\n"
+        "Cite primary literature for all mechanistic claims and include quotes.\n"
+    )
+    report = (
+        f"## Question\n\n{prompt}\n"
+        f"## Output\n\n{prompt}\n"
+        "## Findings\n\nWidget coloration is altitudinal.\n\n"
+        "## More\n\nWidget coloration varies by site.\n\n"
+        "## Third\n\nWidget populations differ.\n\n"
+        "## Fourth\n\nWidget coloration is stable.\n"
+    )
+
+    terms = [term.term for term in extract_keywords(report, top_n=3)]
+
+    assert "widget" in terms
+    assert "coloration" in terms
+    assert "mechanistic" not in terms
+
+
+def test_nothing_matching_withholds_the_accusation(abstract_cache: Path) -> None:
+    """A keyword set that matches none of its own bibliography is the suspect.
+
+    Same principle as the outage hint: a clean sweep of failures says more about
+    the check than about what it checked. Measured on a Falcon homocystinuria
+    report whose provider echoed a generic preamble, leaving `provide`,
+    `comprehensive` and `claim` as keywords for eight unmatched references.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=abstract_cache))
+    unrelated = [f"PMID:2000000{n}" for n in range(3)]
+    for pmid in unrelated:
+        fetcher.get_cache_path(pmid).write_text(
+            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
+            "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
+            + "Volcanic ash plume heights were retrieved by radar. " * 12
+            + "\n",
+            encoding="utf-8",
+        )
+    validator = ReferenceValidator(cache_dir=abstract_cache)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations.\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        "## Sites\n\nTwelve sites were surveyed for widget coloration.\n\n"
+        f"Prior work: {unrelated[0]}, {unrelated[1]}, {unrelated[2]}.\n"
+    )
+
+    assert report.on_topic_count == 0
+    assert report.relevance_assessed_count == 3
+    # Every one of them scores near zero, and every one is withheld anyway.
+    assert not report.off_topic_references
+    assert "points at the vocabulary" in (report.checked_references[0].message or "")
+
+
+def test_one_match_is_enough_to_let_the_accusation_stand(abstract_cache: Path) -> None:
+    """The guard withdraws accusations; it must not disarm the check."""
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=abstract_cache))
+    unrelated = [f"PMID:2100000{n}" for n in range(2)]
+    for pmid in unrelated:
+        fetcher.get_cache_path(pmid).write_text(
+            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
+            "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
+            + "Volcanic ash plume heights were retrieved by radar. " * 12
+            + "\n",
+            encoding="utf-8",
+        )
+    validator = ReferenceValidator(cache_dir=abstract_cache)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        f"## Populations\n\nWidget coloration varies between wild populations "
+        f"({ABSTRACT_PMID}).\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue\n\nBlue widgets predominate at each site surveyed.\n\n"
+        "## Sites\n\nTwelve sites were surveyed for widget coloration.\n\n"
+        f"Prior work: {unrelated[0]}, {unrelated[1]}.\n"
+    )
+
+    assert report.on_topic_count == 1
+    assert sorted(r.reference_id for r in report.off_topic_references) == unrelated
+
+
+def test_inline_citation_keys_are_not_keywords() -> None:
+    """Falcon writes "(peduto2023neurofibromatosistype1 pages 1-2)" inline.
+
+    Repeated through a whole report these rank as top keywords, and no abstract
+    can ever contain one, so every reference's score is depressed by whatever
+    share of the weight they hold.
+    """
+    report = (
+        "## A\n\nNF1 encodes neurofibromin (peduto2023neurofibromatosistype1 pages 1-2).\n\n"
+        "## B\n\nNF1 drives Ras signalling (peduto2023neurofibromatosistype1 pages 2-3).\n\n"
+        "## C\n\nNeurofibromin loss is causal (peduto2023neurofibromatosistype1 pages 3-4).\n\n"
+        "## D\n\nNF1 neurofibromin again (peduto2023neurofibromatosistype1 pages 4-5).\n"
+    )
+
+    terms = [term.term for term in extract_keywords(report)]
+
+    assert "nf1" in terms
+    assert "neurofibromin" in terms
+    assert not [term for term in terms if "peduto" in term]
+    assert "page" not in terms
+
+
+def test_plural_in_the_report_matches_singular_in_the_abstract() -> None:
+    keywords = extract_keywords(
+        "# Lesions\n\nLesions spread.\n\n# More\n\nLesions again.\n\n"
+        "# Third\n\nLesions once more.\n\n# Fourth\n\nLesions persist.\n"
+    )
+
+    assert [term.term for term in keywords] == ["lesion"]
+    assert "lesion" in assess_relevance(keywords, "A single lesion " * 30).matched_terms
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        pytest.param(
+            "Widget coloration in wild populations. " * 12,
+            TopicalRelevance.ON_TOPIC,
+            id="shares the report's vocabulary",
+        ),
+        pytest.param(
+            "Volcanic ash dispersal over the North Atlantic. " * 12,
+            TopicalRelevance.OFF_TOPIC,
+            id="shares none of it, with room to have done",
+        ),
+        pytest.param(
+            "Volcanic ash dispersal over the North Atlantic.",
+            TopicalRelevance.UNCERTAIN,
+            id="shares none of it, but is only a title",
+        ),
+        pytest.param(
+            "Volcanic soils and their coloration by iron oxides. " * 12,
+            TopicalRelevance.UNCERTAIN,
+            id="shares some of it, but not enough to call",
+        ),
+        pytest.param("", TopicalRelevance.NOT_ASSESSED, id="nothing to read"),
+    ],
+)
+def test_relevance_verdicts(text: str, expected: TopicalRelevance) -> None:
+    keywords = [
+        ScoredTerm("widget", 3.0),
+        ScoredTerm("coloration", 2.0),
+        ScoredTerm("population", 2.0),
+        ScoredTerm("blue", 1.0),
+        ScoredTerm("altitude", 1.0),
+    ]
+
+    assert assess_relevance(keywords, text).relevance == expected
+
+
+def test_relevance_is_not_assessed_without_keywords() -> None:
+    """A report too short to yield keywords must not convict its references."""
+    assessment = assess_relevance(extract_keywords("Short."), "Anything at all. " * 30)
+
+    assert assessment.relevance == TopicalRelevance.NOT_ASSESSED
+    assert assessment.score == 0.0
+
+
+def test_on_topic_reference_is_recognised(abstract_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=abstract_cache)
+
+    report = validator.validate_markdown(
+        "# Widget Coloration\n\n"
+        "## Populations\n\nWidget coloration varies between wild populations "
+        f"({ABSTRACT_PMID}).\n\n"
+        "## Altitude\n\nGreen widgets rise with altitude in every population.\n\n"
+        "## Blue widgets\n\nBlue widgets predominate at each site surveyed.\n\n"
+        "## Sites\n\nTwelve sites were surveyed for widget coloration.\n"
+    )
+
+    check = report.checked_references[0]
+    assert check.relevance == TopicalRelevance.ON_TOPIC
+    assert "widget" in (check.matched_keywords or [])
+    assert report.on_topic_count == 1
+    assert not report.off_topic_references
+
+
+def test_off_topic_reference_is_flagged_but_not_called_a_fabrication(
+    abstract_cache: Path,
+) -> None:
+    """The gap issue 63 is about: a citation that resolves and is still wrong.
+
+    Every existence check passes here. The identifier is real, the record has an
+    abstract, nothing was fabricated - and the paper is about widgets in a report
+    about volcanic ash.
+    """
+    validator = ReferenceValidator(cache_dir=abstract_cache)
+
+    report = validator.validate_markdown(
+        UNRELATED_REPORT + f"\nDispersal has been modelled before ({ABSTRACT_PMID}).\n"
+    )
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.relevance == TopicalRelevance.OFF_TOPIC
+    # A lead, not a verdict: it must not inflate the fabrication figures.
+    assert report.confabulation_rate == 0.0
+    assert not report.has_confabulations
+    assert [r.reference_id for r in report.off_topic_references] == [ABSTRACT_PMID]
+
+    summary = report.summary()
+    assert summary["off_topic"] == 1
+    assert summary["off_topic_references"] == [ABSTRACT_PMID]
+
+    markdown = report.to_markdown()
+    assert "may not be about this subject" in markdown
+    assert "Resolving is not the same as being relevant" in markdown
+
+
+def test_a_title_only_record_is_never_called_off_topic(cache_dir: Path) -> None:
+    """A bare title cannot carry a report's vocabulary however relevant it is."""
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path(CACHED_PMID).write_text(
+        "---\n"
+        f"reference_id: {CACHED_PMID}\n"
+        "title: A Monograph On Something Else Entirely\n"
+        "content_type: unavailable\n"
+        "full_text_attempted: true\n"
+        "---\n\n"
+        "# A Monograph On Something Else Entirely\n\n## Content\n\n",
+        encoding="utf-8",
+    )
+    validator = ReferenceValidator(cache_dir=cache_dir)
+
+    report = validator.validate_markdown(
+        UNRELATED_REPORT + f"\nSee also ({CACHED_PMID}).\n"
+    )
+
+    assert report.checked_references[0].relevance == TopicalRelevance.UNCERTAIN
+    assert not report.off_topic_references
+
+
+def test_relevance_can_be_disabled(abstract_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=abstract_cache, check_relevance=False)
+
+    report = validator.validate_markdown(
+        UNRELATED_REPORT + f"\nDispersal has been modelled before ({ABSTRACT_PMID}).\n"
+    )
+
+    assert report.checked_references[0].relevance == TopicalRelevance.NOT_ASSESSED
+    assert report.relevance_assessed_count == 0
+    assert report.report_keywords == []
+    assert "may not be about this subject" not in report.to_markdown()
+
+
+def test_relevance_is_not_claimed_for_an_unresolved_reference(
+    validator: ReferenceValidator, tmp_path: Path
+) -> None:
+    """Nothing resolved, so there is no metadata to have been off topic."""
+    report = validator.validate_references(
+        [_reference(f"file:{tmp_path / 'absent.md'}")],
+        topic_text=UNRELATED_REPORT,
+    )
+
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.NOT_FOUND
+    assert check.relevance == TopicalRelevance.NOT_ASSESSED
+    assert not report.off_topic_references
+
+
+def test_validate_references_without_topic_text_assesses_nothing(
+    validator: ReferenceValidator, paper_ref: str
+) -> None:
+    """The low-level entry point has no report to read, and says so."""
+    report = validator.validate_references([_reference(paper_ref)])
+
+    assert report.checked_references[0].relevance == TopicalRelevance.NOT_ASSESSED
+    assert report.report_keywords == []
+
+
+# ---------------------------------------------------------------------------
+# Reporting an outcome that is not a resolution failure
+# ---------------------------------------------------------------------------
+
+
+def test_summary_states_unsupported_quotes_outright(seeded_cache: Path) -> None:
+    """Issue 63: a clean confabulation_rate read as a clean report.
+
+    A CHILD syndrome report resolved 36 of 36 identifiers and failed 6 of 33
+    quotes. Its frontmatter said `confabulation_rate: 0.0` and stopped there, so
+    the quote failures had to be derived by subtraction from two other numbers.
+    """
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'The authors state "widgets are uniformly magenta year round" ({CACHED_PMID}).'
+    )
+    summary = report.summary()
+
+    assert summary["confabulation_rate"] == 0.0
+    assert summary["not_found"] == 0
+    assert summary["quotes_unsupported"] == 1
+    assert summary["unsupported_quote_references"] == [CACHED_PMID]
+    assert summary["needs_review"] is True
+
+
+def test_clean_report_summary_stays_quiet(seeded_cache: Path) -> None:
+    """The extra keys appear only when there is something to report."""
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    summary = validator.validate_markdown(
+        f'The authors state "widgets are blue in 90% of observed cases" ({CACHED_PMID}).'
+    ).summary()
+
+    assert summary["quotes_valid"] == 1
+    assert "quotes_unsupported" not in summary
+    assert "unsupported_quote_references" not in summary
+    assert "needs_review" not in summary
+
+
+def test_a_quote_failing_against_an_abstract_says_so(seeded_cache: Path) -> None:
+    """The other half of the CHILD syndrome discrepancy, in the other direction.
+
+    Four of that report's six quote failures were quotes taken correctly from the
+    body of a GeneReviews chapter, of which PubMed serves only a summary. Reported
+    flatly as "not found in the cited source", they read as invented.
+    """
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    report = validator.validate_markdown(
+        f'The authors state "widgets are uniformly magenta year round" ({CACHED_PMID}).'
+    )
+
+    markdown = report.to_markdown()
+
+    assert report.unsupported_quotes[0].source_content_type == "abstract_only"
+    assert "Every one of these was searched against an abstract alone" in markdown
+    assert "*(abstract only)*" in markdown
+
+
+def test_markdown_table_states_the_quote_failures(seeded_cache: Path) -> None:
+    validator = ReferenceValidator(cache_dir=seeded_cache)
+
+    markdown = validator.validate_markdown(
+        f'The authors state "widgets are uniformly magenta year round" ({CACHED_PMID}).'
+    ).to_markdown()
+
+    assert "| Quoted claims **not** found in source | 1 |" in markdown
 
 
 # ---------------------------------------------------------------------------

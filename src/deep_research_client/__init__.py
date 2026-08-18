@@ -5,7 +5,16 @@ except ImportError:  # pragma: no cover
     __version_tuple__ = (0, 0, 0)
 
 from .client import DeepResearchClient
-from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry
+from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry, ProviderHealth
+from .exceptions import (
+    ProviderError,
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderRateLimitError,
+    ProviderTransientError,
+    classify_status,
+    classify_exception,
+)
 from .processing import ResearchProcessor, TemplateProcessor, ResultFormatter
 from .cache import extract_title_from_markdown, preprocess_markdown
 from .model_cards import (
@@ -39,6 +48,14 @@ __all__ = [
     "CacheConfig",
     "QueryMetadata",
     "EditHistoryEntry",
+    "ProviderHealth",
+    "ProviderError",
+    "ProviderAuthError",
+    "ProviderBillingError",
+    "ProviderRateLimitError",
+    "ProviderTransientError",
+    "classify_status",
+    "classify_exception",
     "ResearchProcessor",
     "TemplateProcessor",
     "ResultFormatter",

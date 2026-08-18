@@ -6,11 +6,19 @@ from typing import List, Optional
 import httpx
 
 from . import ResearchProvider
+from ..exceptions import classify_status
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
 
 logger = logging.getLogger(__name__)
+
+#: Consensus-specific wording for statuses the generic classifier can't know about.
+_CONSENSUS_STATUS_DETAIL = {
+    401: "invalid API key",
+    403: "access denied - ensure you have applied for API access",
+    429: "rate limit exceeded",
+}
 
 
 class ConsensusProvider(ResearchProvider):
@@ -101,14 +109,11 @@ class ConsensusProvider(ResearchProvider):
         except httpx.HTTPStatusError as e:
             logger.error(f"Consensus API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
-            if e.response.status_code == 401:
-                raise ValueError("Invalid Consensus API key")
-            elif e.response.status_code == 403:
-                raise ValueError("Consensus API access denied - ensure you have applied for API access")
-            elif e.response.status_code == 429:
-                raise ValueError("Consensus API rate limit exceeded")
-            else:
-                raise ValueError(f"Consensus API error: {e.response.status_code} - {e.response.text}")
+            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, e.response.text)
+            classified = classify_status(self.name, e.response.status_code, detail)
+            if classified is not None:
+                raise classified from e
+            raise ValueError(f"Consensus API error: {e.response.status_code} - {e.response.text}")
         except httpx.RequestError as e:
             logger.error(f"Consensus API request failed: {e}")
             logger.debug("Error details:", exc_info=True)

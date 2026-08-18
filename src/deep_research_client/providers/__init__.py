@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Union, TYPE_CHECKING
 
-from ..models import ResearchResult, ProviderConfig
+from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..model_cards import ProviderModelCards
 
 if TYPE_CHECKING:
@@ -81,6 +81,29 @@ class ResearchProvider(ABC):
             Human-readable explanation suitable for an error message
         """
         return f"Provider '{self.name}' is not available"
+
+    async def check_health(self) -> ProviderHealth:
+        """Probe whether this provider can actually take work right now.
+
+        :meth:`is_available` only answers "is a key configured". This answers
+        the more useful question, at the cost of a network round trip.
+        Subclasses should override with the cheapest authenticated call their
+        API offers -- never a full research run.
+
+        The default implementation performs no probe, so ``reachable`` is None:
+        configuration is all we know.
+
+        Returns:
+            Health record for this provider
+        """
+        if not self.is_available():
+            return ProviderHealth(
+                provider=self.name,
+                configured=False,
+                reachable=False,
+                detail=self.unavailable_reason(),
+            )
+        return ProviderHealth(provider=self.name, configured=True)
 
     @property
     def name(self) -> str:

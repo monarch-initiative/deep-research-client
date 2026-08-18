@@ -1,5 +1,6 @@
 """Edison Scientific provider (formerly FutureHouse Falcon)."""
 
+import asyncio
 import base64
 import json
 import logging
@@ -14,8 +15,10 @@ from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
 from edison_client.models.data_storage_methods import RawFetchResponse
 
 from . import ResearchProvider
+from ..exceptions import ProviderAuthError, classify_exception
 from ..models import (
     ProviderConfig,
+    ProviderHealth,
     ResearchArtifact,
     ResearchResult,
     sanitize_artifact_filename,
@@ -69,7 +72,15 @@ class FalconProvider(ResearchProvider):
         if not self.is_available():
             raise ValueError(f"Edison provider not available (API key: {bool(self.config.api_key)})")
 
-        client = EdisonClient(api_key=self.config.api_key)
+        # EdisonClient authenticates in its constructor, so a rejected key
+        # fails here rather than on the first call.
+        try:
+            client = EdisonClient(api_key=self.config.api_key)
+        except Exception as e:
+            logger.error(f"Edison authentication failed: {e}")
+            logger.debug("Error details:", exc_info=True)
+            classified = classify_exception(self.name, e)
+            raise (classified or ProviderAuthError(self.name, str(e))) from e
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
@@ -91,7 +102,53 @@ class FalconProvider(ResearchProvider):
         except Exception as e:
             logger.error(f"Edison API request failed: {e}")
             logger.debug("Error details:", exc_info=True)
+            # edison_client retries internally, so a 402/401/403 arrives looking
+            # like a timeout. Name it before it reaches the caller.
+            classified = classify_exception(self.name, e)
+            if classified is not None:
+                logger.error(classified.actionable_message())
+                raise classified from e
             raise
+
+    async def check_health(self) -> ProviderHealth:
+        """Probe Edison with a cheap authenticated call.
+
+        Lists a single trajectory rather than submitting work. This proves the
+        key is accepted; it cannot prove the account has credits, because
+        Edison only charges -- and only returns ``402`` -- when a task is
+        submitted. A numeric balance has to come from the Edison dashboard.
+
+        Returns:
+            Health record for this provider
+        """
+        if not self.is_available():
+            return ProviderHealth(
+                provider=self.name,
+                configured=False,
+                reachable=False,
+                detail=self.unavailable_reason(),
+            )
+
+        try:
+            # EdisonClient authenticates in its constructor, so a bad key fails
+            # here rather than on the first call.
+            client = await asyncio.to_thread(EdisonClient, api_key=self.config.api_key)
+            await asyncio.to_thread(client.get_tasks, limit=1)
+        except Exception as e:
+            classified = classify_exception(self.name, e)
+            # The report line already names the provider, and already is the
+            # health check being suggested, so use the bare diagnosis.
+            detail = classified.diagnosis if classified else str(e)
+            logger.debug("Edison health probe failed:", exc_info=True)
+            return ProviderHealth(
+                provider=self.name, configured=True, reachable=False, detail=detail
+            )
+        return ProviderHealth(
+            provider=self.name,
+            configured=True,
+            reachable=True,
+            detail="credentials accepted (credit balance not exposed by the API)",
+        )
 
     def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
         """Retrieve an existing Edison trajectory and preserve its artifacts."""

@@ -253,6 +253,45 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
+    """Probe providers for live reachability and print the results.
+
+    Args:
+        client: Client whose registry holds the providers to probe.
+        provider: Probe only this provider, or all configured ones when None.
+
+    Raises:
+        typer.Exit: If a named provider is unknown, or no probe succeeded.
+    """
+    import asyncio
+
+    if provider:
+        target = client.registry.get_provider(provider)
+        if target is None:
+            logger.error(f"Unknown provider: {provider}")
+            raise typer.Exit(1)
+        targets = [target]
+    else:
+        # Probing an unconfigured provider only re-reports the missing key.
+        targets = client.registry.get_available_providers()
+        if not targets:
+            logger.error("No providers are configured, so there is nothing to probe.")
+            _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+            raise typer.Exit(1)
+
+    async def _probe():
+        return await asyncio.gather(*(t.check_health() for t in targets))
+
+    reports = asyncio.run(_probe())
+
+    typer.echo("Provider health:")
+    for report in reports:
+        typer.echo(f"  {report.summary()}")
+
+    if any(report.reachable is False for report in reports):
+        raise typer.Exit(1)
+
+
 def _build_reference_validator(
     cache_dir: Optional[Path],
     email: Optional[str],
@@ -1020,6 +1059,9 @@ def providers(
         "--show-params", help="Show available parameters for each provider")] = False,
     provider: Annotated[Optional[str], typer.Option(
         help="Show details for specific provider only")] = None,
+    check: Annotated[bool, typer.Option(
+        "--check",
+        help="Probe each configured provider with a cheap live call to see if it is reachable")] = False,
 ):
     """List available research providers and their parameters."""
     from .provider_params import PROVIDER_PARAMS_REGISTRY
@@ -1027,6 +1069,10 @@ def providers(
     logger.debug("Initializing client to check providers")
     client = DeepResearchClient()
     available = client.get_available_providers()
+
+    if check:
+        _check_provider_health(client, provider)
+        return
 
     if provider:
         # Show details for specific provider

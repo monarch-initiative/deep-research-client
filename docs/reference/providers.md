@@ -504,6 +504,60 @@ Providers are auto-detected based on environment variables:
 deep-research-client providers
 ```
 
+Detection only tells you a provider is **configured** — an API key is set. It
+does not tell you the key is still valid, or that the account can pay for a
+run. To find that out, probe the providers with a cheap live call:
+
+```bash
+# Probe every configured provider
+deep-research-client providers --check
+
+# Probe just one
+deep-research-client providers --check --provider falcon
+```
+
+Each provider reports one of `OK`, `UNREACHABLE`, `NOT CONFIGURED`, or
+`UNKNOWN (no probe available)` — the last meaning that provider has not
+implemented a probe, so configuration is all we know. The command exits
+non-zero if any probed provider is unreachable.
+
+A probe proves the credential is accepted. It cannot prove the account has
+credits: Edison, for example, only charges when a task is submitted, so an
+uncredited key passes the probe and fails the run with `402`. A numeric
+balance has to come from the provider's own dashboard.
+
+## Provider Failures
+
+Failures are raised as typed exceptions so callers can tell "switch provider"
+apart from "try again":
+
+| Exception | Statuses | Retryable | Means |
+|-----------|----------|-----------|-------|
+| `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
+| `ProviderBillingError` | 402 | No | Account is out of credits |
+| `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
+| `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
+
+All four subclass `ProviderError` (itself a `ValueError`, so older callers
+still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
+flag:
+
+```python
+from deep_research_client import ProviderBillingError, ProviderError
+
+try:
+    result = client.research("...", provider="falcon")
+except ProviderBillingError:
+    ...  # out of credits: a retry cannot help, pick another provider
+except ProviderError as e:
+    if e.retryable:
+        ...
+```
+
+Auth and billing failures are classified even when a provider SDK retries
+internally and reports the result as a timeout — the status is recovered from
+the wrapped exception rather than lost.
+
 ## Adding Custom Providers
 
 Create a new provider in `src/deep_research_client/providers/`:

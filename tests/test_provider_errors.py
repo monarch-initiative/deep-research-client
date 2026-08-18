@@ -495,6 +495,15 @@ def test_an_explicit_config_is_not_told_to_unset_a_variable_it_never_set(monkeyp
     detection entirely, so a message asserting *why* claude_code is missing
     would be false for a caller who never touched that variable.
     """
+    import shutil
+
+    # The branch under test is "registered nowhere, yet reports itself
+    # available", which needs the CLI to look present. CI has no `claude`
+    # binary, so without this the provider is simply unavailable and answers
+    # with its own (correct, but different) reason.
+    monkeypatch.setattr(
+        shutil, "which", lambda name, *args, **kwargs: "/usr/bin/claude" if name == "claude" else None
+    )
     monkeypatch.delenv("DISABLE_CLAUDE_CODE_PROVIDER", raising=False)
     client = DeepResearchClient(
         provider_configs={"openai": ProviderConfig(name="openai", api_key="k")},

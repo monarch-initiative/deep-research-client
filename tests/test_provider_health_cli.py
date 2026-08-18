@@ -167,10 +167,25 @@ def test_a_missing_key_is_not_reported_as_a_typo(capsys):
     assert "Unknown provider" not in out
 
 
-def test_a_genuine_typo_is_still_called_a_typo(capsys):
+def test_a_genuine_typo_is_still_called_a_typo(capsys, caplog):
     """A name we do not recognise at all keeps the blunt message."""
     with pytest.raises(typer.Exit) as excinfo:
         _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
 
     assert excinfo.value.exit_code == 1
     assert "NOT CONFIGURED" not in capsys.readouterr().out
+    assert "Unknown provider" in caplog.text, "the typo must actually be reported"
+
+
+def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
+    """"NOT CONFIGURED" with no next step is the empty answer this replaces.
+
+    cyberian needs an optional package rather than a credential, so there is no
+    environment variable to name -- but there is still something to say.
+    """
+    with pytest.raises(typer.Exit):
+        _check_provider_health(_StubClient([_ok("claude_code")]), "cyberian")
+
+    out = capsys.readouterr().out
+    assert "cyberian: NOT CONFIGURED" in out
+    assert "pip install" in out, "a provider with no env var still needs a next step"

@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .exceptions import MAX_DETAIL_CHARS, _truncate
+from .exceptions import MAX_DETAIL_CHARS, truncate_detail
 
 
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
@@ -165,7 +165,7 @@ class ProviderHealth(BaseModel):
         Returns:
             The detail, truncated to a readable length.
         """
-        return _truncate(value, MAX_DETAIL_CHARS) if value else value
+        return truncate_detail(value, MAX_DETAIL_CHARS) if value else value
 
     def summary(self) -> str:
         """Render a single-line status suitable for CLI output.

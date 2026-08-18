@@ -253,6 +253,32 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+def _why_unconfigured(provider: str) -> str:
+    """Say what would make an unregistered provider usable.
+
+    A provider is registered only once whatever it needs is present, so by the
+    time we are here the reason is knowable but the provider object is not.
+    Reporting "NOT CONFIGURED" without the next step would be the same empty
+    answer this command exists to replace.
+
+    Args:
+        provider: Canonical provider name.
+
+    Returns:
+        Human-readable explanation of what is missing
+    """
+    if provider in PROVIDER_CREDENTIAL_HINTS:
+        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider]
+        return f"set {env_var} for {label}"
+    if provider in PROVIDER_STUB_HINTS:
+        return PROVIDER_STUB_HINTS[provider]
+    # Nothing to export: these register only when an optional package imports.
+    return (
+        f"registered only when its optional package is installed "
+        f"(try `pip install deep-research-client[{provider}]`)"
+    )
+
+
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
     """Probe providers for live reachability and print the results.
 
@@ -278,10 +304,8 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
                 typer.echo("Provider health:")
                 typer.echo(
-                    f"  {ProviderHealth(provider=provider, configured=False).summary()}"
+                    f"  {ProviderHealth(provider=provider, configured=False, detail=_why_unconfigured(provider)).summary()}"
                 )
-                if provider in PROVIDER_CREDENTIAL_HINTS:
-                    _echo_credential_hints([provider])
             else:
                 logger.error(f"Unknown provider: {provider}")
             raise typer.Exit(1)

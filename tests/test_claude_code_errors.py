@@ -244,6 +244,9 @@ def test_a_real_failure_on_stderr_is_still_caught(monkeypatch):
         ('{"type": "result", "subtype": "error_max_turns", "result": "gave up"}', "error_max_turns gave up"),
         # A success event's `result` field is the model's report, not evidence.
         ('{"type": "result", "subtype": "success", "result": "the report"}', ""),
+        # An explicit null is not the same as an absent key.
+        ('{"type": "result", "subtype": null, "result": "the report"}', ""),
+        ('{"type": "result", "subtype": "", "result": "the report"}', ""),
         ('{"type": "assistant"}\n{"type": "result", "result": "late"}', ""),
         ("garbage\n{not json}", ""),
         ("", ""),
@@ -363,3 +366,28 @@ def test_a_real_failure_that_also_suggests_help_is_still_a_failure():
 
     assert health.reachable is False, "a logged-out CLI must not report as UNKNOWN"
     assert "API key" in health.detail
+
+
+def test_a_chatty_reset_message_does_not_push_its_own_reset_time_off():
+    """The budget assumes a short remedy, and this remedy is provider text.
+
+    `_LIMIT_RESET` captures to the next period, which on a wordy message is a
+    whole clause. Unbounded, it inflates the remedy until the outer cap trims
+    the reset time -- the one thing this error class exists to carry.
+    """
+    from deep_research_client.exceptions import MAX_DETAIL_CHARS
+    from deep_research_client.models import ProviderHealth
+
+    error = _classify_cli_failure(
+        "claude_code",
+        "Claude usage limit reached, your limit will reset at 5pm Pacific Time; if you "
+        "need capacity sooner consider upgrading to a higher tier or waiting for the "
+        "window to roll over",
+    )
+    health = ProviderHealth(
+        provider="claude_code", configured=True, reachable=False, detail=error.diagnosis
+    )
+
+    assert len(error.diagnosis) <= MAX_DETAIL_CHARS
+    assert "5pm Pacific Time" in health.detail
+    assert "renews at" in health.detail

@@ -6,7 +6,12 @@ from typing import List, Optional
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import MAX_DETAIL_CHARS, ProviderNotConfiguredError, classify_status
+from ..exceptions import (
+    MAX_DETAIL_CHARS,
+    ProviderNotConfiguredError,
+    classify_status,
+    truncate_detail,
+)
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
@@ -114,7 +119,7 @@ class ConsensusProvider(ResearchProvider):
             logger.debug("Error details:", exc_info=True)
             # A 5xx body is often a full HTML error page; ProviderError caps
             # the classified path, so only the bare re-raise needs slicing here.
-            body = e.response.text[:MAX_DETAIL_CHARS]
+            body = truncate_detail(e.response.text, MAX_DETAIL_CHARS)
             detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, e.response.text)
             classified = classify_status(self.name, e.response.status_code, detail)
             if classified is not None:

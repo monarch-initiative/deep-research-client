@@ -43,13 +43,14 @@ __all__ = [
     "ProviderNotInstalledError",
     "ProviderRateLimitError",
     "ProviderTransientError",
+    "truncate_detail",
     "classify_status",
     "classify_exception",
     "extract_status_code",
 ]
 
 
-def _truncate(text: str, limit: int) -> str:
+def truncate_detail(text: str, limit: int) -> str:
     """Shorten text to a limit, marking the cut so a reader can see it happened.
 
     Args:
@@ -59,9 +60,9 @@ def _truncate(text: str, limit: int) -> str:
     Returns:
         The text, with a trailing ellipsis if anything was removed.
 
-    >>> _truncate("short", 20)
+    >>> truncate_detail("short", 20)
     'short'
-    >>> _truncate("a much longer sentence than the limit allows", 20)
+    >>> truncate_detail("a much longer sentence than the limit allows", 20)
     'a much longer sente…'
     """
     if len(text) <= limit:
@@ -99,10 +100,25 @@ class ProviderError(ValueError):
         # The budget subtracts the framing `diagnosis` will add, so the whole
         # composed line stays within the cap and the remedy -- the part that
         # says what to do about it -- is never the piece that gets cut.
-        framing = len(f"{status_code} " if status_code else "") + len(" -- ") + len(self.remedy)
+        framing = len(self._render_diagnosis(""))
         budget = max(MIN_DETAIL_CHARS, MAX_DETAIL_CHARS - framing)
-        self.detail = _truncate(detail, budget)
+        self.detail = truncate_detail(detail, budget)
         super().__init__(self.actionable_message())
+
+    def _render_diagnosis(self, detail: str) -> str:
+        """Compose the diagnosis line around a given detail.
+
+        Kept separate so ``__init__`` can measure the framing this adds by
+        rendering it empty, rather than by re-deriving the format by hand.
+
+        Args:
+            detail: The provider-supplied text to frame.
+
+        Returns:
+            Status, detail, and what it means
+        """
+        status = f"{self.status_code} " if self.status_code else ""
+        return f"{status}{detail} -- {self.remedy}"
 
     @property
     def diagnosis(self) -> str:
@@ -117,8 +133,7 @@ class ProviderError(ValueError):
         >>> ProviderBillingError("falcon", "no credits", 402).diagnosis
         '402 no credits -- the account is out of credits'
         """
-        status = f"{self.status_code} " if self.status_code else ""
-        return f"{status}{self.detail} -- {self.remedy}"
+        return self._render_diagnosis(self.detail)
 
     def __reduce__(self) -> tuple:
         """Rebuild through ``__init__`` so the error survives pickling.

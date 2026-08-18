@@ -185,7 +185,9 @@ class TestOpenScientistProvider:
             ProviderConfig(name="openscientist", api_key=None, enabled=True)
         )
 
-        with pytest.raises(ValueError, match="OpenScientist provider not available"):
+        from deep_research_client.exceptions import ProviderNotConfiguredError
+
+        with pytest.raises(ProviderNotConfiguredError, match="OPENSCIENTIST_API_KEY"):
             await provider.research("test query")
 
     async def test_research_empty_query(self):

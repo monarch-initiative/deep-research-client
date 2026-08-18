@@ -280,7 +280,7 @@ _STATUS_MAP: dict[int, type[ProviderError]] = {
 }
 
 # httpx renders failures as: Client error '402 Payment Required' for url '...'
-_QUOTED_STATUS = re.compile(r"'(\d{3})\s+[A-Za-z]")
+_QUOTED_STATUS = re.compile(r"'([1-5]\d{2})\s+[A-Za-z]")
 # Fallback for SDKs that write the code out in prose. The separator excludes
 # slashes so that a URL ("http://127.0.0.1/...") cannot pass its first octet off
 # as a status, and the value must look like one.

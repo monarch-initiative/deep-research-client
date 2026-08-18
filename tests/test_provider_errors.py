@@ -286,3 +286,39 @@ def test_truncation_leaves_short_text_alone():
 
     assert error.detail == "bad key"
     assert "…" not in error.diagnosis
+
+
+@pytest.mark.parametrize(
+    "module_name,class_name",
+    [
+        ("openai", "OpenAIProvider"),
+        ("falcon", "FalconProvider"),
+        ("consensus", "ConsensusProvider"),
+        ("perplexity", "PerplexityProvider"),
+        ("asta", "AstaProvider"),
+        ("openscientist", "OpenScientistProvider"),
+    ],
+)
+def test_every_keyed_provider_reports_a_missing_key_the_same_way(module_name, class_name):
+    """One `except` must cover every provider, or the documented catch lies.
+
+    Parametrized over the classes rather than written per provider: the gap
+    this closes was one file being left out of a by-hand conversion, and a
+    per-provider test would have been left out the same way.
+    """
+    import asyncio
+    import importlib
+
+    from deep_research_client.exceptions import ProviderNotConfiguredError
+
+    module = importlib.import_module(f"deep_research_client.providers.{module_name}")
+    provider_class = getattr(module, class_name)
+    provider = provider_class(ProviderConfig(name=module_name, api_key=None, enabled=True))
+
+    assert provider.credential_env_var, "a keyed provider must name its variable"
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        asyncio.run(provider.research("what causes scurvy"))
+
+    # The message names the variable to set, not just that something is absent.
+    assert provider.credential_env_var in str(excinfo.value)

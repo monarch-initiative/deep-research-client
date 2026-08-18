@@ -3,6 +3,7 @@
 import base64
 import binascii
 from dataclasses import dataclass
+import asyncio
 import logging
 import os
 import re
@@ -302,8 +303,6 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
         typer.Exit: If a named provider is unknown or unconfigured, or any
             provider turned out to be unable to take work.
     """
-    import asyncio
-
     from .provider_params import PROVIDER_PARAMS_REGISTRY
 
     if provider:
@@ -1139,6 +1138,8 @@ def providers(
     client = DeepResearchClient()
 
     if check:
+        if show_params:
+            logger.warning("--show-params has no effect with --check; ignoring it.")
         _check_provider_health(client, provider)
         return
 

@@ -45,7 +45,7 @@ class _ImageMessageGroup(TypedDict):
 class FalconProvider(ResearchProvider):
     """Provider for Edison Scientific API (formerly FutureHouse Falcon)."""
 
-    credential_label = "Edison"
+    credential_label = "Edison Scientific"
     credential_env_var = "EDISON_API_KEY"
 
     def __init__(self, config: ProviderConfig, params: Optional[FalconParams] = None):

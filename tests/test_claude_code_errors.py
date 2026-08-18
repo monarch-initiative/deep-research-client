@@ -428,3 +428,21 @@ def test_a_stray_number_is_not_an_overload():
     """`529` is the one pattern that is a number, so it needs word boundaries."""
     assert _classify_cli_failure("claude_code", "killed process 15290 unexpectedly") is None
     assert _classify_cli_failure("claude_code", "API Error 529: Overloaded") is not None
+
+
+def test_comma_joined_advice_is_accepted_noise_but_stays_bounded():
+    """Keeping commas means advice can ride along; the cap is what contains it.
+
+    Documented rather than fixed: a comma joins a time far more often than it
+    ends a clause, so excluding it costs more than this case does.
+    """
+    from deep_research_client.exceptions import MAX_RESET_CHARS
+
+    error = _classify_cli_failure(
+        "claude_code",
+        "Claude usage limit reached, your limit will reset at 5pm Pacific Time, "
+        "upgrade to a higher tier for more capacity",
+    )
+
+    assert error.resets_at.startswith("5pm Pacific Time")
+    assert len(error.resets_at) <= MAX_RESET_CHARS

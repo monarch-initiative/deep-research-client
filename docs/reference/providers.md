@@ -535,10 +535,12 @@ apart from "try again":
 |-----------|----------|-----------|-------|
 | `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
 | `ProviderBillingError` | 402 | No | Account is out of credits |
+| `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says |
+| `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH |
 | `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
 | `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
 
-All four subclass `ProviderError` (itself a `ValueError`, so older callers
+All of them subclass `ProviderError` (itself a `ValueError`, so older callers
 still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
 flag:
 
@@ -557,6 +559,22 @@ except ProviderError as e:
 Auth and billing failures are classified even when a provider SDK retries
 internally and reports the result as a timeout — the status is recovered from
 the wrapped exception rather than lost.
+
+### Claude Code
+
+The `claude_code` provider is a subprocess wrapper, so it has no status codes
+to read. Its failures are classified from what the CLI prints — a spent usage
+allowance, a logged-out session, an expired token, a model the plan does not
+include, or an overloaded API — and the wordings that mean "stop" are kept
+apart from the ones that mean "try again".
+
+Its health probe is the most informative of any provider, and the only free
+one: `claude auth status --json` reads local credentials and makes no model
+call, so `--check` reports the auth method and plan without spending a token.
+
+The one failure the CLI does not always report cleanly is a spent usage limit
+mid-run, which can stall rather than fail. The timeout message points at
+`providers --check` for that reason.
 
 ## Adding Custom Providers
 

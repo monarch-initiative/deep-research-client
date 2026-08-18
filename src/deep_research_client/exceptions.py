@@ -28,6 +28,8 @@ __all__ = [
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",
+    "ProviderQuotaError",
+    "ProviderNotInstalledError",
     "ProviderRateLimitError",
     "ProviderTransientError",
     "classify_status",
@@ -52,8 +54,9 @@ class ProviderError(ValueError):
     #: Whether retrying the same call against the same provider could succeed.
     retryable: ClassVar[bool] = False
 
-    #: Short imperative hint appended to the message, e.g. "top up the account".
-    remedy: ClassVar[str] = "check the provider configuration"
+    #: What the failure means and what would fix it. Usually a class-level
+    #: constant, but an instance may sharpen it with provider-supplied detail.
+    remedy: str = "check the provider configuration"
 
     def __init__(self, provider: str, detail: str, status_code: Optional[int] = None):
         """Build a provider error carrying its own remediation advice."""
@@ -108,6 +111,50 @@ class ProviderBillingError(ProviderError):
     """
 
     remedy = "the account is out of credits"
+
+
+class ProviderQuotaError(ProviderError):
+    """A plan's usage allowance is spent.
+
+    Distinct from :class:`ProviderBillingError`, where the remedy is to pay,
+    and from :class:`ProviderRateLimitError`, which clears in seconds. A spent
+    allowance clears when the plan's window rolls over, which is usually hours
+    away -- so retrying the same call is pointless, but the wait is bounded and
+    the provider often says when it ends.
+
+    Args:
+        provider: Name of the provider that failed.
+        detail: Provider-supplied description of the failure.
+        status_code: HTTP status code, when the failure came from an HTTP call.
+        resets_at: Provider-reported time the allowance renews, if it says.
+
+    >>> print(ProviderQuotaError("claude_code", "usage limit reached", resets_at="3pm"))
+    claude_code: usage limit reached -- the plan's usage limit is spent, and renews at 3pm. Try: `deep-research-client providers --check`, or re-run with --provider <other>
+    """
+
+    remedy = "the plan's usage limit is spent"
+
+    def __init__(
+        self,
+        provider: str,
+        detail: str,
+        status_code: Optional[int] = None,
+        resets_at: Optional[str] = None,
+    ):
+        """Build a quota error, noting when the allowance renews if known."""
+        self.resets_at = resets_at
+        if resets_at:
+            self.remedy = f"{type(self).remedy}, and renews at {resets_at}"
+        super().__init__(provider, detail, status_code)
+
+
+class ProviderNotInstalledError(ProviderError):
+    """A provider backed by a local command-line tool has no tool to run.
+
+    No credential fixes this one, which is why it is not an auth failure.
+    """
+
+    remedy = "the required command-line tool is not installed or not on PATH"
 
 
 class ProviderRateLimitError(ProviderError):

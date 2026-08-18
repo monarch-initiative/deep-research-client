@@ -24,7 +24,12 @@ See https://github.com/monarch-initiative/deep-research-client/issues/65
 import re
 from typing import ClassVar, Optional
 
+#: Cap on how much provider-supplied text is allowed into an exception message.
+#: A 5xx HTML page or a Node stack trace is a hint, not something to reprint.
+MAX_DETAIL_CHARS = 200
+
 __all__ = [
+    "MAX_DETAIL_CHARS",
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",

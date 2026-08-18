@@ -6,15 +6,12 @@ from typing import List, Optional
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError, classify_status
+from ..exceptions import MAX_DETAIL_CHARS, ProviderNotConfiguredError, classify_status
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
 
 logger = logging.getLogger(__name__)
-
-#: Cap on how much of an error body reaches an exception message.
-_MAX_BODY_CHARS = 200
 
 #: Consensus-specific wording for statuses the generic classifier can't know about.
 _CONSENSUS_STATUS_DETAIL = {
@@ -123,7 +120,7 @@ class ConsensusProvider(ResearchProvider):
             logger.error(f"Consensus API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
             # A 5xx body is often a full HTML error page; keep the message readable.
-            body = e.response.text[:_MAX_BODY_CHARS]
+            body = e.response.text[:MAX_DETAIL_CHARS]
             detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, body)
             classified = classify_status(self.name, e.response.status_code, detail)
             if classified is not None:

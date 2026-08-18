@@ -280,7 +280,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
             raise typer.Exit(1)
 
-    async def _probe():
+    async def _probe() -> list:
         return await asyncio.gather(
             *(t.check_health() for t in targets), return_exceptions=True
         )

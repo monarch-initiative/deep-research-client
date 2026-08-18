@@ -124,6 +124,10 @@ class FalconProvider(ResearchProvider):
                 logger.error(classified.actionable_message())
                 raise classified from e
             raise
+        finally:
+            # A long-lived caller doing repeated runs would otherwise leak a
+            # session per run, including on the failure path.
+            client.close()
 
     async def check_health(self) -> ProviderHealth:
         """Probe Edison with a cheap authenticated call.
@@ -176,9 +180,12 @@ class FalconProvider(ResearchProvider):
 
         client = EdisonClient(api_key=self.config.api_key)
         logger.info(f"Retrieving Edison trajectory {trajectory_id}")
-        response = self._coerce_response([client.get_task(task_id=trajectory_id, verbose=True)])
-        query = response[0].query or f"Edison trajectory {trajectory_id}"
-        result = self._result_from_response(client, response, query)
+        try:
+            response = self._coerce_response([client.get_task(task_id=trajectory_id, verbose=True)])
+            query = response[0].query or f"Edison trajectory {trajectory_id}"
+            result = self._result_from_response(client, response, query)
+        finally:
+            client.close()
         result.provider_config = {
             **(result.provider_config or {}),
             "trajectory_id": trajectory_id,

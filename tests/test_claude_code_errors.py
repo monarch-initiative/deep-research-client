@@ -261,3 +261,51 @@ def test_a_cli_too_old_to_probe_is_unknown_not_unreachable():
     assert health.reachable is None
     assert health.configured is True
     assert "no `auth status` subcommand" in health.detail
+
+
+def test_a_probe_that_cannot_exec_returns_a_record_not_an_exception(monkeypatch):
+    """`check_health` promises a health record, so a PATH race must not raise.
+
+    `is_available()` checks PATH a moment earlier, but the file can vanish or
+    lose its exec bit in between -- and a programmatic caller gets a raw OSError
+    instead of the record the signature promises.
+    """
+    provider = _provider()
+    monkeypatch.setattr(provider, "is_available", lambda: True)
+
+    async def _no_such_binary(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "claude")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _no_such_binary)
+
+    health = asyncio.run(provider.check_health())
+
+    assert health.reachable is False
+    assert "could not run" in health.detail
+
+
+def test_a_long_stderr_does_not_become_the_whole_message():
+    """A stack trace on stderr is a hint, not a payload to reprint."""
+    from deep_research_client.exceptions import MAX_DETAIL_CHARS
+
+    noise = "at Object.<anonymous> (/usr/lib/node_modules/claude/cli.js:1:1)\n" * 50
+    error = _classify_cli_failure("claude_code", f"Claude usage limit reached\n{noise}")
+
+    assert error is not None
+    assert len(error.detail) <= MAX_DETAIL_CHARS
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "error: unknown command 'auth'",
+        "See 'claude --help' for more information",
+        "Usage: claude [options] [command]",
+        "unrecognized subcommand",
+    ],
+)
+def test_old_cli_wordings_are_read_as_unknown(stderr):
+    """Every way a CLI says "no such subcommand" means UNKNOWN, not UNREACHABLE."""
+    health = _provider()._health_from_auth_status("", stderr, 1)
+
+    assert health.reachable is None

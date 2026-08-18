@@ -36,6 +36,7 @@ from typing import List, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
+    MAX_DETAIL_CHARS,
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
@@ -87,7 +88,7 @@ _HEALTH_PROBE_TIMEOUT = 30
 # A CLI too old to have `auth status` says so like this. That is evidence about
 # the CLI's version, not about whether the provider works.
 _NO_SUCH_SUBCOMMAND = re.compile(
-    r"unknown (?:command|option|argument)|unrecognized|see .?--help|^usage:",
+    r"unknown (?:command|option|argument)|unrecognized|see .*--help|^usage:",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -147,7 +148,7 @@ def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     for pattern, error_class in _CLI_FAILURE_PATTERNS:
         if not pattern.search(text):
             continue
-        detail = text.strip()
+        detail = text.strip()[:MAX_DETAIL_CHARS]
         if error_class is ProviderQuotaError:
             reset_match = _LIMIT_RESET.search(text)
             return ProviderQuotaError(
@@ -270,11 +271,23 @@ class ClaudeCodeProvider(ResearchProvider):
                 detail=self.unavailable_reason(),
             )
 
-        process = await asyncio.create_subprocess_exec(
-            self.claude_executable, "auth", "status", "--json",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            # is_available() checked PATH a moment ago, but a race, a
+            # non-executable file, or a permission change lands here as an
+            # OSError. A caller promised a health record must still get one.
+            process = await asyncio.create_subprocess_exec(
+                self.claude_executable, "auth", "status", "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as e:
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                reachable=False,
+                detail=f"could not run {self.claude_executable!r}: {e}",
+            )
+
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=_HEALTH_PROBE_TIMEOUT

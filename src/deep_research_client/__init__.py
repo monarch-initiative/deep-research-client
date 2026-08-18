@@ -11,11 +11,13 @@ from .exceptions import (
     ProviderAuthError,
     ProviderBillingError,
     ProviderQuotaError,
+    ProviderNotConfiguredError,
     ProviderNotInstalledError,
     ProviderRateLimitError,
     ProviderTransientError,
     classify_status,
     classify_exception,
+    extract_status_code,
 )
 from .processing import ResearchProcessor, TemplateProcessor, ResultFormatter
 from .cache import extract_title_from_markdown, preprocess_markdown
@@ -55,11 +57,13 @@ __all__ = [
     "ProviderAuthError",
     "ProviderBillingError",
     "ProviderQuotaError",
+    "ProviderNotConfiguredError",
     "ProviderNotInstalledError",
     "ProviderRateLimitError",
     "ProviderTransientError",
     "classify_status",
     "classify_exception",
+    "extract_status_code",
     "ResearchProcessor",
     "TemplateProcessor",
     "ResultFormatter",

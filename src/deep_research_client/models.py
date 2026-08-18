@@ -6,6 +6,8 @@ import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .exceptions import MAX_DETAIL_CHARS, truncate_detail
+
 
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
 _UNSAFE_ARTIFACT_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -124,3 +126,65 @@ class CacheConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Whether caching is enabled")
     directory: Optional[str] = Field(default=None, description="Cache directory path (defaults to ~/.deep_research_cache)")
+
+
+class ProviderHealth(BaseModel):
+    """Result of asking a provider whether it can actually take work.
+
+    Distinct from configuration: a provider with an API key set is *configured*,
+    which is not the same as reachable, credentialed, or in credit.
+
+    >>> ProviderHealth(provider="falcon", configured=True, reachable=False,
+    ...                detail="402 no credits").summary()
+    'falcon: UNREACHABLE - 402 no credits'
+    """
+
+    provider: str = Field(description="Provider name")
+    configured: bool = Field(description="Whether credentials are present and the provider is enabled")
+    reachable: Optional[bool] = Field(
+        default=None,
+        description=(
+            "False when the provider cannot take work -- either a probe failed or "
+            "it is not configured; None when no probe was possible"
+        ),
+    )
+    detail: Optional[str] = Field(default=None, description="Explanation of the outcome")
+
+    @field_validator("detail")
+    @classmethod
+    def _cap_detail(cls, value: Optional[str]) -> Optional[str]:
+        """Keep a raw stack trace or error page from becoming the whole report.
+
+        This is the guard for *unclassified* text -- a bare ``str(e)`` or raw
+        stderr. A composed ``diagnosis`` is already within the cap by
+        construction, so this never truncates the remedy off one.
+
+        Args:
+            value: The proposed detail text.
+
+        Returns:
+            The detail, truncated to a readable length.
+        """
+        return truncate_detail(value, MAX_DETAIL_CHARS) if value else value
+
+    def summary(self) -> str:
+        """Render a single-line status suitable for CLI output.
+
+        Returns:
+            Human-readable status line for this provider.
+
+        >>> ProviderHealth(provider="openai", configured=True, reachable=True).summary()
+        'openai: OK'
+        >>> ProviderHealth(provider="asta", configured=False, detail="no API key").summary()
+        'asta: NOT CONFIGURED - no API key'
+        """
+        if not self.configured:
+            status = "NOT CONFIGURED"
+        elif self.reachable is None:
+            status = "UNKNOWN (no probe available)"
+        elif self.reachable:
+            status = "OK"
+        else:
+            status = "UNREACHABLE"
+        suffix = f" - {self.detail}" if self.detail else ""
+        return f"{self.provider}: {status}{suffix}"

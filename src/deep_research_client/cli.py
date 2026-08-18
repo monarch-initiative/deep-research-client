@@ -3,8 +3,10 @@
 import base64
 import binascii
 from dataclasses import dataclass
+import asyncio
 import logging
 import os
+import re
 import typer
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, List
@@ -25,7 +27,7 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
-from .models import ResearchResult, sanitize_artifact_filename
+from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -237,6 +239,34 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
+def _echo_no_providers_message() -> None:
+    """Tell the user nothing is configured, and what to set.
+
+    A function rather than two inline calls so a test can assert which stream
+    it lands on: driving this through CliRunner cannot show that, because the
+    pinned click merges stdout and stderr into one buffer.
+    """
+    typer.echo("No research providers available. Please set API keys:")
+    _echo_credential_hints(_settable_credential_hints())
+
+
+def _settable_credential_hints() -> list[str]:
+    """Providers a user can enable by setting an environment variable.
+
+    Under a heading that says "set API keys", a CLI on PATH and a test double
+    are not answers. Those entries exist for the `providers` listing, which
+    describes what each provider needs rather than telling anyone to set it.
+
+    Returns:
+        Provider names whose hint is a variable the reader can export
+    """
+    return [
+        name
+        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
+        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+    ]
+
+
 def _echo_credential_hints(provider_names: list[str]) -> None:
     """Print credential hints for providers by canonical provider name."""
     for provider_name in provider_names:
@@ -251,6 +281,118 @@ def _echo_stub_hints() -> None:
     typer.echo("\nStub providers (not yet callable):")
     for provider_name, reason in PROVIDER_STUB_HINTS.items():
         typer.echo(f"  - {provider_name}: {reason}")
+
+
+#: A credential hint that names an environment variable, rather than something
+#: else the provider needs (a binary on PATH, an installed package).
+_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
+
+
+def _why_unconfigured(provider: str) -> str:
+    """Say what would make an unregistered provider usable.
+
+    A provider is registered only once whatever it needs is present, so by the
+    time we are here the reason is knowable but the provider object is not.
+    Reporting "NOT CONFIGURED" without the next step would be the same empty
+    answer this command exists to replace.
+
+    Args:
+        provider: Canonical provider name.
+
+    Returns:
+        Human-readable explanation of what is missing
+    """
+    if provider in PROVIDER_CREDENTIAL_HINTS:
+        requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
+        # Not every entry is a variable to export -- claude_code needs a binary
+        # on PATH -- and "set the `claude` CLI on PATH" reads as nonsense.
+        if _ENV_VAR_HINT.match(requirement):
+            return f"set {requirement} for {label}"
+        return f"{label} requires {requirement}"
+    if provider in PROVIDER_STUB_HINTS:
+        return PROVIDER_STUB_HINTS[provider]
+    # Nothing to export: these register only when an optional package imports.
+    # The extra is named after the provider, which holds for every name that
+    # can reach this branch today.
+    return (
+        f"registered only when its optional package is installed "
+        f"(try `pip install deep-research-client[{provider}]`)"
+    )
+
+
+def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
+    """Probe providers for live reachability and print the results.
+
+    Args:
+        client: Client whose registry holds the providers to probe.
+        provider: Probe only this provider, or all configured ones when None.
+
+    Raises:
+        typer.Exit: If a named provider is unknown or unconfigured, or any
+            provider turned out to be unable to take work.
+    """
+    from .provider_params import PROVIDER_PARAMS_REGISTRY
+
+    if provider:
+        target = client.registry.get_provider(provider)
+        if target is None:
+            # A provider is only registered once its credential is set, so an
+            # absent one is usually an unset key rather than a typo. Saying
+            # "unknown" here would send the reader hunting for a spelling
+            # mistake instead of exporting a variable.
+            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+                typer.echo("Provider health:")
+                unconfigured = ProviderHealth(
+                    provider=provider,
+                    configured=False,
+                    reachable=False,
+                    detail=_why_unconfigured(provider),
+                )
+                typer.echo(f"  {unconfigured.summary()}")
+            else:
+                typer.echo(f"Unknown provider: {provider}")
+            raise typer.Exit(1)
+        targets = [target]
+    else:
+        # Probing an unconfigured provider only re-reports the missing key.
+        targets = client.registry.get_available_providers()
+        if not targets:
+            # Echoed rather than logged, so the sentence and the hints it
+            # introduces land on the same stream. Logging put them on stderr
+            # and stdout respectively, so redirecting kept the list and lost
+            # the line explaining what it was for.
+            typer.echo("No providers are configured, so there is nothing to probe.")
+            _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+            raise typer.Exit(1)
+
+    async def _probe() -> list[ProviderHealth | BaseException]:
+        return await asyncio.gather(
+            *(t.check_health() for t in targets), return_exceptions=True
+        )
+
+    outcomes = asyncio.run(_probe())
+
+    # A probe that raises is still a report. This is the command people run
+    # *because* something is already broken, so one provider blowing up must
+    # not cost them the lines for all the others.
+    reports = [
+        outcome
+        if isinstance(outcome, ProviderHealth)
+        else ProviderHealth(
+            provider=target.name,
+            configured=True,
+            reachable=False,
+            detail=f"the probe itself failed: {outcome}",
+        )
+        for target, outcome in zip(targets, outcomes)
+    ]
+
+    typer.echo("Provider health:")
+    for report in reports:
+        typer.echo(f"  {report.summary()}")
+
+    if any(report.reachable is False for report in reports):
+        raise typer.Exit(1)
 
 
 def _build_reference_validator(
@@ -623,11 +765,7 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        logger.error("No research providers available. Please set API keys:")
-        logger.error("  - OPENAI_API_KEY for OpenAI Deep Research")
-        logger.error("  - EDISON_API_KEY for Edison Scientific")
-        logger.error("  - ASTA_API_KEY for Asta")
-        logger.error("  - PERPLEXITY_API_KEY for Perplexity AI")
+        _echo_no_providers_message()
         raise typer.Exit(1)
 
     # Show available providers
@@ -1020,12 +1158,25 @@ def providers(
         "--show-params", help="Show available parameters for each provider")] = False,
     provider: Annotated[Optional[str], typer.Option(
         help="Show details for specific provider only")] = None,
+    check: Annotated[bool, typer.Option(
+        "--check",
+        help="Probe each configured provider with a cheap live call to see if it is reachable")] = False,
 ):
     """List available research providers and their parameters."""
     from .provider_params import PROVIDER_PARAMS_REGISTRY
 
     logger.debug("Initializing client to check providers")
     client = DeepResearchClient()
+
+    if check:
+        if show_params:
+            # Echoed, not logged: every other line this path emits goes to
+            # stdout, and the CLI's logger does not propagate to handlers a
+            # caller (or a test) can see.
+            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
+        _check_provider_health(client, provider)
+        return
+
     available = client.get_available_providers()
 
     if provider:
@@ -1104,7 +1255,7 @@ def providers(
         _echo_stub_hints()
     else:
         logger.error("No providers available. Please set API keys:")
-        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+        _echo_credential_hints(_settable_credential_hints())
         _echo_stub_hints()
 
     if not show_params and not provider:

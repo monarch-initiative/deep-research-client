@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotConfiguredError
 from ..model_cards import ProviderModelCards, create_asta_model_cards
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import AstaParams
@@ -78,6 +79,9 @@ class AstaSnippet:
 class AstaProvider(ResearchProvider):
     """Provider for Asta paper and snippet retrieval."""
 
+    credential_label = "Asta"
+    credential_env_var = "ASTA_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[AstaParams] = None):
         """Initialize Asta provider."""
         self.params = params or AstaParams()
@@ -106,8 +110,7 @@ class AstaProvider(ResearchProvider):
             f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(
-                f"Asta provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         search_query, display_query = self._prepare_query_text(query)
         if search_query != query.strip():

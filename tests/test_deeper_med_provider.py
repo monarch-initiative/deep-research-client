@@ -83,11 +83,30 @@ def test_unavailable_reason_points_at_arxiv():
 
 
 def test_base_provider_has_generic_unavailable_reason():
-    """Other providers keep the default wording."""
+    """A provider that names no credential falls back to the default wording."""
+    from deep_research_client.providers.mock import MockProvider
+
+    provider = MockProvider(ProviderConfig(name="mock", enabled=True))
+    assert provider.credential_env_var is None
+    assert provider.unavailable_reason() == "Provider 'mock' is not available"
+
+
+def test_disabled_provider_says_so():
+    """"Not available" is vague for a provider someone switched off on purpose."""
     from deep_research_client.providers.mock import MockProvider
 
     provider = MockProvider(ProviderConfig(name="mock", enabled=False))
-    assert provider.unavailable_reason() == "Provider 'mock' is not available"
+    assert provider.unavailable_reason() == "Provider 'mock' is disabled"
+
+
+def test_a_provider_that_names_its_credential_says_which_one():
+    """The whole point of the base implementation: name the variable to set."""
+    from deep_research_client.providers.openai import OpenAIProvider
+
+    provider = OpenAIProvider(ProviderConfig(name="openai", api_key=None, enabled=True))
+    assert provider.unavailable_reason() == (
+        "no OpenAI Deep Research API key configured (set OPENAI_API_KEY)"
+    )
 
 
 # --- Client-level integration of the stub ---------------------------------

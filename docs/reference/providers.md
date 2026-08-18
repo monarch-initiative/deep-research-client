@@ -504,6 +504,95 @@ Providers are auto-detected based on environment variables:
 deep-research-client providers
 ```
 
+Detection only tells you a provider is **configured** — an API key is set. It
+does not tell you the key is still valid, or that the account can pay for a
+run. To find that out, probe the providers with a cheap live call:
+
+```bash
+# Probe every configured provider
+deep-research-client providers --check
+
+# Probe just one
+deep-research-client providers --check --provider falcon
+```
+
+Each provider reports one of `OK`, `UNREACHABLE`, `NOT CONFIGURED`, or
+`UNKNOWN (no probe available)` — the last meaning that provider has not
+implemented a probe, so configuration is all we know. The command exits
+non-zero if any provider turns out to be unable to take work, which includes a
+named provider that is not configured at all (no probe needed to know that).
+
+A probe proves the credential is accepted. It cannot prove the account has
+credits: Edison, for example, only charges when a task is submitted, so an
+uncredited key passes the probe and fails the run with `402`. A numeric
+balance has to come from the provider's own dashboard.
+
+## Provider Failures
+
+Failures are raised as typed exceptions so callers can tell "switch provider"
+apart from "try again":
+
+| Exception | Statuses | Retryable | Means |
+|-----------|----------|-----------|-------|
+| `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
+| `ProviderBillingError` | 402 | No | Account is out of credits |
+| `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says (bounded by the class, so a trailing `…` on it came from us, not the provider) |
+| `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
+| `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH (a kind of "not configured") |
+| `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
+| `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
+
+`ProviderNotInstalledError` subclasses `ProviderNotConfiguredError`, so one
+`except ProviderNotConfiguredError` covers both a missing key and a missing
+CLI. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
+still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
+flag:
+
+```python
+from deep_research_client import ProviderBillingError, ProviderError
+
+try:
+    result = client.research("...", provider="falcon")
+except ProviderBillingError:
+    ...  # out of credits: a retry cannot help, pick another provider
+except ProviderError as e:
+    if e.retryable:
+        ...
+```
+
+Auth and billing failures are classified even when a provider SDK retries
+internally and reports the result as a timeout — the status is recovered from
+the wrapped exception rather than lost.
+
+### OpenAI
+
+OpenAI reports a spent quota as **429 with `code: "insufficient_quota"`** — the
+same status it uses for ordinary throttling. Reading the status alone would
+mark a spent quota retryable and loop on it forever, so the body's error code
+is checked first and only falls back to the status when there is no code we
+recognise. A model name that does not exist is deliberately left unclassified:
+that is a caller error, not a provider outage.
+
+Its probe (`models.list`) is authenticated but not billed, so like Edison it
+proves the key and nothing more — a key with no quota left still passes. OpenAI
+exposes no balance endpoint; the spent quota only announces itself on a run.
+
+### Claude Code
+
+The `claude_code` provider is a subprocess wrapper, so it has no status codes
+to read. Its failures are classified from what the CLI prints — a spent usage
+allowance, a logged-out session, an expired token, a model the plan does not
+include, or an overloaded API — and the wordings that mean "stop" are kept
+apart from the ones that mean "try again".
+
+Its health probe is the most informative of any provider, and the only free
+one: `claude auth status --json` reads local credentials and makes no model
+call, so `--check` reports the auth method and plan without spending a token.
+
+The one failure the CLI does not always report cleanly is a spent usage limit
+mid-run, which can stall rather than fail. The timeout message points at
+`providers --check` for that reason.
+
 ## Adding Custom Providers
 
 Create a new provider in `src/deep_research_client/providers/`:

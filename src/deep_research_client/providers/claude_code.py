@@ -84,6 +84,44 @@ _LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.\n]+)", re.IGNORECASE)
 # should answer immediately. This only guards against a wedged process.
 _HEALTH_PROBE_TIMEOUT = 30
 
+# A CLI too old to have `auth status` says so like this. That is evidence about
+# the CLI's version, not about whether the provider works.
+_NO_SUCH_SUBCOMMAND = re.compile(
+    r"unknown (?:command|option|argument)|unrecognized|see .?--help|^usage:",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _terminal_result_text(stdout: str) -> str:
+    r"""Pull the terminal ``result`` event's own words out of a stream.
+
+    The stream also carries the model's report, which is prose we must never
+    classify against: a report *about* rate limits or credits contains the same
+    phrases a failure does. Only the CLI's own terminal event is evidence.
+
+    Args:
+        stdout: Raw stdout from the CLI, which may be truncated or malformed.
+
+    Returns:
+        The terminal event's subtype and result text, or "" if there is none.
+
+    >>> _terminal_result_text('{"type": "assistant"}\n{"type": "result", "subtype": "ok", "result": "done"}')
+    'ok done'
+    >>> _terminal_result_text('not json at all')
+    ''
+    """
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "result":
+            return f"{event.get('subtype') or ''} {event.get('result') or ''}".strip()
+    return ""
+
 
 def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     """Classify a Claude Code failure from the text the CLI produced.
@@ -269,6 +307,12 @@ class ClaudeCodeProvider(ResearchProvider):
             Health record for this provider
         """
         if returncode != 0:
+            if _NO_SUCH_SUBCOMMAND.search(f"{stderr}\n{stdout}"):
+                return ProviderHealth(
+                    provider=self.name,
+                    configured=True,
+                    detail="this CLI has no `auth status` subcommand to probe",
+                )
             classified = _classify_cli_failure(self.name, f"{stderr}\n{stdout}")
             detail = classified.diagnosis if classified else (stderr.strip() or stdout.strip())
             return ProviderHealth(
@@ -393,9 +437,12 @@ class ClaudeCodeProvider(ResearchProvider):
         stdout, stderr, returncode = await self._run_process(command, query)
 
         if returncode != 0:
-            # The CLI explains itself on stderr, but also sometimes writes the
-            # reason into the stream before exiting.
-            classified = _classify_cli_failure(self.name, f"{stderr}\n{stdout}")
+            # stderr is the CLI's own voice; from stdout take only the terminal
+            # event. The rest of the stream is the model's report, and a report
+            # that merely discusses usage limits is not a usage limit.
+            classified = _classify_cli_failure(
+                self.name, f"{stderr}\n{_terminal_result_text(stdout)}"
+            )
             if classified is not None:
                 logger.error(classified.actionable_message())
                 raise classified

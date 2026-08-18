@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotConfiguredError
 from ..model_cards import ProviderModelCards, create_asta_model_cards
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import AstaParams
@@ -99,6 +100,16 @@ class AstaProvider(ResearchProvider):
         """Get model cards for Asta provider."""
         return create_asta_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Name the missing credential rather than just reporting a boolean.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return f"Provider '{self.name}' is disabled"
+        return "no Asta API key configured (set ASTA_API_KEY)"
+
     async def research(self, query: str) -> ResearchResult:
         """Retrieve papers and snippets from Asta and format them as markdown."""
         logger.info(f"Starting Asta retrieval query (mode: {self.model})")
@@ -106,8 +117,7 @@ class AstaProvider(ResearchProvider):
             f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(
-                f"Asta provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         search_query, display_query = self._prepare_query_text(query)
         if search_query != query.strip():

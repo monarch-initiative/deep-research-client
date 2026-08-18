@@ -536,11 +536,14 @@ apart from "try again":
 | `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
 | `ProviderBillingError` | 402 | No | Account is out of credits |
 | `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says |
-| `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH |
+| `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
+| `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH (a kind of "not configured") |
 | `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
 | `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
 
-All of them subclass `ProviderError` (itself a `ValueError`, so older callers
+`ProviderNotInstalledError` subclasses `ProviderNotConfiguredError`, so one
+`except ProviderNotConfiguredError` covers both a missing key and a missing
+CLI. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
 still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
 flag:
 

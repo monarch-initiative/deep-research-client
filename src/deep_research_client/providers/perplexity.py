@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 import httpx
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotConfiguredError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import PerplexityParams
 from ..model_cards import ProviderModelCards, create_perplexity_model_cards
@@ -43,13 +44,23 @@ class PerplexityProvider(ResearchProvider):
         """Get model cards for Perplexity provider."""
         return create_perplexity_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Name the missing credential rather than just reporting a boolean.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return f"Provider '{self.name}' is disabled"
+        return "no Perplexity API key configured (set PERPLEXITY_API_KEY)"
+
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Perplexity AI API."""
         logger.info(f"Starting Perplexity research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"Perplexity provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT

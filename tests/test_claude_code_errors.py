@@ -173,3 +173,91 @@ def test_live_auth_status_probe():
 
     assert health.configured is True
     assert health.reachable is not None
+
+
+def test_the_models_own_report_is_never_evidence(monkeypatch):
+    """A report that discusses usage limits is not a usage limit.
+
+    The stream carries the model's prose, which contains the same phrases a
+    real failure does. Only the CLI's own terminal event counts.
+    """
+    provider = _provider()
+    monkeypatch.setattr(provider, "is_available", lambda: True)
+
+    stream = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "# Report\n\nWhen an account is out of credits the API "
+                                    "returns 'Claude usage limit reached' and the credit "
+                                    "balance is too low to continue."
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ),
+            json.dumps({"type": "result", "subtype": "success", "result": "done"}),
+        ]
+    )
+
+    async def _fake_run(command, query):
+        return stream, "", 137  # killed, for a reason the CLI never explained
+
+    monkeypatch.setattr(provider, "_run_process", _fake_run)
+
+    with pytest.raises(ValueError) as excinfo:
+        asyncio.run(provider.research("how does API billing work"))
+
+    assert not isinstance(excinfo.value, ProviderQuotaError)
+    assert not isinstance(excinfo.value, ProviderBillingError)
+    assert "137" in str(excinfo.value)
+
+
+def test_a_real_failure_on_stderr_is_still_caught(monkeypatch):
+    """Ignoring the report must not cost us the CLI's own words."""
+    provider = _provider()
+    monkeypatch.setattr(provider, "is_available", lambda: True)
+
+    async def _fake_run(command, query):
+        return "", "Claude usage limit reached. Your limit will reset at 5pm.", 1
+
+    monkeypatch.setattr(provider, "_run_process", _fake_run)
+
+    with pytest.raises(ProviderQuotaError) as excinfo:
+        asyncio.run(provider.research("anything"))
+
+    assert excinfo.value.resets_at == "5pm"
+
+
+@pytest.mark.parametrize(
+    "stdout,expected",
+    [
+        ('{"type": "result", "subtype": "err", "result": "boom"}', "err boom"),
+        ('{"type": "assistant"}\n{"type": "result", "result": "late"}', "late"),
+        ("garbage\n{not json}", ""),
+        ("", ""),
+    ],
+)
+def test_terminal_result_text_reads_only_the_terminal_event(stdout, expected):
+    """Malformed or truncated streams must not throw on the failure path."""
+    from deep_research_client.providers.claude_code import _terminal_result_text
+
+    assert _terminal_result_text(stdout) == expected
+
+
+def test_a_cli_too_old_to_probe_is_unknown_not_unreachable():
+    """Missing a subcommand says nothing about whether the provider works."""
+    health = _provider()._health_from_auth_status(
+        "", "error: unknown command 'auth'\nUsage: claude [options]", 1
+    )
+
+    assert health.reachable is None
+    assert health.configured is True
+    assert "no `auth status` subcommand" in health.detail

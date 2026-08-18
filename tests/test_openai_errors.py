@@ -116,6 +116,9 @@ def test_probe_reports_unreachable_on_bad_key(monkeypatch):
     class _FailingClient:
         models = _FailingModels()
 
+        def close(self):
+            """Match the real client, which the probe closes."""
+
     monkeypatch.setattr(
         "deep_research_client.providers.openai.OpenAI", lambda **kwargs: _FailingClient()
     )
@@ -136,6 +139,9 @@ def test_probe_says_what_it_cannot_prove(monkeypatch):
 
     class _Client:
         models = _Models()
+
+        def close(self):
+            """Match the real client, which the probe closes."""
 
     monkeypatch.setattr(
         "deep_research_client.providers.openai.OpenAI", lambda **kwargs: _Client()

@@ -13,6 +13,7 @@ from ..exceptions import (
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
+    ProviderNotConfiguredError,
     classify_exception,
 )
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
@@ -115,6 +116,8 @@ class OpenAIProvider(ResearchProvider):
             return ProviderHealth(
                 provider=self.name, configured=True, reachable=False, detail=detail
             )
+        finally:
+            client.close()
         return ProviderHealth(
             provider=self.name,
             configured=True,
@@ -122,13 +125,23 @@ class OpenAIProvider(ResearchProvider):
             detail="credentials accepted (quota not readable until a run)",
         )
 
+    def unavailable_reason(self) -> str:
+        """Name the missing credential rather than just reporting a boolean.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return f"Provider '{self.name}' is disabled"
+        return "no OpenAI API key configured (set OPENAI_API_KEY)"
+
     async def research(self, query: str) -> ResearchResult:
         """Perform research using OpenAI Deep Research API."""
         logger.info(f"Starting OpenAI research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"OpenAI provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         # Create HTTP client with timeout
         http_client = httpx.Client(

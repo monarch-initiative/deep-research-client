@@ -14,6 +14,7 @@ from typing import List, Optional
 import yaml
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotInstalledError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import CyberianParams
 from ..model_cards import ProviderModelCards, create_cyberian_model_cards
@@ -127,7 +128,7 @@ class CyberianProvider(ResearchProvider):
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError("Cyberian provider not available (cyberian not installed)")
+            raise ProviderNotInstalledError(self.name, "the cyberian package is not installed")
 
         workdir_base = self.params.workdir_base
         if workdir_base:

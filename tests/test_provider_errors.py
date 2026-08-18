@@ -181,3 +181,59 @@ def test_unconfigured_provider_reports_unreachable_without_probing():
 
     assert health.configured is False
     assert health.reachable is False
+
+
+def test_provider_errors_survive_pickling():
+    """These may cross a process boundary in a task queue; keep them rebuildable."""
+    import pickle
+
+    from deep_research_client.exceptions import ProviderQuotaError
+
+    billing = pickle.loads(pickle.dumps(ProviderBillingError("falcon", "no credits", 402)))
+    assert isinstance(billing, ProviderBillingError)
+    assert (billing.provider, billing.detail, billing.status_code) == ("falcon", "no credits", 402)
+
+    quota = pickle.loads(pickle.dumps(ProviderQuotaError("claude_code", "spent", resets_at="3pm")))
+    assert quota.resets_at == "3pm"
+
+
+def test_a_dead_end_in_the_retry_wrapper_does_not_abandon_the_search():
+    """A retry whose own attempt says nothing must not end the search.
+
+    The retry loop here runs inside an ``except`` block, so the RetryError is
+    implicitly chained to the HTTP failure that preceded it -- the status is
+    one link further along, and only reachable if the dead end doesn't return.
+    """
+    tenacity = pytest.importorskip("tenacity")
+
+    @tenacity.retry(stop=tenacity.stop_after_attempt(1), reraise=False)
+    def opaque_failure():
+        raise RuntimeError("connection reset by peer")
+
+    request = httpx.Request("GET", "https://api.example.org/v1/thing")
+    try:
+        raise httpx.HTTPStatusError(
+            "boom", request=request, response=httpx.Response(503, request=request)
+        )
+    except httpx.HTTPStatusError:
+        with pytest.raises(tenacity.RetryError) as excinfo:
+            opaque_failure()
+
+    assert extract_status_code(excinfo.value) == 503
+
+
+def test_an_ip_address_is_not_a_status_code():
+    """`extract_status_code` is exported, so its answer has to mean something."""
+    assert extract_status_code(RuntimeError("cannot reach http://127.0.0.1/v1/crows")) is None
+    assert extract_status_code(RuntimeError("proxy at HTTP://10.1.2.3:8080 refused")) is None
+
+
+def test_not_configured_is_one_catchable_class():
+    """A caller skipping unusable providers should need only one except clause."""
+    from deep_research_client.exceptions import (
+        ProviderNotConfiguredError,
+        ProviderNotInstalledError,
+    )
+
+    assert issubclass(ProviderNotInstalledError, ProviderNotConfiguredError)
+    assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)

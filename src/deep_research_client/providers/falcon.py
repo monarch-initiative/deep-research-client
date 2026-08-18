@@ -15,7 +15,7 @@ from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
 from edison_client.models.data_storage_methods import RawFetchResponse
 
 from . import ResearchProvider
-from ..exceptions import ProviderAuthError, classify_exception
+from ..exceptions import ProviderNotConfiguredError, classify_exception
 from ..models import (
     ProviderConfig,
     ProviderHealth,
@@ -64,13 +64,23 @@ class FalconProvider(ResearchProvider):
         """Get model cards for Falcon provider."""
         return create_falcon_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Name the missing credential rather than just reporting a boolean.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return f"Provider '{self.name}' is disabled"
+        return "no Edison API key configured (set EDISON_API_KEY)"
+
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Edison Scientific API."""
         logger.info(f"Starting Edison research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"Edison provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         # EdisonClient authenticates in its constructor, so a rejected key
         # fails here rather than on the first call.
@@ -79,8 +89,13 @@ class FalconProvider(ResearchProvider):
         except Exception as e:
             logger.error(f"Edison authentication failed: {e}")
             logger.debug("Error details:", exc_info=True)
+            # Only a failure we can explain gets relabelled. A DNS failure, a
+            # proxy refusal or an SDK signature change is not an auth problem,
+            # and saying so would send the reader after the wrong fix.
             classified = classify_exception(self.name, e)
-            raise (classified or ProviderAuthError(self.name, str(e))) from e
+            if classified is not None:
+                raise classified from e
+            raise
 
         # Use custom system prompt or default
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
@@ -129,6 +144,7 @@ class FalconProvider(ResearchProvider):
                 detail=self.unavailable_reason(),
             )
 
+        client = None
         try:
             # EdisonClient authenticates in its constructor, so a bad key fails
             # here rather than on the first call.
@@ -143,6 +159,9 @@ class FalconProvider(ResearchProvider):
             return ProviderHealth(
                 provider=self.name, configured=True, reachable=False, detail=detail
             )
+        finally:
+            if client is not None:
+                client.close()
         return ProviderHealth(
             provider=self.name,
             configured=True,
@@ -153,7 +172,7 @@ class FalconProvider(ResearchProvider):
     def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
         """Retrieve an existing Edison trajectory and preserve its artifacts."""
         if not self.is_available():
-            raise ValueError(f"Edison provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         client = EdisonClient(api_key=self.config.api_key)
         logger.info(f"Retrieving Edison trajectory {trajectory_id}")

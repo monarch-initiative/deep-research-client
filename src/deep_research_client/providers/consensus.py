@@ -6,12 +6,15 @@ from typing import List, Optional
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import classify_status
+from ..exceptions import ProviderNotConfiguredError, classify_status
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
 
 logger = logging.getLogger(__name__)
+
+#: Cap on how much of an error body reaches an exception message.
+_MAX_BODY_CHARS = 200
 
 #: Consensus-specific wording for statuses the generic classifier can't know about.
 _CONSENSUS_STATUS_DETAIL = {
@@ -43,13 +46,23 @@ class ConsensusProvider(ResearchProvider):
         """Get model cards for Consensus provider."""
         return create_consensus_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Name the missing credential rather than just reporting a boolean.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return f"Provider '{self.name}' is disabled"
+        return "no Consensus API key configured (set CONSENSUS_API_KEY)"
+
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Consensus AI API."""
         logger.info(f"Starting Consensus research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError(f"Consensus provider not available (API key: {bool(self.config.api_key)})")
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         # Create HTTP client with timeout
         http_client = httpx.AsyncClient(
@@ -109,11 +122,13 @@ class ConsensusProvider(ResearchProvider):
         except httpx.HTTPStatusError as e:
             logger.error(f"Consensus API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
-            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, e.response.text)
+            # A 5xx body is often a full HTML error page; keep the message readable.
+            body = e.response.text[:_MAX_BODY_CHARS]
+            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, body)
             classified = classify_status(self.name, e.response.status_code, detail)
             if classified is not None:
                 raise classified from e
-            raise ValueError(f"Consensus API error: {e.response.status_code} - {e.response.text}")
+            raise ValueError(f"Consensus API error: {e.response.status_code} - {body}")
         except httpx.RequestError as e:
             logger.error(f"Consensus API request failed: {e}")
             logger.debug("Error details:", exc_info=True)

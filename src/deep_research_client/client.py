@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from .cache import CacheManager
+from .exceptions import ProviderNotConfiguredError
 from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
 from .providers import ProviderRegistry, ResearchProvider
 from .provider_params import BaseProviderParams, create_provider_params
@@ -302,7 +303,7 @@ class DeepResearchClient:
             if not base_provider:
                 raise ValueError(f"Provider '{provider}' not found")
             if not base_provider.is_available():
-                raise ValueError(base_provider.unavailable_reason())
+                raise ProviderNotConfiguredError(provider, base_provider.unavailable_reason())
 
             # Create new instance with custom parameters if needed
             if provider_params or model:

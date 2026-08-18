@@ -25,7 +25,7 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
-from .models import ResearchResult, sanitize_artifact_filename
+from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -261,7 +261,8 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
         provider: Probe only this provider, or all configured ones when None.
 
     Raises:
-        typer.Exit: If a named provider is unknown, or no probe succeeded.
+        typer.Exit: If a named provider is unknown, or any probed provider
+            turned out to be unreachable.
     """
     import asyncio
 
@@ -280,9 +281,26 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             raise typer.Exit(1)
 
     async def _probe():
-        return await asyncio.gather(*(t.check_health() for t in targets))
+        return await asyncio.gather(
+            *(t.check_health() for t in targets), return_exceptions=True
+        )
 
-    reports = asyncio.run(_probe())
+    outcomes = asyncio.run(_probe())
+
+    # A probe that raises is still a report. This is the command people run
+    # *because* something is already broken, so one provider blowing up must
+    # not cost them the lines for all the others.
+    reports = [
+        outcome
+        if isinstance(outcome, ProviderHealth)
+        else ProviderHealth(
+            provider=target.name,
+            configured=True,
+            reachable=False,
+            detail=f"the probe itself failed: {outcome}",
+        )
+        for target, outcome in zip(targets, outcomes)
+    ]
 
     typer.echo("Provider health:")
     for report in reports:
@@ -1068,11 +1086,12 @@ def providers(
 
     logger.debug("Initializing client to check providers")
     client = DeepResearchClient()
-    available = client.get_available_providers()
 
     if check:
         _check_provider_health(client, provider)
         return
+
+    available = client.get_available_providers()
 
     if provider:
         # Show details for specific provider

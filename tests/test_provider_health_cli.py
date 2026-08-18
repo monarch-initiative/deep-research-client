@@ -1,0 +1,129 @@
+"""Tests for the `providers --check` surface.
+
+This is the command people run *because* something is already broken, so it
+has to survive its own probes failing and still report on everything else.
+"""
+
+import pytest
+import typer
+
+from deep_research_client.cli import _check_provider_health
+from deep_research_client.models import ProviderHealth
+
+
+class _StubProvider:
+    """A provider whose probe returns, or raises, whatever a test needs."""
+
+    def __init__(
+        self,
+        name: str,
+        health: ProviderHealth | None = None,
+        error: Exception | None = None,
+    ):
+        """Record what this provider's probe should do."""
+        self.name = name
+        self._health = health
+        self._error = error
+
+    async def check_health(self) -> ProviderHealth:
+        """Return the configured health, or raise the configured error."""
+        if self._error is not None:
+            raise self._error
+        assert self._health is not None, "stub needs either a health or an error"
+        return self._health
+
+
+class _StubRegistry:
+    """Just enough registry for the health command."""
+
+    def __init__(self, providers: list[_StubProvider]):
+        """Hold the providers this registry knows about."""
+        self._providers = {p.name: p for p in providers}
+
+    def get_provider(self, name: str):
+        """Look a provider up by name."""
+        return self._providers.get(name)
+
+    def get_available_providers(self) -> list[_StubProvider]:
+        """Every stub is treated as configured."""
+        return list(self._providers.values())
+
+
+class _StubClient:
+    """A client that owns only a registry."""
+
+    def __init__(self, providers: list[_StubProvider]):
+        """Wrap the providers in a registry."""
+        self.registry = _StubRegistry(providers)
+
+
+def _ok(name: str) -> _StubProvider:
+    """A provider that probes clean."""
+    return _StubProvider(name, ProviderHealth(provider=name, configured=True, reachable=True))
+
+
+def _down(name: str) -> _StubProvider:
+    """A provider that probes unreachable."""
+    return _StubProvider(
+        name, ProviderHealth(provider=name, configured=True, reachable=False, detail="402 no credits")
+    )
+
+
+def test_all_healthy_exits_zero(capsys):
+    """Nothing wrong means nothing to signal."""
+    _check_provider_health(_StubClient([_ok("a"), _ok("b")]), None)
+
+    out = capsys.readouterr().out
+    assert "a: OK" in out and "b: OK" in out
+
+
+def test_any_unreachable_exits_nonzero(capsys):
+    """A broken provider has to be visible to a shell script, not just a reader."""
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient([_ok("a"), _down("b")]), None)
+
+    assert excinfo.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "a: OK" in out
+    assert "b: UNREACHABLE" in out
+
+
+def test_a_probe_that_raises_does_not_cost_the_other_reports(capsys):
+    """One provider blowing up must not take the whole report with it."""
+    providers = [_ok("a"), _StubProvider("b", error=FileNotFoundError("claude")), _ok("c")]
+
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient(providers), None)
+
+    assert excinfo.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "a: OK" in out and "c: OK" in out
+    assert "b: UNREACHABLE" in out
+    assert "the probe itself failed" in out
+
+
+def test_unknown_provider_is_rejected():
+    """A typo should not silently probe nothing and report success."""
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient([_ok("a")]), "nosuchprovider")
+
+    assert excinfo.value.exit_code == 1
+
+
+def test_named_provider_is_the_only_one_probed(capsys):
+    """--provider narrows the probe rather than filtering the output."""
+    _check_provider_health(_StubClient([_ok("a"), _down("b")]), "a")
+
+    out = capsys.readouterr().out
+    assert "a: OK" in out
+    assert "b" not in out
+
+
+def test_no_configured_providers_is_an_error(capsys):
+    """Probing nothing is not the same as everything being fine."""
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient([]), None)
+
+    assert excinfo.value.exit_code == 1
+    # The user is told what to set rather than just that nothing happened.
+    assert "OPENAI_API_KEY" in capsys.readouterr().out

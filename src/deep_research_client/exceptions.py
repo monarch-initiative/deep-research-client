@@ -29,6 +29,7 @@ __all__ = [
     "ProviderAuthError",
     "ProviderBillingError",
     "ProviderQuotaError",
+    "ProviderNotConfiguredError",
     "ProviderNotInstalledError",
     "ProviderRateLimitError",
     "ProviderTransientError",
@@ -80,6 +81,17 @@ class ProviderError(ValueError):
         """
         status = f"{self.status_code} " if self.status_code else ""
         return f"{status}{self.detail} -- {self.remedy}"
+
+    def __reduce__(self) -> tuple:
+        """Rebuild through ``__init__`` so the error survives pickling.
+
+        The base ``ValueError.__reduce__`` would replay only the rendered
+        message, which this class does not accept as its sole argument.
+
+        Returns:
+            Callable and arguments that reconstruct an equal error
+        """
+        return (type(self), (self.provider, self.detail, self.status_code))
 
     def actionable_message(self) -> str:
         """Render a message that tells the reader what to do next.
@@ -147,8 +159,27 @@ class ProviderQuotaError(ProviderError):
             self.remedy = f"{type(self).remedy}, and renews at {resets_at}"
         super().__init__(provider, detail, status_code)
 
+    def __reduce__(self) -> tuple:
+        """Rebuild through ``__init__``, keeping the reset time.
 
-class ProviderNotInstalledError(ProviderError):
+        Returns:
+            Callable and arguments that reconstruct an equal error
+        """
+        return (type(self), (self.provider, self.detail, self.status_code, self.resets_at))
+
+
+class ProviderNotConfiguredError(ProviderError):
+    """The provider cannot be used until someone sets it up.
+
+    Distinct from an auth failure: nothing was rejected, because nothing was
+    sent. Callers that want to skip a provider rather than diagnose it can
+    catch this one class and cover both a missing key and a missing CLI.
+    """
+
+    remedy = "the provider is not configured"
+
+
+class ProviderNotInstalledError(ProviderNotConfiguredError):
     """A provider backed by a local command-line tool has no tool to run.
 
     No credential fixes this one, which is why it is not an auth failure.
@@ -181,8 +212,12 @@ _STATUS_MAP: dict[int, type[ProviderError]] = {
 
 # httpx renders failures as: Client error '402 Payment Required' for url '...'
 _QUOTED_STATUS = re.compile(r"'(\d{3})\s+[A-Za-z]")
-# Fallback for SDKs that write the code out in prose.
-_PROSE_STATUS = re.compile(r"(?:HTTP|status(?:\s+code)?)\D{0,3}(\d{3})", re.IGNORECASE)
+# Fallback for SDKs that write the code out in prose. The separator excludes
+# slashes so that a URL ("http://127.0.0.1/...") cannot pass its first octet off
+# as a status, and the value must look like one.
+_PROSE_STATUS = re.compile(
+    r"(?:HTTP|status(?:\s+code)?)[\s:=-]{0,3}([1-5]\d{2})\b(?!\.\d)", re.IGNORECASE
+)
 
 
 def classify_status(
@@ -233,6 +268,8 @@ def extract_status_code(exc: BaseException) -> Optional[int]:
     503
     >>> extract_status_code(RuntimeError("connection reset")) is None
     True
+    >>> extract_status_code(RuntimeError("connecting to http://127.0.0.1/v1")) is None
+    True
     """
     seen: set[int] = set()
     current: Optional[BaseException] = exc
@@ -249,7 +286,9 @@ def extract_status_code(exc: BaseException) -> Optional[int]:
         if last_attempt is not None and getattr(last_attempt, "failed", False):
             nested = last_attempt.exception()
             if nested is not None and id(nested) not in seen:
-                return extract_status_code(nested)
+                nested_code = extract_status_code(nested)
+                if nested_code is not None:
+                    return nested_code
 
         for pattern in (_QUOTED_STATUS, _PROSE_STATUS):
             match = pattern.search(str(current))

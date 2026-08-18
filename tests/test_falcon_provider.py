@@ -720,6 +720,10 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
             self.get_task_calls.append((task_id, verbose))
             return verbose_response
 
+        def close(self) -> None:
+            """Match the real client, which the provider closes after use."""
+            self.closed = True
+
     created_clients: list[FakeEdisonClient] = []
 
     def fake_client_factory(api_key: str):

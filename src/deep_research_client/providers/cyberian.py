@@ -6,6 +6,7 @@ perform iterative deep research.
 
 import asyncio
 import logging
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import List, Optional
 import yaml
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotInstalledError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import CyberianParams
 from ..model_cards import ProviderModelCards, create_cyberian_model_cards
@@ -93,6 +95,33 @@ class CyberianProvider(ResearchProvider):
         """Get model cards for Cyberian provider."""
         return create_cyberian_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Say which of the two gates is shut.
+
+        cyberian ships as a main dependency, so the import almost never fails;
+        what does fail is `agentapi`, a separate Go binary that no `pip
+        install` provides. Reporting the package as missing would send the
+        reader to reinstall something they already have.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return super().unavailable_reason()
+
+        try:
+            import cyberian  # noqa: F401
+        except ImportError:
+            return "the cyberian package is not installed"
+
+        if shutil.which("agentapi") is None:
+            return (
+                "the `agentapi` binary was not found on PATH; cyberian drives local "
+                "agents through it, and it installs separately from this package"
+            )
+
+        return super().unavailable_reason()
+
     def is_available(self) -> bool:
         """Check if cyberian is available."""
         if not self.config.enabled:
@@ -106,7 +135,6 @@ class CyberianProvider(ResearchProvider):
             return False
 
         # Check if agentapi is available in PATH
-        import shutil
         if not shutil.which("agentapi"):
             logger.warning("agentapi not found in PATH")
             return False
@@ -127,7 +155,7 @@ class CyberianProvider(ResearchProvider):
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
         if not self.is_available():
-            raise ValueError("Cyberian provider not available (cyberian not installed)")
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
 
         workdir_base = self.params.workdir_base
         if workdir_base:

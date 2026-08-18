@@ -1,11 +1,14 @@
 """High-level processing interface for research operations."""
 
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import TYPE_CHECKING, Optional, Dict, Any, List, Tuple
 
 from .template_processor import TemplateProcessor
 from .result_formatter import ResultFormatter
 from ..models import ResearchResult
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from ..validation.models import ReferenceValidationReport
 
 
 class ResearchProcessor:
@@ -43,20 +46,24 @@ class ResearchProcessor:
         return self.template_processor.process_template(template_path, parsed_variables)
 
     def format_research_result(
-        self, 
-        result: ResearchResult, 
-        separate_citations: bool = False
+        self,
+        result: ResearchResult,
+        separate_citations: bool = False,
+        reference_validation: Optional["ReferenceValidationReport"] = None,
     ) -> str:
         """Format a research result as markdown.
 
         Args:
             result: Research result to format
             separate_citations: If True, excludes citations from main content
+            reference_validation: Optional reference validation report to embed
 
         Returns:
             Formatted markdown string
         """
-        return self.result_formatter.format_full_markdown(result, separate_citations)
+        return self.result_formatter.format_full_markdown(
+            result, separate_citations, reference_validation
+        )
 
     def format_citations_only(self, result: ResearchResult) -> str:
         """Format just the citations from a research result.

@@ -29,7 +29,7 @@ broadly a superset of the previous one):
 |------|-----------|--------------|----------|
 | 1 | `retriever` | Returns retrieved evidence (papers, passages, snippets) with no authored synthesis. | Asta |
 | 2 | `synthesizer` | Searches one or more corpora and writes a cited narrative report — the classic "deep research" tool. | OpenAI Deep Research, Perplexity, Consensus, Edison/Falcon |
-| 3 | `agentic_researcher` | A multi-step agent that plans, browses, and may run tools/code, still oriented around producing a written answer. | Claude Code, Cyberian |
+| 3 | `agentic_researcher` | A multi-step agent that plans, browses, and may run tools/code, still oriented around producing a written answer. | Claude Code, Cyberian, DeepER-Med |
 | 4 | `co_scientist` | An autonomous scientific agent that forms and tests hypotheses, runs code against biomedical data, and can design experiments. | OpenScientist, Biomni |
 
 ```

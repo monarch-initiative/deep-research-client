@@ -42,6 +42,7 @@ from .models import (
     TopicCoverage,
     TopicCoverageScore,
 )
+from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +55,12 @@ MAX_DESCRIPTION_CHARS = 500
 # Citation extraction helpers
 # ---------------------------------------------------------------------------
 
-# Patterns for PMID and DOI references in markdown text
-_PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})", re.IGNORECASE)
-_DOI_PATTERN = re.compile(r"(?:doi[:\s]*|https?://doi\.org/)(10\.\d{4,}/\S+)", re.IGNORECASE)
-_URL_PATTERN = re.compile(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)")
-
 
 def extract_citations_from_markdown(markdown: str) -> list[ExtractedCitation]:
     """Extract all PMID and DOI citations from markdown text.
+
+    Thin wrapper over :func:`deep_research_client.validation.find_reference_ids`,
+    which owns the identifier patterns shared with reference validation.
 
     >>> cits = extract_citations_from_markdown("This was shown (PMID:7913883) and confirmed (DOI:10.1038/ng1234).")
     >>> [c.normalized_id for c in cits]
@@ -70,28 +69,14 @@ def extract_citations_from_markdown(markdown: str) -> list[ExtractedCitation]:
     >>> [c.normalized_id for c in cits2]
     ['PMID:12345678']
     """
-    seen: set[str] = set()
-    citations: list[ExtractedCitation] = []
-
-    for match in _PMID_PATTERN.finditer(markdown):
-        pmid = f"PMID:{match.group(1)}"
-        if pmid not in seen:
-            seen.add(pmid)
-            citations.append(ExtractedCitation(raw_reference=match.group(0), normalized_id=pmid))
-
-    for match in _URL_PATTERN.finditer(markdown):
-        pmid = f"PMID:{match.group(1)}"
-        if pmid not in seen:
-            seen.add(pmid)
-            citations.append(ExtractedCitation(raw_reference=match.group(0), normalized_id=pmid, url=match.group(0)))
-
-    for match in _DOI_PATTERN.finditer(markdown):
-        doi = f"DOI:{match.group(1).rstrip('.,;)')}"
-        if doi not in seen:
-            seen.add(doi)
-            citations.append(ExtractedCitation(raw_reference=match.group(0), normalized_id=doi))
-
-    return citations
+    return [
+        ExtractedCitation(
+            raw_reference=found.raw,
+            normalized_id=found.normalized_id,
+            url=found.url,
+        )
+        for found in find_reference_ids(markdown)
+    ]
 
 
 def extract_claims_with_citations(markdown: str) -> list[ExtractedClaim]:

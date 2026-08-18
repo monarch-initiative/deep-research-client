@@ -166,3 +166,40 @@ def test_asta_is_retriever():
         "Asta Scientific Corpus Retrieval"
     )
     assert card.archetype == ProviderArchetype.retriever
+
+
+def test_vocabulary_datamodel_matches_linkml_schema() -> None:
+    """The generated vocabularies are pinned to their schema, as validation's are.
+
+    deep_research_client_pydantic.py is generated; regenerate it with
+    `just gen-datamodel`. Without this, a linkml upgrade silently leaves the
+    checked-in enums behind the schema that is their source of truth.
+    """
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    schema = Path("src/deep_research_client/schema/deep_research_client.yaml")
+    generated = repo_root / "src/deep_research_client/datamodel/deep_research_client_pydantic.py"
+
+    # Resolve the generator next to the running interpreter so the comparison
+    # uses the linkml version this environment pins, not whatever is on PATH.
+    gen_pydantic = shutil.which("gen-pydantic", path=str(Path(sys.executable).parent))
+    if not gen_pydantic:
+        pytest.skip("linkml is not installed; install the dev dependency group to check drift")
+
+    completed = subprocess.run(
+        [gen_pydantic, str(schema)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, f"gen-pydantic failed:\n{completed.stderr}"
+
+    assert completed.stdout == generated.read_text(encoding="utf-8"), (
+        "deep_research_client_pydantic.py does not match deep_research_client.yaml. "
+        "Either the schema changed or linkml was upgraded; run `just gen-datamodel` "
+        "and review the diff."
+    )

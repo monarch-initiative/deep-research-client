@@ -23,6 +23,7 @@ import re
 from typing import Any, List, Optional
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotInstalledError, classify_exception
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import BiomniParams
 from ..model_cards import ProviderModelCards, create_biomni_model_cards
@@ -67,6 +68,27 @@ class BiomniProvider(ResearchProvider):
         """Get model cards for the Biomni provider."""
         return create_biomni_model_cards()
 
+    def unavailable_reason(self) -> str:
+        """Name the optional package, since no credential is what is missing.
+
+        Biomni needs no API key of its own -- it drives whatever LLM it is
+        configured with -- so the base class's "no API key configured" would
+        send the reader looking for a variable that does not exist.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return super().unavailable_reason()
+
+        if importlib.util.find_spec("biomni") is None:
+            return (
+                "the biomni package is not installed "
+                "(pip install deep-research-client[biomni])"
+            )
+
+        return super().unavailable_reason()
+
     def is_available(self) -> bool:
         """Check whether the optional ``biomni`` package is importable."""
         if not self.config.enabled:
@@ -91,10 +113,7 @@ class BiomniProvider(ResearchProvider):
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
         if not self.is_available():
-            raise ValueError(
-                "Biomni provider not available. "
-                "Install it with: pip install deep-research-client[biomni]"
-            )
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
 
         start_time = datetime.now()
         logger.info("Starting Biomni agent run (data path: %s)", self.data_path)
@@ -105,6 +124,12 @@ class BiomniProvider(ResearchProvider):
         except Exception as e:  # noqa: BLE001 - surface a clean provider error
             logger.error("Biomni agent run failed: %s", e)
             logger.debug("Error details:", exc_info=True)
+            # Biomni drives an LLM of its own, so an auth or quota failure from
+            # that model arrives here; classify it rather than flattening every
+            # cause into one message.
+            classified = classify_exception(self.name, e)
+            if classified is not None:
+                raise classified from e
             raise ValueError(f"Biomni agent error: {e}") from e
 
         markdown = self._result_to_markdown(raw)

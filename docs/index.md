@@ -32,6 +32,7 @@ uvx deep-research-client research "Analyze recent advances in solid-state batter
 - **Templates**: Create reusable research queries with variables
 - **Model Selection**: Choose speed vs comprehensiveness
 - **Citations**: All results include source references
+- **Reference Validation**: Check that cited PMIDs/DOIs exist and that quotes are real
 
 ## Supported Providers
 
@@ -60,6 +61,7 @@ Solve specific problems:
 
 - [Choose a Provider](how-to/choose-provider.md) - Pick the right provider
 - [Use Templates](how-to/templates.md) - Create reusable queries
+- [Validate References](how-to/validate-references.md) - Catch confabulated citations
 - [Manage Cache](how-to/cache.md) - Control caching behavior
 - [Use Proxies](how-to/proxies.md) - Route through CBORG or custom endpoints
 

@@ -2,9 +2,12 @@
 
 from collections import Counter
 import yaml
-from typing import Dict, Any
+from typing import TYPE_CHECKING, Dict, Any, Optional
 
 from ..models import ResearchResult
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from ..validation.models import ReferenceValidationReport
 
 
 class ResultFormatter:
@@ -13,13 +16,17 @@ class ResultFormatter:
     def format_full_markdown(
         self,
         result: ResearchResult,
-        separate_citations: bool = False
+        separate_citations: bool = False,
+        reference_validation: Optional["ReferenceValidationReport"] = None,
     ) -> str:
         """Format result as markdown with YAML frontmatter.
 
         Args:
             result: Research result to format
             separate_citations: If True, excludes citations from main content
+            reference_validation: Optional reference validation report; when
+                given, a summary is added to the frontmatter and a
+                "Reference Validation" section is appended to the body
 
         Returns:
             Formatted markdown with frontmatter
@@ -73,6 +80,10 @@ class ResultFormatter:
         # Add citation count
         if result.citations:
             metadata["citation_count"] = len(result.citations)
+
+        # Add reference validation summary
+        if reference_validation is not None:
+            metadata["reference_validation"] = reference_validation.summary()
 
         if result.artifacts:
             metadata["artifact_count"] = len(result.artifacts)
@@ -144,6 +155,11 @@ class ResultFormatter:
             parts.append("")
             for i, citation in enumerate(result.citations, 1):
                 parts.append(f"{i}. {citation}")
+
+        # Add reference validation section
+        if reference_validation is not None:
+            parts.append("")
+            parts.append(reference_validation.to_markdown().rstrip())
 
         return "\n".join(parts)
 

@@ -14,6 +14,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
+- ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -27,6 +28,9 @@ uvx deep-research-client research "What is CRISPR?"
 
 # Or add to a uv project
 uv add deep-research-client
+
+# With reference validation (checks cited identifiers actually exist)
+pip install "deep-research-client[validation]"
 
 # For development
 git clone <repo-url>
@@ -112,6 +116,12 @@ deep-research-client research --template gene_advanced.md.j2 \
 # List available providers
 deep-research-client providers
 
+# Ask each configured provider whether it can actually take work.
+# "Configured" only means a key is set; this probes reachability and
+# exits non-zero if any provider cannot run.
+deep-research-client providers --check
+deep-research-client providers --check --provider falcon
+
 # List available models (with costs, speeds, and capabilities)
 deep-research-client models
 deep-research-client models --provider perplexity --detailed
@@ -119,9 +129,34 @@ deep-research-client models --provider perplexity --detailed
 # Cache management
 deep-research-client list-cache   # Show cached files
 deep-research-client clear-cache  # Remove all cache
+
+# Check that cited identifiers exist and quotes are real (needs the `validation` extra)
+deep-research-client research "Statins and myopathy" --output report.md --validate-references
+deep-research-client validate-references report.md --fail-on-unresolved
 ```
 
 You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
+
+### Reference Validation
+
+Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference.
+
+Resolving is not the same as being relevant, so each resolved record is also weighed against the report's own vocabulary - which catches the citation that is real, quotable and about an entirely different subject:
+
+```python
+from deep_research_client import DeepResearchClient, ReferenceValidator
+
+result = DeepResearchClient().research("Statins and myopathy risk")
+report = ReferenceValidator(email="you@example.org").validate_result(result)
+
+print(report.confabulation_rate)          # fraction of citations that do not resolve
+print(report.confabulated_references)     # the identifiers that failed
+print(report.unsupported_quotes)          # quotes not found in their cited source
+print(report.off_topic_references)        # references that resolve but look off topic
+print(report.to_markdown())               # renderable summary section
+```
+
+On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
 
 ### Python Library Usage
 
@@ -321,6 +356,7 @@ params = ClaudeCodeParams(
     skip_permissions=False,        # default; True bypasses ALL checks (see below)
     add_dirs=["/data/papers"],     # optional --add-dir entries
     working_dir=None,              # optional cwd for the run
+    min_report_chars=200,          # fail loudly on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
 
@@ -336,6 +372,8 @@ result = client.research(
 - Auto-detected whenever `claude` is on PATH; set `DISABLE_CLAUDE_CODE_PROVIDER=true` to opt out.
 - **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
 - **Reading local documents:** the default toolset is web-only and omits the `Read` tool. To research over files you supply (e.g. via `add_dirs`), add `Read` to `allowed_tools` explicitly: `allowed_tools=["WebSearch", "WebFetch", "Read"]`. It is left out by default because filesystem read access is unnecessary for web research and is a mild information-disclosure surface for untrusted queries.
+- **Empty-report guard (behavior change):** a report shorter than `min_report_chars` (default 200) now raises instead of writing a well-formed file containing no research. Runs that previously returned a short answer successfully will now fail — set `min_report_chars=0` if you expect short answers. This is an emptiness check, not a quality check.
+- **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

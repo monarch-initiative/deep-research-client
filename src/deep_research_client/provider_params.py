@@ -288,6 +288,16 @@ class OpenScientistParams(BaseProviderParams):
     )
 
 
+class DeeperMedParams(BaseProviderParams):
+    """Parameters specific to the DeepER-Med provider stub.
+
+    There are no provider-specific parameters yet. The upstream system
+    (arXiv:2604.15456) is not publicly callable, so its tunable surface is
+    unknown; only the inherited base fields are accepted. Fields will be added
+    here once an API is published.
+    """
+
+
 class CyberianParams(BaseProviderParams):
     """Parameters specific to Cyberian agent-based research provider.
 
@@ -401,6 +411,16 @@ class ClaudeCodeParams(BaseProviderParams):
             "Overridden by ProviderConfig.timeout when that is set."
         )
     )
+    min_report_chars: int = Field(
+        default=200,
+        ge=0,
+        description=(
+            "Minimum plausible length, in characters, of the returned report. A "
+            "shorter result raises rather than writing a well-formed file with no "
+            "research in it, which is otherwise a silent and expensive no-op. Set "
+            "to 0 to disable the check when short answers are expected."
+        )
+    )
     extra_args: List[str] = Field(
         default_factory=list,
         description=(
@@ -482,6 +502,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
     "biomni": BiomniParams,
+    "deeper_med": DeeperMedParams,
 }
 
 

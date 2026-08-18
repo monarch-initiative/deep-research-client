@@ -11,6 +11,7 @@ import importlib.util
 
 import pytest
 
+from deep_research_client.exceptions import ProviderNotInstalledError
 from deep_research_client.models import ProviderConfig
 from deep_research_client.model_cards import (
     ProviderArchetype,
@@ -81,8 +82,28 @@ def test_disabled_config_is_unavailable():
 async def test_research_requires_available_provider():
     if BIOMNI_INSTALLED:
         pytest.skip("biomni installed; availability guard not exercised")
-    with pytest.raises(ValueError, match="not available"):
+    # ProviderNotInstalledError, not a bare ValueError: no credential fixes a
+    # missing local package, and callers branch on the type to say so.
+    with pytest.raises(ProviderNotInstalledError, match="biomni package is not installed"):
         await make_provider().research("some biomedical question")
+
+
+def test_unavailable_reason_names_the_package_not_a_key():
+    """Biomni has no credential of its own, so the base wording would misdirect."""
+    if BIOMNI_INSTALLED:
+        pytest.skip("biomni installed; the missing-package branch is not reachable")
+    reason = make_provider().unavailable_reason()
+
+    assert "biomni package is not installed" in reason
+    assert "deep-research-client[biomni]" in reason
+    assert "API key" not in reason
+
+
+def test_unavailable_reason_reports_a_disabled_provider_as_disabled():
+    """A disabled provider is not a missing install, whatever is on disk."""
+    provider = BiomniProvider(ProviderConfig(name="biomni", enabled=False))
+
+    assert provider.unavailable_reason() == "Provider 'biomni' is disabled"
 
 
 @pytest.mark.asyncio

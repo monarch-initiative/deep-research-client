@@ -1,0 +1,410 @@
+"""Extraction of reference identifiers and quoted claims from report markdown.
+
+This module is deliberately dependency-free (standard library only) so that it
+can be used without installing the optional ``validation`` extra. The actual
+resolution of the extracted identifiers lives in
+:mod:`deep_research_client.validation.validator`.
+"""
+
+import re
+from dataclasses import dataclass, field
+from typing import Iterable, Optional
+
+# Patterns for PMID and DOI references in markdown text. The negative lookahead on
+# PMID stops a longer number (an accession, a phone number) from being truncated
+# into a plausible-looking nine-digit PMID.
+_PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
+# The capture stops at characters that never occur inside a DOI, so a DOI in a
+# tight table cell (|doi:10.1/a|b|) does not swallow the next cell. Parentheses
+# are deliberately allowed through, since DOIs such as
+# 10.1016/0092-8674(94)90302-6 contain them; trailing ones are stripped below.
+#
+# The third alternative matches publisher landing pages - pnas.org/doi/10.1073/x,
+# onlinelibrary.wiley.com/doi/10.1002/x, tandfonline.com/doi/full/10.1080/x - which
+# is how deep research tools most often render a DOI. Without it those citations
+# are silently left unchecked, so the report understates its own coverage.
+#
+# The last alternative covers publishers that put the DOI under an article path
+# rather than a /doi/ one - link.springer.com/article/10.1186/…,
+# frontiersin.org/…/articles/10.3389/… . It can only fire immediately before a
+# DOI, so nature.com/articles/371252a0, whose id is not a DOI, is left alone.
+# The URL branches are grouped so that a DOI lifted out of a link can be told
+# apart from one written as doi:10.x/y. Only the former gets its trailing path
+# furniture stripped, since in a doi: form those characters are the identifier.
+_DOI_PATTERN = re.compile(
+    r"(?:"
+    r"doi[:\s]*"
+    r"|(?P<url>"
+    r"https?://(?:dx\.)?doi\.org/"
+    r"|/doi/(?:[a-z]+/)*"
+    r"|/articles?/"
+    r"|\?id="
+    r")"
+    r")(?P<doi>10\.\d{4,}/[^\s|`\"<>]+)",
+    re.IGNORECASE,
+)
+
+# Trailing path segments a publisher appends to a DOI-bearing URL: /full, /pdf,
+# /tables/1, /figures/2 and so on. Enumerating the vocabulary was tried first and
+# does not hold - each publisher family this pattern reaches brings its own - so
+# the shape is matched instead: a lowercase word, optionally followed by a
+# number. A DOI suffix whose own final segment looks like that would be trimmed
+# too, which is the accepted cost; such DOIs are rare, and the alternative is
+# reporting every figure or table link in a report as possibly fabricated.
+_DOI_URL_FURNITURE = re.compile(r"(?:/[a-z]+(?:/\d+)?)+$", re.IGNORECASE)
+# Both the current pubmed.ncbi.nlm.nih.gov host and the older
+# www.ncbi.nlm.nih.gov/pubmed path, which providers still emit.
+_URL_PATTERN = re.compile(
+    r"https?://(?:pubmed\.ncbi\.nlm\.nih\.gov|(?:www\.)?ncbi\.nlm\.nih\.gov/pubmed)/(\d+)"
+)
+
+# A markdown escape: a backslash before an ASCII punctuation character. Providers
+# emit these inside DOIs (10.1007/978-3-030-80614-9\_8), and a DOI never contains
+# a backslash of its own, so unescaping is safe.
+_MARKDOWN_ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
+
+# PMC accessions, bare or as one of the two article URL hosts. Long-form reports
+# cite these heavily - a Marfan report from claude_code carried 17 distinct PMC
+# accessions against 18 PMIDs - so leaving them out halves real coverage.
+# The five-digit floor was checked against NCBI rather than assumed: PMC1000,
+# PMC2500, PMC5000, PMC7777 and PMC9999 do not exist, and the range starts at
+# PMC13900. The trailing boundary is what stops a longer number being clipped.
+_PMC_PATTERN = re.compile(
+    r"(?:https?://(?:www\.ncbi\.nlm\.nih\.gov/pmc|pmc\.ncbi\.nlm\.nih\.gov)/articles/)?"
+    r"\b(PMC\d{5,9})\b",
+    re.IGNORECASE,
+)
+
+# GEO series and dataset accessions, bare, prefixed, or in the NCBI URL form.
+# Reports cite datasets as confidently as papers, and an invented accession is as
+# misleading as an invented PMID.
+#
+# Only GEO is extracted from the Entrez family. BIOPROJECT and BIOSAMPLE are
+# registered upstream but do not currently work: esummary responses fail to parse
+# ("Failed to find tag 'ERROR' in the DTD"), so PRJNA31257, PRJEB1787, PRJNA13830
+# and PRJDB1234 - all real - resolve to nothing. Extracting them would report
+# every BioProject citation as a possible fabrication.
+#
+# GSE is safe bare: nothing else is spelled that way with a number attached. GDS
+# is not - GDS15 and GDS30 are the Geriatric Depression Scale, which appears
+# constantly in clinical literature - so the bare form is only accepted with an
+# explicit GEO: prefix or the accession URL.
+_GEO_CONTEXT = r"(?:https?://www\.ncbi\.nlm\.nih\.gov/geo/query/acc\.cgi\?acc=|GEO:)"
+_GEO_PATTERN = re.compile(
+    rf"(?:{_GEO_CONTEXT}\b(GDS\d{{1,9}})\b)"
+    rf"|(?:{_GEO_CONTEXT})?\b(GSE\d{{1,9}})\b",
+    re.IGNORECASE,
+)
+
+# Characters that markdown routinely glues onto the end of a DOI and that a DOI
+# will never legitimately end with. The emphasis and code characters matter most:
+# a DOI written as **doi:10.1234/abc** or `doi:10.1234/abc` would otherwise keep
+# its wrapper, fail to resolve, and be reported as a possible fabrication.
+_DOI_TRAILING_CHARS = ".,;:)]}>\"'*_`|~^\\"
+
+# A double-quoted span (straight or typographic quotes) immediately followed by a
+# parenthesised or bracketed citation, e.g.::
+#
+#     "widgets are blue in most cases" (PMID:12345678)
+#
+# The 20-character minimum keeps single quoted terms ("gene X") out of the results.
+#
+# The citation group admits one level of nested parentheses so that a DOI
+# containing them - 10.1016/0092-8674(94)90302-6 - is not cut short at its first
+# closing bracket. It stays bracket-delimited rather than running to end of line,
+# which would let one quote absorb the citation of the next sentence.
+# The citation group also admits a bracketed run, so a markdown link stays intact:
+# "quote" ([PMID:1](https://…)) is two repetitions - one bracketed, one
+# parenthesised - which is why the repetition floor is 1 rather than 3. A group
+# that matches no identifier yields no claim, so a loose floor costs nothing.
+_QUOTED_CLAIM_PATTERN = re.compile(
+    r"[\"“”]([^\"“”\n]{20,600})[\"“”]"
+    r"[\s,;:—-]*"
+    r"[(\[]((?:[^()\[\]\n]|\([^()\n]*\)|\[[^\[\]\n]*\]){1,200})[)\]]"
+)
+
+
+@dataclass(frozen=True)
+class FoundReference:
+    """A reference identifier discovered in report text.
+
+    Attributes:
+        normalized_id: Canonical identifier such as ``PMID:12345678`` or
+            ``DOI:10.1038/ng1234``, in the form understood by
+            ``linkml-reference-validator``.
+        raw: The raw substring the identifier was extracted from.
+        count: Number of times the identifier occurs in the scanned text.
+        url: Source URL, when the identifier was recovered from a link.
+
+    Examples:
+        >>> FoundReference(normalized_id="PMID:1", raw="PMID:1").count
+        1
+    """
+
+    normalized_id: str
+    raw: str
+    count: int = 1
+    url: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class QuotedClaim:
+    """A quoted span of text paired with the reference it is attributed to.
+
+    Attributes:
+        quote: The quoted text, without the surrounding quotation marks.
+        reference_id: Normalized identifier of the cited reference.
+
+    Examples:
+        >>> QuotedClaim(quote="widgets are blue", reference_id="PMID:1").reference_id
+        'PMID:1'
+    """
+
+    quote: str
+    reference_id: str
+
+
+def normalize_doi(doi: str, from_url: bool = False) -> str:
+    """Undo markdown escaping and strip punctuation that trails a DOI.
+
+    Args:
+        doi: A raw DOI string, possibly with trailing punctuation or markup.
+        from_url: Whether the DOI was lifted out of a link, in which case
+            trailing path segments belong to the URL rather than the identifier.
+
+    Returns:
+        The DOI as the publisher registered it.
+
+    Examples:
+        >>> normalize_doi("10.1038/ng1234).")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234**")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234`")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234|")
+        '10.1038/ng1234'
+        >>> normalize_doi("10.1038/ng1234")
+        '10.1038/ng1234'
+
+        An escaped underscore, as providers write DOIs for book chapters:
+
+        >>> normalize_doi(r"10.1007/978-3-030-80614-9\\_8")
+        '10.1007/978-3-030-80614-9_8'
+
+        A landing-page query string or fragment belongs to the URL, not the DOI:
+
+        >>> normalize_doi("10.1002/ajmg.a.61787?af=R")
+        '10.1002/ajmg.a.61787'
+        >>> normalize_doi("10.1038/ng1234#abstract")
+        '10.1038/ng1234'
+
+        A landing page's path furniture likewise belongs to the URL, but only
+        when the DOI came from one:
+
+        >>> normalize_doi("10.3389/fped.2024.1276215/full", from_url=True)
+        '10.3389/fped.2024.1276215'
+        >>> normalize_doi("10.3389/fped.2024.1276215/full/pdf", from_url=True)
+        '10.3389/fped.2024.1276215'
+        >>> normalize_doi("10.1186/s12964-023-01120-5/tables/1", from_url=True)
+        '10.1186/s12964-023-01120-5'
+        >>> normalize_doi("10.1234/abc/pdf")
+        '10.1234/abc/pdf'
+    """
+    unescaped = _MARKDOWN_ESCAPE.sub(r"\1", doi)
+    # Publisher links carry tracking parameters and anchors. A registered DOI
+    # essentially never contains '?' or '#', and keeping one turns a real
+    # citation into an unresolvable identifier reported as possibly fabricated.
+    unescaped = re.split(r"[?#]", unescaped, maxsplit=1)[0]
+    unescaped = unescaped.rstrip(_DOI_TRAILING_CHARS)
+    if from_url:
+        trimmed = _DOI_URL_FURNITURE.sub("", unescaped)
+        # Never trim away the identifier itself.
+        if re.fullmatch(r"10\.\d{4,}/.+", trimmed):
+            return trimmed
+    return unescaped
+
+
+def find_reference_ids(text: str) -> list[FoundReference]:
+    """Find every PMID and DOI reference in a block of text.
+
+    Identifiers are de-duplicated while preserving first-appearance order, and
+    each result records how many times the identifier occurs.
+
+    ``count`` is a count of textual mentions, not of distinct citations. A
+    markdown link such as ``[PMID:1](https://pubmed.ncbi.nlm.nih.gov/1)`` spells
+    the identifier twice and counts twice, which is why the rendered report says
+    "mentions" rather than "cited".
+
+    Args:
+        text: Markdown or plain text to scan.
+
+    Returns:
+        Ordered list of unique references found.
+
+    Examples:
+        >>> refs = find_reference_ids("Shown (PMID:7913883) and again in PMID: 7913883.")
+        >>> [(r.normalized_id, r.count) for r in refs]
+        [('PMID:7913883', 2)]
+        >>> [r.normalized_id for r in find_reference_ids("See DOI:10.1038/ng1234.")]
+        ['DOI:10.1038/ng1234']
+        >>> [r.normalized_id for r in find_reference_ids("https://pubmed.ncbi.nlm.nih.gov/12345678")]
+        ['PMID:12345678']
+        >>> [r.normalized_id for r in find_reference_ids("See PMC11000121 for details.")]
+        ['PMC:PMC11000121']
+        >>> [r.normalized_id for r in find_reference_ids("Deposited under GSE68086.")]
+        ['GEO:GSE68086']
+        >>> find_reference_ids("no references here")
+        []
+    """
+    found: dict[str, FoundReference] = {}
+
+    def _add(normalized_id: str, raw: str, url: Optional[str] = None) -> None:
+        existing = found.get(normalized_id)
+        if existing is None:
+            found[normalized_id] = FoundReference(
+                normalized_id=normalized_id, raw=raw, count=1, url=url
+            )
+        else:
+            found[normalized_id] = FoundReference(
+                normalized_id=existing.normalized_id,
+                raw=existing.raw,
+                count=existing.count + 1,
+                url=existing.url or url,
+            )
+
+    for match in _PMID_PATTERN.finditer(text):
+        _add(f"PMID:{match.group(1)}", match.group(0))
+
+    for match in _URL_PATTERN.finditer(text):
+        _add(f"PMID:{match.group(1)}", match.group(0), url=match.group(0))
+
+    for match in _DOI_PATTERN.finditer(text):
+        doi = normalize_doi(match.group("doi"), from_url=bool(match.group("url")))
+        _add(f"DOI:{doi}", match.group(0))
+
+    for match in _PMC_PATTERN.finditer(text):
+        _add(f"PMC:{match.group(1).upper()}", match.group(0))
+
+    for match in _GEO_PATTERN.finditer(text):
+        accession = match.group(1) or match.group(2)
+        _add(f"GEO:{accession.upper()}", match.group(0))
+
+    return list(found.values())
+
+
+def extract_references(
+    markdown: str,
+    citations: Optional[Iterable[str]] = None,
+) -> list[FoundReference]:
+    """Extract references from a report body and its citation list.
+
+    Args:
+        markdown: The report body.
+        citations: Optional citation strings (e.g. ``ResearchResult.citations``)
+            scanned in addition to the body.
+
+    Returns:
+        Ordered list of unique references, with occurrence counts summed across
+        the body and the citation list.
+
+    Examples:
+        >>> refs = extract_references("Body cites PMID:7913883.", ["Paper. PMID:99999999"])
+        >>> [r.normalized_id for r in refs]
+        ['PMID:7913883', 'PMID:99999999']
+        >>> extract_references("")
+        []
+    """
+    combined = markdown
+    if citations:
+        combined = "\n".join([markdown, *citations])
+    return find_reference_ids(combined)
+
+
+def extract_quoted_claims(
+    markdown: str,
+    pattern: Optional[re.Pattern[str]] = None,
+) -> list[QuotedClaim]:
+    """Extract quoted spans that are directly attributed to a reference.
+
+    Only quotes followed by a parenthesised or bracketed citation are returned,
+    because those are the ones whose wording can be checked against the source.
+
+    Args:
+        markdown: The report body.
+        pattern: Optional override pattern. It must expose the quote as capture
+            group 1 and the citation as capture group 2.
+
+    Returns:
+        List of quote/reference pairs, in document order. A quote attributed to
+        several references yields one entry per reference.
+
+    Examples:
+        >>> claims = extract_quoted_claims(
+        ...     'The authors report "widgets are blue in most cases" (PMID:12345678).'
+        ... )
+        >>> claims[0].quote
+        'widgets are blue in most cases'
+        >>> claims[0].reference_id
+        'PMID:12345678'
+        >>> extract_quoted_claims('A short "quote" (PMID:12345678).')
+        []
+        >>> extract_quoted_claims('"an unattributed quotation of ample length"')
+        []
+    """
+    regex = pattern or _QUOTED_CLAIM_PATTERN
+    claims: list[QuotedClaim] = []
+
+    for match in regex.finditer(markdown):
+        quote = match.group(1).strip()
+        for reference in find_reference_ids(match.group(2)):
+            claims.append(QuotedClaim(quote=quote, reference_id=reference.normalized_id))
+
+    return claims
+
+
+@dataclass(frozen=True)
+class ExtractedEvidence:
+    """Everything extractable from a report that reference validation acts on.
+
+    Attributes:
+        references: Unique reference identifiers cited by the report.
+        quoted_claims: Quotes attributed to a specific reference.
+
+    Examples:
+        >>> ExtractedEvidence().references
+        []
+    """
+
+    references: list[FoundReference] = field(default_factory=list)
+    quoted_claims: list[QuotedClaim] = field(default_factory=list)
+
+
+def extract_evidence(
+    markdown: str,
+    citations: Optional[Iterable[str]] = None,
+    quote_pattern: Optional[re.Pattern[str]] = None,
+) -> ExtractedEvidence:
+    """Extract both references and quoted claims from a report.
+
+    Args:
+        markdown: The report body.
+        citations: Optional citation strings scanned for identifiers.
+        quote_pattern: Optional override for the quoted-claim pattern.
+
+    Returns:
+        The extracted references and quoted claims.
+
+    Examples:
+        >>> evidence = extract_evidence(
+        ...     'They note "widgets are blue in most cases" (PMID:12345678).'
+        ... )
+        >>> [r.normalized_id for r in evidence.references]
+        ['PMID:12345678']
+        >>> len(evidence.quoted_claims)
+        1
+    """
+    return ExtractedEvidence(
+        references=extract_references(markdown, citations),
+        quoted_claims=extract_quoted_claims(markdown, quote_pattern),
+    )

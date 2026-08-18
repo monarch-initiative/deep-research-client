@@ -29,7 +29,7 @@ from pydantic import (
 )
 
 
-metamodel_version = "1.11.0"
+metamodel_version = "None"
 version = "None"
 
 
@@ -45,7 +45,19 @@ class ConfiguredBaseModel(BaseModel):
         strict = False,
     )
 
-
+    @model_serializer(mode='wrap', when_used='unless-none')
+    def treat_empty_lists_as_none(
+            self, handler: SerializerFunctionWrapHandler,
+            info: SerializationInfo) -> dict[str, Any]:
+        if info.exclude_none:
+            _instance = self.model_copy()
+            for field, field_info in type(_instance).model_fields.items():
+                if getattr(_instance, field) == [] and not(
+                        field_info.is_required()):
+                    setattr(_instance, field, None)
+        else:
+            _instance = self
+        return handler(_instance, info)
 
 
 

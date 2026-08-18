@@ -3,16 +3,22 @@
 import base64
 import binascii
 from dataclasses import dataclass
+import asyncio
 import logging
 import os
+import re
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from typing_extensions import Annotated
+
+if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .validation import ReferenceValidationReport, ReferenceValidator
 
 from .client import DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
+    DEEPER_MED_ARXIV_ID,
     get_provider_model_cards,
     list_all_models,
     find_models_by_cost,
@@ -21,7 +27,7 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
-from .models import ResearchResult, sanitize_artifact_filename
+from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -38,6 +44,15 @@ PROVIDER_CREDENTIAL_HINTS = {
     "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
     "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
     "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
+}
+
+# Providers registered as stubs: the upstream system has no public API yet, so
+# they are not merely missing credentials and cannot be enabled by the user.
+# Keyed by provider name, valued by a short reason shown in `providers` output.
+PROVIDER_STUB_HINTS = {
+    "deeper_med": (
+        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
+    ),
 }
 
 
@@ -224,11 +239,275 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
+def _echo_no_providers_message() -> None:
+    """Tell the user nothing is configured, and what to set.
+
+    A function rather than two inline calls so a test can assert which stream
+    it lands on: driving this through CliRunner cannot show that, because the
+    pinned click merges stdout and stderr into one buffer.
+    """
+    typer.echo("No research providers available. Please set API keys:")
+    _echo_credential_hints(_settable_credential_hints())
+
+
+def _settable_credential_hints() -> list[str]:
+    """Providers a user can enable by setting an environment variable.
+
+    Under a heading that says "set API keys", a CLI on PATH and a test double
+    are not answers. Those entries exist for the `providers` listing, which
+    describes what each provider needs rather than telling anyone to set it.
+
+    Returns:
+        Provider names whose hint is a variable the reader can export
+    """
+    return [
+        name
+        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
+        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+    ]
+
+
 def _echo_credential_hints(provider_names: list[str]) -> None:
     """Print credential hints for providers by canonical provider name."""
     for provider_name in provider_names:
         env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
         typer.echo(f"  - {env_var} for {label}")
+
+
+def _echo_stub_hints() -> None:
+    """Print the stub providers, which no credential can enable."""
+    if not PROVIDER_STUB_HINTS:
+        return
+    typer.echo("\nStub providers (not yet callable):")
+    for provider_name, reason in PROVIDER_STUB_HINTS.items():
+        typer.echo(f"  - {provider_name}: {reason}")
+
+
+#: A credential hint that names an environment variable, rather than something
+#: else the provider needs (a binary on PATH, an installed package).
+_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
+
+
+def _why_unconfigured(provider: str) -> str:
+    """Say what would make an unregistered provider usable.
+
+    A provider is registered only once whatever it needs is present, so by the
+    time we are here the reason is knowable but the provider object is not.
+    Reporting "NOT CONFIGURED" without the next step would be the same empty
+    answer this command exists to replace.
+
+    Args:
+        provider: Canonical provider name.
+
+    Returns:
+        Human-readable explanation of what is missing
+    """
+    if provider in PROVIDER_CREDENTIAL_HINTS:
+        requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
+        # Not every entry is a variable to export -- claude_code needs a binary
+        # on PATH -- and "set the `claude` CLI on PATH" reads as nonsense.
+        if _ENV_VAR_HINT.match(requirement):
+            return f"set {requirement} for {label}"
+        return f"{label} requires {requirement}"
+    if provider in PROVIDER_STUB_HINTS:
+        return PROVIDER_STUB_HINTS[provider]
+    # Nothing to export: these register only when an optional package imports.
+    # The extra is named after the provider, which holds for every name that
+    # can reach this branch today.
+    return (
+        f"registered only when its optional package is installed "
+        f"(try `pip install deep-research-client[{provider}]`)"
+    )
+
+
+def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
+    """Probe providers for live reachability and print the results.
+
+    Args:
+        client: Client whose registry holds the providers to probe.
+        provider: Probe only this provider, or all configured ones when None.
+
+    Raises:
+        typer.Exit: If a named provider is unknown or unconfigured, or any
+            provider turned out to be unable to take work.
+    """
+    from .provider_params import PROVIDER_PARAMS_REGISTRY
+
+    if provider:
+        target = client.registry.get_provider(provider)
+        if target is None:
+            # A provider is only registered once its credential is set, so an
+            # absent one is usually an unset key rather than a typo. Saying
+            # "unknown" here would send the reader hunting for a spelling
+            # mistake instead of exporting a variable.
+            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+                typer.echo("Provider health:")
+                unconfigured = ProviderHealth(
+                    provider=provider,
+                    configured=False,
+                    reachable=False,
+                    detail=_why_unconfigured(provider),
+                )
+                typer.echo(f"  {unconfigured.summary()}")
+            else:
+                typer.echo(f"Unknown provider: {provider}")
+            raise typer.Exit(1)
+        targets = [target]
+    else:
+        # Probing an unconfigured provider only re-reports the missing key.
+        targets = client.registry.get_available_providers()
+        if not targets:
+            # Echoed rather than logged, so the sentence and the hints it
+            # introduces land on the same stream. Logging put them on stderr
+            # and stdout respectively, so redirecting kept the list and lost
+            # the line explaining what it was for.
+            typer.echo("No providers are configured, so there is nothing to probe.")
+            _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+            raise typer.Exit(1)
+
+    async def _probe() -> list[ProviderHealth | BaseException]:
+        return await asyncio.gather(
+            *(t.check_health() for t in targets), return_exceptions=True
+        )
+
+    outcomes = asyncio.run(_probe())
+
+    # A probe that raises is still a report. This is the command people run
+    # *because* something is already broken, so one provider blowing up must
+    # not cost them the lines for all the others.
+    reports = [
+        outcome
+        if isinstance(outcome, ProviderHealth)
+        else ProviderHealth(
+            provider=target.name,
+            configured=True,
+            reachable=False,
+            detail=f"the probe itself failed: {outcome}",
+        )
+        for target, outcome in zip(targets, outcomes)
+    ]
+
+    typer.echo("Provider health:")
+    for report in reports:
+        typer.echo(f"  {report.summary()}")
+
+    if any(report.reachable is False for report in reports):
+        raise typer.Exit(1)
+
+
+def _build_reference_validator(
+    cache_dir: Optional[Path],
+    email: Optional[str],
+    full_text: bool,
+    max_references: Optional[int],
+    skip_prefix: Optional[List[str]] = None,
+    rate_limit_delay: Optional[float] = None,
+    check_relevance: bool = True,
+) -> "ReferenceValidator":
+    """Build a ReferenceValidator, exiting with a hint if the extra is missing."""
+    from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
+
+    if not validator_is_available():
+        logger.error(INSTALL_HINT)
+        raise typer.Exit(1)
+
+    kwargs: dict = {
+        "cache_dir": cache_dir,
+        "email": email or os.getenv("NCBI_EMAIL"),
+        "fetch_full_text": full_text,
+        "max_references": max_references,
+        "skip_prefixes": list(skip_prefix or []),
+        "check_relevance": check_relevance,
+    }
+    if rate_limit_delay is not None:
+        kwargs["rate_limit_delay"] = rate_limit_delay
+    return ReferenceValidator(**kwargs)
+
+
+def _refresh_validation_frontmatter(
+    content: str,
+    frontmatter: dict,
+    report: "ReferenceValidationReport",
+) -> str:
+    """Bring a stale ``reference_validation`` frontmatter summary up to date.
+
+    A report produced by ``research --validate-references`` carries a summary in
+    its frontmatter. Re-validating it would otherwise leave that summary
+    contradicting the section written below it.
+
+    The frontmatter is only rewritten when such a summary is already present, so
+    a hand-written file is never reformatted by a tool that was asked to check
+    citations.
+
+    Args:
+        content: The report text, with any previous validation section removed.
+        frontmatter: Frontmatter already parsed from that text.
+        report: The fresh validation report.
+
+    Returns:
+        The report text, with the summary refreshed if there was one.
+    """
+    if "reference_validation" not in frontmatter:
+        return content
+
+    import yaml
+
+    from .markdown_parser import parse_frontmatter
+
+    updated = dict(frontmatter)
+    updated["reference_validation"] = report.summary()
+    _, body = parse_frontmatter(content)
+    rendered = yaml.dump(updated, default_flow_style=False, sort_keys=False).rstrip()
+    return f"---\n{rendered}\n---\n{body}"
+
+
+def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
+    """Log a one-line-per-outcome summary of a reference validation report."""
+    if not report.checked_references:
+        logger.info("No PMID or DOI references found to validate")
+        return
+
+    logger.info(
+        "Validated %d references: %d resolved, %d unresolved, %d unverifiable",
+        report.total_references,
+        report.verified_count,
+        report.not_found_count,
+        report.unverifiable_count,
+    )
+    if report.all_references_failed:
+        logger.warning(
+            "Every reference failed to resolve, which usually means a network or "
+            "rate-limit problem rather than a report full of fabrications"
+        )
+    for check in report.confabulated_references:
+        logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
+    if report.quote_checks:
+        logger.info(
+            "Checked %d quoted claims: %d found in the cited source, %d not",
+            report.quotes_checked,
+            report.quotes_valid_count,
+            len(report.unsupported_quotes),
+        )
+    for quote_check in report.unsupported_quotes:
+        logger.warning(
+            "Quote not found in %s: %r", quote_check.reference_id, quote_check.quote[:120]
+        )
+    if report.unchecked_quotes:
+        logger.info(
+            "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
+        )
+    if report.relevance_assessed_count:
+        logger.info(
+            "Weighed %d references against the report's own vocabulary: %d on topic",
+            report.relevance_assessed_count,
+            report.on_topic_count,
+        )
+    for check in report.off_topic_references:
+        logger.warning(
+            "Reference %s resolves but looks off topic: %s",
+            check.reference_id,
+            check.title or "(no title)",
+        )
 
 
 @app.callback()
@@ -281,6 +560,25 @@ def research(
         "--author", help="Primary author of the research")] = None,
     contributor: Annotated[Optional[List[str]], typer.Option(
         "--contributor", help="Contributor to the research (can be used multiple times)")] = None,
+    # Reference validation options
+    validate_references: Annotated[bool, typer.Option(
+        "--validate-references", help="Resolve every cited identifier and append a validation section (requires the 'validation' extra)")] = False,
+    validation_cache_dir: Annotated[Optional[Path], typer.Option(
+        "--validation-cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+    validation_email: Annotated[Optional[str], typer.Option(
+        "--validation-email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
+    validation_full_text: Annotated[bool, typer.Option(
+        "--validation-full-text", help="Fetch full text as well as abstracts when validating (~23x slower, better quote checks)")] = False,
+    validation_max_references: Annotated[Optional[int], typer.Option(
+        "--validation-max-references", min=1, help="Stop after validating this many references")] = None,
+    validation_skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--validation-skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable); skipping DOI is the largest saving after caching")] = None,
+    validation_rate_limit_delay: Annotated[Optional[float], typer.Option(
+        "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
+    validation_relevance: Annotated[bool, typer.Option(
+        "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
+    fail_on_unresolved: Annotated[bool, typer.Option(
+        "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
 ):
     """Perform deep research on a query.
 
@@ -315,6 +613,9 @@ def research(
 
       # Use CBORG with explicit API key environment variable
       deep-research-client research "Climate models" --use-cborg --api-key-env MY_CBORG_KEY
+
+      # Check every cited PMID/DOI before trusting the report
+      deep-research-client research "Statins and myopathy" --validate-references --output report.md
     """
     from .models import CacheConfig
 
@@ -464,11 +765,7 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        logger.error("No research providers available. Please set API keys:")
-        logger.error("  - OPENAI_API_KEY for OpenAI Deep Research")
-        logger.error("  - EDISON_API_KEY for Edison Scientific")
-        logger.error("  - ASTA_API_KEY for Asta")
-        logger.error("  - PERPLEXITY_API_KEY for Perplexity AI")
+        _echo_no_providers_message()
         raise typer.Exit(1)
 
     # Show available providers
@@ -500,6 +797,32 @@ def research(
         if contributor:
             metadata['contributors'] = contributor
 
+    if not validate_references:
+        # Compared against the option default rather than truthiness, so that a
+        # falsy-but-explicit value such as --validation-email "" still warns.
+        unused_validation_flags: tuple[tuple[str, object, object], ...] = (
+            ("--validation-cache-dir", validation_cache_dir, None),
+            ("--validation-email", validation_email, None),
+            ("--validation-full-text", validation_full_text, False),
+            ("--validation-max-references", validation_max_references, None),
+            ("--validation-skip-prefix", validation_skip_prefix, None),
+            ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
+            ("--validation-no-relevance", validation_relevance, True),
+            ("--fail-on-unresolved", fail_on_unresolved, False),
+        )
+        for flag_name, flag_value, default in unused_validation_flags:
+            if flag_value != default:
+                logger.warning(f"{flag_name} has no effect without --validate-references")
+
+    if validate_references:
+        # Checked before the provider call: discovering a missing extra after a
+        # run that took minutes and real money would be a poor trade.
+        from .validation import INSTALL_HINT, validator_is_available
+
+        if not validator_is_available():
+            logger.error(INSTALL_HINT)
+            raise typer.Exit(1)
+
     logger.info("Researching...")
 
     try:
@@ -529,7 +852,9 @@ def research(
         # Format output using processor
         logger.debug("Formatting research result")
         output_content = processor.format_research_result(
-            result, separate_citations=should_separate_citations)
+            result,
+            separate_citations=should_separate_citations,
+        )
 
         # Output result
         if output:
@@ -572,6 +897,194 @@ def research(
         logger.error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    if not validate_references:
+        return
+
+    # Validation runs only after the report has been written or printed. It is
+    # network-bound and can fail long after the expensive part of the run has
+    # succeeded; losing a report that cost minutes and real money to an NCBI
+    # outage would be a poor trade for a citation check.
+    reference_validator = _build_reference_validator(
+        cache_dir=validation_cache_dir,
+        email=validation_email,
+        full_text=validation_full_text,
+        max_references=validation_max_references,
+        skip_prefix=validation_skip_prefix,
+        rate_limit_delay=validation_rate_limit_delay,
+        check_relevance=validation_relevance,
+    )
+    logger.info("Validating references...")
+    try:
+        validation_report = reference_validator.validate_result(result)
+    except (OSError, ValueError) as exc:
+        # urllib raises OSError subclasses for network failures. The report is
+        # already saved, so report the real cause rather than letting it surface
+        # as a filesystem error.
+        logger.error(f"Reference validation failed: {exc}")
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(3)
+
+    _echo_validation_summary(validation_report)
+
+    validated_content = processor.format_research_result(
+        result,
+        separate_citations=should_separate_citations,
+        reference_validation=validation_report,
+    )
+    if output:
+        try:
+            output.write_text(validated_content, encoding='utf-8')
+        except OSError as exc:
+            # The report without its validation section is already on disk, so
+            # this loses the section, not the research.
+            logger.error(f"Could not add the validation section to {output}: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
+        logger.info(f"Validation results added to: {output}")
+    else:
+        typer.echo("\n" + "=" * 60)
+        typer.echo(validation_report.to_markdown())
+
+    if fail_on_unresolved and validation_report.has_confabulations:
+        logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
+
+
+@app.command(name="validate-references")
+def validate_references_command(
+    files: Annotated[List[Path], typer.Argument(
+        help="Markdown report file(s) to validate")],
+    check_quotes: Annotated[bool, typer.Option(
+        "--check-quotes/--no-check-quotes",
+        help="Also check quoted claims against the text of the reference they cite")] = True,
+    check_relevance: Annotated[bool, typer.Option(
+        "--check-relevance/--no-check-relevance",
+        help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+    email: Annotated[Optional[str], typer.Option(
+        "--email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
+    full_text: Annotated[bool, typer.Option(
+        "--full-text", help="Fetch full text as well as abstracts (~23x slower, better quote checks)")] = False,
+    max_references: Annotated[Optional[int], typer.Option(
+        "--max-references", min=1, help="Stop after validating this many references per file")] = None,
+    skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable)")] = None,
+    rate_limit_delay: Annotated[Optional[float], typer.Option(
+        "--rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5)")] = None,
+    in_place: Annotated[bool, typer.Option(
+        "--in-place", help="Replace or append the validation section in each input file")] = False,
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", help="Write the markdown validation report to this file (single input file only)")] = None,
+    json_output: Annotated[Optional[Path], typer.Option(
+        "--json", help="Write the validation report as JSON to this file (single input file only)")] = None,
+    fail_on_unresolved: Annotated[bool, typer.Option(
+        "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
+):
+    """Check that the references cited in a report actually exist.
+
+    Every PMID and DOI in the report is resolved against PubMed, Crossref and
+    DataCite; identifiers that do not resolve are flagged as likely
+    confabulations. Quotes attributed to a reference are additionally checked
+    against the text of that reference, and every resolved record is weighed
+    against the report's own vocabulary so that a citation which exists but is
+    about an unrelated subject is flagged too.
+
+    Requires the optional 'validation' extra:
+    pip install "deep_research_client[validation]"
+
+    \b
+    Examples:
+      # Validate a saved report
+      deep-research-client validate-references report.md
+
+      # Validate several reports and append the results to each
+      deep-research-client validate-references reports/*.md --in-place
+
+      # Fail a pipeline when any citation is fabricated
+      deep-research-client validate-references report.md --fail-on-unresolved
+
+      # Existence checks only, no quote checking, capped at 20 references
+      deep-research-client validate-references report.md --no-check-quotes --max-references 20
+    """
+    from .markdown_parser import parse_frontmatter
+    from .validation import strip_validation_section
+
+    if not files:
+        logger.error("Provide at least one markdown file to validate")
+        raise typer.Exit(1)
+
+    if len(files) > 1 and (output or json_output):
+        logger.error("--output and --json require exactly one input file")
+        raise typer.Exit(1)
+
+    missing = [f for f in files if not f.is_file()]
+    if missing:
+        for path in missing:
+            logger.error(f"File not found: {path}")
+        raise typer.Exit(1)
+
+    validator = _build_reference_validator(
+        cache_dir=cache_dir,
+        email=email,
+        full_text=full_text,
+        max_references=max_references,
+        skip_prefix=skip_prefix,
+        rate_limit_delay=rate_limit_delay,
+        check_relevance=check_relevance,
+    )
+
+    any_problems = False
+
+    for path in files:
+        content = strip_validation_section(path.read_text(encoding="utf-8"))
+        # Scan the whole body rather than the Output section alone: identifiers
+        # routinely appear in the Citations section and in provider-specific
+        # sections that sit alongside it.
+        frontmatter, body = parse_frontmatter(content)
+
+        logger.info(f"Validating references in {path}")
+        try:
+            report = validator.validate_markdown(body, check_quotes=check_quotes)
+        except (OSError, ValueError) as exc:
+            # urllib raises OSError subclasses for network failures. Reported as
+            # what it is, rather than as a filesystem problem or a traceback.
+            # OSError covers network failures (urllib raises subclasses of it);
+            # ValueError covers a malformed cached record. Neither should reach
+            # the user as a traceback when every neighbouring path exits cleanly.
+            logger.error(f"Reference validation failed: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
+        _echo_validation_summary(report)
+        any_problems = any_problems or report.has_confabulations
+
+        markdown_report = report.to_markdown()
+
+        try:
+            if in_place:
+                updated = _refresh_validation_frontmatter(content, frontmatter, report)
+                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                logger.info(f"Wrote validation section to {path}")
+
+            if output:
+                output.write_text(markdown_report, encoding="utf-8")
+                logger.info(f"Validation report written to {output}")
+
+            if json_output:
+                json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+                logger.info(f"Validation report written to {json_output}")
+        except OSError as exc:
+            logger.error(f"Filesystem error: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
+
+        if not in_place and not output and not json_output:
+            typer.echo(markdown_report)
+
+    if fail_on_unresolved and any_problems:
+        logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
 
 
 @app.command()
@@ -645,12 +1158,25 @@ def providers(
         "--show-params", help="Show available parameters for each provider")] = False,
     provider: Annotated[Optional[str], typer.Option(
         help="Show details for specific provider only")] = None,
+    check: Annotated[bool, typer.Option(
+        "--check",
+        help="Probe each configured provider with a cheap live call to see if it is reachable")] = False,
 ):
     """List available research providers and their parameters."""
     from .provider_params import PROVIDER_PARAMS_REGISTRY
 
     logger.debug("Initializing client to check providers")
     client = DeepResearchClient()
+
+    if check:
+        if show_params:
+            # Echoed, not logged: every other line this path emits goes to
+            # stdout, and the CLI's logger does not propagate to handlers a
+            # caller (or a test) can see.
+            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
+        _check_provider_health(client, provider)
+        return
+
     available = client.get_available_providers()
 
     if provider:
@@ -662,12 +1188,20 @@ def providers(
             raise typer.Exit(1)
 
         is_available = provider in available
-        status = "Available" if is_available else "Not available (missing API key)"
+        if is_available:
+            status = "Available"
+        elif provider in PROVIDER_STUB_HINTS:
+            # A stub is not credential-blocked; no key would make it work.
+            status = "Not available (stub - no upstream API yet)"
+        else:
+            status = "Not available (missing API key)"
         typer.echo(f"Provider: {provider} - {status}")
 
         if not is_available:
-            # Show required environment variable
-            if provider in PROVIDER_CREDENTIAL_HINTS:
+            if provider in PROVIDER_STUB_HINTS:
+                typer.echo(f"Status: {PROVIDER_STUB_HINTS[provider]}")
+            elif provider in PROVIDER_CREDENTIAL_HINTS:
+                # Show required environment variable
                 env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
                 typer.echo(f"Required: {env_var}")
 
@@ -717,9 +1251,12 @@ def providers(
         if missing_credential_providers:
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
+
+        _echo_stub_hints()
     else:
         logger.error("No providers available. Please set API keys:")
-        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+        _echo_credential_hints(_settable_credential_hints())
+        _echo_stub_hints()
 
     if not show_params and not provider:
         typer.echo(

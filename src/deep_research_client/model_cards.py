@@ -627,6 +627,79 @@ def create_claude_code_model_cards() -> ProviderModelCards:
     )
 
 
+# Single source of truth for the DeepER-Med citation. Defined here rather than in
+# providers/deeper_med.py because that module imports from this one; the provider
+# re-exports it so callers can reference either.
+DEEPER_MED_ARXIV_ID = "2604.15456"
+DEEPER_MED_ARXIV_URL = f"https://arxiv.org/abs/{DEEPER_MED_ARXIV_ID}"
+
+
+def create_deeper_med_model_cards() -> ProviderModelCards:
+    """Create model cards for the DeepER-Med stub provider.
+
+    DeepER-Med (arXiv:2604.15456) is an evidence-based agentic deep research
+    framework for medicine. No public API exists yet; this card documents the
+    system so it appears in `providers` listings and so the wrapper can flip
+    on once an endpoint is available.
+
+    Every attribute below is transcribed from the paper, not measured against a
+    running system -- see the ``limitations`` entries.
+    """
+
+    deeper_med = ModelCard(
+        name="deeper-med-agentic",
+        display_name="DeepER-Med Agentic Medical Research (stub)",
+        description=(
+            "Evidence-based agentic deep research framework for medicine "
+            f"(Wang et al., arXiv:{DEEPER_MED_ARXIV_ID}). As described in the "
+            "paper: decomposes queries into hierarchical sub-questions, "
+            "retrieves from PubMed, ClinicalTrials.gov, and the PrimeKG "
+            "knowledge graph, and synthesizes with traceable references drawn "
+            "directly from source databases. STUB: no public API has been "
+            "released; calls raise NotImplementedError."
+        ),
+        # Inferred from the paper's description of a multi-agent retrieval and
+        # synthesis pipeline. Nothing here has been observed -- there is no
+        # endpoint to observe.
+        cost_level=CostLevel.HIGH,
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ResearchCapability.academic_search,
+            ResearchCapability.scientific_literature,
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
+        ],
+        # Also from the paper: it plans and retrieves over named sources but
+        # does not run experiments or code, so it stops short of co_scientist.
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[
+            ResearchResource.pubmed,
+            ResearchResource.clinical_trials,
+            # PrimeKG, the paper's knowledge graph.
+            ResearchResource.biomedical_databases,
+        ],
+        aliases=["deeper-med", "deepermed"],
+        pricing_notes="Unknown - upstream API not yet released",
+        use_cases=[
+            "Evidence-based medical research synthesis",
+            "Hypothesis verification grounded in PubMed",
+            "Precision oncology tumor board preparation",
+            "Clinical trial evidence aggregation",
+        ],
+        limitations=[
+            "Stub: no upstream endpoint, so this model cannot be invoked",
+            "Cost, speed, and capabilities are claims from the paper, not measured",
+            f"Reference: {DEEPER_MED_ARXIV_URL}",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="deeper_med",
+        default_model="deeper-med-agentic",
+        models={"deeper-med-agentic": deeper_med},
+    )
+
+
 # Registry of all provider model cards
 # NOTE: PROVIDER_MODEL_CARDS is defined at the end of this module, after every
 # card factory (including cyberian and biomni) has been declared, so all
@@ -847,6 +920,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
     "claude_code": create_claude_code_model_cards(),
+    "deeper_med": create_deeper_med_model_cards(),
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
 }

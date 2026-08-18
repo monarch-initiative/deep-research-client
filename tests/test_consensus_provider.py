@@ -44,7 +44,9 @@ class TestConsensusProvider:
         provider = ConsensusProvider(config)
 
         import asyncio
-        with pytest.raises(ValueError, match="Consensus provider not available"):
+        from deep_research_client.exceptions import ProviderNotConfiguredError
+
+        with pytest.raises(ProviderNotConfiguredError, match="CONSENSUS_API_KEY"):
             asyncio.run(provider.research("test query"))
 
     # Note: HTTP error handling tests would go here

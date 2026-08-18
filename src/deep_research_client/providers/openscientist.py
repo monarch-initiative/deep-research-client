@@ -23,6 +23,7 @@ import zipfile
 import httpx
 
 from . import ResearchProvider
+from ..exceptions import ProviderNotConfiguredError
 from ..models import (
     ResearchArtifact,
     ResearchResult,
@@ -105,6 +106,9 @@ class OpenScientistProvider(ResearchProvider):
         - Optionally OPENSCIENTIST_URL env var (defaults to https://www.openscientist.io)
     """
 
+    credential_label = "OpenScientist"
+    credential_env_var = "OPENSCIENTIST_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):
         effective_params = params or OpenScientistParams()
         if config.timeout is not None and "timeout" not in effective_params.model_fields_set:
@@ -145,10 +149,7 @@ class OpenScientistProvider(ResearchProvider):
             ResearchResult with markdown report and extracted PMID citations.
         """
         if not self.is_available():
-            raise ValueError(
-                "OpenScientist provider not available. "
-                "Set OPENSCIENTIST_API_KEY environment variable."
-            )
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")

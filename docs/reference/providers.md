@@ -15,6 +15,7 @@ Complete reference for all supported research providers.
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
 | Biomni | (local `biomni` package) | Biomedical co-scientist, runs code | Very slow |
+| DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 
 See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
@@ -321,8 +322,21 @@ This is useful for:
 Claude Code is a local command-line tool rather than an HTTP API. This provider
 shells out to the `claude` binary in non-interactive ("print") mode, pipes the
 research prompt to it via stdin, and lets Claude Code's own agentic tools (web
-search, web fetch, file reading) carry out the research. The final answer comes
-back as a cited markdown report.
+search, web fetch, file reading) carry out the research. The response comes back
+as a cited markdown report.
+
+Output is read as a `stream-json` event stream so that *every* assistant message
+becomes part of the report. The simpler `json` output format exposes only a
+`result` field holding the agent's final message, so an agent that wrote its
+report and then emitted any closing remark would lose the whole report while
+still exiting 0 with valid provenance ([#59](https://github.com/monarch-initiative/deep-research-client/issues/59)).
+
+Because every assistant message is kept, any narration the agent emits between
+tool calls ("Let me search for X…") appears in the report alongside the research.
+That is a deliberate trade — including narration is cosmetic, whereas selecting a
+single message risks dropping the report — but it has one consequence worth
+knowing: citations are extracted from the joined text, so a URL mentioned only in
+passing is counted in `citation_count`.
 
 ### Setup
 
@@ -347,12 +361,41 @@ params = ClaudeCodeParams(
     skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=["/data/papers"],    # optional --add-dir entries
     working_dir="/tmp/research",  # optional cwd for the run
+    min_report_chars=200,         # fail on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
 ```
 
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+### Failing loudly on an empty report
+
+A run that produces no research is the expensive failure mode, because it still
+writes a well-formed file with real cost and provenance metadata — easy to skim
+past and mistake for a real report. `min_report_chars` (default 200) turns that
+into a raised `ValueError` and a non-zero exit. The rejected text is logged in
+full and previewed in the exception, so a failed run is diagnosable without
+paying for a second one.
+
+!!! warning "This default is a behavior change"
+
+    Runs that previously returned a short answer successfully now raise. A
+    one-sentence reply is typically under 200 characters. Set
+    `min_report_chars=0` if you expect short answers.
+
+This is an emptiness check, not a quality one — a 250-character *"I was unable to
+find sufficient information on this topic"* passes it cleanly.
+
+Three `run_metadata` fields help diagnose a thin result after the fact:
+
+- `assistant_text_blocks` — how many separate assistant messages the report was
+  assembled from. More than one is normal for an agentic run; this is provenance
+  for how the report was assembled, not a warning sign.
+- `permission_denials` — how many tool calls were refused.
+- `denied_tools` — which tools were refused. A non-zero count often explains a
+  thin report: the agent asked for a tool outside `allowed_tools` and gave up,
+  and this names what to add.
 
 ### Security
 
@@ -408,6 +451,52 @@ actual model(s) used and run provenance (`run_metadata`).
 - Restricted to a read-only research toolset by default; broaden `allowed_tools`
   (or enable `skip_permissions` in a sandbox) for tasks that need more
 - Non-deterministic results
+- The `stream-json` output carries every tool result, including full fetched page
+  bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
+  correctness problem, but worth knowing for long runs.
+
+---
+
+## DeepER-Med (Stub)
+
+DeepER-Med is an evidence-based agentic deep medical research framework
+introduced in Wang et al., *DeepER-Med: Advancing Deep Evidence-Based Research
+in Medicine Through Agentic AI* ([arXiv:2604.15456](https://arxiv.org/abs/2604.15456),
+submitted 16 April 2026). The paper describes an open-source paradigm with a
+public website and agent API, but at the time of writing **no code, API
+endpoint, or dataset has been released publicly**.
+
+This provider is registered as a stub so:
+
+- the wrapper slot is reserved and discoverable via `providers` listing,
+- model cards and parameter classes are in place,
+- callers asking for it are told *why* it cannot run, with the arXiv pointer,
+  instead of getting a bare "provider not found".
+
+### Behavior
+
+`is_available()` always returns `False`, so DeepER-Med is never auto-selected
+and can never be chosen by `get_first_available()`. It is still registered
+unconditionally, which means an explicit request reports the stub status:
+
+```python
+client.research("...", provider="deeper_med")
+# ValueError: DeepER-Med has no public API or code release yet, so this
+# provider cannot run research. See https://arxiv.org/abs/2604.15456 ...
+```
+
+Calling `DeeperMedProvider.research()` directly raises `NotImplementedError`
+with the same message. In the CLI it is listed under **Stub providers (not yet
+callable)** in `deep-research-client providers`.
+
+### Caveats
+
+The model card's cost, speed, and capability entries are transcribed from the
+paper — nothing has been measured, because there is no endpoint to measure. The
+card's `limitations` say so explicitly.
+
+Once an API is published, only the body of `providers/deeper_med.py` needs to
+change.
 
 ---
 
@@ -504,6 +593,95 @@ Providers are auto-detected based on environment variables:
 # Check available providers
 deep-research-client providers
 ```
+
+Detection only tells you a provider is **configured** — an API key is set. It
+does not tell you the key is still valid, or that the account can pay for a
+run. To find that out, probe the providers with a cheap live call:
+
+```bash
+# Probe every configured provider
+deep-research-client providers --check
+
+# Probe just one
+deep-research-client providers --check --provider falcon
+```
+
+Each provider reports one of `OK`, `UNREACHABLE`, `NOT CONFIGURED`, or
+`UNKNOWN (no probe available)` — the last meaning that provider has not
+implemented a probe, so configuration is all we know. The command exits
+non-zero if any provider turns out to be unable to take work, which includes a
+named provider that is not configured at all (no probe needed to know that).
+
+A probe proves the credential is accepted. It cannot prove the account has
+credits: Edison, for example, only charges when a task is submitted, so an
+uncredited key passes the probe and fails the run with `402`. A numeric
+balance has to come from the provider's own dashboard.
+
+## Provider Failures
+
+Failures are raised as typed exceptions so callers can tell "switch provider"
+apart from "try again":
+
+| Exception | Statuses | Retryable | Means |
+|-----------|----------|-----------|-------|
+| `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
+| `ProviderBillingError` | 402 | No | Account is out of credits |
+| `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says (bounded by the class, so a trailing `…` on it came from us, not the provider) |
+| `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
+| `ProviderNotInstalledError` | — | No | A locally-backed provider's binary is not on PATH, or its optional package is not installed (a kind of "not configured") |
+| `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
+| `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
+
+`ProviderNotInstalledError` subclasses `ProviderNotConfiguredError`, so one
+`except ProviderNotConfiguredError` covers a missing key, a missing CLI, and a
+missing optional package alike. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
+still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
+flag:
+
+```python
+from deep_research_client import ProviderBillingError, ProviderError
+
+try:
+    result = client.research("...", provider="falcon")
+except ProviderBillingError:
+    ...  # out of credits: a retry cannot help, pick another provider
+except ProviderError as e:
+    if e.retryable:
+        ...
+```
+
+Auth and billing failures are classified even when a provider SDK retries
+internally and reports the result as a timeout — the status is recovered from
+the wrapped exception rather than lost.
+
+### OpenAI
+
+OpenAI reports a spent quota as **429 with `code: "insufficient_quota"`** — the
+same status it uses for ordinary throttling. Reading the status alone would
+mark a spent quota retryable and loop on it forever, so the body's error code
+is checked first and only falls back to the status when there is no code we
+recognise. A model name that does not exist is deliberately left unclassified:
+that is a caller error, not a provider outage.
+
+Its probe (`models.list`) is authenticated but not billed, so like Edison it
+proves the key and nothing more — a key with no quota left still passes. OpenAI
+exposes no balance endpoint; the spent quota only announces itself on a run.
+
+### Claude Code
+
+The `claude_code` provider is a subprocess wrapper, so it has no status codes
+to read. Its failures are classified from what the CLI prints — a spent usage
+allowance, a logged-out session, an expired token, a model the plan does not
+include, or an overloaded API — and the wordings that mean "stop" are kept
+apart from the ones that mean "try again".
+
+Its health probe is the most informative of any provider, and the only free
+one: `claude auth status --json` reads local credentials and makes no model
+call, so `--check` reports the auth method and plan without spending a token.
+
+The one failure the CLI does not always report cleanly is a spent usage limit
+mid-run, which can stall rather than fail. The timeout message points at
+`providers --check` for that reason.
 
 ## Adding Custom Providers
 

@@ -4,7 +4,14 @@ Unlike the API-based providers, Claude Code is a local command-line tool (the
 ``claude`` binary). This provider drives it in non-interactive "print" mode,
 piping the research prompt to it and letting Claude Code's own agentic tools
 (web search, web fetch, file reading, etc.) carry out a multi-step research
-workflow. The final answer is returned as a cited markdown report.
+workflow. The full response is returned as a cited markdown report.
+
+Output is read as a ``stream-json`` event stream rather than the simpler ``json``
+format. The latter exposes only a ``result`` field holding the agent's *final*
+message, so an agent that writes its report and then emits any closing remark
+loses the entire report -- silently, since the run still exits 0 with valid
+provenance metadata. Reading the stream lets us join every assistant text block
+while still taking run metadata from the terminal ``result`` event.
 
 No provider API key is required: billing and authentication are handled by the
 local Claude Code installation.
@@ -28,12 +35,143 @@ from datetime import datetime
 from typing import List, Optional
 
 from . import ResearchProvider
-from ..models import ResearchResult, ProviderConfig
+from ..exceptions import (
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderError,
+    ProviderNotInstalledError,
+    ProviderQuotaError,
+    ProviderTransientError,
+)
+from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import ClaudeCodeParams
 from ..model_cards import ProviderModelCards, create_claude_code_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+# The CLI reports failures as prose on stderr or in a terminal result event, so
+# these are the closest thing it has to a status code. Ordered most specific
+# first: a spent usage allowance also contains the word "limit", and a plan
+# without access to a model also mentions the model.
+_CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
+    (re.compile(r"usage limit reached|limit will reset", re.IGNORECASE), ProviderQuotaError),
+    (re.compile(r"credit balance is too low|insufficient credit", re.IGNORECASE), ProviderBillingError),
+    (
+        re.compile(
+            r"invalid api key|please run /login|not logged in|log ?in to|"
+            r"authentication_error|oauth token (?:has )?expired|unauthorized",
+            re.IGNORECASE,
+        ),
+        ProviderAuthError,
+    ),
+    (
+        re.compile(
+            r"(?:model|access) [^.\n]*not (?:available|permitted|supported|allowed)|"
+            r"does not have access|upgrade your plan",
+            re.IGNORECASE,
+        ),
+        ProviderAuthError,
+    ),
+    (re.compile(r"overloaded|\b529\b|service unavailable", re.IGNORECASE), ProviderTransientError),
+]
+
+# "Your limit will reset at 3pm (America/Los_Angeles)." -- the closest thing any
+# provider here gives us to a remaining-allowance reading.
+# The capture stops at a clause boundary, not just a sentence one: a wordy
+# message continues past the time with advice ("...at 5pm Pacific Time; if you
+# need capacity sooner..."), and everything after the semicolon is not a time.
+# Commas are kept: "10am, Tuesday 19 August" is one time, not two clauses.
+_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.;\n]+)", re.IGNORECASE)
+
+# `claude auth status` reads local credentials and makes no model call, so it
+# should answer immediately. This only guards against a wedged process.
+_HEALTH_PROBE_TIMEOUT = 30
+
+# A CLI too old to have `auth status` says so like this. That is evidence about
+# the CLI's version, not about whether the provider works.
+_NO_SUCH_SUBCOMMAND = re.compile(
+    r"unknown (?:command|option|argument)|unrecognized|see .*--help|^usage:",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _terminal_result_text(stdout: str) -> str:
+    r"""Pull the terminal ``result`` event's own words out of a stream.
+
+    The stream also carries the model's report, which is prose we must never
+    classify against: a report *about* rate limits or credits contains the same
+    phrases a failure does. Only the CLI's own account of a *failure* is
+    evidence -- on a success event the ``result`` field is itself the report
+    (see :meth:`ClaudeCodeProvider._report_text`), so it is skipped too.
+
+    Args:
+        stdout: Raw stdout from the CLI, which may be truncated or malformed.
+
+    Returns:
+        The failing event's subtype and result text, or "" if there is none.
+
+    >>> _terminal_result_text('{"type": "result", "is_error": true, "subtype": "e", "result": "boom"}')
+    'e boom'
+    >>> _terminal_result_text('{"type": "result", "subtype": "success", "result": "the report"}')
+    ''
+    >>> _terminal_result_text('not json at all')
+    ''
+    """
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "result":
+            continue
+        # `.get(key, default)` only defaults an *absent* key, so an explicit
+        # null subtype would read as a failure and hand back the report.
+        if not event.get("is_error") and (event.get("subtype") or "success") == "success":
+            return ""
+        return f"{event.get('subtype') or ''} {event.get('result') or ''}".strip()
+    return ""
+
+
+def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
+    """Classify a Claude Code failure from the text the CLI produced.
+
+    Args:
+        provider: Name of the provider that failed.
+        text: Combined stderr and/or terminal result text from the CLI.
+
+    Returns:
+        A typed error, or None when the text matches nothing we recognise.
+
+    >>> err = _classify_cli_failure("claude_code", "Claude usage limit reached. Your limit will reset at 3pm.")
+    >>> type(err).__name__, err.resets_at
+    ('ProviderQuotaError', '3pm')
+    >>> type(_classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
+    'ProviderAuthError'
+    >>> _classify_cli_failure("claude_code", "tool returned no results") is None
+    True
+    """
+    if not text or not text.strip():
+        return None
+
+    for pattern, error_class in _CLI_FAILURE_PATTERNS:
+        if not pattern.search(text):
+            continue
+        detail = text.strip()
+        if error_class is ProviderQuotaError:
+            reset_match = _LIMIT_RESET.search(text)
+            return ProviderQuotaError(
+                provider,
+                detail,
+                resets_at=reset_match.group(1).strip() if reset_match else None,
+            )
+        return error_class(provider, detail)
+
+    return None
+
 
 # Non-interactive ("print") mode has no "later": the process emits one response
 # and exits. Local skills/workflows that defer work to a background task would be
@@ -113,6 +251,139 @@ class ClaudeCodeProvider(ResearchProvider):
 
         return True
 
+    def unavailable_reason(self) -> str:
+        """Explain the missing CLI, which no API key would fix.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled:
+            return super().unavailable_reason()
+        return (
+            f"the {self.claude_executable!r} CLI was not found on PATH; "
+            f"install Claude Code to use this provider"
+        )
+
+    async def check_health(self) -> ProviderHealth:
+        """Ask the CLI whether it is logged in.
+
+        ``claude auth status --json`` is the rare free probe: it reports the
+        account, auth method and plan without spending a single token, so
+        unlike the HTTP providers this one can say something about the
+        allowance before a run rather than only after it fails.
+
+        Returns:
+            Health record for this provider
+        """
+        if not self.is_available():
+            return ProviderHealth(
+                provider=self.name,
+                configured=False,
+                reachable=False,
+                detail=self.unavailable_reason(),
+            )
+
+        try:
+            # is_available() checked PATH a moment ago, but a race, a
+            # non-executable file, or a permission change lands here as an
+            # OSError. A caller promised a health record must still get one.
+            process = await asyncio.create_subprocess_exec(
+                self.claude_executable, "auth", "status", "--json",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as e:
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                reachable=False,
+                detail=f"could not run {self.claude_executable!r}: {e}",
+            )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(), timeout=_HEALTH_PROBE_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                reachable=False,
+                detail=f"`claude auth status` did not answer within {_HEALTH_PROBE_TIMEOUT}s",
+            )
+
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        return self._health_from_auth_status(stdout, stderr, process.returncode or 0)
+
+    def _health_from_auth_status(
+        self, stdout: str, stderr: str, returncode: int
+    ) -> ProviderHealth:
+        """Turn ``claude auth status --json`` output into a health record.
+
+        Args:
+            stdout: Raw stdout from the probe.
+            stderr: Raw stderr from the probe.
+            returncode: Exit status of the probe.
+
+        Returns:
+            Health record for this provider
+        """
+        if returncode != 0:
+            output = f"{stderr}\n{stdout}"
+            # Classify first. _NO_SUCH_SUBCOMMAND is deliberately broad, and
+            # plenty of real failures also tell you to try --help; letting the
+            # version check win would report a logged-out CLI as UNKNOWN, and
+            # UNKNOWN does not set reachable=False, so `--check` would exit 0
+            # on a provider that cannot work.
+            classified = _classify_cli_failure(self.name, output)
+            if classified is None and _NO_SUCH_SUBCOMMAND.search(output):
+                return ProviderHealth(
+                    provider=self.name,
+                    configured=True,
+                    detail="this CLI has no `auth status` subcommand to probe",
+                )
+            detail = classified.diagnosis if classified else (stderr.strip() or stdout.strip())
+            return ProviderHealth(
+                provider=self.name, configured=True, reachable=False, detail=detail
+            )
+
+        try:
+            status = json.loads(stdout)
+        except json.JSONDecodeError:
+            status = None
+        # Valid JSON of the wrong shape (null, a list, a bare string) parses
+        # fine and then has no .get -- the same guard _terminal_result_text
+        # already applies to stream events.
+        if not isinstance(status, dict):
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                detail="`claude auth status` returned output we could not parse",
+            )
+
+        if not status.get("loggedIn"):
+            return ProviderHealth(
+                provider=self.name,
+                configured=True,
+                reachable=False,
+                detail="not logged in; run `claude auth login`",
+            )
+
+        described = ", ".join(
+            f"{label}: {status[key]}"
+            for key, label in (("authMethod", "auth"), ("subscriptionType", "plan"))
+            if status.get(key)
+        )
+        return ProviderHealth(
+            provider=self.name,
+            configured=True,
+            reachable=True,
+            detail=described or "logged in",
+        )
+
     def _resolve_cli_model(self) -> Optional[str]:
         """Resolve the raw ``--model`` value to forward to the CLI, if any.
 
@@ -138,11 +409,15 @@ class ClaudeCodeProvider(ResearchProvider):
         Returns:
             The argument list to pass to ``asyncio.create_subprocess_exec``.
         """
+        # stream-json (which requires --verbose in print mode) preserves every
+        # assistant message; the plain "json" format would give us only the last
+        # one. See the module docstring.
         command: List[str] = [
             self.claude_executable,
             "--print",
             "--output-format",
-            "json",
+            "stream-json",
+            "--verbose",
         ]
 
         if self.params.skip_permissions:
@@ -186,10 +461,7 @@ class ClaudeCodeProvider(ResearchProvider):
         start_time = datetime.now()
 
         if not self.is_available():
-            raise ValueError(
-                "Claude Code provider not available. Ensure the 'claude' CLI is "
-                "installed and on your PATH."
-            )
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
 
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
@@ -201,14 +473,30 @@ class ClaudeCodeProvider(ResearchProvider):
         stdout, stderr, returncode = await self._run_process(command, query)
 
         if returncode != 0:
+            # stderr is the CLI's own voice; from stdout take only the terminal
+            # event. The rest of the stream is the model's report, and a report
+            # that merely discusses usage limits is not a usage limit.
+            classified = _classify_cli_failure(
+                self.name, f"{stderr}\n{_terminal_result_text(stdout)}"
+            )
+            if classified is not None:
+                logger.error(classified.actionable_message())
+                raise classified
             raise ValueError(
                 f"Claude Code exited with code {returncode}: "
                 f"{stderr.strip() or '<no stderr>'}"
             )
 
-        data = self._load_payload(stdout)
-        markdown = self._result_text(data)
+        assistant_texts, data = self._parse_stream(stdout, self.name)
+        markdown = self._report_text(assistant_texts, data)
+        self._check_report_length(markdown, self.params.min_report_chars)
+
         run_metadata = self._extract_run_metadata(data)
+        # How many separate assistant messages the report was assembled from.
+        # More than one is normal for an agentic run (the model narrates between
+        # tool calls); the count is provenance for how the report was assembled,
+        # not a warning sign.
+        run_metadata["assistant_text_blocks"] = len(assistant_texts)
         citations = self._extract_citations(markdown)
 
         # Prefer the model id(s) the run actually reported over our sentinel
@@ -268,8 +556,14 @@ class ClaudeCodeProvider(ResearchProvider):
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
+            # A spent usage allowance can stall a run rather than fail it, and
+            # then it arrives here looking like slowness. Say so, so the reader
+            # checks the allowance before chasing latency.
             raise ValueError(
-                f"Claude Code run timed out after {self.timeout}s."
+                f"Claude Code run timed out after {self.timeout}s. If this repeats, "
+                f"check the account with `deep-research-client providers --check "
+                f"--provider {self.name}` -- a spent usage limit can stall a run "
+                f"instead of failing it."
             )
 
         # returncode is set once communicate() has returned.
@@ -281,45 +575,158 @@ class ClaudeCodeProvider(ResearchProvider):
         )
 
     @staticmethod
-    def _load_payload(stdout: str) -> dict:
-        """Parse and validate Claude Code's JSON output into a dict.
+    def _parse_stream(stdout: str, provider: str = "claude_code") -> tuple[List[str], dict]:
+        """Parse Claude Code's ``stream-json`` output into text blocks and metadata.
+
+        The stream is JSON Lines: one event per line. ``assistant`` events carry
+        the model's own output (text, thinking, and tool_use blocks, split across
+        events); the terminal ``result`` event carries the run's provenance and
+        error status.
 
         Args:
-            stdout: Raw stdout from ``claude --print --output-format json``.
+            stdout: Raw stdout from ``claude --print --output-format stream-json``.
+            provider: Provider name to attribute a classified failure to.
 
         Returns:
-            The parsed JSON payload.
+            Tuple of (assistant text blocks in emission order, terminal result event).
 
         Raises:
-            ValueError: If the output is empty, not valid JSON, or reports an error.
+            ValueError: If the output is empty, contains no terminal result event,
+                or that event reports an error.
         """
         text = stdout.strip()
         if not text:
             raise ValueError("Claude Code returned empty output.")
 
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Could not parse Claude Code JSON output: {exc}")
+        assistant_texts: List[str] = []
+        result_event: Optional[dict] = None
 
-        if data.get("is_error"):
-            subtype = data.get("subtype", "unknown error")
-            detail = data.get("result") or subtype
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                # A stray non-JSON line (a warning, say) should not sink an
+                # otherwise complete run; a genuinely unparseable stream is
+                # caught below by the missing result event.
+                logger.warning(
+                    "Skipping unparseable line in Claude Code output: %.200s", line
+                )
+                continue
+
+            if not isinstance(event, dict):
+                continue
+
+            if event.get("type") == "assistant":
+                # `message` can be an explicit null, and `content` is a plain
+                # string in the single-text-block form the Anthropic message
+                # format permits. Neither is what the CLI emits today, but
+                # iterating a string would silently yield characters that the
+                # block guard below drops -- a truncated report with no signal.
+                message = event.get("message")
+                if not isinstance(message, dict):
+                    continue
+                content = message.get("content")
+                if isinstance(content, str):
+                    content = [{"type": "text", "text": content}]
+                elif not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        block_text = str(block.get("text") or "")
+                        if block_text.strip():
+                            assistant_texts.append(block_text)
+            elif event.get("type") == "result":
+                result_event = event
+
+        if result_event is None:
+            raise ValueError(
+                "Could not parse Claude Code JSON output: the stream contained no "
+                "terminal 'result' event, so the run did not complete."
+            )
+
+        if result_event.get("is_error"):
+            subtype = result_event.get("subtype", "unknown error")
+            detail = result_event.get("result") or subtype
+            classified = _classify_cli_failure(provider, f"{subtype} {detail}")
+            if classified is not None:
+                raise classified
             raise ValueError(f"Claude Code reported an error ({subtype}): {detail}")
 
-        return data
+        return assistant_texts, result_event
 
     @staticmethod
-    def _result_text(data: dict) -> str:
-        """Extract the markdown report text from a parsed payload.
+    def _report_text(assistant_texts: List[str], data: dict) -> str:
+        """Assemble the markdown report from every assistant text block.
+
+        Falls back to the terminal event's ``result`` field only when the stream
+        carried no assistant text at all. That field holds just the agent's final
+        message, so preferring the joined blocks is what keeps a report from
+        being truncated to its closing remark.
+
+        Joining everything means any narration the model emits between tool calls
+        ("Let me search for X...") lands in the report too. That is the deliberate
+        trade: including narration is a cosmetic cost, whereas picking a single
+        block risks dropping the research. Note that citation extraction runs over
+        the joined text, so a URL mentioned only in narration is counted.
+
+        Args:
+            assistant_texts: Assistant text blocks in emission order.
+            data: The terminal ``result`` event.
 
         Raises:
-            ValueError: If the payload contains no usable result text.
+            ValueError: If neither source yields any text.
         """
+        if assistant_texts:
+            return "\n\n".join(block.strip() for block in assistant_texts)
+
         result = data.get("result")
         if not result or not str(result).strip():
             raise ValueError("Claude Code output contained no result text.")
-        return str(result)
+        return str(result).strip()
+
+    @staticmethod
+    def _check_report_length(markdown: str, min_chars: int) -> None:
+        """Reject a report too short to be a plausible research result.
+
+        Silent success on an empty run is the costly failure mode: the caller
+        gets a well-formed file with real provenance and no content. Failing here
+        turns that into a non-zero exit.
+
+        This is an emptiness check, not a quality one: a short "I could not find
+        sufficient information" reply passes it.
+
+        Because the run that failed has already been paid for, the rejected text
+        is logged in full and previewed in the exception, so the cause is
+        diagnosable without a second run.
+
+        Raises:
+            ValueError: If ``markdown`` is shorter than ``min_chars``.
+        """
+        if min_chars <= 0:
+            return
+
+        report = markdown.strip()
+        if len(report) >= min_chars:
+            return
+
+        logger.warning(
+            "Claude Code report is below the min_report_chars threshold (%d < %d). "
+            "Full text of the rejected report: %s",
+            len(report),
+            min_chars,
+            report or "<empty>",
+        )
+        preview = report[:200] + ("..." if len(report) > 200 else "")
+        raise ValueError(
+            f"Claude Code returned a {len(report)}-character report, below the "
+            f"min_report_chars threshold of {min_chars}. This usually means the "
+            "run failed, was cut short, or produced no research. Lower or disable "
+            "the threshold (min_report_chars=0) if short answers are expected. "
+            f"Report text: {preview!r}"
+        )
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:
@@ -330,11 +737,11 @@ class ClaudeCodeProvider(ResearchProvider):
         mid-flight.
 
         Args:
-            data: Parsed Claude Code JSON payload.
+            data: The terminal ``result`` event from the output stream.
 
         Returns:
             A metadata dict with any of: models_used, num_turns, total_cost_usd,
-            web_search_requests, session_id, stop_reason.
+            web_search_requests, session_id, stop_reason, permission_denials.
         """
         metadata: dict = {}
 
@@ -358,6 +765,23 @@ class ClaudeCodeProvider(ResearchProvider):
             metadata["session_id"] = data["session_id"]
         if data.get("stop_reason"):
             metadata["stop_reason"] = data["stop_reason"]
+
+        # Denied tool calls are a common cause of a thin report: the agent asked
+        # for a tool outside the allowlist, was refused, and gave up. Which tool
+        # was refused is the actionable half -- it names what to add to
+        # allowed_tools -- so record the names alongside the count.
+        denials = data.get("permission_denials")
+        if denials:
+            metadata["permission_denials"] = len(denials)
+            denied_tools = sorted(
+                {
+                    denial["tool_name"]
+                    for denial in denials
+                    if isinstance(denial, dict) and denial.get("tool_name")
+                }
+            )
+            if denied_tools:
+                metadata["denied_tools"] = denied_tools
 
         return metadata
 

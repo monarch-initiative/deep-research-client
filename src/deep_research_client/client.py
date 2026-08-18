@@ -33,8 +33,11 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
 #: Providers whose registration is gated on an environment variable rather than
 #: on the provider's own availability, so the provider cannot explain itself.
 REGISTRATION_GATES: dict[str, str] = {
+    # Phrased as requirements, not findings: absence from the registry has
+    # more than one cause (explicit provider_configs skip env detection
+    # entirely), so a sentence asserting *why* would sometimes be false.
     "claude_code": (
-        "DISABLE_CLAUDE_CODE_PROVIDER is set; unset it to use the local Claude Code CLI"
+        "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
     ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }
@@ -217,13 +220,15 @@ class DeepResearchClient:
         Returns:
             Human-readable explanation of what is missing
         """
-        provider_class = self._get_provider_class(provider_name)
         try:
+            provider_class = self._get_provider_class(provider_name)
             provider = provider_class(ProviderConfig(name=provider_name))
         except Exception:
             # A diagnostic path must not fail with a second, unrelated error.
+            # The class attributes are readable even when the instance is not,
+            # so fall back to those before giving up on saying anything useful.
             logger.debug("Could not build %s to explain itself:", provider_name, exc_info=True)
-            return REGISTRATION_GATES.get(provider_name, f"'{provider_name}' is not configured")
+            return self._reason_from_class_attributes(provider_name)
 
         if provider.is_available():
             # The class has nothing to explain: the gate is outside it.
@@ -231,6 +236,28 @@ class DeepResearchClient:
                 provider_name, f"'{provider_name}' is not registered in this environment"
             )
         return provider.unavailable_reason()
+
+    def _reason_from_class_attributes(self, provider_name: str) -> str:
+        """Explain a provider without instantiating it.
+
+        Args:
+            provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+        Returns:
+            Human-readable explanation of what is missing
+        """
+        gate = REGISTRATION_GATES.get(provider_name)
+        if gate:
+            return gate
+        module_name, class_name = PROVIDER_CLASS_PATHS[provider_name]
+        try:
+            provider_class = getattr(importlib.import_module(module_name), class_name)
+        except Exception:
+            return f"'{provider_name}' is not configured"
+        if provider_class.credential_env_var:
+            label = provider_class.credential_label or provider_name
+            return f"no {label} API key configured (set {provider_class.credential_env_var})"
+        return f"'{provider_name}' is not configured"
 
     def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
         """Resolve a provider class only when it is actually needed."""

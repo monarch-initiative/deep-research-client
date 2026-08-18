@@ -422,9 +422,11 @@ def test_a_disabled_claude_code_is_not_told_to_install_the_cli(monkeypatch):
     """
     import shutil
 
-    if shutil.which("claude") is None:
-        pytest.skip("needs the claude CLI installed to exercise the wrong-answer path")
-
+    # Patched rather than skipped: CI has no `claude` binary, so a skip here
+    # meant the only test pinning this fix never ran where the counts come from.
+    monkeypatch.setattr(
+        shutil, "which", lambda name, *args, **kwargs: "/usr/bin/claude" if name == "claude" else None
+    )
     monkeypatch.setenv("DISABLE_CLAUDE_CODE_PROVIDER", "true")
     client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
 
@@ -446,3 +448,62 @@ def test_the_mock_provider_names_the_variable_that_enables_it(monkeypatch):
 
     assert "ENABLE_MOCK_PROVIDER" in str(excinfo.value)
     assert "is not available" not in str(excinfo.value), "the generic wording this PR removed"
+
+
+def test_cyberian_names_the_binary_it_actually_needs(monkeypatch):
+    """The package is a main dependency; the binary is the gate that shuts.
+
+    Reporting "the cyberian package is not installed" would send the reader to
+    reinstall something `pip` already gave them, while `agentapi` -- a separate
+    Go binary -- is what is missing on a stock install.
+    """
+    import shutil
+
+    from deep_research_client.providers.cyberian import CyberianProvider
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    provider = CyberianProvider(ProviderConfig(name="cyberian"))
+
+    reason = provider.unavailable_reason()
+
+    assert "agentapi" in reason
+    assert "package is not installed" not in reason, "the package is a main dependency"
+    assert "is not available" not in reason, "the generic wording this branch removed"
+
+
+def test_cyberian_research_reports_the_same_reason(monkeypatch):
+    """The raise must not restate a guess the class can answer properly."""
+    import asyncio
+    import shutil
+
+    from deep_research_client.exceptions import ProviderNotInstalledError
+    from deep_research_client.providers.cyberian import CyberianProvider
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    provider = CyberianProvider(ProviderConfig(name="cyberian"))
+
+    with pytest.raises(ProviderNotInstalledError) as excinfo:
+        asyncio.run(provider.research("what causes scurvy"))
+
+    assert "agentapi" in str(excinfo.value)
+
+
+def test_an_explicit_config_is_not_told_to_unset_a_variable_it_never_set(monkeypatch):
+    """Absence from the registry has more than one cause.
+
+    Building a client with explicit provider_configs skips environment
+    detection entirely, so a message asserting *why* claude_code is missing
+    would be false for a caller who never touched that variable.
+    """
+    monkeypatch.delenv("DISABLE_CLAUDE_CODE_PROVIDER", raising=False)
+    client = DeepResearchClient(
+        provider_configs={"openai": ProviderConfig(name="openai", api_key="k")},
+        cache_config=CacheConfig(enabled=False),
+    )
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="claude_code")
+
+    message = str(excinfo.value)
+    assert "DISABLE_CLAUDE_CODE_PROVIDER unset" in message, "state the requirement"
+    assert "is set;" not in message, "do not assert a state that was never checked"

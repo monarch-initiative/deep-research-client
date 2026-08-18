@@ -1155,7 +1155,7 @@ def providers(
     if provider:
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
-            logger.error(f"Unknown provider: {provider}")
+            typer.echo(f"Unknown provider: {provider}")
             logger.error(
                 f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
             raise typer.Exit(1)

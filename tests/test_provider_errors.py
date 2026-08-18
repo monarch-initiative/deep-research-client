@@ -350,7 +350,8 @@ def test_the_hint_table_names_no_provider_that_no_longer_exists():
     from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
     from deep_research_client.client import PROVIDER_CLASS_PATHS
 
-    assert set(PROVIDER_CREDENTIAL_HINTS) <= set(PROVIDER_CLASS_PATHS)
+    stale = set(PROVIDER_CREDENTIAL_HINTS) - set(PROVIDER_CLASS_PATHS)
+    assert not stale, f"hint entries naming providers that no longer exist: {stale}"
 
 
 def test_the_registry_actually_yields_keyed_providers():

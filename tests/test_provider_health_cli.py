@@ -167,23 +167,29 @@ def test_a_missing_key_is_not_reported_as_a_typo(capsys):
     assert "Unknown provider" not in out
 
 
-def test_a_genuine_typo_is_still_called_a_typo(monkeypatch):
+def test_a_genuine_typo_is_still_called_a_typo(capsys):
     """A name we do not recognise at all keeps the blunt message.
 
-    Driven through the command rather than the helper: the Typer callback runs
-    `logging.basicConfig(force=True)`, which drops the handler `caplog` relies
-    on, so a logging-based assertion here would hold in the harness and not in
-    the thing the user runs.
+    Two assertions for two properties, because neither covers the other. The
+    command run proves the message survives the real wiring -- a `caplog`
+    assertion would not, since the Typer callback runs
+    `logging.basicConfig(force=True)` and drops the handler it relies on. The
+    `capsys` run proves the message is on *stdout*: this click pins
+    `mix_stderr=True`, so `result.stdout` is really both streams merged and
+    would pass just as happily with the message back on stderr.
     """
     from typer.testing import CliRunner
 
     import deep_research_client.cli as cli_module
 
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--provider", "flacon"])
-
     assert result.exit_code == 1
     assert "Unknown provider" in result.stdout, "the typo must actually be reported"
     assert "NOT CONFIGURED" not in result.stdout
+
+    with pytest.raises(typer.Exit):
+        _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
+    assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
 
 
 def test_an_unconfigured_provider_says_what_would_fix_it(capsys):

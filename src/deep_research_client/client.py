@@ -188,6 +188,21 @@ class DeepResearchClient:
         for name, config in configs.items():
             self.registry.register(self._create_provider(name, config))
 
+    def _unregistered_reason(self, provider_name: str) -> str:
+        """Explain why a known provider never made it into the registry.
+
+        Asks the provider class itself rather than repeating the credential
+        names here, so the answer matches what every other surface says.
+
+        Args:
+            provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+        Returns:
+            Human-readable explanation of what is missing
+        """
+        provider_class = self._get_provider_class(provider_name)
+        return provider_class(ProviderConfig(name=provider_name)).unavailable_reason()
+
     def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
         """Resolve a provider class only when it is actually needed."""
         class_path = PROVIDER_CLASS_PATHS.get(provider_name)
@@ -301,6 +316,13 @@ class DeepResearchClient:
         if provider:
             base_provider = self.registry.get_provider(provider)
             if not base_provider:
+                # Providers register only once their credential is present, so
+                # a known name that is absent means "not set up", not "no such
+                # thing". Saying "not found" sends the caller hunting a typo.
+                if provider in PROVIDER_CLASS_PATHS:
+                    raise ProviderNotConfiguredError(
+                        provider, self._unregistered_reason(provider)
+                    )
                 raise ValueError(f"Provider '{provider}' not found")
             if not base_provider.is_available():
                 raise ProviderNotConfiguredError(provider, base_provider.unavailable_reason())

@@ -379,3 +379,40 @@ def test_a_verbatim_status_line_is_read(message, expected):
     rather than loosening that.
     """
     assert extract_status_code(RuntimeError(message)) == expected
+
+
+def test_the_library_reports_a_missing_key_as_a_missing_key(monkeypatch):
+    """The CLI learned this in round 5; the library entry point had not.
+
+    Providers register only when their credential is present, so `not found`
+    for a correctly-spelled provider is a spelling diagnosis for an unset key.
+    """
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.exceptions import ProviderNotConfiguredError
+    from deep_research_client.models import CacheConfig
+
+    for variable in ("EDISON_API_KEY", "FUTUREHOUSE_API_KEY"):
+        monkeypatch.delenv(variable, raising=False)
+
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="falcon")
+
+    assert "EDISON_API_KEY" in str(excinfo.value)
+    assert "not found" not in str(excinfo.value)
+
+
+def test_the_library_still_calls_an_unknown_name_unknown(monkeypatch):
+    """A name that is no provider at all keeps the blunt answer."""
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.exceptions import ProviderNotConfiguredError
+    from deep_research_client.models import CacheConfig
+
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ValueError) as excinfo:
+        client.research("what causes scurvy", provider="flacon")
+
+    assert not isinstance(excinfo.value, ProviderNotConfiguredError)
+    assert "not found" in str(excinfo.value)

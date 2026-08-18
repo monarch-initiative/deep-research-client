@@ -257,10 +257,14 @@ def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
     )
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
-    captured = result.stdout
+    assert "Please set API keys" in result.stdout, "the real command must emit it"
+
+    # And on stdout specifically. CliRunner cannot show that -- this click
+    # merges the two streams into one buffer -- so the helper is called direct.
+    cli_module._echo_no_providers_message()
+    captured = capsys.readouterr().out
 
     assert "Please set API keys" in captured
-    assert "OPENAI_API_KEY" in captured
     heading_at = captured.index("Please set API keys")
     assert captured.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
 

@@ -239,6 +239,17 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
+def _echo_no_providers_message() -> None:
+    """Tell the user nothing is configured, and what to set.
+
+    A function rather than two inline calls so a test can assert which stream
+    it lands on: driving this through CliRunner cannot show that, because the
+    pinned click merges stdout and stderr into one buffer.
+    """
+    typer.echo("No research providers available. Please set API keys:")
+    _echo_credential_hints(_settable_credential_hints())
+
+
 def _settable_credential_hints() -> list[str]:
     """Providers a user can enable by setting an environment variable.
 
@@ -754,8 +765,7 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        typer.echo("No research providers available. Please set API keys:")
-        _echo_credential_hints(_settable_credential_hints())
+        _echo_no_providers_message()
         raise typer.Exit(1)
 
     # Show available providers

@@ -23,7 +23,6 @@ from .model_cards import (
     DEEPER_MED_ARXIV_ID,
     ModelCard,
     get_provider_model_cards,
-    list_all_models,
     find_models_by_cost,
     find_models_by_capability,
     find_models_by_resource,
@@ -2033,14 +2032,13 @@ def models(
 
     # Show all models by provider
     logger.debug("Listing all models")
-    all_models = list_all_models()
     typer.echo("**Available Research Models**")
     typer.echo()
 
-    for provider_name in all_models:
-        cards = get_provider_model_cards(provider_name)
-        if not cards:
-            continue
+    # Straight from the registry: list_all_models() built a name mapping whose
+    # values this loop discarded, then looked each provider up again behind a
+    # guard that could not fire, since the names came from here to begin with.
+    for provider_name, cards in PROVIDER_MODEL_CARDS.items():
         typer.echo(
             f"**{provider_name.upper()}** (Default: {cards.default_model}):")
 

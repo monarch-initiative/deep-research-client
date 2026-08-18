@@ -229,11 +229,18 @@ def test_an_ip_address_is_not_a_status_code():
 
 
 def test_not_configured_is_one_catchable_class():
-    """A caller skipping unusable providers should need only one except clause."""
-    from deep_research_client.exceptions import (
+    """A caller skipping unusable providers should need only one except clause.
+
+    Imported from the package root on purpose: that is the import the provider
+    docs tell callers to write, so the export list is part of the contract.
+    """
+    from deep_research_client import (
         ProviderNotConfiguredError,
         ProviderNotInstalledError,
+        extract_status_code,
     )
+
+    assert extract_status_code is not None
 
     assert issubclass(ProviderNotInstalledError, ProviderNotConfiguredError)
     assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)

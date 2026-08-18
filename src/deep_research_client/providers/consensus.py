@@ -120,7 +120,7 @@ class ConsensusProvider(ResearchProvider):
             # A 5xx body is often a full HTML error page; ProviderError caps
             # the classified path, so only the bare re-raise needs slicing here.
             body = truncate_detail(e.response.text, MAX_DETAIL_CHARS)
-            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, e.response.text)
+            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, body)
             classified = classify_status(self.name, e.response.status_code, detail)
             if classified is not None:
                 raise classified from e

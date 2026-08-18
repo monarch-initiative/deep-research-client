@@ -29,12 +29,21 @@ from typing import ClassVar, Optional
 MAX_DETAIL_CHARS = 200
 
 #: However long the remedy is, keep at least this much of what the provider
-#: said -- a message that is all advice and no evidence helps nobody.
+#: said -- a message that is all advice and no evidence helps nobody. Every
+#: remedy in this module is short enough that this floor is unreachable; it
+#: exists for a subclass whose remedy is longer than expected, and entering it
+#: means the composed diagnosis can exceed MAX_DETAIL_CHARS.
 MIN_DETAIL_CHARS = 60
+
+#: Cap on a provider-reported reset time. The value lands inside a remedy, so an
+#: unbounded one would inflate the framing until the budget could not protect
+#: the reset time itself.
+MAX_RESET_CHARS = 40
 
 __all__ = [
     "MAX_DETAIL_CHARS",
     "MIN_DETAIL_CHARS",
+    "MAX_RESET_CHARS",
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",
@@ -207,6 +216,10 @@ class ProviderQuotaError(ProviderError):
         resets_at: Optional[str] = None,
     ):
         """Build a quota error, noting when the allowance renews if known."""
+        # Bounded here rather than by the caller: this class is public, and a
+        # long reset string would inflate the remedy until the message budget
+        # could no longer keep the reset time on the line.
+        resets_at = truncate_detail(resets_at, MAX_RESET_CHARS) if resets_at else resets_at
         self.resets_at = resets_at
         if resets_at:
             self.remedy = f"{type(self).remedy}, and renews at {resets_at}"

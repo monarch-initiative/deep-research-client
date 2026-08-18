@@ -189,3 +189,26 @@ def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
     out = capsys.readouterr().out
     assert "cyberian: NOT CONFIGURED" in out
     assert "pip install" in out, "a provider with no env var still needs a next step"
+
+
+@pytest.mark.parametrize(
+    "provider,expected",
+    [
+        ("falcon", "set EDISON_API_KEY for Edison Scientific"),
+        ("claude_code", "Claude Code requires the `claude` CLI on PATH"),
+        ("cyberian", "pip install"),
+    ],
+)
+def test_every_unconfigured_answer_carries_its_own_next_step(capsys, provider, expected):
+    """A key, a binary and a package are three different fixes; say which.
+
+    The claude_code case is the one that reads as nonsense if every hint is
+    assumed to be an environment variable: "set the `claude` CLI on PATH".
+    """
+    with pytest.raises(typer.Exit):
+        _check_provider_health(_StubClient([_ok("somethingelse")]), provider)
+
+    out = capsys.readouterr().out
+    assert f"{provider}: NOT CONFIGURED" in out
+    assert expected in out
+    assert "set the" not in out

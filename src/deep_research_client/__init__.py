@@ -7,6 +7,8 @@ except ImportError:  # pragma: no cover
 from .client import DeepResearchClient
 from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry, ProviderHealth
 from .exceptions import (
+    MAX_DETAIL_CHARS,
+    truncate_detail,
     ProviderError,
     ProviderAuthError,
     ProviderBillingError,
@@ -53,6 +55,8 @@ __all__ = [
     "QueryMetadata",
     "EditHistoryEntry",
     "ProviderHealth",
+    "MAX_DETAIL_CHARS",
+    "truncate_detail",
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",

@@ -5,6 +5,7 @@ import binascii
 from dataclasses import dataclass
 import logging
 import os
+import re
 import typer
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, List
@@ -253,6 +254,11 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+#: A credential hint that names an environment variable, rather than something
+#: else the provider needs (a binary on PATH, an installed package).
+_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
+
+
 def _why_unconfigured(provider: str) -> str:
     """Say what would make an unregistered provider usable.
 
@@ -268,11 +274,17 @@ def _why_unconfigured(provider: str) -> str:
         Human-readable explanation of what is missing
     """
     if provider in PROVIDER_CREDENTIAL_HINTS:
-        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider]
-        return f"set {env_var} for {label}"
+        requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
+        # Not every entry is a variable to export -- claude_code needs a binary
+        # on PATH -- and "set the `claude` CLI on PATH" reads as nonsense.
+        if _ENV_VAR_HINT.match(requirement):
+            return f"set {requirement} for {label}"
+        return f"{label} requires {requirement}"
     if provider in PROVIDER_STUB_HINTS:
         return PROVIDER_STUB_HINTS[provider]
     # Nothing to export: these register only when an optional package imports.
+    # The extra is named after the provider, which holds for every name that
+    # can reach this branch today.
     return (
         f"registered only when its optional package is installed "
         f"(try `pip install deep-research-client[{provider}]`)"
@@ -303,9 +315,13 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # mistake instead of exporting a variable.
             if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
                 typer.echo("Provider health:")
-                typer.echo(
-                    f"  {ProviderHealth(provider=provider, configured=False, detail=_why_unconfigured(provider)).summary()}"
+                unconfigured = ProviderHealth(
+                    provider=provider,
+                    configured=False,
+                    reachable=False,
+                    detail=_why_unconfigured(provider),
                 )
+                typer.echo(f"  {unconfigured.summary()}")
             else:
                 logger.error(f"Unknown provider: {provider}")
             raise typer.Exit(1)

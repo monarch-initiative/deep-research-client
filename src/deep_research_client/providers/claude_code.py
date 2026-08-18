@@ -36,7 +36,6 @@ from typing import List, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
-    truncate_detail,
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
@@ -79,13 +78,10 @@ _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
 
 # "Your limit will reset at 3pm (America/Los_Angeles)." -- the closest thing any
 # provider here gives us to a remaining-allowance reading.
-_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.\n]+)", re.IGNORECASE)
-
-# The capture runs to the next period, which on a chatty message can be a whole
-# clause. It ends up inside the error's remedy, and a remedy long enough to blow
-# the message budget would push the reset time -- the thing worth keeping -- off
-# the end of the line it lives on.
-_MAX_RESET_CHARS = 40
+# The capture stops at a clause boundary, not just a sentence one: a wordy
+# message continues past the time with advice ("...at 5pm Pacific Time; if you
+# need capacity sooner..."), and everything after the semicolon is not a time.
+_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.;,\n]+)", re.IGNORECASE)
 
 # `claude auth status` reads local credentials and makes no model call, so it
 # should answer immediately. This only guards against a wedged process.
@@ -169,11 +165,7 @@ def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
             return ProviderQuotaError(
                 provider,
                 detail,
-                resets_at=(
-                    truncate_detail(reset_match.group(1).strip(), _MAX_RESET_CHARS)
-                    if reset_match
-                    else None
-                ),
+                resets_at=reset_match.group(1).strip() if reset_match else None,
             )
         return error_class(provider, detail)
 

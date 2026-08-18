@@ -389,5 +389,7 @@ def test_a_chatty_reset_message_does_not_push_its_own_reset_time_off():
     )
 
     assert len(error.diagnosis) <= MAX_DETAIL_CHARS
-    assert "5pm Pacific Time" in health.detail
-    assert "renews at" in health.detail
+    # Equality, not containment: a substring check passes on a clause that was
+    # chopped mid-word, which is not a time and reads as noise after "renews at".
+    assert error.resets_at == "5pm Pacific Time"
+    assert "renews at 5pm Pacific Time" in health.detail

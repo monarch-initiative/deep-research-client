@@ -1227,6 +1227,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#provider-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Provider Failures
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Provider Failures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#openai" class="md-nav__link">
+    <span class="md-ellipsis">
+      OpenAI
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-code_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Claude Code
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#adding-custom-providers" class="md-nav__link">
     <span class="md-ellipsis">
       Adding Custom Providers
@@ -1972,6 +2005,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#provider-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Provider Failures
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Provider Failures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#openai" class="md-nav__link">
+    <span class="md-ellipsis">
+      OpenAI
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-code_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Claude Code
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#adding-custom-providers" class="md-nav__link">
     <span class="md-ellipsis">
       Adding Custom Providers
@@ -2531,6 +2597,121 @@ change.</p>
 <pre><code class="language-bash"># Check available providers
 deep-research-client providers
 </code></pre>
+<p>Detection only tells you a provider is <strong>configured</strong> — an API key is set. It
+does not tell you the key is still valid, or that the account can pay for a
+run. To find that out, probe the providers with a cheap live call:</p>
+<pre><code class="language-bash"># Probe every configured provider
+deep-research-client providers --check
+
+# Probe just one
+deep-research-client providers --check --provider falcon
+</code></pre>
+<p>Each provider reports one of <code>OK</code>, <code>UNREACHABLE</code>, <code>NOT CONFIGURED</code>, or
+<code>UNKNOWN (no probe available)</code> — the last meaning that provider has not
+implemented a probe, so configuration is all we know. The command exits
+non-zero if any provider turns out to be unable to take work, which includes a
+named provider that is not configured at all (no probe needed to know that).</p>
+<p>A probe proves the credential is accepted. It cannot prove the account has
+credits: Edison, for example, only charges when a task is submitted, so an
+uncredited key passes the probe and fails the run with <code>402</code>. A numeric
+balance has to come from the provider's own dashboard.</p>
+<h2 id="provider-failures">Provider Failures</h2>
+<p>Failures are raised as typed exceptions so callers can tell "switch provider"
+apart from "try again":</p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>Statuses</th>
+<th>Retryable</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ProviderAuthError</code></td>
+<td>401, 403</td>
+<td>No</td>
+<td>Key missing, invalid, or lacks access</td>
+</tr>
+<tr>
+<td><code>ProviderBillingError</code></td>
+<td>402</td>
+<td>No</td>
+<td>Account is out of credits</td>
+</tr>
+<tr>
+<td><code>ProviderQuotaError</code></td>
+<td>—</td>
+<td>No</td>
+<td>Plan's usage allowance is spent; carries <code>resets_at</code> when the provider says (bounded by the class, so a trailing <code>…</code> on it came from us, not the provider)</td>
+</tr>
+<tr>
+<td><code>ProviderNotConfiguredError</code></td>
+<td>—</td>
+<td>No</td>
+<td>No credential set; nothing was sent, so nothing was rejected</td>
+</tr>
+<tr>
+<td><code>ProviderNotInstalledError</code></td>
+<td>—</td>
+<td>No</td>
+<td>A CLI-backed provider's tool is not on PATH (a kind of "not configured")</td>
+</tr>
+<tr>
+<td><code>ProviderRateLimitError</code></td>
+<td>429</td>
+<td>Yes</td>
+<td>Throttled; wait and retry</td>
+</tr>
+<tr>
+<td><code>ProviderTransientError</code></td>
+<td>5xx</td>
+<td>Yes</td>
+<td>Temporary server-side failure</td>
+</tr>
+</tbody>
+</table>
+<p><code>ProviderNotInstalledError</code> subclasses <code>ProviderNotConfiguredError</code>, so one
+<code>except ProviderNotConfiguredError</code> covers both a missing key and a missing
+CLI. All of them subclass <code>ProviderError</code> (itself a <code>ValueError</code>, so older callers
+still work) and carry <code>provider</code>, <code>status_code</code>, <code>detail</code>, and a <code>retryable</code>
+flag:</p>
+<pre><code class="language-python">from deep_research_client import ProviderBillingError, ProviderError
+
+try:
+    result = client.research(&quot;...&quot;, provider=&quot;falcon&quot;)
+except ProviderBillingError:
+    ...  # out of credits: a retry cannot help, pick another provider
+except ProviderError as e:
+    if e.retryable:
+        ...
+</code></pre>
+<p>Auth and billing failures are classified even when a provider SDK retries
+internally and reports the result as a timeout — the status is recovered from
+the wrapped exception rather than lost.</p>
+<h3 id="openai">OpenAI</h3>
+<p>OpenAI reports a spent quota as <strong>429 with <code>code: "insufficient_quota"</code></strong> — the
+same status it uses for ordinary throttling. Reading the status alone would
+mark a spent quota retryable and loop on it forever, so the body's error code
+is checked first and only falls back to the status when there is no code we
+recognise. A model name that does not exist is deliberately left unclassified:
+that is a caller error, not a provider outage.</p>
+<p>Its probe (<code>models.list</code>) is authenticated but not billed, so like Edison it
+proves the key and nothing more — a key with no quota left still passes. OpenAI
+exposes no balance endpoint; the spent quota only announces itself on a run.</p>
+<h3 id="claude-code_1">Claude Code</h3>
+<p>The <code>claude_code</code> provider is a subprocess wrapper, so it has no status codes
+to read. Its failures are classified from what the CLI prints — a spent usage
+allowance, a logged-out session, an expired token, a model the plan does not
+include, or an overloaded API — and the wordings that mean "stop" are kept
+apart from the ones that mean "try again".</p>
+<p>Its health probe is the most informative of any provider, and the only free
+one: <code>claude auth status --json</code> reads local credentials and makes no model
+call, so <code>--check</code> reports the auth method and plan without spending a token.</p>
+<p>The one failure the CLI does not always report cleanly is a spent usage limit
+mid-run, which can stall rather than fail. The timeout message points at
+<code>providers --check</code> for that reason.</p>
 <h2 id="adding-custom-providers">Adding Custom Providers</h2>
 <p>Create a new provider in <code>src/deep_research_client/providers/</code>:</p>
 <pre><code class="language-python">from . import ResearchProvider

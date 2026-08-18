@@ -1227,17 +1227,22 @@ def providers(
         elif provider in PROVIDER_STUB_HINTS:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        else:
+        elif provider in PROVIDER_CREDENTIAL_HINTS:
             status = "Not available (missing API key)"
+        else:
+            # Neither a stub nor credential-blocked: biomni and cyberian need an
+            # optional package, and "missing API key" sent the reader looking
+            # for a variable that does not exist. --check has always said this
+            # correctly; this path used to disagree with it.
+            status = "Not available (missing optional dependency)"
         typer.echo(f"Provider: {provider} - {status}")
 
         if not is_available:
-            if provider in PROVIDER_STUB_HINTS:
-                typer.echo(f"Status: {PROVIDER_STUB_HINTS[provider]}")
-            elif provider in PROVIDER_CREDENTIAL_HINTS:
-                # Show required environment variable
-                env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
-                typer.echo(f"Required: {env_var}")
+            # One helper for both paths, so the two cannot drift into two
+            # answers for the same provider again. The label still varies:
+            # nothing is "required" of a reader whose provider has no upstream.
+            label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
+            typer.echo(f"{label}: {_why_unconfigured(provider)}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]
@@ -1955,8 +1960,8 @@ def models(
         cards = get_provider_model_cards(provider)
         if not cards:
             logger.error(
-                f"Provider '{provider}' has no model cards. Use one of: "
-                f"{_carded_providers()}")
+                f"Unknown provider, or no model cards for '{provider}'. "
+                f"Use one of: {_carded_providers()}")
             raise typer.Exit(1)
 
         if not selections:
@@ -1992,17 +1997,17 @@ def models(
     typer.echo("**Available Research Models**")
     typer.echo()
 
-    for provider_name, model_names in all_models.items():
+    for provider_name in all_models:
         cards = get_provider_model_cards(provider_name)
         if not cards:
             continue
         typer.echo(
             f"**{provider_name.upper()}** (Default: {cards.default_model}):")
 
-        for model_name in model_names:
-            maybe_card = cards.get_model_card(model_name)
-            if maybe_card:
-                _display_model_card(maybe_card, detailed, indent="  ")
+        # Deduplicated like every other branch: a card aliased under two keys
+        # would otherwise be listed twice here and once everywhere else.
+        for card in cards.unique_models():
+            _display_model_card(card, detailed, indent="  ")
         typer.echo()
 
 

@@ -495,24 +495,37 @@ def test_provider_named_alone_still_reports_its_default_model():
     assert "Default: biomni-a1" in result.output
 
 
+def _provider_option(command_name: str):
+    """Read the --provider option object off a command, for help assertions.
+
+    Reads the option's own help string rather than the rendered page: matching
+    anywhere in the output would pass if the help were emptied and the names
+    happened to appear in another flag or the epilog.
+
+    Args:
+        command_name: Name of the CLI command to inspect.
+
+    Returns:
+        The click Option backing --provider
+    """
+    import click
+
+    command = typer.main.get_command(app).commands[command_name]  # type: ignore[attr-defined]
+    return next(
+        param for param in command.params
+        if isinstance(param, click.Option) and "--provider" in param.opts
+    )
+
+
 def test_research_provider_help_names_every_registered_provider():
     """A provider added to the registry must not need a second list edited.
 
     biomni and cyberian were both absent from the hand-written help this
     replaced.
     """
-    import click
-
     from deep_research_client.client import PROVIDER_CLASS_PATHS
 
-    # Read the option's own help string rather than the rendered page: matching
-    # anywhere in the output would pass if this help were emptied and the names
-    # happened to appear in another flag or the epilog.
-    command = typer.main.get_command(app).commands["research"]  # type: ignore[attr-defined]
-    provider_option = next(
-        param for param in command.params
-        if isinstance(param, click.Option) and "--provider" in param.opts
-    )
+    provider_option = _provider_option("research")
 
     for name in PROVIDER_CLASS_PATHS:
         assert name in (provider_option.help or ""), (
@@ -526,16 +539,9 @@ def test_models_provider_help_names_every_provider_with_cards():
     `mock` is constructible but ships no card, so it belongs in research's list
     and not in this one.
     """
-    import click
-
     from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
 
-    command = typer.main.get_command(app).commands["models"]  # type: ignore[attr-defined]
-    provider_option = next(
-        param for param in command.params
-        if isinstance(param, click.Option) and "--provider" in param.opts
-    )
-    rendered = provider_option.help or ""
+    rendered = _provider_option("models").help or ""
 
     for name in PROVIDER_MODEL_CARDS:
         assert name in rendered, f"{name} ships cards but is absent from --provider help"
@@ -543,11 +549,14 @@ def test_models_provider_help_names_every_provider_with_cards():
 
 
 def test_models_rejects_a_provider_without_cards_by_naming_the_ones_that_have_them():
-    """"Provider 'mock' not found" left the reader with nowhere to go."""
+    """Provider 'mock' not found left the reader with nowhere to go."""
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+
     result = runner.invoke(app, ["models", "--provider", "mock"])
 
     assert result.exit_code == 1
-    for name in ("openai", "biomni"):
+    # Derived, so a carded provider dropping out of the message fails here too.
+    for name in PROVIDER_MODEL_CARDS:
         assert name in result.output
 
 

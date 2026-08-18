@@ -333,3 +333,36 @@ async def test_biomni_end_to_end():
     )
     assert result.provider == "biomni"
     assert result.markdown.strip()
+
+
+def test_cli_does_not_claim_a_missing_api_key_for_an_optional_package():
+    """Biomni has no credential, so asking for one sends the reader nowhere.
+
+    Mirrors the deeper_med precedent: `providers --provider X` used to report
+    every non-stub as credential-blocked, disagreeing with what
+    `providers --check` said about the same provider.
+    """
+    if BIOMNI_INSTALLED:
+        pytest.skip("biomni installed; the unavailable branch is not reachable")
+    from typer.testing import CliRunner
+
+    from deep_research_client.cli import app
+
+    result = CliRunner().invoke(app, ["providers", "--provider", "biomni"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "missing API key" not in result.stdout
+    assert "deep-research-client[biomni]" in result.stdout
+
+
+def test_the_two_provider_report_paths_agree():
+    """`providers --provider X` and `providers --check` describe one provider."""
+    if BIOMNI_INSTALLED:
+        pytest.skip("biomni installed; the unavailable branch is not reachable")
+    from typer.testing import CliRunner
+
+    from deep_research_client.cli import _why_unconfigured, app
+
+    result = CliRunner().invoke(app, ["providers", "--provider", "biomni"])
+
+    assert _why_unconfigured("biomni") in result.stdout

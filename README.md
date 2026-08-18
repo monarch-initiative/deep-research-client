@@ -829,14 +829,25 @@ deep-research-client models --cost very_high  # Most expensive/comprehensive
 # Filter by capability
 deep-research-client models --capability web_search
 deep-research-client models --capability academic_search
-deep-research-client models --capability scientific_literature
+deep-research-client models --capability code_interpretation
+
+# Filter by the data sources a provider wraps
+deep-research-client models --resource pubmed
+
+# Filter by where a provider sits on the retrieval -> co-scientist spectrum
+deep-research-client models --archetype co_scientist
 
 # Show detailed information including pricing, use cases, and limitations
 deep-research-client models --detailed
 
-# Combine filters
+# Combine filters: several flags ask for their intersection
 deep-research-client models --provider perplexity --cost low --detailed
+deep-research-client models --archetype co_scientist --resource pubmed
 ```
+
+Passing an unrecognised term lists the whole vocabulary. See
+[Capabilities, Resources & Archetypes](docs/reference/capabilities.md) for what
+each value means.
 
 ### Model Aliases
 

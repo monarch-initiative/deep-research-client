@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import click
 import pytest
 import typer
 
@@ -495,7 +496,7 @@ def test_provider_named_alone_still_reports_its_default_model():
     assert "Default: biomni-a1" in result.output
 
 
-def _provider_option(command_name: str):
+def _provider_option(command_name: str) -> "click.Option":
     """Read the --provider option object off a command, for help assertions.
 
     Reads the option's own help string rather than the rendered page: matching

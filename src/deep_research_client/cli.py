@@ -284,6 +284,33 @@ def _echo_no_providers_message() -> None:
     _echo_credential_hints(_settable_credential_hints())
 
 
+def _echo_optional_dependency_hints(available: list, client: object) -> None:
+    """List providers held back by something other than a credential or a stub.
+
+    Derived from PROVIDER_CLASS_PATHS rather than a fourth table: a provider
+    needing an optional package appears in neither hint table, so before this
+    it was in no section at all -- not available, not unavailable, not a stub.
+    A reader had no way to learn from this command that biomni exists.
+
+    Args:
+        available: Provider names the client managed to register.
+        client: Client to ask for each provider's own explanation.
+    """
+    hidden = [
+        name
+        for name in PROVIDER_CLASS_PATHS
+        if name not in available
+        and name not in PROVIDER_CREDENTIAL_HINTS
+        and name not in PROVIDER_STUB_HINTS
+    ]
+    if not hidden:
+        return
+
+    typer.echo("\nProviders needing an optional install:")
+    for name in hidden:
+        typer.echo(f"  - {name}: {_why_unconfigured(name, client)}")
+
+
 def _settable_credential_hints() -> list[str]:
     """Providers a user can enable by setting an environment variable.
 
@@ -322,7 +349,7 @@ def _echo_stub_hints() -> None:
 _ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
 
 
-def _why_unconfigured(provider: str) -> str:
+def _why_unconfigured(provider: str, client: Optional[object] = None) -> str:
     """Say what would make an unregistered provider usable.
 
     A provider is registered only once whatever it needs is present, so by the
@@ -330,12 +357,24 @@ def _why_unconfigured(provider: str) -> str:
     Reporting "NOT CONFIGURED" without the next step would be the same empty
     answer this command exists to replace.
 
+    When a real client is supplied its own `_unregistered_reason` answers, and
+    it knows two things these tables cannot: that registration is also gated on
+    an environment variable, so a CLI already on PATH must not be reported as
+    missing from PATH, and that a provider can explain itself -- cyberian names
+    the `agentapi` binary rather than a package it already has. Reimplementing
+    that here would be a second answer to the same question, and would make
+    this text depend on the machine, which the tables deliberately do not.
+
     Args:
         provider: Canonical provider name.
+        client: Client to ask, when one is available.
 
     Returns:
         Human-readable explanation of what is missing
     """
+    ask = getattr(client, "_unregistered_reason", None)
+    if callable(ask):
+        return str(ask(provider))
     if provider in PROVIDER_CREDENTIAL_HINTS:
         requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
         # Not every entry is a variable to export -- claude_code needs a binary
@@ -380,7 +419,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                     provider=provider,
                     configured=False,
                     reachable=False,
-                    detail=_why_unconfigured(provider),
+                    detail=_why_unconfigured(provider, client),
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
@@ -1227,14 +1266,13 @@ def providers(
         elif provider in PROVIDER_STUB_HINTS:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        elif provider in PROVIDER_CREDENTIAL_HINTS:
+        elif provider in _settable_credential_hints():
             status = "Not available (missing API key)"
         else:
-            # Neither a stub nor credential-blocked: biomni and cyberian need an
-            # optional package, and "missing API key" sent the reader looking
-            # for a variable that does not exist. --check has always said this
-            # correctly; this path used to disagree with it.
-            status = "Not available (missing optional dependency)"
+            # Not every hint is a credential: claude_code needs a binary and
+            # mock an opt-in variable, so keying on table membership made the
+            # header contradict the line printed directly beneath it.
+            status = "Not available (see below)"
         typer.echo(f"Provider: {provider} - {status}")
 
         if not is_available:
@@ -1242,7 +1280,7 @@ def providers(
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
             label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
-            typer.echo(f"{label}: {_why_unconfigured(provider)}")
+            typer.echo(f"{label}: {_why_unconfigured(provider, client)}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]
@@ -1291,10 +1329,12 @@ def providers(
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
 
+        _echo_optional_dependency_hints(available, client)
         _echo_stub_hints()
     else:
         logger.error("No providers available. Please set API keys:")
         _echo_credential_hints(_settable_credential_hints())
+        _echo_optional_dependency_hints(available, client)
         _echo_stub_hints()
 
     if not show_params and not provider:

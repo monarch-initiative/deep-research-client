@@ -356,13 +356,40 @@ def test_cli_does_not_claim_a_missing_api_key_for_an_optional_package():
 
 
 def test_the_two_provider_report_paths_agree():
-    """`providers --provider X` and `providers --check` describe one provider."""
+    """`providers --provider X` and `providers --check` describe one provider.
+
+    Both paths are invoked: asserting only against `_why_unconfigured` -- the
+    helper the implementation calls -- would keep passing if one path stopped
+    using it, which is the drift this is here to catch.
+    """
     if BIOMNI_INSTALLED:
         pytest.skip("biomni installed; the unavailable branch is not reachable")
     from typer.testing import CliRunner
 
-    from deep_research_client.cli import _why_unconfigured, app
+    from deep_research_client.cli import app
 
-    result = CliRunner().invoke(app, ["providers", "--provider", "biomni"])
+    detail = CliRunner().invoke(app, ["providers", "--provider", "biomni"])
+    checked = CliRunner().invoke(app, ["providers", "--check", "--provider", "biomni"])
 
-    assert _why_unconfigured("biomni") in result.stdout
+    explanation = "the biomni package is not installed"
+    assert explanation in detail.stdout, detail.stdout
+    assert explanation in checked.stdout, checked.stdout
+
+
+def test_an_unavailable_biomni_is_listed_rather_than_omitted():
+    """It was in no section at all: not available, not unavailable, not a stub.
+
+    A reader who had never heard of biomni could not learn from this command
+    that it exists or what would enable it.
+    """
+    if BIOMNI_INSTALLED:
+        pytest.skip("biomni installed; it appears under available providers")
+    from typer.testing import CliRunner
+
+    from deep_research_client.cli import app
+
+    result = CliRunner().invoke(app, ["providers"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "biomni" in result.stdout
+    assert "deep-research-client[biomni]" in result.stdout

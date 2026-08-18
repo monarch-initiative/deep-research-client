@@ -312,7 +312,7 @@ def _keyed_provider_classes() -> list:
 
 
 @pytest.mark.parametrize(
-    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else ""
+    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else None
 )
 def test_every_keyed_provider_reports_a_missing_key_the_same_way(name, provider_class):
     """One `except` must cover every provider, or the documented catch lies."""
@@ -329,15 +329,28 @@ def test_every_keyed_provider_reports_a_missing_key_the_same_way(name, provider_
     assert provider.credential_env_var in str(excinfo.value)
 
 
-@pytest.mark.parametrize("name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else "")
+@pytest.mark.parametrize(
+    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else None
+)
 def test_the_cli_hint_table_agrees_with_the_provider_it_describes(name, provider_class):
     """Two places name each credential; they must not drift into two answers."""
     from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
 
+    assert name in PROVIDER_CREDENTIAL_HINTS, (
+        f"{name} needs an entry in PROVIDER_CREDENTIAL_HINTS so the CLI can name its key"
+    )
     assert PROVIDER_CREDENTIAL_HINTS[name] == (
         provider_class.credential_env_var,
         provider_class.credential_label,
     )
+
+
+def test_the_hint_table_names_no_provider_that_no_longer_exists():
+    """The cross-check above runs one way; this closes the other direction."""
+    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    assert set(PROVIDER_CREDENTIAL_HINTS) <= set(PROVIDER_CLASS_PATHS)
 
 
 def test_the_registry_actually_yields_keyed_providers():

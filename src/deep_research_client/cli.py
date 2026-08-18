@@ -322,14 +322,18 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
-                logger.error(f"Unknown provider: {provider}")
+                typer.echo(f"Unknown provider: {provider}")
             raise typer.Exit(1)
         targets = [target]
     else:
         # Probing an unconfigured provider only re-reports the missing key.
         targets = client.registry.get_available_providers()
         if not targets:
-            logger.error("No providers are configured, so there is nothing to probe.")
+            # Echoed rather than logged, so the sentence and the hints it
+            # introduces land on the same stream. Logging put them on stderr
+            # and stdout respectively, so redirecting kept the list and lost
+            # the line explaining what it was for.
+            typer.echo("No providers are configured, so there is nothing to probe.")
             _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
             raise typer.Exit(1)
 

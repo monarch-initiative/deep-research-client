@@ -167,14 +167,23 @@ def test_a_missing_key_is_not_reported_as_a_typo(capsys):
     assert "Unknown provider" not in out
 
 
-def test_a_genuine_typo_is_still_called_a_typo(capsys, caplog):
-    """A name we do not recognise at all keeps the blunt message."""
-    with pytest.raises(typer.Exit) as excinfo:
-        _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
+def test_a_genuine_typo_is_still_called_a_typo(monkeypatch):
+    """A name we do not recognise at all keeps the blunt message.
 
-    assert excinfo.value.exit_code == 1
-    assert "NOT CONFIGURED" not in capsys.readouterr().out
-    assert "Unknown provider" in caplog.text, "the typo must actually be reported"
+    Driven through the command rather than the helper: the Typer callback runs
+    `logging.basicConfig(force=True)`, which drops the handler `caplog` relies
+    on, so a logging-based assertion here would hold in the harness and not in
+    the thing the user runs.
+    """
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--provider", "flacon"])
+
+    assert result.exit_code == 1
+    assert "Unknown provider" in result.stdout, "the typo must actually be reported"
+    assert "NOT CONFIGURED" not in result.stdout
 
 
 def test_an_unconfigured_provider_says_what_would_fix_it(capsys):

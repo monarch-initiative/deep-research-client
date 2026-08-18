@@ -9,7 +9,8 @@ import os
 import re
 import typer
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -19,6 +20,7 @@ from .client import DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
     DEEPER_MED_ARXIV_ID,
+    ModelCard,
     get_provider_model_cards,
     list_all_models,
     find_models_by_cost,
@@ -1779,7 +1781,7 @@ def browse_cache(
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
-def _vocabulary(enum_class) -> str:
+def _vocabulary(enum_class: type[Enum]) -> str:
     """Render a controlled vocabulary as a comma-separated list of its values.
 
     Derived from the enum so help text and error messages cannot drift from the
@@ -1797,11 +1799,39 @@ def _vocabulary(enum_class) -> str:
     return ", ".join(member.value for member in enum_class)
 
 
-def _show_filtered_models(heading: str, matches: dict, detailed: bool) -> None:
+def _intersect_matches(
+    selections: List[Dict[str, List[ModelCard]]],
+) -> Dict[str, List[ModelCard]]:
+    """Intersect several provider -> cards mappings by card name.
+
+    Every finder returns the same shape, so combining filters is set
+    intersection over the cards each one matched.
+
+    Args:
+        selections: One mapping per filter the caller supplied.
+
+    Returns:
+        Provider -> cards present in every selection
+    """
+    combined = selections[0]
+    for selection in selections[1:]:
+        narrowed: Dict[str, List[ModelCard]] = {}
+        for provider_name, cards in combined.items():
+            keep = {card.name for card in selection.get(provider_name, [])}
+            matching = [card for card in cards if card.name in keep]
+            if matching:
+                narrowed[provider_name] = matching
+        combined = narrowed
+    return combined
+
+
+def _show_filtered_models(
+    heading: str, matches: Dict[str, List[ModelCard]], detailed: bool
+) -> None:
     """Print provider -> cards groups under a heading, or say nothing matched.
 
-    The three vocabulary filters on `models` differ only in which finder they
-    call, so the rendering lives here rather than being copied per axis.
+    The `models` filters differ only in which finder they call, so the
+    rendering lives here rather than being copied per axis.
 
     Args:
         heading: Title to print above the groups.
@@ -1809,7 +1839,10 @@ def _show_filtered_models(heading: str, matches: dict, detailed: bool) -> None:
         detailed: Whether to print the detailed form of each card.
     """
     if not matches:
-        logger.info("No models found for: %s", heading)
+        # Echoed, not logged: default verbosity is WARNING, so a logged line
+        # here meant a filter naming a real-but-unused vocabulary term printed
+        # nothing at all and exited 0.
+        typer.echo(f"No models match: {heading}")
         return
 
     typer.echo(f"**{heading}**")
@@ -1849,7 +1882,7 @@ def models(
       deep-research-client models --detailed         # Show detailed information
     """
     if provider:
-        # Show models for specific provider
+        # A provider is a listing, not a filter: it names exactly what to show.
         logger.debug(f"Fetching models for provider: {provider}")
         cards = get_provider_model_cards(provider)
         if not cards:
@@ -1862,99 +1895,62 @@ def models(
 
         for model_name, card in cards.models.items():
             _display_model_card(card, detailed)
+        return
 
-    elif cost:
-        # Filter by cost level
+    # Each axis contributes a provider -> cards mapping; the result is their
+    # intersection, so `--archetype co_scientist --resource pubmed` answers the
+    # conjunction a reader expects rather than silently honouring one flag.
+    selections: List[Dict[str, List[ModelCard]]] = []
+    described: List[str] = []
+
+    # Each finder takes its own enum, so the loop is typed at the widest shape
+    # they share: a term in, provider -> cards out.
+    axes: List[tuple[Optional[str], type[Enum], Callable[[Any], Dict[str, List[ModelCard]]], str]] = [
+        (cost, CostLevel, find_models_by_cost, "Cost"),
+        (capability, ResearchCapability, find_models_by_capability, "Capable"),
+        (resource, ResearchResource, find_models_by_resource, "Reaching"),
+        (archetype, ProviderArchetype, find_models_by_archetype, "Archetype"),
+    ]
+    for raw_value, enum_class, finder, label in axes:
+        if not raw_value:
+            continue
         try:
-            cost_level = CostLevel(cost.lower())
+            parsed = enum_class(raw_value.lower())
         except ValueError:
             logger.error(
-                f"Invalid cost level '{cost}'. Use: low, medium, high, very_high")
+                f"Invalid {enum_class.__name__} value '{raw_value}'. Use one of: "
+                f"{_vocabulary(enum_class)}")
             raise typer.Exit(1)
+        logger.debug("Filtering models by %s: %s", enum_class.__name__, parsed)
+        selections.append(finder(parsed))
+        described.append(f"{label} {raw_value.upper().replace('_', ' ')}")
 
-        logger.debug(f"Filtering models by cost level: {cost_level}")
-        models_by_cost = find_models_by_cost(cost_level)
-        if not models_by_cost:
-            logger.info(f"No models found with cost level: {cost}")
-            return
+    if selections:
+        _show_filtered_models(
+            " + ".join(described) + " Models",
+            _intersect_matches(selections),
+            detailed,
+        )
+        return
 
-        typer.echo(f"**{cost.upper()}** Cost Models")
+    # Show all models by provider
+    logger.debug("Listing all models")
+    all_models = list_all_models()
+    typer.echo("**Available Research Models**")
+    typer.echo()
+
+    for provider_name, model_names in all_models.items():
+        cards = get_provider_model_cards(provider_name)
+        if not cards:
+            continue
+        typer.echo(
+            f"**{provider_name.upper()}** (Default: {cards.default_model}):")
+
+        for model_name in model_names:
+            maybe_card = cards.get_model_card(model_name)
+            if maybe_card:
+                _display_model_card(maybe_card, detailed, indent="  ")
         typer.echo()
-
-        for provider_name, model_cards_list in models_by_cost.items():
-            typer.echo(f"**{provider_name.upper()}:**")
-            for card in model_cards_list:
-                _display_model_card(card, detailed, indent="  ")
-            typer.echo()
-
-    elif capability:
-        # Filter by capability
-        try:
-            cap = ResearchCapability(capability.lower())
-        except ValueError:
-            logger.error(
-                f"Invalid capability '{capability}'. Use one of: "
-                f"{_vocabulary(ResearchCapability)}")
-            raise typer.Exit(1)
-
-        logger.debug(f"Filtering models by capability: {cap}")
-        _show_filtered_models(
-            f"{capability.upper().replace('_', ' ')} Capable Models",
-            find_models_by_capability(cap),
-            detailed,
-        )
-
-    elif resource:
-        try:
-            res = ResearchResource(resource.lower())
-        except ValueError:
-            logger.error(
-                f"Invalid resource '{resource}'. Use one of: "
-                f"{_vocabulary(ResearchResource)}")
-            raise typer.Exit(1)
-
-        logger.debug(f"Filtering models by resource: {res}")
-        _show_filtered_models(
-            f"Models Reaching {resource.upper().replace('_', ' ')}",
-            find_models_by_resource(res),
-            detailed,
-        )
-
-    elif archetype:
-        try:
-            arch = ProviderArchetype(archetype.lower())
-        except ValueError:
-            logger.error(
-                f"Invalid archetype '{archetype}'. Use one of: "
-                f"{_vocabulary(ProviderArchetype)}")
-            raise typer.Exit(1)
-
-        logger.debug(f"Filtering models by archetype: {arch}")
-        _show_filtered_models(
-            f"{archetype.upper().replace('_', ' ')} Providers",
-            find_models_by_archetype(arch),
-            detailed,
-        )
-
-    else:
-        # Show all models by provider
-        logger.debug("Listing all models")
-        all_models = list_all_models()
-        typer.echo("**Available Research Models**")
-        typer.echo()
-
-        for provider_name, model_names in all_models.items():
-            cards = get_provider_model_cards(provider_name)
-            if not cards:
-                continue
-            typer.echo(
-                f"**{provider_name.upper()}** (Default: {cards.default_model}):")
-
-            for model_name in model_names:
-                maybe_card = cards.get_model_card(model_name)
-                if maybe_card:
-                    _display_model_card(maybe_card, detailed, indent="  ")
-            typer.echo()
 
 
 def _display_model_card(card, detailed: bool = False, indent: str = ""):

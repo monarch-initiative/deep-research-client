@@ -128,8 +128,16 @@ deep-research-client models --resource pubmed
 deep-research-client models --archetype co_scientist
 ```
 
+Filters combine, so a conjunction asks the question it looks like it asks:
+
+```bash
+# Co-scientists that reach PubMed, not every co-scientist
+deep-research-client models --archetype co_scientist --resource pubmed
+```
+
 Passing an unrecognised term lists the whole vocabulary, which is derived from
 the enum — so a value added to the schema appears in the help and the error
-message without anyone editing them.
+message without anyone editing them. A filter that matches nothing says so
+rather than printing an empty result.
 
 Each returns a `{provider_name: [ModelCard, ...]}` mapping.

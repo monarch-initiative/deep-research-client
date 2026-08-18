@@ -334,3 +334,52 @@ def test_both_coherence_terms_are_actually_used():
         by_capability[ResearchCapability.evidence_synthesis]
     )
     assert "asta" in by_capability[ResearchCapability.retrieval_only]
+
+
+#: Vocabulary terms defined in the schema but deliberately on no card yet, with
+#: the reason. Anything not listed here must be annotated somewhere -- the CLI
+#: offers every permissible value in its help and errors, so an unused term is a
+#: filter a user can run that returns nothing.
+RESERVED_TERMS = {
+    # Every provider that reads preprints reaches arXiv through a broader
+    # source (semantic_scholar, preprint_servers) rather than as a distinct
+    # one. Kept for a provider that queries arXiv directly.
+    ResearchResource.arxiv: "subsumed by preprint_servers / semantic_scholar today",
+}
+
+
+@pytest.mark.parametrize(
+    "term",
+    [
+        *ResearchCapability,
+        *ResearchResource,
+        *ProviderArchetype,
+    ],
+    ids=lambda term: f"{type(term).__name__}.{term.value}",
+)
+def test_every_vocabulary_term_is_annotated_or_explicitly_reserved(term):
+    """A term the CLI offers must match something, or say why it does not.
+
+    `models --capability <term>` accepts every permissible value, so a term on
+    zero cards is a documented filter that returns an empty list. Either a card
+    claims it or RESERVED_TERMS records the intent.
+    """
+    finders = {
+        ResearchCapability: find_models_by_capability,
+        ResearchResource: find_models_by_resource,
+        ProviderArchetype: find_models_by_archetype,
+    }
+    matches = finders[type(term)](term)
+
+    if term in RESERVED_TERMS:
+        assert not matches, (
+            f"{term} is listed in RESERVED_TERMS but is now annotated on "
+            f"{sorted(matches)}; remove it from the reserved list"
+        )
+        return
+
+    assert matches, (
+        f"{type(term).__name__}.{term.value} is defined in the schema and offered "
+        "by the CLI but annotated on no card. Annotate it, or add it to "
+        "RESERVED_TERMS with the reason."
+    )

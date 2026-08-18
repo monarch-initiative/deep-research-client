@@ -69,7 +69,9 @@ class ModelCard(BaseModel):
         description=(
             "Where the provider sits on the retrieval -> co-scientist spectrum. "
             "A conventional deep-research tool is a 'synthesizer'; a 'co_scientist' "
-            "is a superset that also forms hypotheses and runs code."
+            "is a superset that also forms hypotheses and runs code. Optional on "
+            "the model, but every shipped card declares one and a test enforces "
+            "it, since the capability annotations are checked against it."
         )
     )
     aliases: List[str] = Field(
@@ -143,7 +145,8 @@ class ProviderModelCards(BaseModel):
                 alias_map[alias] = model_name
         return alias_map
 
-    def _unique_cards(self, cards: List[ModelCard]) -> List[ModelCard]:
+    @staticmethod
+    def _unique_cards(cards: List[ModelCard]) -> List[ModelCard]:
         """Deduplicate cards by name, preserving order.
 
         Some providers alias one ``ModelCard`` object under several keys (e.g.
@@ -411,6 +414,9 @@ def create_falcon_model_cards() -> ProviderModelCards:
             ResearchCapability.scientific_literature,
             ResearchCapability.citation_tracking,
             ResearchCapability.evidence_synthesis,
+            # Edison returns image artifacts -- diagrams, charts, figures --
+            # which this provider embeds in the generated report.
+            ResearchCapability.visual_analysis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[

@@ -408,50 +408,78 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
 
 
 @pytest.mark.parametrize(
-    "flag,value,expected_provider",
+    "flag,value,expected_provider,absent_provider",
     [
-        ("--capability", "code_interpretation", "BIOMNI"),
-        ("--capability", "retrieval_only", "ASTA"),
-        ("--resource", "pubmed", "OPENSCIENTIST"),
-        ("--archetype", "co_scientist", "BIOMNI"),
-        ("--archetype", "retriever", "ASTA"),
+        ("--capability", "code_interpretation", "BIOMNI", "ASTA"),
+        ("--capability", "retrieval_only", "ASTA", "BIOMNI"),
+        ("--resource", "pubmed", "OPENSCIENTIST", "ASTA"),
+        ("--archetype", "co_scientist", "BIOMNI", "ASTA"),
+        ("--archetype", "retriever", "ASTA", "BIOMNI"),
     ],
 )
-def test_models_filters_by_each_vocabulary_axis(flag, value, expected_provider):
-    """All three axes are queryable, not just displayable."""
-    from typer.testing import CliRunner
+def test_models_filters_by_each_vocabulary_axis(
+    flag, value, expected_provider, absent_provider
+):
+    """All three axes are queryable, not just displayable.
 
-    from deep_research_client import cli as cli_module
-
-    result = CliRunner().invoke(cli_module.app, ["models", flag, value])
+    The negative matters as much as the positive: without it, a filter that
+    fell through to the unfiltered listing would pass every case.
+    """
+    result = runner.invoke(app, ["models", flag, value])
 
     assert result.exit_code == 0, result.output
     assert expected_provider in result.output
+    assert absent_provider not in result.output, "the filter did not narrow anything"
 
 
-@pytest.mark.parametrize("flag", ["--capability", "--resource", "--archetype"])
-def test_models_rejects_an_unknown_vocabulary_value_by_naming_the_whole_vocabulary(flag):
-    """"Use: ..., etc." sent readers guessing; the enum can just say all of them."""
-    from typer.testing import CliRunner
+def test_models_intersects_filters_rather_than_honouring_only_the_first():
+    """Two filters ask a conjunction; answering one of them silently is wrong."""
+    both = runner.invoke(
+        app, ["models", "--archetype", "co_scientist", "--resource", "pubmed"]
+    )
+    archetype_only = runner.invoke(app, ["models", "--archetype", "co_scientist"])
 
-    from deep_research_client import cli as cli_module
+    assert both.exit_code == 0, both.output
+    assert "BIOMNI" in both.output and "BIOMNI" in archetype_only.output
+    # A conjunction with no overlap must say so rather than list one side.
+    empty = runner.invoke(
+        app, ["models", "--archetype", "retriever", "--resource", "pubmed"]
+    )
+    assert empty.exit_code == 0, empty.output
+    assert "No models match" in empty.output
+    assert "ASTA" not in empty.output, "the retriever half was answered alone"
 
-    result = CliRunner().invoke(cli_module.app, ["models", flag, "not-a-real-term"])
 
-    assert result.exit_code == 1
-    assert "etc." not in result.output, "the truncated list this replaced"
+def test_a_filter_matching_nothing_says_so_rather_than_printing_nothing():
+    """Default verbosity is WARNING, so a logged-only message was invisible."""
+    result = runner.invoke(app, ["models", "--resource", "arxiv"])
+
+    assert result.exit_code == 0, result.output
+    assert "No models match" in result.output
 
 
 @pytest.mark.parametrize(
-    "enum_class",
-    [ResearchCapability, ResearchResource, ProviderArchetype],
-    ids=lambda e: e.__name__,
+    "flag,enum_class",
+    [
+        ("--capability", ResearchCapability),
+        ("--resource", ResearchResource),
+        ("--archetype", ProviderArchetype),
+    ],
+    ids=lambda v: v if isinstance(v, str) else v.__name__,
 )
-def test_the_error_message_lists_every_term_the_schema_defines(enum_class, caplog):
-    """Derived from the enum, so a term added to the schema cannot be left behind."""
-    from deep_research_client.cli import _vocabulary
+def test_models_rejects_an_unknown_vocabulary_value_by_naming_the_whole_vocabulary(
+    flag, enum_class
+):
+    """The error lists every permissible value, derived from the enum.
 
-    rendered = _vocabulary(enum_class)
+    Asserting the terms are present, not merely that "etc." is absent: the
+    latter would also pass if the message vanished entirely.
+    """
+    result = runner.invoke(app, ["models", flag, "not-a-real-term"])
 
+    assert result.exit_code == 1
     for member in enum_class:
-        assert member.value in rendered
+        assert member.value in result.output, (
+            f"{member.value} is a permissible value but the error does not list it"
+        )
+    assert "etc." not in result.output, "the truncated list this replaced"

@@ -1255,7 +1255,7 @@ def providers(
         _echo_stub_hints()
     else:
         logger.error("No providers available. Please set API keys:")
-        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+        _echo_credential_hints(_settable_credential_hints())
         _echo_stub_hints()
 
     if not show_params and not provider:

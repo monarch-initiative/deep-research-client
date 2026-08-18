@@ -7,8 +7,10 @@ cannot take work, reported as a timeout instead of as a billing failure.
 import httpx
 import pytest
 
+from deep_research_client.client import DeepResearchClient
 from deep_research_client.exceptions import (
     ProviderAuthError,
+    ProviderNotConfiguredError,
     ProviderBillingError,
     ProviderError,
     ProviderRateLimitError,
@@ -17,7 +19,7 @@ from deep_research_client.exceptions import (
     classify_status,
     extract_status_code,
 )
-from deep_research_client.models import ProviderConfig, ProviderHealth
+from deep_research_client.models import CacheConfig, ProviderConfig, ProviderHealth
 from deep_research_client.providers.consensus import ConsensusProvider
 
 
@@ -387,10 +389,6 @@ def test_the_library_reports_a_missing_key_as_a_missing_key(monkeypatch):
     Providers register only when their credential is present, so `not found`
     for a correctly-spelled provider is a spelling diagnosis for an unset key.
     """
-    from deep_research_client.client import DeepResearchClient
-    from deep_research_client.exceptions import ProviderNotConfiguredError
-    from deep_research_client.models import CacheConfig
-
     for variable in ("EDISON_API_KEY", "FUTUREHOUSE_API_KEY"):
         monkeypatch.delenv(variable, raising=False)
 
@@ -403,12 +401,8 @@ def test_the_library_reports_a_missing_key_as_a_missing_key(monkeypatch):
     assert "not found" not in str(excinfo.value)
 
 
-def test_the_library_still_calls_an_unknown_name_unknown(monkeypatch):
+def test_the_library_still_calls_an_unknown_name_unknown():
     """A name that is no provider at all keeps the blunt answer."""
-    from deep_research_client.client import DeepResearchClient
-    from deep_research_client.exceptions import ProviderNotConfiguredError
-    from deep_research_client.models import CacheConfig
-
     client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
 
     with pytest.raises(ValueError) as excinfo:
@@ -416,3 +410,39 @@ def test_the_library_still_calls_an_unknown_name_unknown(monkeypatch):
 
     assert not isinstance(excinfo.value, ProviderNotConfiguredError)
     assert "not found" in str(excinfo.value)
+
+
+def test_a_disabled_claude_code_is_not_told_to_install_the_cli(monkeypatch):
+    """Registration and availability are different gates.
+
+    With the CLI installed and DISABLE_CLAUDE_CODE_PROVIDER set, the provider
+    considers itself available -- so asking it why it is unavailable yields its
+    only other answer, "the CLI was not found", which is false and sends the
+    reader to install software they already have.
+    """
+    import shutil
+
+    if shutil.which("claude") is None:
+        pytest.skip("needs the claude CLI installed to exercise the wrong-answer path")
+
+    monkeypatch.setenv("DISABLE_CLAUDE_CODE_PROVIDER", "true")
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="claude_code")
+
+    message = str(excinfo.value)
+    assert "DISABLE_CLAUDE_CODE_PROVIDER" in message
+    assert "not found on PATH" not in message, "the CLI is installed; do not say otherwise"
+
+
+def test_the_mock_provider_names_the_variable_that_enables_it(monkeypatch):
+    """MockProvider is always "available", so it cannot explain its own absence."""
+    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="mock")
+
+    assert "ENABLE_MOCK_PROVIDER" in str(excinfo.value)
+    assert "is not available" not in str(excinfo.value), "the generic wording this PR removed"

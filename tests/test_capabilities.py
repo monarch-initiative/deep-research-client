@@ -260,7 +260,7 @@ def _all_registered_cards() -> list:
     return [
         (provider, card)
         for provider, cards in sorted(PROVIDER_MODEL_CARDS.items())
-        for card in cards._unique_cards(list(cards.models.values()))
+        for card in cards.unique_models()
     ]
 
 
@@ -382,4 +382,22 @@ def test_every_vocabulary_term_is_annotated_or_explicitly_reserved(term):
         f"{type(term).__name__}.{term.value} is defined in the schema and offered "
         "by the CLI but annotated on no card. Annotate it, or add it to "
         "RESERVED_TERMS with the reason."
+    )
+
+
+def test_every_registered_provider_has_a_params_class():
+    """`providers` renders its listing from the params registry, not the paths.
+
+    A provider added to PROVIDER_CLASS_PATHS without a params class would be
+    constructible and invisible there. The model-cards side is checked by
+    test_every_provider_default_model_resolves_to_a_card; this closes the other
+    registry.
+    """
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+    from deep_research_client.provider_params import PROVIDER_PARAMS_REGISTRY
+
+    assert set(PROVIDER_CLASS_PATHS) == set(PROVIDER_PARAMS_REGISTRY), (
+        "PROVIDER_CLASS_PATHS and PROVIDER_PARAMS_REGISTRY have drifted: "
+        f"only in class paths {set(PROVIDER_CLASS_PATHS) - set(PROVIDER_PARAMS_REGISTRY)}, "
+        f"only in params {set(PROVIDER_PARAMS_REGISTRY) - set(PROVIDER_CLASS_PATHS)}"
     )

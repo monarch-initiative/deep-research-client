@@ -89,12 +89,32 @@ deep-research-client models --cost high
 deep-research-client models --cost very_high
 ```
 
-### Filter by Capability
+### Filter by Capability, Resource, or Archetype
 
 ```bash
 deep-research-client models --capability web_search
 deep-research-client models --capability academic_search
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
 ```
+
+See [Capabilities, Resources & Archetypes](capabilities.md) for the full
+vocabulary; passing an unrecognised term lists it.
+
+### Combining Filters
+
+Every filter above composes, so several flags ask for their intersection
+rather than the first one winning:
+
+```bash
+# Co-scientists that reach PubMed, not every co-scientist
+deep-research-client models --archetype co_scientist --resource pubmed
+
+# One provider's low-cost models only
+deep-research-client models --provider perplexity --cost low
+```
+
+A combination that matches nothing says so rather than printing an empty list.
 
 ### Detailed Information
 

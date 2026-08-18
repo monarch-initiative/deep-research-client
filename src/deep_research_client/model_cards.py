@@ -145,6 +145,17 @@ class ProviderModelCards(BaseModel):
                 alias_map[alias] = model_name
         return alias_map
 
+    def unique_models(self) -> List[ModelCard]:
+        """Every distinct card this provider ships, in declaration order.
+
+        Public counterpart to the dedup the finders apply, for callers that
+        want a provider's cards without counting an aliased one twice.
+
+        Returns:
+            Deduplicated model cards
+        """
+        return self._unique_cards(list(self.models.values()))
+
     @staticmethod
     def _unique_cards(cards: List[ModelCard]) -> List[ModelCard]:
         """Deduplicate cards by name, preserving order.

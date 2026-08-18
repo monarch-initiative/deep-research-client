@@ -16,9 +16,10 @@ from typing_extensions import Annotated
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
     from .validation import ReferenceValidationReport, ReferenceValidator
 
-from .client import DeepResearchClient
+from .client import PROVIDER_CLASS_PATHS, DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
+    PROVIDER_MODEL_CARDS,
     DEEPER_MED_ARXIV_ID,
     ModelCard,
     get_provider_model_cards,
@@ -36,7 +37,7 @@ from .model_cards import (
 from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
 def _registered_providers() -> str:
-    """Render every provider name the client knows, comma-separated.
+    """Render every provider name the client can construct, comma-separated.
 
     Derived from PROVIDER_CLASS_PATHS so a provider added to the registry
     appears in CLI help without anyone editing a second list -- the omission
@@ -45,9 +46,21 @@ def _registered_providers() -> str:
     Returns:
         Comma-separated provider names
     """
-    from .client import PROVIDER_CLASS_PATHS
-
     return ", ".join(PROVIDER_CLASS_PATHS)
+
+
+def _carded_providers() -> str:
+    """Render the providers that ship model cards, comma-separated.
+
+    A narrower set than :func:`_registered_providers`: `mock` is constructible
+    but carries no card, so `models --provider mock` has nothing to show even
+    though `research --provider mock` is valid. The two commands ask different
+    questions, so they advertise different lists rather than one wrong one.
+
+    Returns:
+        Comma-separated provider names that have model cards
+    """
+    return ", ".join(PROVIDER_MODEL_CARDS)
 
 
 # Configure logging
@@ -1872,7 +1885,7 @@ def _show_filtered_models(
 @app.command()
 def models(
     provider: Annotated[Optional[str], typer.Option(
-        help="Show models for specific provider")] = None,
+        help=f"Filter by provider ({_carded_providers()})")] = None,
     cost: Annotated[Optional[str], typer.Option(
         help=f"Filter by cost level ({_vocabulary(CostLevel)})")] = None,
     capability: Annotated[Optional[str], typer.Option(
@@ -1895,6 +1908,14 @@ def models(
       deep-research-client models --resource pubmed  # Reaches PubMed
       deep-research-client models --archetype co_scientist          # Co-scientists
       deep-research-client models --detailed         # Show detailed information
+
+    Filters combine, so several flags ask for their intersection:
+
+    \b
+      # Co-scientists that reach PubMed, not every co-scientist
+      deep-research-client models --archetype co_scientist --resource pubmed
+      # One provider's low-cost models only
+      deep-research-client models --provider perplexity --cost low
     """
     # Each axis contributes a provider -> cards mapping; the result is their
     # intersection, so `--archetype co_scientist --resource pubmed` answers the
@@ -1933,7 +1954,9 @@ def models(
     if provider:
         cards = get_provider_model_cards(provider)
         if not cards:
-            logger.error(f"Provider '{provider}' not found")
+            logger.error(
+                f"Provider '{provider}' has no model cards. Use one of: "
+                f"{_carded_providers()}")
             raise typer.Exit(1)
 
         if not selections:
@@ -1944,13 +1967,15 @@ def models(
             typer.echo(f"Default: {cards.default_model}")
             typer.echo()
 
-            for model_name, card in cards.models.items():
+            # Deduplicated like the filter branch, so a card aliased under two
+            # keys is not listed twice by one form and once by the other.
+            for card in cards.unique_models():
                 _display_model_card(card, detailed)
             return
 
         # Combined with a filter it narrows like any other axis, rather than
         # silently winning and answering a different question.
-        selections.append({provider: cards._unique_cards(list(cards.models.values()))})
+        selections.append({provider: cards.unique_models()})
         described.append(f"{provider.upper()} Provider")
 
     if selections:

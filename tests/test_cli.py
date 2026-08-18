@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import typer
 
 from deep_research_client.model_cards import (
     ProviderArchetype,
@@ -472,7 +473,10 @@ def test_provider_combined_with_a_filter_narrows_instead_of_winning():
         app, ["models", "--provider", "biomni", "--capability", "code_interpretation"]
     )
     assert matching.exit_code == 0, matching.output
-    assert "BIOMNI" in matching.output
+    # Not "BIOMNI in output": the provider name is part of the heading, which
+    # the no-match path prints too, so that would pass on an empty result.
+    assert "No models match" not in matching.output
+    assert "Biomni A1 Biomedical Agent" in matching.output, "the card itself, not just the heading"
 
     # biomni has no web_search capability, so the conjunction is empty. Before
     # this, --provider won and the capability was dropped without a word.
@@ -497,14 +501,54 @@ def test_research_provider_help_names_every_registered_provider():
     biomni and cyberian were both absent from the hand-written help this
     replaced.
     """
+    import click
+
     from deep_research_client.client import PROVIDER_CLASS_PATHS
 
-    result = runner.invoke(app, ["research", "--help"])
+    # Read the option's own help string rather than the rendered page: matching
+    # anywhere in the output would pass if this help were emptied and the names
+    # happened to appear in another flag or the epilog.
+    command = typer.main.get_command(app).commands["research"]  # type: ignore[attr-defined]
+    provider_option = next(
+        param for param in command.params
+        if isinstance(param, click.Option) and "--provider" in param.opts
+    )
 
-    assert result.exit_code == 0, result.output
-    rendered = " ".join(result.output.split())
     for name in PROVIDER_CLASS_PATHS:
-        assert name in rendered, f"{name} is registered but absent from --provider help"
+        assert name in (provider_option.help or ""), (
+            f"{name} is registered but absent from --provider help"
+        )
+
+
+def test_models_provider_help_names_every_provider_with_cards():
+    """The two commands ask different questions and advertise different sets.
+
+    `mock` is constructible but ships no card, so it belongs in research's list
+    and not in this one.
+    """
+    import click
+
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+
+    command = typer.main.get_command(app).commands["models"]  # type: ignore[attr-defined]
+    provider_option = next(
+        param for param in command.params
+        if isinstance(param, click.Option) and "--provider" in param.opts
+    )
+    rendered = provider_option.help or ""
+
+    for name in PROVIDER_MODEL_CARDS:
+        assert name in rendered, f"{name} ships cards but is absent from --provider help"
+    assert "mock" not in rendered, "mock has no model cards; models --provider rejects it"
+
+
+def test_models_rejects_a_provider_without_cards_by_naming_the_ones_that_have_them():
+    """"Provider 'mock' not found" left the reader with nowhere to go."""
+    result = runner.invoke(app, ["models", "--provider", "mock"])
+
+    assert result.exit_code == 1
+    for name in ("openai", "biomni"):
+        assert name in result.output
 
 
 @pytest.mark.parametrize(

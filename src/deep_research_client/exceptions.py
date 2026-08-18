@@ -67,7 +67,9 @@ class ProviderError(ValueError):
     def __init__(self, provider: str, detail: str, status_code: Optional[int] = None):
         """Build a provider error carrying its own remediation advice."""
         self.provider = provider
-        self.detail = detail
+        # Capped here so every construction site inherits it -- an SDK's
+        # exception text or an HTML error page is a hint, not a payload.
+        self.detail = detail[:MAX_DETAIL_CHARS]
         self.status_code = status_code
         super().__init__(self.actionable_message())
 
@@ -207,7 +209,8 @@ class ProviderTransientError(ProviderError):
     remedy = "the provider reported a temporary server-side failure"
 
 
-#: HTTP status codes that mean "stop; a different provider or credential is needed".
+#: Statuses we have a specific type for. Not all of them are terminal -- 429 is
+#: retryable -- but each one implies a different remedy.
 _STATUS_MAP: dict[int, type[ProviderError]] = {
     401: ProviderAuthError,
     402: ProviderBillingError,

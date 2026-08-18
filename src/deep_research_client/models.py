@@ -141,9 +141,27 @@ class ProviderHealth(BaseModel):
     configured: bool = Field(description="Whether credentials are present and the provider is enabled")
     reachable: Optional[bool] = Field(
         default=None,
-        description="Whether a live probe succeeded; None when no probe was performed",
+        description=(
+            "False when the provider cannot take work -- either a probe failed or "
+            "it is not configured; None when no probe was possible"
+        ),
     )
     detail: Optional[str] = Field(default=None, description="Explanation of the outcome")
+
+    @field_validator("detail")
+    @classmethod
+    def _cap_detail(cls, value: Optional[str]) -> Optional[str]:
+        """Keep a raw stack trace or error page from becoming the whole report.
+
+        Args:
+            value: The proposed detail text.
+
+        Returns:
+            The detail, truncated to a readable length.
+        """
+        from .exceptions import MAX_DETAIL_CHARS
+
+        return value[:MAX_DETAIL_CHARS] if value else value
 
     def summary(self) -> str:
         """Render a single-line status suitable for CLI output.

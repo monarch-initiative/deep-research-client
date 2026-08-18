@@ -24,6 +24,9 @@ _CONSENSUS_STATUS_DETAIL = {
 class ConsensusProvider(ResearchProvider):
     """Provider for Consensus AI academic research API."""
 
+    credential_label = "Consensus"
+    credential_env_var = "CONSENSUS_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[ConsensusParams] = None):
         """Initialize Consensus provider."""
         self.params = params or ConsensusParams()
@@ -42,16 +45,6 @@ class ConsensusProvider(ResearchProvider):
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Consensus provider."""
         return create_consensus_model_cards()
-
-    def unavailable_reason(self) -> str:
-        """Name the missing credential rather than just reporting a boolean.
-
-        Returns:
-            Human-readable explanation suitable for an error message
-        """
-        if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
-        return "no Consensus API key configured (set CONSENSUS_API_KEY)"
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Consensus AI API."""
@@ -119,9 +112,10 @@ class ConsensusProvider(ResearchProvider):
         except httpx.HTTPStatusError as e:
             logger.error(f"Consensus API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
-            # A 5xx body is often a full HTML error page; keep the message readable.
+            # A 5xx body is often a full HTML error page; ProviderError caps
+            # the classified path, so only the bare re-raise needs slicing here.
             body = e.response.text[:MAX_DETAIL_CHARS]
-            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, body)
+            detail = _CONSENSUS_STATUS_DETAIL.get(e.response.status_code, e.response.text)
             classified = classify_status(self.name, e.response.status_code, detail)
             if classified is not None:
                 raise classified from e

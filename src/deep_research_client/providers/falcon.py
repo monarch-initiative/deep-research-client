@@ -45,6 +45,9 @@ class _ImageMessageGroup(TypedDict):
 class FalconProvider(ResearchProvider):
     """Provider for Edison Scientific API (formerly FutureHouse Falcon)."""
 
+    credential_label = "Edison"
+    credential_env_var = "EDISON_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[FalconParams] = None):
         """Initialize Falcon provider."""
         self.params = params or FalconParams()
@@ -63,16 +66,6 @@ class FalconProvider(ResearchProvider):
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Falcon provider."""
         return create_falcon_model_cards()
-
-    def unavailable_reason(self) -> str:
-        """Name the missing credential rather than just reporting a boolean.
-
-        Returns:
-            Human-readable explanation suitable for an error message
-        """
-        if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
-        return "no Edison API key configured (set EDISON_API_KEY)"
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Edison Scientific API."""

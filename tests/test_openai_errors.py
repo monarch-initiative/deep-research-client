@@ -159,3 +159,16 @@ def test_unconfigured_provider_is_not_probed():
 
     assert health.configured is False
     assert health.reachable is False
+
+
+def test_probe_returns_a_record_even_if_the_client_cannot_be_built(monkeypatch):
+    """`check_health` promises a record, so construction failures return too."""
+    def _bad_client(**kwargs):
+        raise ValueError("Invalid base_url: 'not-a-url'")
+
+    monkeypatch.setattr("deep_research_client.providers.openai.OpenAI", _bad_client)
+
+    health = asyncio.run(_provider().check_health())
+
+    assert health.reachable is False
+    assert "base_url" in health.detail

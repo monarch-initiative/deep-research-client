@@ -79,6 +79,9 @@ class AstaSnippet:
 class AstaProvider(ResearchProvider):
     """Provider for Asta paper and snippet retrieval."""
 
+    credential_label = "Asta"
+    credential_env_var = "ASTA_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[AstaParams] = None):
         """Initialize Asta provider."""
         self.params = params or AstaParams()
@@ -99,16 +102,6 @@ class AstaProvider(ResearchProvider):
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Asta provider."""
         return create_asta_model_cards()
-
-    def unavailable_reason(self) -> str:
-        """Name the missing credential rather than just reporting a boolean.
-
-        Returns:
-            Human-readable explanation suitable for an error message
-        """
-        if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
-        return "no Asta API key configured (set ASTA_API_KEY)"
 
     async def research(self, query: str) -> ResearchResult:
         """Retrieve papers and snippets from Asta and format them as markdown."""

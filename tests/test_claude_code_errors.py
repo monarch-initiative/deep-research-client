@@ -309,3 +309,19 @@ def test_old_cli_wordings_are_read_as_unknown(stderr):
     health = _provider()._health_from_auth_status("", stderr, 1)
 
     assert health.reachable is None
+
+
+def test_a_real_failure_that_also_suggests_help_is_still_a_failure():
+    """The version check must not outrun the failure check.
+
+    `_NO_SUCH_SUBCOMMAND` is deliberately broad, and plenty of real errors also
+    point you at --help. Reading one as "old CLI" would report UNKNOWN, which
+    leaves `reachable` unset and lets `providers --check` exit 0 on a provider
+    that cannot work at all.
+    """
+    health = _provider()._health_from_auth_status(
+        "", "Invalid API key. See 'claude --help' for more information", 1
+    )
+
+    assert health.reachable is False, "a logged-out CLI must not report as UNKNOWN"
+    assert "API key" in health.detail

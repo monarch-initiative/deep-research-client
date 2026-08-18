@@ -110,6 +110,12 @@ deep-research-client research --template gene_advanced.md.j2 \
 # List available providers
 deep-research-client providers
 
+# Ask each configured provider whether it can actually take work.
+# "Configured" only means a key is set; this probes reachability and
+# exits non-zero if any provider cannot run.
+deep-research-client providers --check
+deep-research-client providers --check --provider falcon
+
 # List available models (with costs, speeds, and capabilities)
 deep-research-client models
 deep-research-client models --provider perplexity --detailed

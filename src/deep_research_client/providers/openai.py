@@ -56,6 +56,9 @@ def _classify_openai_error(provider: str, exc: BaseException) -> Optional[Provid
 class OpenAIProvider(ResearchProvider):
     """Provider for OpenAI Deep Research API."""
 
+    credential_label = "OpenAI"
+    credential_env_var = "OPENAI_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):
         """Initialize OpenAI provider."""
         self.params = params or OpenAIParams()
@@ -106,8 +109,11 @@ class OpenAIProvider(ResearchProvider):
         if self.config.base_url:
             client_kwargs["base_url"] = self.config.base_url
 
-        client = OpenAI(**client_kwargs)
+        client = None
         try:
+            # Construction can fail too (a malformed base_url, an SDK-level
+            # problem), and this method promises a record either way.
+            client = OpenAI(**client_kwargs)
             await asyncio.to_thread(client.models.list)
         except Exception as e:
             classified = _classify_openai_error(self.name, e)
@@ -117,23 +123,14 @@ class OpenAIProvider(ResearchProvider):
                 provider=self.name, configured=True, reachable=False, detail=detail
             )
         finally:
-            client.close()
+            if client is not None:
+                client.close()
         return ProviderHealth(
             provider=self.name,
             configured=True,
             reachable=True,
             detail="credentials accepted (quota not readable until a run)",
         )
-
-    def unavailable_reason(self) -> str:
-        """Name the missing credential rather than just reporting a boolean.
-
-        Returns:
-            Human-readable explanation suitable for an error message
-        """
-        if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
-        return "no OpenAI API key configured (set OPENAI_API_KEY)"
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using OpenAI Deep Research API."""

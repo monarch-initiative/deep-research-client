@@ -36,7 +36,6 @@ from typing import List, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
-    MAX_DETAIL_CHARS,
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
@@ -148,7 +147,7 @@ def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     for pattern, error_class in _CLI_FAILURE_PATTERNS:
         if not pattern.search(text):
             continue
-        detail = text.strip()[:MAX_DETAIL_CHARS]
+        detail = text.strip()
         if error_class is ProviderQuotaError:
             reset_match = _LIMIT_RESET.search(text)
             return ProviderQuotaError(
@@ -320,13 +319,19 @@ class ClaudeCodeProvider(ResearchProvider):
             Health record for this provider
         """
         if returncode != 0:
-            if _NO_SUCH_SUBCOMMAND.search(f"{stderr}\n{stdout}"):
+            output = f"{stderr}\n{stdout}"
+            # Classify first. _NO_SUCH_SUBCOMMAND is deliberately broad, and
+            # plenty of real failures also tell you to try --help; letting the
+            # version check win would report a logged-out CLI as UNKNOWN, and
+            # UNKNOWN does not set reachable=False, so `--check` would exit 0
+            # on a provider that cannot work.
+            classified = _classify_cli_failure(self.name, output)
+            if classified is None and _NO_SUCH_SUBCOMMAND.search(output):
                 return ProviderHealth(
                     provider=self.name,
                     configured=True,
                     detail="this CLI has no `auth status` subcommand to probe",
                 )
-            classified = _classify_cli_failure(self.name, f"{stderr}\n{stdout}")
             detail = classified.diagnosis if classified else (stderr.strip() or stdout.strip())
             return ProviderHealth(
                 provider=self.name, configured=True, reachable=False, detail=detail

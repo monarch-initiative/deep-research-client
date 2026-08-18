@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 class PerplexityProvider(ResearchProvider):
     """Provider for Perplexity AI API."""
 
+    credential_label = "Perplexity"
+    credential_env_var = "PERPLEXITY_API_KEY"
+
     def __init__(self, config: ProviderConfig, params: Optional[PerplexityParams] = None):
         """Initialize Perplexity provider.
 
@@ -43,16 +46,6 @@ class PerplexityProvider(ResearchProvider):
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Perplexity provider."""
         return create_perplexity_model_cards()
-
-    def unavailable_reason(self) -> str:
-        """Name the missing credential rather than just reporting a boolean.
-
-        Returns:
-            Human-readable explanation suitable for an error message
-        """
-        if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
-        return "no Perplexity API key configured (set PERPLEXITY_API_KEY)"
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using Perplexity AI API."""

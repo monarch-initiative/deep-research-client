@@ -127,3 +127,24 @@ def test_no_configured_providers_is_an_error(capsys):
     assert excinfo.value.exit_code == 1
     # The user is told what to set rather than just that nothing happened.
     assert "OPENAI_API_KEY" in capsys.readouterr().out
+
+
+def test_the_check_flag_is_wired_to_the_command(monkeypatch):
+    """Cover the flag parsing and early return, not just the helper beneath."""
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    probed: list[str] = []
+
+    def _fake_check(client, provider):
+        probed.append(provider or "<all>")
+
+    monkeypatch.setattr(cli_module, "_check_provider_health", _fake_check)
+
+    result = CliRunner().invoke(cli_module.app, ["providers", "--check"])
+
+    assert result.exit_code == 0
+    assert probed == ["<all>"], "the command must delegate to the health check"
+    # The early return means the normal listing never runs.
+    assert "Available providers:" not in result.stdout

@@ -361,3 +361,21 @@ def test_the_registry_actually_yields_keyed_providers():
     assert len(names) >= 6
     assert "openscientist" in names, "the provider whose omission prompted this test"
     assert "claude_code" not in names, "no credential variable, so not in scope"
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("HTTP/1.1 503 Service Unavailable", 503),
+        ("HTTP/2 429 Too Many Requests", 429),
+        ("GET http://127.0.0.1/v1/x failed", None),
+    ],
+)
+def test_a_verbatim_status_line_is_read(message, expected):
+    """A rendered status line is a common shape, and slashes must stay excluded.
+
+    The separator class deliberately omits `/` so a URL cannot pass its first
+    octet off as a status; this adds the version token as its own alternative
+    rather than loosening that.
+    """
+    assert extract_status_code(RuntimeError(message)) == expected

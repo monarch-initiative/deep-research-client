@@ -239,6 +239,23 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
+def _settable_credential_hints() -> list[str]:
+    """Providers a user can enable by setting an environment variable.
+
+    Under a heading that says "set API keys", a CLI on PATH and a test double
+    are not answers. Those entries exist for the `providers` listing, which
+    describes what each provider needs rather than telling anyone to set it.
+
+    Returns:
+        Provider names whose hint is a variable the reader can export
+    """
+    return [
+        name
+        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
+        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+    ]
+
+
 def _echo_credential_hints(provider_names: list[str]) -> None:
     """Print credential hints for providers by canonical provider name."""
     for provider_name in provider_names:
@@ -737,8 +754,8 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        logger.error("No research providers available. Please set API keys:")
-        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+        typer.echo("No research providers available. Please set API keys:")
+        _echo_credential_hints(_settable_credential_hints())
         raise typer.Exit(1)
 
     # Show available providers
@@ -1155,7 +1172,7 @@ def providers(
     if provider:
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
-            typer.echo(f"Unknown provider: {provider}")
+            logger.error(f"Unknown provider: {provider}")
             logger.error(
                 f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
             raise typer.Exit(1)

@@ -6,6 +6,7 @@ has to survive its own probes failing and still report on everything else.
 
 import pytest
 import typer
+from typer.testing import CliRunner
 
 from deep_research_client.cli import _check_provider_health
 from deep_research_client.models import ProviderHealth
@@ -241,3 +242,39 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
 
     assert result.exit_code == 0
     assert "has no effect" in result.stdout
+
+
+def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
+    """A heading on one stream and its list on another is half a message.
+
+    The list is indented variable names; without the sentence above it, a
+    redirected file says nothing about what they are for.
+    """
+    import deep_research_client.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
+    )
+
+    result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
+    captured = result.stdout
+
+    assert "Please set API keys" in captured
+    assert "OPENAI_API_KEY" in captured
+    heading_at = captured.index("Please set API keys")
+    assert captured.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+
+
+def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
+    """A CLI on PATH and a test double are not answers to "set API keys"."""
+    import deep_research_client.cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
+    )
+
+    result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
+
+    assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
+    assert "CLI on PATH" not in result.stdout, "not something you set"
+    assert "EDISON_API_KEY" in result.stdout

@@ -285,7 +285,9 @@ _QUOTED_STATUS = re.compile(r"'([1-5]\d{2})\s+[A-Za-z]")
 # slashes so that a URL ("http://127.0.0.1/...") cannot pass its first octet off
 # as a status, and the value must look like one.
 _PROSE_STATUS = re.compile(
-    r"(?:HTTP|status(?:\s+code)?)[\s:=-]{0,3}([1-5]\d{2})\b(?!\.\d)", re.IGNORECASE
+    r"HTTP/\d(?:\.\d)?\s+([1-5]\d{2})\b"
+    r"|(?:HTTP|status(?:\s+code)?)[\s:=-]{0,3}([1-5]\d{2})\b(?!\.\d)",
+    re.IGNORECASE,
 )
 
 
@@ -335,6 +337,8 @@ def extract_status_code(exc: BaseException) -> Optional[int]:
     402
     >>> extract_status_code(RuntimeError("HTTP 503 from upstream"))
     503
+    >>> extract_status_code(RuntimeError("HTTP/1.1 503 Service Unavailable"))
+    503
     >>> extract_status_code(RuntimeError("connection reset")) is None
     True
     >>> extract_status_code(RuntimeError("connecting to http://127.0.0.1/v1")) is None
@@ -362,7 +366,8 @@ def extract_status_code(exc: BaseException) -> Optional[int]:
         for pattern in (_QUOTED_STATUS, _PROSE_STATUS):
             match = pattern.search(str(current))
             if match:
-                return int(match.group(1))
+                # _PROSE_STATUS has two alternatives, so take whichever matched.
+                return int(next(group for group in match.groups() if group))
 
         current = current.__cause__ or current.__context__
 

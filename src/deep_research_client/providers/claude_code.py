@@ -73,7 +73,7 @@ _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
         ),
         ProviderAuthError,
     ),
-    (re.compile(r"overloaded|529|service unavailable", re.IGNORECASE), ProviderTransientError),
+    (re.compile(r"overloaded|\b529\b|service unavailable", re.IGNORECASE), ProviderTransientError),
 ]
 
 # "Your limit will reset at 3pm (America/Los_Angeles)." -- the closest thing any
@@ -81,7 +81,8 @@ _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
 # The capture stops at a clause boundary, not just a sentence one: a wordy
 # message continues past the time with advice ("...at 5pm Pacific Time; if you
 # need capacity sooner..."), and everything after the semicolon is not a time.
-_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.;,\n]+)", re.IGNORECASE)
+# Commas are kept: "10am, Tuesday 19 August" is one time, not two clauses.
+_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.;\n]+)", re.IGNORECASE)
 
 # `claude auth status` reads local credentials and makes no model call, so it
 # should answer immediately. This only guards against a wedged process.
@@ -352,6 +353,11 @@ class ClaudeCodeProvider(ResearchProvider):
         try:
             status = json.loads(stdout)
         except json.JSONDecodeError:
+            status = None
+        # Valid JSON of the wrong shape (null, a list, a bare string) parses
+        # fine and then has no .get -- the same guard _terminal_result_text
+        # already applies to stream events.
+        if not isinstance(status, dict):
             return ProviderHealth(
                 provider=self.name,
                 configured=True,

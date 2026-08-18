@@ -393,3 +393,38 @@ def test_a_chatty_reset_message_does_not_push_its_own_reset_time_off():
     # chopped mid-word, which is not a time and reads as noise after "renews at".
     assert error.resets_at == "5pm Pacific Time"
     assert "renews at 5pm Pacific Time" in health.detail
+
+
+@pytest.mark.parametrize("stdout", ["null", "[]", '"ok"', "42", "true"])
+def test_valid_json_of_the_wrong_shape_still_returns_a_record(stdout):
+    """`check_health` promises a record, and not every valid JSON has `.get`.
+
+    Only JSONDecodeError was caught, so `null` or a list parsed fine and then
+    raised AttributeError out of a method documented to return.
+    """
+    health = _provider()._health_from_auth_status(stdout, "", 0)
+
+    assert health.reachable is None
+    assert "could not parse" in health.detail
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("your limit will reset at 10am, Tuesday 19 August", "10am, Tuesday 19 August"),
+        ("your limit will reset at 3pm (America/Los_Angeles)", "3pm (America/Los_Angeles)"),
+        ("your limit will reset at 5pm Pacific Time; upgrade for more", "5pm Pacific Time"),
+        ("your limit will reset at 2026-08-19T00:00:00+00:00 (UTC)", "2026-08-19T00:00:00+00:00 (UTC)"),
+    ],
+)
+def test_the_capture_keeps_a_whole_time_and_nothing_more(text, expected):
+    """A comma sits inside a time far more often than it ends a clause."""
+    error = _classify_cli_failure("claude_code", f"Claude usage limit reached, {text}")
+
+    assert error.resets_at == expected
+
+
+def test_a_stray_number_is_not_an_overload():
+    """`529` is the one pattern that is a number, so it needs word boundaries."""
+    assert _classify_cli_failure("claude_code", "killed process 15290 unexpectedly") is None
+    assert _classify_cli_failure("claude_code", "API Error 529: Overloaded") is not None

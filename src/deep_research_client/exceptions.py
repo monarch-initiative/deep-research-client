@@ -37,8 +37,10 @@ MIN_DETAIL_CHARS = 60
 
 #: Cap on a provider-reported reset time. The value lands inside a remedy, so an
 #: unbounded one would inflate the framing until the budget could not protect
-#: the reset time itself.
-MAX_RESET_CHARS = 40
+#: the reset time itself. The floor stays unreachable up to about 85 characters
+#: of reset text; 60 leaves headroom while still fitting an ISO-8601 timestamp
+#: with a zone name.
+MAX_RESET_CHARS = 60
 
 __all__ = [
     "MAX_DETAIL_CHARS",

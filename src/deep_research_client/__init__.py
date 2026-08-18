@@ -8,6 +8,8 @@ from .client import DeepResearchClient
 from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry, ProviderHealth
 from .exceptions import (
     MAX_DETAIL_CHARS,
+    MIN_DETAIL_CHARS,
+    MAX_RESET_CHARS,
     truncate_detail,
     ProviderError,
     ProviderAuthError,
@@ -56,6 +58,8 @@ __all__ = [
     "EditHistoryEntry",
     "ProviderHealth",
     "MAX_DETAIL_CHARS",
+    "MIN_DETAIL_CHARS",
+    "MAX_RESET_CHARS",
     "truncate_detail",
     "ProviderError",
     "ProviderAuthError",

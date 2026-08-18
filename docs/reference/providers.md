@@ -519,7 +519,8 @@ deep-research-client providers --check --provider falcon
 Each provider reports one of `OK`, `UNREACHABLE`, `NOT CONFIGURED`, or
 `UNKNOWN (no probe available)` — the last meaning that provider has not
 implemented a probe, so configuration is all we know. The command exits
-non-zero if any probed provider is unreachable.
+non-zero if any provider turns out to be unable to take work, which includes a
+named provider that is not configured at all (no probe needed to know that).
 
 A probe proves the credential is accepted. It cannot prove the account has
 credits: Edison, for example, only charges when a task is submitted, so an
@@ -535,7 +536,7 @@ apart from "try again":
 |-----------|----------|-----------|-------|
 | `ProviderAuthError` | 401, 403 | No | Key missing, invalid, or lacks access |
 | `ProviderBillingError` | 402 | No | Account is out of credits |
-| `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says |
+| `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says (bounded by the class, so a trailing `…` on it came from us, not the provider) |
 | `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
 | `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH (a kind of "not configured") |
 | `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |

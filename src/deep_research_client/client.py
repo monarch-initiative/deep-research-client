@@ -234,9 +234,9 @@ class DeepResearchClient:
         matches every other surface. But registration and availability are not
         the same gate: the providers in REGISTRATION_GATES are held back by an
         environment variable while considering themselves perfectly available,
-        and asking those why
-        they are unavailable produces a confident wrong answer -- telling a
-        reader to install a CLI they already have, for instance.
+        and asking those why they are unavailable produces a confident wrong
+        answer -- telling a reader to install a CLI they already have, for
+        instance.
 
         Args:
             provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.

@@ -135,7 +135,12 @@ def test_result_to_markdown_object_with_content():
 
 
 def test_extract_citations_pmids_and_dois():
-    """Deduplicated, in first-appearance order, in the project's canonical form."""
+    """Deduplicated, in the project's canonical form.
+
+    Ordering is by identifier type (PMIDs, then DOIs, then accessions), and
+    first-appearance only within a type -- find_reference_ids scans once per
+    pattern, not once through the document.
+    """
     text = "Evidence PMID: 12345678 and PMID:12345678 plus doi:10.1000/abc.def."
     assert BiomniProvider._extract_citations(text) == [
         "PMID:12345678",

@@ -203,3 +203,43 @@ def test_vocabulary_datamodel_matches_linkml_schema() -> None:
         "Either the schema changed or linkml was upgraded; run `just gen-datamodel` "
         "and review the diff."
     )
+
+
+def test_every_provider_default_model_resolves_to_a_card():
+    """The name a provider calls its default has to name a card it owns.
+
+    Derived from the registry rather than listed, so a provider added later is
+    covered the day it lands. Two names must resolve: the one the cards
+    advertise as their default, and the one the provider class returns from
+    get_default_model() -- which is what lands in `provider.model`, and so what
+    a caller writing `cards.get_model_card_by_alias(provider.model)` looks up.
+    """
+    import importlib
+
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+    from deep_research_client.models import ProviderConfig
+
+    unresolved = []
+    for name, cards in sorted(PROVIDER_MODEL_CARDS.items()):
+        if cards.get_model_card_by_alias(cards.default_model) is None:
+            unresolved.append(f"{name}: cards.default_model={cards.default_model!r}")
+
+        module_name, class_name = PROVIDER_CLASS_PATHS[name]
+        provider_class = getattr(importlib.import_module(module_name), class_name)
+        default = provider_class(ProviderConfig(name=name)).get_default_model()
+        if cards.get_model_card_by_alias(default) is None:
+            unresolved.append(f"{name}: get_default_model()={default!r}")
+
+    assert not unresolved, "default model names that match no card or alias: " + "; ".join(unresolved)
+
+
+def test_the_default_model_guard_covers_every_registered_provider():
+    """A derived guard that iterated nothing would pass without checking anything."""
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+
+    assert len(PROVIDER_MODEL_CARDS) >= 10
+    # Every carded provider must be constructible through the same registry the
+    # guard above walks, or that provider is silently skipped.
+    assert not set(PROVIDER_MODEL_CARDS) - set(PROVIDER_CLASS_PATHS)

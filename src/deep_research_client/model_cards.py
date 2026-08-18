@@ -412,7 +412,10 @@ def create_falcon_model_cards() -> ProviderModelCards:
             ResearchResource.semantic_scholar,
             ResearchResource.preprint_servers,
         ],
-        aliases=["falcon", "fh", "science"],
+        # "Edison Scientific Literature" is what FalconProvider.get_default_model()
+        # returns after the FutureHouse -> Edison rename; without it here, the
+        # provider's own default resolves to no card at all.
+        aliases=["falcon", "fh", "science", "Edison Scientific Literature"],
         pricing_notes="Academic research pricing, varies by usage",
         use_cases=[
             "Scientific literature reviews",

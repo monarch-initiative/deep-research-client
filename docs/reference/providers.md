@@ -566,7 +566,12 @@ params = BiomniParams(
   experiment design, evidence synthesis, citation tracking
 - **Resources**: PubMed, general web, and curated biomedical / genomic /
   chemical / protein-structure databases
-- **Citations**: PMID and DOI references extracted from the final answer
+- **Citations**: PMIDs, DOIs, PMC and GEO accessions, and bare PubMed URLs,
+  extracted from the final answer with the same patterns reference validation
+  uses
+- **Timeout**: `timeout` is handed to the Biomni agent as its own
+  `timeout_seconds`; this client does not impose a ceiling of its own, so a run
+  that hangs below that level hangs
 
 ### When to Use
 

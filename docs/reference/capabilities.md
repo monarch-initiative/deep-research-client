@@ -65,12 +65,17 @@ values below were added to describe co-scientist behavior.
 | `data_analysis` | Analyses structured biomedical / experimental datasets. |
 
 `retrieval_only` and `evidence_synthesis` are the two terms tied to the
-archetype axis, and the pairing is enforced by a test rather than left to
-convention: a `retriever` card carries `retrieval_only`, every other card
-carries `evidence_synthesis`, and neither carries the other's term. So
-`find_models_by_capability(ResearchCapability.evidence_synthesis)` returns the
-deep-research tools *and* the co-scientists — everything that authors a report
-— while `retrieval_only` returns just the retrievers.
+archetype axis, and a test enforces the part this page states rather than
+leaving it to convention: a `retriever` carries `retrieval_only` and nothing
+else does, and a `synthesizer` — the archetype whose definition *is* evidence
+synthesis — carries `evidence_synthesis`.
+
+Agentic researchers and co-scientists are not required to carry it. Every one
+shipped today does, and `find_models_by_capability(evidence_synthesis)`
+accordingly returns the deep-research tools *and* the co-scientists. But a
+co-scientist is defined by forming and testing hypotheses, not by writing a
+report, so one that returned a ranked hypothesis list instead would be
+annotated honestly rather than forced to claim the capability.
 
 ## Resources
 
@@ -114,5 +119,17 @@ find_models_by_resource(ResearchResource.pubmed)
 # Which providers are full co-scientists?
 find_models_by_archetype(ProviderArchetype.co_scientist)   # -> openscientist, biomni
 ```
+
+The same three axes are available from the CLI:
+
+```bash
+deep-research-client models --capability code_interpretation
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
+```
+
+Passing an unrecognised term lists the whole vocabulary, which is derived from
+the enum — so a value added to the schema appears in the help and the error
+message without anyone editing them.
 
 Each returns a `{provider_name: [ModelCard, ...]}` mapping.

@@ -243,7 +243,9 @@ class BiomniProvider(ResearchProvider):
                     type(result).__name__,
                 )
                 return str(result[-1])
-            logger.warning("Biomni returned no output at all; the report is empty.")
+            # Debug, not warning: research() warns once for every empty shape,
+            # so warning here too would put two lines in the log for one run.
+            logger.debug("Biomni returned an empty collection; no report text.")
             return ""
         for attr in ("content", "output", "final_answer", "answer"):
             value = getattr(result, attr, None)

@@ -6,6 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+from deep_research_client.model_cards import (
+    ProviderArchetype,
+    ResearchCapability,
+    ResearchResource,
+)
 from typer.testing import CliRunner
 
 from deep_research_client.cli import (
@@ -394,3 +400,58 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
     assert "## Citations" not in output_path.read_text(encoding="utf-8")
     assert "# Citations for Research Query" in citations_path.read_text(
         encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# `models` vocabulary filters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "flag,value,expected_provider",
+    [
+        ("--capability", "code_interpretation", "BIOMNI"),
+        ("--capability", "retrieval_only", "ASTA"),
+        ("--resource", "pubmed", "OPENSCIENTIST"),
+        ("--archetype", "co_scientist", "BIOMNI"),
+        ("--archetype", "retriever", "ASTA"),
+    ],
+)
+def test_models_filters_by_each_vocabulary_axis(flag, value, expected_provider):
+    """All three axes are queryable, not just displayable."""
+    from typer.testing import CliRunner
+
+    from deep_research_client import cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, ["models", flag, value])
+
+    assert result.exit_code == 0, result.output
+    assert expected_provider in result.output
+
+
+@pytest.mark.parametrize("flag", ["--capability", "--resource", "--archetype"])
+def test_models_rejects_an_unknown_vocabulary_value_by_naming_the_whole_vocabulary(flag):
+    """"Use: ..., etc." sent readers guessing; the enum can just say all of them."""
+    from typer.testing import CliRunner
+
+    from deep_research_client import cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, ["models", flag, "not-a-real-term"])
+
+    assert result.exit_code == 1
+    assert "etc." not in result.output, "the truncated list this replaced"
+
+
+@pytest.mark.parametrize(
+    "enum_class",
+    [ResearchCapability, ResearchResource, ProviderArchetype],
+    ids=lambda e: e.__name__,
+)
+def test_the_error_message_lists_every_term_the_schema_defines(enum_class, caplog):
+    """Derived from the enum, so a term added to the schema cannot be left behind."""
+    from deep_research_client.cli import _vocabulary
+
+    rendered = _vocabulary(enum_class)
+
+    for member in enum_class:
+        assert member.value in rendered

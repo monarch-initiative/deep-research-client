@@ -23,9 +23,13 @@ from .model_cards import (
     list_all_models,
     find_models_by_cost,
     find_models_by_capability,
+    find_models_by_resource,
+    find_models_by_archetype,
     CostLevel,
     TimeEstimate,
-    ModelCapability
+    ProviderArchetype,
+    ResearchCapability,
+    ResearchResource,
 )
 from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
@@ -1775,6 +1779,48 @@ def browse_cache(
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
+def _vocabulary(enum_class) -> str:
+    """Render a controlled vocabulary as a comma-separated list of its values.
+
+    Derived from the enum so help text and error messages cannot drift from the
+    LinkML schema the way a hand-written list does.
+
+    Args:
+        enum_class: One of the generated vocabulary enums.
+
+    Returns:
+        Comma-separated permissible values
+
+    >>> _vocabulary(CostLevel)
+    'low, medium, high, very_high'
+    """
+    return ", ".join(member.value for member in enum_class)
+
+
+def _show_filtered_models(heading: str, matches: dict, detailed: bool) -> None:
+    """Print provider -> cards groups under a heading, or say nothing matched.
+
+    The three vocabulary filters on `models` differ only in which finder they
+    call, so the rendering lives here rather than being copied per axis.
+
+    Args:
+        heading: Title to print above the groups.
+        matches: Provider name -> list of matching model cards.
+        detailed: Whether to print the detailed form of each card.
+    """
+    if not matches:
+        logger.info("No models found for: %s", heading)
+        return
+
+    typer.echo(f"**{heading}**")
+    typer.echo()
+    for provider_name, cards in matches.items():
+        typer.echo(f"**{provider_name.upper()}:**")
+        for card in cards:
+            _display_model_card(card, detailed, indent="  ")
+        typer.echo()
+
+
 @app.command()
 def models(
     provider: Annotated[Optional[str], typer.Option(
@@ -1782,7 +1828,11 @@ def models(
     cost: Annotated[Optional[str], typer.Option(
         help="Filter by cost level (low, medium, high, very_high)")] = None,
     capability: Annotated[Optional[str], typer.Option(
-        help="Filter by capability (web_search, academic_search, etc.)")] = None,
+        help=f"Filter by capability ({_vocabulary(ResearchCapability)})")] = None,
+    resource: Annotated[Optional[str], typer.Option(
+        help=f"Filter by wrapped data resource ({_vocabulary(ResearchResource)})")] = None,
+    archetype: Annotated[Optional[str], typer.Option(
+        help=f"Filter by provider archetype ({_vocabulary(ProviderArchetype)})")] = None,
     detailed: Annotated[bool, typer.Option(
         "--detailed", help="Show detailed model information")] = False
 ):
@@ -1793,6 +1843,9 @@ def models(
       deep-research-client models                    # List all models
       deep-research-client models --provider openai # Show OpenAI models
       deep-research-client models --cost low         # Show low-cost models
+      deep-research-client models --capability code_interpretation  # Runs code
+      deep-research-client models --resource pubmed  # Reaches PubMed
+      deep-research-client models --archetype co_scientist          # Co-scientists
       deep-research-client models --detailed         # Show detailed information
     """
     if provider:
@@ -1837,27 +1890,51 @@ def models(
     elif capability:
         # Filter by capability
         try:
-            cap = ModelCapability(capability.lower())
+            cap = ResearchCapability(capability.lower())
         except ValueError:
             logger.error(
-                f"Invalid capability '{capability}'. Use: web_search, academic_search, scientific_literature, etc.")
+                f"Invalid capability '{capability}'. Use one of: "
+                f"{_vocabulary(ResearchCapability)}")
             raise typer.Exit(1)
 
         logger.debug(f"Filtering models by capability: {cap}")
-        models_by_cap = find_models_by_capability(cap)
-        if not models_by_cap:
-            logger.info(f"No models found with capability: {capability}")
-            return
+        _show_filtered_models(
+            f"{capability.upper().replace('_', ' ')} Capable Models",
+            find_models_by_capability(cap),
+            detailed,
+        )
 
-        typer.echo(
-            f"**{capability.upper().replace('_', ' ')}** Capable Models")
-        typer.echo()
+    elif resource:
+        try:
+            res = ResearchResource(resource.lower())
+        except ValueError:
+            logger.error(
+                f"Invalid resource '{resource}'. Use one of: "
+                f"{_vocabulary(ResearchResource)}")
+            raise typer.Exit(1)
 
-        for provider_name, model_cards_list in models_by_cap.items():
-            typer.echo(f"**{provider_name.upper()}:**")
-            for card in model_cards_list:
-                _display_model_card(card, detailed, indent="  ")
-            typer.echo()
+        logger.debug(f"Filtering models by resource: {res}")
+        _show_filtered_models(
+            f"Models Reaching {resource.upper().replace('_', ' ')}",
+            find_models_by_resource(res),
+            detailed,
+        )
+
+    elif archetype:
+        try:
+            arch = ProviderArchetype(archetype.lower())
+        except ValueError:
+            logger.error(
+                f"Invalid archetype '{archetype}'. Use one of: "
+                f"{_vocabulary(ProviderArchetype)}")
+            raise typer.Exit(1)
+
+        logger.debug(f"Filtering models by archetype: {arch}")
+        _show_filtered_models(
+            f"{archetype.upper().replace('_', ' ')} Providers",
+            find_models_by_archetype(arch),
+            detailed,
+        )
 
     else:
         # Show all models by provider

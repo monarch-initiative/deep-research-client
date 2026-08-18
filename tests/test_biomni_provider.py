@@ -131,10 +131,13 @@ def test_an_empty_report_is_flagged_rather_than_returned_in_silence(caplog):
     """The one fallback that returns a value rather than raising must still say so."""
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="deep_research_client.providers.biomni"):
+    with caplog.at_level(logging.DEBUG, logger="deep_research_client.providers.biomni"):
         assert BiomniProvider._result_to_markdown([]) == ""
 
-    assert any("no output at all" in record.message for record in caplog.records)
+    assert any("empty collection" in record.message for record in caplog.records)
+    # research() owns the WARNING for every empty shape; this level must not
+    # double it, or one empty run logs the same event twice.
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 def test_result_to_markdown_object_with_content():

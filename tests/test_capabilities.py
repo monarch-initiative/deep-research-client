@@ -250,36 +250,51 @@ def _all_registered_cards() -> list:
     """Every (provider, card) pair in the registry, deduplicated by identity.
 
     Derived rather than listed, like the default-model guard: a card added to a
-    provider is covered the day it lands.
+    provider is covered the day it lands. Dedup reuses the finders' own helper
+    so this walks the registry exactly as they do -- a provider that aliases one
+    card under two keys yields it once, here and there alike.
 
     Returns:
         (provider name, ModelCard) pairs
     """
-    pairs = []
-    for provider, cards in sorted(PROVIDER_MODEL_CARDS.items()):
-        seen: set[str] = set()
-        for card in cards.models.values():
-            if card.name not in seen:
-                seen.add(card.name)
-                pairs.append((provider, card))
-    return pairs
+    return [
+        (provider, card)
+        for provider, cards in sorted(PROVIDER_MODEL_CARDS.items())
+        for card in cards._unique_cards(list(cards.models.values()))
+    ]
+
+
+#: Computed once: parametrize and its ids both need it, and the walk is not free.
+_ALL_CARDS = _all_registered_cards()
 
 
 @pytest.mark.parametrize(
     "provider,card",
-    _all_registered_cards(),
-    ids=[f"{p}/{c.name}" for p, c in _all_registered_cards()],
+    _ALL_CARDS,
+    ids=[f"{provider}/{card.name}" for provider, card in _ALL_CARDS],
 )
 def test_archetype_and_capabilities_agree(provider, card):
-    """The two axes describe the same provider, so they must not contradict.
+    """The two axes describe one provider, so they must not contradict.
 
-    The schema defines `synthesizer` as "writes a cited narrative report" and
-    `evidence_synthesis` as "synthesises multiple sources into an authored
-    narrative report" -- the same sentence. `retrieval_only` says outright that
-    it pairs with the `retriever` archetype. So a card that authors a report
-    carries evidence_synthesis, a retriever carries retrieval_only, and neither
-    carries the other's term.
+    Deliberately pins only what the schema states, not the tidier biconditional:
+
+    - `retrieval_only` "pairs with the ``retriever`` archetype" -- stated
+      outright, so a retriever carries it and a non-retriever does not.
+    - `synthesizer` is "searches one or more corpora and writes a cited
+      narrative report"; `evidence_synthesis` is "synthesises multiple sources
+      into an authored narrative report". The same sentence, so a synthesizer
+      carries it.
+
+    Nothing in the schema says an `agentic_researcher` or `co_scientist` must
+    author a narrative report -- a co-scientist is defined by hypotheses and
+    experiments. Every one we ship happens to write a report and is annotated
+    accordingly, but requiring it here would force a future co-scientist that
+    returns a ranked hypothesis list to claim a capability it does not have.
     """
+    assert card.archetype is not None, (
+        f"{provider}/{card.name} declares no archetype, so there is nothing to "
+        "check its capabilities against"
+    )
     capabilities = set(card.capabilities)
 
     if card.archetype == ProviderArchetype.retriever:
@@ -290,12 +305,14 @@ def test_archetype_and_capabilities_agree(provider, card):
             f"{provider}/{card.name} retrieves; it does not author a synthesis"
         )
     else:
-        assert ResearchCapability.evidence_synthesis in capabilities, (
-            f"{provider}/{card.name} ({card.archetype}) authors a report but is "
-            "not marked evidence_synthesis"
-        )
         assert ResearchCapability.retrieval_only not in capabilities, (
-            f"{provider}/{card.name} authors a synthesis, so it is not retrieval-only"
+            f"{provider}/{card.name} is a {card.archetype}, not retrieval-only"
+        )
+
+    if card.archetype == ProviderArchetype.synthesizer:
+        assert ResearchCapability.evidence_synthesis in capabilities, (
+            f"{provider}/{card.name} is a synthesizer -- the archetype whose "
+            "definition is evidence_synthesis -- but is not marked with it"
         )
 
 
@@ -309,8 +326,11 @@ def test_both_coherence_terms_are_actually_used():
     for term, providers in by_capability.items():
         assert providers, f"{term} is defined in the schema but annotated on no card"
 
-    # The one that motivated the check: a user asking who writes them a report
-    # must get the deep-research tools, not only the co-scientists.
-    synthesis_providers = set(by_capability[ResearchCapability.evidence_synthesis])
-    assert {"openai", "perplexity", "consensus", "falcon"} <= synthesis_providers
-    assert set(by_capability[ResearchCapability.retrieval_only]) == {"asta"}
+    # The case that motivated the check: a user asking who writes them a report
+    # must get the deep-research tools, not only the co-scientists. Subset, not
+    # equality -- which providers hold each term is for the tests above, and a
+    # second retriever should not fail a test about the terms being used at all.
+    assert {"openai", "perplexity", "consensus", "falcon"} <= set(
+        by_capability[ResearchCapability.evidence_synthesis]
+    )
+    assert "asta" in by_capability[ResearchCapability.retrieval_only]

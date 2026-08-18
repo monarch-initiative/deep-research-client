@@ -64,6 +64,14 @@ values below were added to describe co-scientist behavior.
 | `experiment_design` | Designs experiments / analysis plans. |
 | `data_analysis` | Analyses structured biomedical / experimental datasets. |
 
+`retrieval_only` and `evidence_synthesis` are the two terms tied to the
+archetype axis, and the pairing is enforced by a test rather than left to
+convention: a `retriever` card carries `retrieval_only`, every other card
+carries `evidence_synthesis`, and neither carries the other's term. So
+`find_models_by_capability(ResearchCapability.evidence_synthesis)` returns the
+deep-research tools *and* the co-scientists — everything that authors a report
+— while `retrieval_only` returns just the retrievers.
+
 ## Resources
 
 `ResearchResource` — the data sources and knowledge bases a provider wraps. A

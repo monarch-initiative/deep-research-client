@@ -136,6 +136,14 @@ class BiomniProvider(ResearchProvider):
             raise ValueError(f"Biomni agent error: {e}") from e
 
         markdown = self._result_to_markdown(raw)
+        if not markdown.strip():
+            # A run that produced nothing may still have spent an hour of LLM
+            # time and local compute; returning it as an ordinary success gives
+            # the caller no way to tell that apart from a real answer.
+            logger.warning(
+                "Biomni run produced an empty report. The agent finished without "
+                "returning text -- check the biomni logs for the underlying failure."
+            )
         citations = self._extract_citations(markdown)
 
         end_time = datetime.now()
@@ -235,6 +243,7 @@ class BiomniProvider(ResearchProvider):
                     type(result).__name__,
                 )
                 return str(result[-1])
+            logger.warning("Biomni returned no output at all; the report is empty.")
             return ""
         for attr in ("content", "output", "final_answer", "answer"):
             value = getattr(result, attr, None)

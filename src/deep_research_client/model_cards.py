@@ -206,7 +206,8 @@ def create_openai_model_cards() -> ProviderModelCards:
             ResearchCapability.web_search,
             ResearchCapability.real_time_data,
             ResearchCapability.code_interpretation,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.general_web],
@@ -242,7 +243,8 @@ def create_openai_model_cards() -> ProviderModelCards:
             ResearchCapability.web_search,
             ResearchCapability.real_time_data,
             ResearchCapability.code_interpretation,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.general_web],
@@ -290,7 +292,8 @@ def create_perplexity_model_cards() -> ProviderModelCards:
             ResearchCapability.web_search,
             ResearchCapability.real_time_data,
             ResearchCapability.citation_tracking,
-            ResearchCapability.multi_language
+            ResearchCapability.multi_language,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.general_web],
@@ -324,7 +327,8 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         capabilities=[
             ResearchCapability.web_search,
             ResearchCapability.real_time_data,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.general_web],
@@ -356,7 +360,8 @@ def create_perplexity_model_cards() -> ProviderModelCards:
         capabilities=[
             ResearchCapability.web_search,
             ResearchCapability.real_time_data,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.general_web],
@@ -404,7 +409,8 @@ def create_falcon_model_cards() -> ProviderModelCards:
         capabilities=[
             ResearchCapability.academic_search,
             ResearchCapability.scientific_literature,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[
@@ -456,7 +462,10 @@ def create_asta_model_cards() -> ProviderModelCards:
         capabilities=[
             ResearchCapability.academic_search,
             ResearchCapability.scientific_literature,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            # The one term that exists to mark this archetype, on the one
+            # provider that is it: Asta returns evidence, never a synthesis.
+            ResearchCapability.retrieval_only,
         ],
         archetype=ProviderArchetype.retriever,
         resources=[ResearchResource.semantic_scholar],
@@ -499,7 +508,8 @@ def create_consensus_model_cards() -> ProviderModelCards:
         time_estimate=TimeEstimate.FAST,
         capabilities=[
             ResearchCapability.academic_search,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.synthesizer,
         resources=[ResearchResource.semantic_scholar],
@@ -601,6 +611,7 @@ def create_claude_code_model_cards() -> ProviderModelCards:
             ResearchCapability.web_search,
             ResearchCapability.citation_tracking,
             ResearchCapability.code_interpretation,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.agentic_researcher,
         resources=[ResearchResource.general_web],
@@ -808,7 +819,8 @@ def create_cyberian_model_cards() -> ProviderModelCards:
         capabilities=[
             ResearchCapability.web_search,
             ResearchCapability.academic_search,
-            ResearchCapability.citation_tracking
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.agentic_researcher,
         resources=[

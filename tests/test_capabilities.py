@@ -12,6 +12,7 @@ from deep_research_client import (
     find_models_by_resource,
 )
 from deep_research_client.model_cards import (
+    PROVIDER_MODEL_CARDS,
     ModelCard,
     ProviderModelCards,
     get_provider_model_cards,
@@ -243,3 +244,73 @@ def test_the_default_model_guard_covers_every_registered_provider():
     # Every carded provider must be constructible through the same registry the
     # guard above walks, or that provider is silently skipped.
     assert not set(PROVIDER_MODEL_CARDS) - set(PROVIDER_CLASS_PATHS)
+
+
+def _all_registered_cards() -> list:
+    """Every (provider, card) pair in the registry, deduplicated by identity.
+
+    Derived rather than listed, like the default-model guard: a card added to a
+    provider is covered the day it lands.
+
+    Returns:
+        (provider name, ModelCard) pairs
+    """
+    pairs = []
+    for provider, cards in sorted(PROVIDER_MODEL_CARDS.items()):
+        seen: set[str] = set()
+        for card in cards.models.values():
+            if card.name not in seen:
+                seen.add(card.name)
+                pairs.append((provider, card))
+    return pairs
+
+
+@pytest.mark.parametrize(
+    "provider,card",
+    _all_registered_cards(),
+    ids=[f"{p}/{c.name}" for p, c in _all_registered_cards()],
+)
+def test_archetype_and_capabilities_agree(provider, card):
+    """The two axes describe the same provider, so they must not contradict.
+
+    The schema defines `synthesizer` as "writes a cited narrative report" and
+    `evidence_synthesis` as "synthesises multiple sources into an authored
+    narrative report" -- the same sentence. `retrieval_only` says outright that
+    it pairs with the `retriever` archetype. So a card that authors a report
+    carries evidence_synthesis, a retriever carries retrieval_only, and neither
+    carries the other's term.
+    """
+    capabilities = set(card.capabilities)
+
+    if card.archetype == ProviderArchetype.retriever:
+        assert ResearchCapability.retrieval_only in capabilities, (
+            f"{provider}/{card.name} is a retriever but is not marked retrieval_only"
+        )
+        assert ResearchCapability.evidence_synthesis not in capabilities, (
+            f"{provider}/{card.name} retrieves; it does not author a synthesis"
+        )
+    else:
+        assert ResearchCapability.evidence_synthesis in capabilities, (
+            f"{provider}/{card.name} ({card.archetype}) authors a report but is "
+            "not marked evidence_synthesis"
+        )
+        assert ResearchCapability.retrieval_only not in capabilities, (
+            f"{provider}/{card.name} authors a synthesis, so it is not retrieval-only"
+        )
+
+
+def test_both_coherence_terms_are_actually_used():
+    """A vocabulary term on zero cards is the defect this pair of terms had."""
+    by_capability = {
+        term: find_models_by_capability(term)
+        for term in (ResearchCapability.retrieval_only, ResearchCapability.evidence_synthesis)
+    }
+
+    for term, providers in by_capability.items():
+        assert providers, f"{term} is defined in the schema but annotated on no card"
+
+    # The one that motivated the check: a user asking who writes them a report
+    # must get the deep-research tools, not only the co-scientists.
+    synthesis_providers = set(by_capability[ResearchCapability.evidence_synthesis])
+    assert {"openai", "perplexity", "consensus", "falcon"} <= synthesis_providers
+    assert set(by_capability[ResearchCapability.retrieval_only]) == {"asta"}

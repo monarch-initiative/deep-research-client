@@ -227,6 +227,21 @@ class DeepResearchClient:
         for name, config in configs.items():
             self.registry.register(self._create_provider(name, config))
 
+    def unregistered_reason(self, provider_name: str) -> str:
+        """Explain why a known provider is not in this client's registry.
+
+        Public because the CLI is now a first-class caller: it renders this in
+        `providers` and `providers --check` rather than keeping a second
+        opinion of its own.
+
+        Args:
+            provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+        Returns:
+            Human-readable explanation of what is missing
+        """
+        return self._unregistered_reason(provider_name)
+
     def _unregistered_reason(self, provider_name: str) -> str:
         """Explain why a known provider never made it into the registry.
 
@@ -273,7 +288,10 @@ class DeepResearchClient:
         gate = REGISTRATION_GATES.get(provider_name)
         if gate:
             return gate
-        module_name, class_name = PROVIDER_CLASS_PATHS[provider_name]
+        paths = PROVIDER_CLASS_PATHS.get(provider_name)
+        if paths is None:
+            return f"'{provider_name}' is not configured"
+        module_name, class_name = paths
         try:
             provider_class = getattr(importlib.import_module(module_name), class_name)
         except Exception:

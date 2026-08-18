@@ -51,11 +51,34 @@ class _StubRegistry:
 
 
 class _StubClient:
-    """A client that owns only a registry."""
+    """A client that owns only a registry, plus the one explanation hook.
+
+    `unregistered_reason` defers to a real client so these tests exercise the
+    branch users take. Without it the CLI falls back to its own tables, and
+    these assertions would pin wording production can no longer produce -- as
+    they did for cyberian, which reports its missing `agentapi` binary rather
+    than a package it already has.
+    """
 
     def __init__(self, providers: list[_StubProvider]):
         """Wrap the providers in a registry."""
         self.registry = _StubRegistry(providers)
+
+    def unregistered_reason(self, provider: str) -> str:
+        """Answer exactly as the real client does.
+
+        Args:
+            provider: Canonical provider name.
+
+        Returns:
+            The real client's explanation
+        """
+        from deep_research_client.client import DeepResearchClient
+        from deep_research_client.models import CacheConfig
+
+        return DeepResearchClient(
+            cache_config=CacheConfig(enabled=False)
+        ).unregistered_reason(provider)
 
 
 def _ok(name: str) -> _StubProvider:
@@ -193,7 +216,7 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys):
     assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
 
 
-def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
+def test_an_unconfigured_provider_says_what_would_fix_it(capsys, no_local_binaries):
     """"NOT CONFIGURED" with no next step is the empty answer this replaces.
 
     cyberian needs an optional package rather than a credential, so there is no
@@ -204,18 +227,36 @@ def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
 
     out = capsys.readouterr().out
     assert "cyberian: NOT CONFIGURED" in out
-    assert "pip install" in out, "a provider with no env var still needs a next step"
+    # What a user is actually told: cyberian ships as a base dependency, so the
+    # missing piece is the `agentapi` binary, not a package to pip install.
+    assert "agentapi" in out, "a provider with no env var still needs a next step"
+
+
+@pytest.fixture
+def no_local_binaries(monkeypatch):
+    """Pin PATH so the explanations below do not depend on the machine.
+
+    The CLI now asks the client, and the client asks the provider, so a runner
+    that happens to have `claude` or `agentapi` installed gets a different --
+    equally correct -- sentence. Fixing the environment is what makes these
+    assertions about wording rather than about the box they run on.
+    """
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
 
 
 @pytest.mark.parametrize(
     "provider,expected",
     [
-        ("falcon", "set EDISON_API_KEY for Edison Scientific"),
-        ("claude_code", "Claude Code requires the `claude` CLI on PATH"),
-        ("cyberian", "pip install"),
+        ("falcon", "no Edison Scientific API key configured (set EDISON_API_KEY)"),
+        ("claude_code", "was not found on PATH"),
+        ("cyberian", "agentapi"),
     ],
 )
-def test_every_unconfigured_answer_carries_its_own_next_step(capsys, provider, expected):
+def test_every_unconfigured_answer_carries_its_own_next_step(
+    capsys, no_local_binaries, provider, expected
+):
     """A key, a binary and a package are three different fixes; say which.
 
     The claude_code case is the one that reads as nonsense if every hint is
@@ -282,3 +323,17 @@ def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
     assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
     assert "CLI on PATH" not in result.stdout, "not something you set"
     assert "EDISON_API_KEY" in result.stdout
+
+
+def test_the_cli_calls_a_method_the_client_actually_has():
+    """The CLI asks by name, so a rename would degrade it to the tables silently.
+
+    Duck-typed rather than isinstance-checked so a test double can stand in --
+    which is exactly why the name needs pinning somewhere.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    assert callable(getattr(DeepResearchClient, "unregistered_reason", None)), (
+        "cli._why_unconfigured looks up 'unregistered_reason' on the client; "
+        "renaming it here would silently fall back to the CLI's own tables"
+    )

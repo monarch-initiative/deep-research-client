@@ -391,5 +391,9 @@ def test_an_unavailable_biomni_is_listed_rather_than_omitted():
     result = CliRunner().invoke(app, ["providers"])
 
     assert result.exit_code == 0, result.stdout
-    assert "biomni" in result.stdout
-    assert "deep-research-client[biomni]" in result.stdout
+    # Pins the section, not just the string: the message appearing anywhere in
+    # the output would otherwise pass even if the section were removed.
+    assert "Other unavailable providers:" in result.stdout
+    section = result.stdout.split("Other unavailable providers:", 1)[1]
+    assert "biomni" in section
+    assert "deep-research-client[biomni]" in section

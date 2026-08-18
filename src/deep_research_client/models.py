@@ -6,6 +6,8 @@ import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .exceptions import MAX_DETAIL_CHARS, _truncate
+
 
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
 _UNSAFE_ARTIFACT_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -153,15 +155,17 @@ class ProviderHealth(BaseModel):
     def _cap_detail(cls, value: Optional[str]) -> Optional[str]:
         """Keep a raw stack trace or error page from becoming the whole report.
 
+        This is the guard for *unclassified* text -- a bare ``str(e)`` or raw
+        stderr. A composed ``diagnosis`` is already within the cap by
+        construction, so this never truncates the remedy off one.
+
         Args:
             value: The proposed detail text.
 
         Returns:
             The detail, truncated to a readable length.
         """
-        from .exceptions import MAX_DETAIL_CHARS
-
-        return value[:MAX_DETAIL_CHARS] if value else value
+        return _truncate(value, MAX_DETAIL_CHARS) if value else value
 
     def summary(self) -> str:
         """Render a single-line status suitable for CLI output.

@@ -261,15 +261,29 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
         provider: Probe only this provider, or all configured ones when None.
 
     Raises:
-        typer.Exit: If a named provider is unknown, or any probed provider
-            turned out to be unreachable.
+        typer.Exit: If a named provider is unknown or unconfigured, or any
+            provider turned out to be unable to take work.
     """
     import asyncio
+
+    from .provider_params import PROVIDER_PARAMS_REGISTRY
 
     if provider:
         target = client.registry.get_provider(provider)
         if target is None:
-            logger.error(f"Unknown provider: {provider}")
+            # A provider is only registered once its credential is set, so an
+            # absent one is usually an unset key rather than a typo. Saying
+            # "unknown" here would send the reader hunting for a spelling
+            # mistake instead of exporting a variable.
+            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+                typer.echo("Provider health:")
+                typer.echo(
+                    f"  {ProviderHealth(provider=provider, configured=False).summary()}"
+                )
+                if provider in PROVIDER_CREDENTIAL_HINTS:
+                    _echo_credential_hints([provider])
+            else:
+                logger.error(f"Unknown provider: {provider}")
             raise typer.Exit(1)
         targets = [target]
     else:
@@ -280,7 +294,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
             raise typer.Exit(1)
 
-    async def _probe() -> list:
+    async def _probe() -> list[ProviderHealth | BaseException]:
         return await asyncio.gather(
             *(t.check_health() for t in targets), return_exceptions=True
         )
@@ -681,10 +695,7 @@ def research(
     available_providers = client.get_available_providers()
     if not available_providers:
         logger.error("No research providers available. Please set API keys:")
-        logger.error("  - OPENAI_API_KEY for OpenAI Deep Research")
-        logger.error("  - EDISON_API_KEY for Edison Scientific")
-        logger.error("  - ASTA_API_KEY for Asta")
-        logger.error("  - PERPLEXITY_API_KEY for Perplexity AI")
+        _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
         raise typer.Exit(1)
 
     # Show available providers

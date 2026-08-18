@@ -28,8 +28,13 @@ from typing import ClassVar, Optional
 #: A 5xx HTML page or a Node stack trace is a hint, not something to reprint.
 MAX_DETAIL_CHARS = 200
 
+#: However long the remedy is, keep at least this much of what the provider
+#: said -- a message that is all advice and no evidence helps nobody.
+MIN_DETAIL_CHARS = 60
+
 __all__ = [
     "MAX_DETAIL_CHARS",
+    "MIN_DETAIL_CHARS",
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",
@@ -42,6 +47,26 @@ __all__ = [
     "classify_exception",
     "extract_status_code",
 ]
+
+
+def _truncate(text: str, limit: int) -> str:
+    """Shorten text to a limit, marking the cut so a reader can see it happened.
+
+    Args:
+        text: The text to shorten.
+        limit: Maximum length of the result, including the marker.
+
+    Returns:
+        The text, with a trailing ellipsis if anything was removed.
+
+    >>> _truncate("short", 20)
+    'short'
+    >>> _truncate("a much longer sentence than the limit allows", 20)
+    'a much longer sente…'
+    """
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)] + "\u2026"
 
 
 class ProviderError(ValueError):
@@ -67,10 +92,16 @@ class ProviderError(ValueError):
     def __init__(self, provider: str, detail: str, status_code: Optional[int] = None):
         """Build a provider error carrying its own remediation advice."""
         self.provider = provider
+        self.status_code = status_code
         # Capped here so every construction site inherits it -- an SDK's
         # exception text or an HTML error page is a hint, not a payload.
-        self.detail = detail[:MAX_DETAIL_CHARS]
-        self.status_code = status_code
+        #
+        # The budget subtracts the framing `diagnosis` will add, so the whole
+        # composed line stays within the cap and the remedy -- the part that
+        # says what to do about it -- is never the piece that gets cut.
+        framing = len(f"{status_code} " if status_code else "") + len(" -- ") + len(self.remedy)
+        budget = max(MIN_DETAIL_CHARS, MAX_DETAIL_CHARS - framing)
+        self.detail = _truncate(detail, budget)
         super().__init__(self.actionable_message())
 
     @property

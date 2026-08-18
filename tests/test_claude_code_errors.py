@@ -239,17 +239,55 @@ def test_a_real_failure_on_stderr_is_still_caught(monkeypatch):
 @pytest.mark.parametrize(
     "stdout,expected",
     [
-        ('{"type": "result", "subtype": "err", "result": "boom"}', "err boom"),
-        ('{"type": "assistant"}\n{"type": "result", "result": "late"}', "late"),
+        # A failing event is the CLI's own account of what went wrong.
+        ('{"type": "result", "is_error": true, "subtype": "err", "result": "boom"}', "err boom"),
+        ('{"type": "result", "subtype": "error_max_turns", "result": "gave up"}', "error_max_turns gave up"),
+        # A success event's `result` field is the model's report, not evidence.
+        ('{"type": "result", "subtype": "success", "result": "the report"}', ""),
+        ('{"type": "assistant"}\n{"type": "result", "result": "late"}', ""),
         ("garbage\n{not json}", ""),
         ("", ""),
     ],
 )
-def test_terminal_result_text_reads_only_the_terminal_event(stdout, expected):
+def test_terminal_result_text_reads_only_a_failing_terminal_event(stdout, expected):
     """Malformed or truncated streams must not throw on the failure path."""
     from deep_research_client.providers.claude_code import _terminal_result_text
 
     assert _terminal_result_text(stdout) == expected
+
+
+def test_a_successful_result_field_is_the_report_not_a_diagnosis(monkeypatch):
+    """The sibling of the assistant-block case: the report can land in `result`.
+
+    On a success event `result` holds the agent's final message, so a run that
+    researched billing and then died on teardown would otherwise have its own
+    report read back as proof the account is broke.
+    """
+    provider = _provider()
+    monkeypatch.setattr(provider, "is_available", lambda: True)
+
+    stream = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "result": (
+                "# Billing\n\nClaude usage limit reached is the message shown when "
+                "the credit balance is too low to continue."
+            ),
+        }
+    )
+
+    async def _fake_run(command, query):
+        return stream, "", 137
+
+    monkeypatch.setattr(provider, "_run_process", _fake_run)
+
+    with pytest.raises(ValueError) as excinfo:
+        asyncio.run(provider.research("how does API billing work"))
+
+    assert not isinstance(excinfo.value, ProviderQuotaError)
+    assert not isinstance(excinfo.value, ProviderBillingError)
+    assert "137" in str(excinfo.value)
 
 
 def test_a_cli_too_old_to_probe_is_unknown_not_unreachable():

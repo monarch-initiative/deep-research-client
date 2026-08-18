@@ -97,16 +97,20 @@ def _terminal_result_text(stdout: str) -> str:
 
     The stream also carries the model's report, which is prose we must never
     classify against: a report *about* rate limits or credits contains the same
-    phrases a failure does. Only the CLI's own terminal event is evidence.
+    phrases a failure does. Only the CLI's own account of a *failure* is
+    evidence -- on a success event the ``result`` field is itself the report
+    (see :meth:`ClaudeCodeProvider._report_text`), so it is skipped too.
 
     Args:
         stdout: Raw stdout from the CLI, which may be truncated or malformed.
 
     Returns:
-        The terminal event's subtype and result text, or "" if there is none.
+        The failing event's subtype and result text, or "" if there is none.
 
-    >>> _terminal_result_text('{"type": "assistant"}\n{"type": "result", "subtype": "ok", "result": "done"}')
-    'ok done'
+    >>> _terminal_result_text('{"type": "result", "is_error": true, "subtype": "e", "result": "boom"}')
+    'e boom'
+    >>> _terminal_result_text('{"type": "result", "subtype": "success", "result": "the report"}')
+    ''
     >>> _terminal_result_text('not json at all')
     ''
     """
@@ -118,8 +122,11 @@ def _terminal_result_text(stdout: str) -> str:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(event, dict) and event.get("type") == "result":
-            return f"{event.get('subtype') or ''} {event.get('result') or ''}".strip()
+        if not isinstance(event, dict) or event.get("type") != "result":
+            continue
+        if not event.get("is_error") and event.get("subtype", "success") == "success":
+            return ""
+        return f"{event.get('subtype') or ''} {event.get('result') or ''}".strip()
     return ""
 
 
@@ -245,7 +252,7 @@ class ClaudeCodeProvider(ResearchProvider):
             Human-readable explanation suitable for an error message
         """
         if not self.config.enabled:
-            return f"Provider '{self.name}' is disabled"
+            return super().unavailable_reason()
         return (
             f"the {self.claude_executable!r} CLI was not found on PATH; "
             f"install Claude Code to use this provider"

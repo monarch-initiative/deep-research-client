@@ -244,3 +244,45 @@ def test_not_configured_is_one_catchable_class():
 
     assert issubclass(ProviderNotInstalledError, ProviderNotConfiguredError)
     assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)
+
+
+def test_a_long_body_never_costs_the_remedy():
+    """Truncation must cut evidence, never the part that says what to do.
+
+    The composed diagnosis is budgeted at construction so the outer
+    ProviderHealth cap has nothing left to trim off the end.
+    """
+    from deep_research_client.exceptions import MAX_DETAIL_CHARS
+
+    body = (
+        "Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-proj-***. "
+        "You can find your API key at https://platform.openai.com/account/api-keys.', "
+        "'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}"
+    )
+    assert len(body) > MAX_DETAIL_CHARS, "the fixture must actually exceed the cap"
+
+    error = ProviderAuthError("openai", body, 401)
+    health = ProviderHealth(
+        provider="openai", configured=True, reachable=False, detail=error.diagnosis
+    )
+
+    assert len(error.diagnosis) <= MAX_DETAIL_CHARS
+    assert health.detail.endswith("lacks access to this endpoint")
+    assert "…" in health.detail, "the cut should be visible, not silent"
+
+
+def test_a_quota_error_keeps_its_reset_time_under_truncation():
+    """The renews-at clause is the most actionable part; it must not be cut."""
+    from deep_research_client.exceptions import ProviderQuotaError
+
+    error = ProviderQuotaError("claude_code", "Claude usage limit reached. " + "x" * 300, resets_at="3pm")
+
+    assert error.diagnosis.endswith("renews at 3pm")
+
+
+def test_truncation_leaves_short_text_alone():
+    """No marker on text that was never cut."""
+    error = ProviderAuthError("openai", "bad key", 401)
+
+    assert error.detail == "bad key"
+    assert "…" not in error.diagnosis

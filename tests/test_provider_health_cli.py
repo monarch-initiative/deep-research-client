@@ -116,7 +116,7 @@ def test_named_provider_is_the_only_one_probed(capsys):
 
     out = capsys.readouterr().out
     assert "a: OK" in out
-    assert "b" not in out
+    assert "b:" not in out
 
 
 def test_no_configured_providers_is_an_error(capsys):
@@ -148,3 +148,29 @@ def test_the_check_flag_is_wired_to_the_command(monkeypatch):
     assert probed == ["<all>"], "the command must delegate to the health check"
     # The early return means the normal listing never runs.
     assert "Available providers:" not in result.stdout
+
+
+def test_a_missing_key_is_not_reported_as_a_typo(capsys):
+    """Providers register only once their key is set, so absent != misspelled.
+
+    Saying "unknown provider" would send the reader hunting for a spelling
+    mistake instead of exporting a variable -- the wrong-remedy failure this
+    whole change exists to remove.
+    """
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient([_ok("claude_code")]), "falcon")
+
+    assert excinfo.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert "NOT CONFIGURED" in out
+    assert "EDISON_API_KEY" in out
+    assert "Unknown provider" not in out
+
+
+def test_a_genuine_typo_is_still_called_a_typo(capsys):
+    """A name we do not recognise at all keeps the blunt message."""
+    with pytest.raises(typer.Exit) as excinfo:
+        _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
+
+    assert excinfo.value.exit_code == 1
+    assert "NOT CONFIGURED" not in capsys.readouterr().out

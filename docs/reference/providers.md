@@ -427,13 +427,21 @@ each option; separate `universes/*.yaml` files pin one option per decision so
 you can materialize several and see whether the verdict is decision-robust. A
 runnable sample lives in `tests/input/astra_dismech/`.
 
-!!! warning "Provisional"
-    Lightcone's published command reference documents `lc init`, `lc verify`,
-    and `lc export`, but the exact subcommand that materializes a spec and the
-    directory it writes outputs to are not yet pinned against a verified CLI
-    release. These two unknowns are isolated behind `materialize_args` and
-    `output_subdir` (plus an `extra_args` escape hatch), so the provider can be
-    corrected without code changes once the real interface is confirmed.
+### How it runs
+
+The provider invokes `lc run` in the project directory. Per the Lightcone CLI,
+`lc run [OPTIONS] [OUTPUTS]...` generates a Snakefile and dispatches it through
+Snakemake + Dask; `--universe NAME` restricts execution to one universe (all of
+`universes/*.yaml` otherwise), and positional output IDs restrict which outputs
+are built. If your recipes run in containers, run `lc build` first to prepare
+images.
+
+Materialized outputs are discovered **deterministically** rather than by
+guessing an output directory: `lc` writes a `.lightcone-manifest.json` sidecar
+next to each output, recording its `output_id`, `universe_id`, `code_version`,
+`data_version`, `decisions`, `recipe`, and more. The provider finds those
+sidecars, harvests the sibling output files as `artifacts`, and surfaces the
+per-output provenance under `run_metadata["outputs"]`.
 
 ### Setup
 
@@ -453,11 +461,14 @@ The provider is auto-detected whenever `lc` is found on PATH. Set
 from deep_research_client.provider_params import LightconeParams
 
 params = LightconeParams(
-    universe="baseline",          # optional ASTRA universe to materialize
-    materialize_args=["run"],     # PROVISIONAL: subcommand to run in the project dir
-    output_subdir="outputs",      # PROVISIONAL: dir scanned for artifacts/report
+    universe="baseline",          # optional; else all universes/*.yaml are built
+    outputs=["mito_enrichment"],  # optional output IDs to materialize (else all)
+    jobs=4,                       # optional parallel Snakemake jobs (--jobs)
+    force=False,                  # rebuild everything, ignoring staleness (--force)
+    materialize_args=["run"],     # the `lc` subcommand (overridable escape hatch)
+    scan_subdir="",               # restrict manifest scan to a subdir (default: whole project)
     working_dir="/data/my-astra-project",  # explicit project dir (else derived from query)
-    save_artifacts=True,          # harvest figures/tables/data from the output tree
+    save_artifacts=True,          # harvest output files discovered via manifests
     extra_args=[],                # escape hatch for unmodeled flags
 )
 ```
@@ -485,8 +496,8 @@ Lightcone against trusted projects in a sandboxed environment.
 
 - Requires the `lc` CLI installed and an ASTRA project to run against
 - Input is a project/spec path, not a free-text research question
-- Executes code as part of the analysis; run only in a trusted environment
-- Exact materialize subcommand / output layout are provisional (see warning)
+- Executes code as part of the analysis (possibly in containers); run only in a
+  trusted environment
 - Non-deterministic results
 
 ---

@@ -420,11 +420,10 @@ class LightconeParams(BaseProviderParams):
     the spec already declares the inputs, methodological decisions, and
     expected outputs. See ``providers/lightcone.py`` for details.
 
-    Provisional fields: the exact ``lc`` subcommand used to materialize a spec
-    and the directory it writes outputs to are not yet pinned against a
-    verified release of the CLI. ``materialize_args`` and ``output_subdir``
-    expose those so the provider can be adjusted (or an ``extra_args`` escape
-    hatch used) without code changes once the real interface is confirmed.
+    Materialized outputs are discovered via the ``.lightcone-manifest.json``
+    sidecar that ``lc`` writes next to each output, so no output-directory guess
+    is needed. ``materialize_args`` and ``extra_args`` remain overridable escape
+    hatches for CLI flags not otherwise modeled.
     """
 
     lc_executable: str = Field(
@@ -436,9 +435,9 @@ class LightconeParams(BaseProviderParams):
         description=(
             "Subcommand/arguments passed to `lc` to materialize the spec, run in "
             "the project directory (which is expected to contain astra.yaml). "
-            "PROVISIONAL: defaults to ['run']; adjust once verified against the "
-            "installed CLI. The astra.yaml is discovered from the working "
-            "directory rather than passed as an argument."
+            "Defaults to ['run'] (the documented materialize command). The "
+            "astra.yaml is discovered from the working directory rather than "
+            "passed as an argument."
         ),
     )
     universe: Optional[str] = Field(
@@ -446,15 +445,32 @@ class LightconeParams(BaseProviderParams):
         description=(
             "Optional ASTRA universe name to materialize (selects one option per "
             "decision, e.g. 'baseline'). Forwarded as '--universe <name>' when set. "
-            "PROVISIONAL flag name."
+            "When unset, `lc run` materializes all universes in universes/*.yaml."
         ),
     )
-    output_subdir: str = Field(
-        default="outputs",
+    outputs: List[str] = Field(
+        default_factory=list,
         description=(
-            "Directory, relative to the project dir, scanned for materialized "
-            "outputs to harvest as artifacts and to locate the report. "
-            "PROVISIONAL default."
+            "Optional list of ASTRA output IDs to materialize (e.g. "
+            "['mito_enrichment']). Forwarded as positional arguments to `lc run`. "
+            "When empty, all declared outputs are materialized."
+        ),
+    )
+    jobs: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Number of parallel Snakemake jobs (forwarded as '--jobs N').",
+    )
+    force: bool = Field(
+        default=False,
+        description="Rebuild everything, ignoring staleness detection (`lc run --force`).",
+    )
+    scan_subdir: str = Field(
+        default="",
+        description=(
+            "Optional subdirectory, relative to the project dir, to restrict the "
+            "search for output manifests to. Empty (the default) scans the whole "
+            "project for '.lightcone-manifest.json' sidecars."
         ),
     )
     working_dir: Optional[str] = Field(

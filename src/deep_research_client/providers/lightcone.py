@@ -5,40 +5,32 @@ service. `Lightcone <https://lightconeresearch.org>`_ is a local command-line
 tool (the ``lc`` binary) that materializes an **ASTRA** (*Agentic Schema for
 Transparent Research Analysis*) specification -- an ``astra.yaml`` file -- into
 a tree of outputs, recording the methodological decisions and their provenance
-along the way.
+along the way. ``lc run`` generates a Snakefile and dispatches it through
+Snakemake + Dask; each materialized output is written with a sidecar
+``.lightcone-manifest.json`` recording its provenance.
 
 This provider is therefore a *spec runner*: the research "query" is a path to
 an ASTRA project directory (or an ``astra.yaml`` file), not a free-text
 question. The spec already declares the inputs, decisions, and expected
 outputs; the provider drives ``lc`` to execute them in the project directory,
-then harvests the materialized output tree into the standard
-:class:`~deep_research_client.models.ResearchResult` (report ``markdown`` plus
-non-text ``artifacts``).
+then discovers the materialized outputs via their manifest sidecars and returns
+them in the standard :class:`~deep_research_client.models.ResearchResult`
+(report ``markdown``, non-text ``artifacts``, and a per-output provenance trail
+in ``run_metadata``).
 
 No provider API key is required: Lightcone drives a local agent (Claude Code),
 so authentication and billing are handled by that local installation.
 
-Provisional behavior
---------------------
-Lightcone's published command reference documents ``lc init``, ``lc verify``,
-``lc export``, and a set of Claude Code slash-commands, but the exact
-subcommand that materializes a spec -- and the directory that outputs land in
--- are not yet pinned against a verified CLI release. Those two unknowns are
-isolated behind :class:`~deep_research_client.provider_params.LightconeParams`
-(``materialize_args`` and ``output_subdir``) and an ``extra_args`` escape
-hatch, so the provider can be corrected without code changes once the real
-interface is confirmed. Everything else -- availability checks, the
-``ResearchProvider`` contract, artifact harvesting, and citation extraction --
-is standard.
-
 Security
 --------
-Materializing an ASTRA spec runs an agent that executes code. Only run
-Lightcone against trusted projects in a sandboxed environment.
+Materializing an ASTRA spec runs an agent that executes code (potentially in
+containers via ``lc build``). Only run Lightcone against trusted projects in a
+sandboxed environment.
 """
 
 import asyncio
 import base64
+import json
 import logging
 import mimetypes
 import re
@@ -55,6 +47,24 @@ logger = logging.getLogger(__name__)
 
 # Canonical spec filename an ASTRA project is expected to contain.
 ASTRA_SPEC_FILENAME = "astra.yaml"
+
+# Sidecar manifest `lc` writes next to each materialized output.
+MANIFEST_FILENAME = ".lightcone-manifest.json"
+
+# Provenance fields lifted from a manifest into run_metadata.
+_MANIFEST_PROVENANCE_FIELDS = (
+    "output_id",
+    "universe_id",
+    "code_version",
+    "data_version",
+    "container_image",
+    "recipe",
+    "decisions",
+    "input_versions",
+    "lc_version",
+    "git_sha",
+    "finished_at",
+)
 
 # Report filenames preferred when locating the materialized report markdown.
 _REPORT_MARKDOWN_BASENAMES = ("final_report.md", "report.md")
@@ -85,6 +95,7 @@ _NOISY_ARTIFACT_PREFIXES = (
     ".claude/",
     ".git/",
     ".ipynb_checkpoints/",
+    ".snakemake/",
     ".venv/",
     "__pycache__/",
     "node_modules/",
@@ -187,8 +198,8 @@ class LightconeProvider(ResearchProvider):
         """Build the ``lc`` command-line invocation.
 
         The spec is discovered from the working directory rather than passed as
-        an argument. This method is pure and side-effect free to keep it easy to
-        unit test.
+        an argument. Mirrors ``lc run [OPTIONS] [OUTPUTS]...``. This method is
+        pure and side-effect free to keep it easy to unit test.
 
         Returns:
             The argument list to pass to the subprocess.
@@ -198,15 +209,20 @@ class LightconeProvider(ResearchProvider):
             >>> from deep_research_client.provider_params import LightconeParams
             >>> p = LightconeProvider(
             ...     ProviderConfig(name="lightcone", api_key=None, enabled=True),
-            ...     LightconeParams(universe="baseline"),
+            ...     LightconeParams(universe="baseline", jobs=4, outputs=["accuracy"]),
             ... )
             >>> p._build_command()
-            ['lc', 'run', '--universe', 'baseline']
+            ['lc', 'run', '--universe', 'baseline', '--jobs', '4', 'accuracy']
         """
         command: List[str] = [self.lc_executable, *self.params.materialize_args]
         if self.params.universe:
             command.extend(["--universe", self.params.universe])
+        if self.params.jobs is not None:
+            command.extend(["--jobs", str(self.params.jobs)])
+        if self.params.force:
+            command.append("--force")
         command.extend(self.params.extra_args)
+        command.extend(self.params.outputs)
         return command
 
     async def research(self, query: str) -> ResearchResult:
@@ -216,7 +232,8 @@ class LightconeProvider(ResearchProvider):
             query: Path to an ASTRA project directory or ``astra.yaml`` file.
 
         Returns:
-            ResearchResult with the materialized report and harvested artifacts.
+            ResearchResult with the materialized report, harvested artifacts,
+            and a per-output provenance trail in ``run_metadata``.
 
         Raises:
             ValueError: If the provider is unavailable, the project cannot be
@@ -244,27 +261,32 @@ class LightconeProvider(ResearchProvider):
                 f"{stderr.strip() or '<no stderr>'}"
             )
 
-        output_dir = project_dir / self.params.output_subdir
-        report_name, markdown = self._select_report(output_dir)
+        scan_root = project_dir / self.params.scan_subdir if self.params.scan_subdir else project_dir
+        manifest_dirs = self._find_manifest_dirs(scan_root)
+        owned_files = self._owned_files(scan_root, set(manifest_dirs))
+
+        report_name, markdown, report_path = self._select_report(owned_files, project_dir)
         artifacts = (
-            self._harvest_artifacts(output_dir, skip_names={report_name} if report_name else set())
+            self._harvest_artifacts(owned_files, project_dir, manifest_dirs, skip=report_path)
             if self.params.save_artifacts
             else []
         )
+        provenance = [self._summarize_manifest(m) for m in manifest_dirs.values() if m]
 
         if markdown is None:
-            markdown = self._synthesize_report(project_dir, artifacts, stdout)
+            markdown = self._synthesize_report(project_dir, artifacts, provenance, stdout)
 
         citations = self._extract_citations(markdown)
 
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         logger.info(
-            "Lightcone run completed in %.1fs (%d chars, %d citations, %d artifacts)",
+            "Lightcone run completed in %.1fs (%d chars, %d citations, %d artifacts, %d outputs)",
             duration,
             len(markdown),
             len(citations),
             len(artifacts),
+            len(provenance),
         )
 
         return ResearchResult(
@@ -274,7 +296,11 @@ class LightconeProvider(ResearchProvider):
             provider=self.name,
             query=query,
             model=self.model,
-            run_metadata={"project_dir": str(project_dir), "universe": self.params.universe},
+            run_metadata={
+                "project_dir": str(project_dir),
+                "universe": self.params.universe,
+                "outputs": provenance,
+            },
             start_time=start_time,
             end_time=end_time,
             duration_seconds=duration,
@@ -317,23 +343,80 @@ class LightconeProvider(ResearchProvider):
             returncode,
         )
 
-    def _select_report(self, output_dir: Path) -> tuple[Optional[str], Optional[str]]:
-        """Locate and read the best markdown report in the output tree.
+    # --- Output discovery via manifest sidecars ----------------------------
+
+    def _find_manifest_dirs(self, scan_root: Path) -> dict[Path, Optional[dict]]:
+        """Map each output directory (containing a manifest) to its parsed manifest.
+
+        An output directory is any directory holding a ``.lightcone-manifest.json``
+        sidecar. A manifest that fails to parse maps to ``None`` (the output is
+        still harvested; only its provenance is dropped).
+        """
+        manifest_dirs: dict[Path, Optional[dict]] = {}
+        if not scan_root.is_dir():
+            return manifest_dirs
+
+        for manifest_path in sorted(scan_root.rglob(MANIFEST_FILENAME)):
+            if not manifest_path.is_file():
+                continue
+            manifest_dirs[manifest_path.parent] = self._read_manifest(manifest_path)
+        return manifest_dirs
+
+    @staticmethod
+    def _read_manifest(manifest_path: Path) -> Optional[dict]:
+        """Parse a manifest sidecar, returning ``None`` on malformed JSON."""
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            logger.warning("Ignoring malformed Lightcone manifest: %s", manifest_path)
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _owned_files(self, scan_root: Path, manifest_dirs: set[Path]) -> List[Path]:
+        """List materialized files, each owned by its nearest ancestor manifest dir.
+
+        Files with no manifest ancestor (project inputs, the spec itself) are
+        excluded, so only genuinely materialized outputs are considered. The
+        manifest sidecars themselves are excluded too.
+        """
+        if not scan_root.is_dir() or not manifest_dirs:
+            return []
+
+        owned: List[Path] = []
+        for path in sorted(scan_root.rglob("*")):
+            if path.name == MANIFEST_FILENAME:
+                continue
+            if path.is_symlink() or not path.is_file():
+                continue
+            if self._nearest_manifest_dir(path, manifest_dirs) is not None:
+                owned.append(path)
+        return owned
+
+    @staticmethod
+    def _nearest_manifest_dir(path: Path, manifest_dirs: set[Path]) -> Optional[Path]:
+        """Return the deepest manifest directory that is an ancestor of ``path``."""
+        for parent in path.parents:
+            if parent in manifest_dirs:
+                return parent
+        return None
+
+    def _select_report(
+        self, owned_files: List[Path], project_dir: Path
+    ) -> tuple[Optional[str], Optional[str], Optional[Path]]:
+        """Pick the best markdown report among materialized outputs.
 
         Prefers canonical report basenames, then any ``report*.md``, then any
-        ``.md`` file. Returns ``(relative_name, markdown)`` or ``(None, None)``
-        when no report is present.
+        ``.md`` file. Returns ``(relative_name, markdown, abs_path)`` or
+        ``(None, None, None)`` when no report was materialized.
         """
-        if not output_dir.is_dir():
-            return None, None
-
         md_files = [
             p
-            for p in sorted(output_dir.rglob("*.md"))
-            if p.is_file() and not self._is_noisy_artifact_path(p.relative_to(output_dir))
+            for p in owned_files
+            if p.suffix.lower() == ".md"
+            and not self._is_noisy_artifact_path(p.relative_to(project_dir))
         ]
         if not md_files:
-            return None, None
+            return None, None, None
 
         def rank(path: Path) -> tuple[int, str]:
             name = path.name.lower()
@@ -345,40 +428,41 @@ class LightconeProvider(ResearchProvider):
 
         chosen = min(md_files, key=rank)
         markdown = chosen.read_text(encoding="utf-8", errors="replace")
-        return str(chosen.relative_to(output_dir).as_posix()), markdown
+        return str(chosen.relative_to(project_dir).as_posix()), markdown, chosen
 
     def _harvest_artifacts(
-        self, output_dir: Path, skip_names: set[str]
+        self,
+        owned_files: List[Path],
+        project_dir: Path,
+        manifest_dirs: dict[Path, Optional[dict]],
+        skip: Optional[Path],
     ) -> List[ResearchArtifact]:
-        """Harvest useful materialized outputs from the output tree.
+        """Harvest materialized outputs (except the chosen report) as artifacts.
 
-        Walks ``output_dir``, preserving non-noisy files with an allowed
-        extension under the size limit as :class:`ResearchArtifact` objects.
+        Each artifact is tagged with its owning output's id/universe (from the
+        manifest) for provenance.
         """
-        if not output_dir.is_dir():
-            return []
-
         artifacts: List[ResearchArtifact] = []
         used_filenames: set[str] = set()
 
-        for path in sorted(output_dir.rglob("*")):
-            rel = path.relative_to(output_dir)
-            rel_posix = rel.as_posix()
-            if rel_posix in skip_names:
+        for path in owned_files:
+            if skip is not None and path == skip:
                 continue
+            rel = path.relative_to(project_dir)
             if not self._should_preserve_artifact(path, rel):
                 continue
 
-            content = path.read_bytes()
-            filename = self._artifact_filename(rel_posix, used_filenames)
+            owner = self._nearest_manifest_dir(path, set(manifest_dirs))
+            manifest = manifest_dirs.get(owner) if owner is not None else None
+            rel_posix = rel.as_posix()
             artifacts.append(
                 ResearchArtifact(
-                    filename=filename,
-                    content_base64=base64.b64encode(content).decode("ascii"),
+                    filename=self._artifact_filename(rel_posix, used_filenames),
+                    content_base64=base64.b64encode(path.read_bytes()).decode("ascii"),
                     media_type=mimetypes.guess_type(path.name)[0],
                     path=rel_posix,
                     source="lightcone_outputs",
-                    description=self._artifact_description(rel_posix),
+                    description=self._artifact_description(rel_posix, manifest),
                 )
             )
 
@@ -386,8 +470,6 @@ class LightconeProvider(ResearchProvider):
 
     def _should_preserve_artifact(self, path: Path, rel: Path) -> bool:
         """Return whether a materialized file should become a ResearchArtifact."""
-        if path.is_symlink() or not path.is_file():
-            return False
         if self._is_noisy_artifact_path(rel):
             return False
         if path.suffix.lower() not in _ALLOWED_ARTIFACT_EXTENSIONS:
@@ -441,13 +523,29 @@ class LightconeProvider(ResearchProvider):
         return candidate
 
     @staticmethod
-    def _artifact_description(rel_posix: str) -> str:
-        """Build a short human-readable artifact description."""
+    def _artifact_description(rel_posix: str, manifest: Optional[dict]) -> str:
+        """Build a short human-readable artifact description with provenance."""
         stem = PurePosixPath(rel_posix).stem.replace("_", " ").replace("-", " ").strip()
-        return f"Lightcone output {stem}" if stem else f"Lightcone output {rel_posix}"
+        base = f"Lightcone output {stem}" if stem else f"Lightcone output {rel_posix}"
+        if manifest:
+            output_id = manifest.get("output_id")
+            universe = manifest.get("universe_id")
+            tags = [t for t in (output_id, universe) if t]
+            if tags:
+                base += f" ({' / '.join(str(t) for t in tags)})"
+        return base
+
+    @staticmethod
+    def _summarize_manifest(manifest: dict) -> dict:
+        """Extract the provenance-relevant fields from a manifest for run_metadata."""
+        return {k: manifest[k] for k in _MANIFEST_PROVENANCE_FIELDS if k in manifest}
 
     def _synthesize_report(
-        self, project_dir: Path, artifacts: List[ResearchArtifact], stdout: str
+        self,
+        project_dir: Path,
+        artifacts: List[ResearchArtifact],
+        provenance: List[dict],
+        stdout: str,
     ) -> str:
         """Build a fallback markdown report when no report file was materialized."""
         name = self._read_spec_name(project_dir) or project_dir.name
@@ -455,14 +553,25 @@ class LightconeProvider(ResearchProvider):
         if self.params.universe:
             lines.append(f"Universe: `{self.params.universe}`")
             lines.append("")
-        if artifacts:
+        if provenance:
             lines.append("## Materialized outputs")
+            lines.append("")
+            for entry in provenance:
+                oid = entry.get("output_id", "?")
+                uid = entry.get("universe_id")
+                recipe = entry.get("recipe")
+                suffix = f" — universe `{uid}`" if uid else ""
+                recipe_note = f" (`{recipe}`)" if recipe else ""
+                lines.append(f"- **{oid}**{suffix}{recipe_note}")
+            lines.append("")
+        if artifacts:
+            lines.append("## Output files")
             lines.append("")
             for art in artifacts:
                 lines.append(f"- `{art.path or art.filename}`")
             lines.append("")
-        else:
-            lines.append("_No output artifacts were harvested._")
+        if not provenance and not artifacts:
+            lines.append("_No materialized outputs were found._")
             lines.append("")
         tail = stdout.strip()
         if tail:

@@ -438,6 +438,36 @@ def test_a_disabled_claude_code_is_not_told_to_install_the_cli(monkeypatch):
     assert "not found on PATH" not in message, "the CLI is installed; do not say otherwise"
 
 
+def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
+    """The same two-gate confusion as claude_code, for the other local provider.
+
+    With the package importable and DISABLE_BIOMNI_PROVIDER set, the provider
+    considers itself available, so its own unavailable_reason() would tell the
+    reader to `pip install` something they already have.
+    """
+    import importlib.util
+
+    # Patched rather than skipped: CI never installs the biomni extra, so a
+    # skip here would mean this never runs where the counts come from.
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *args, **kwargs: (
+            object() if name == "biomni" else real_find_spec(name, *args, **kwargs)
+        ),
+    )
+    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="biomni")
+
+    message = str(excinfo.value)
+    assert "DISABLE_BIOMNI_PROVIDER" in message
+    assert "not installed" not in message, "the package is importable; do not say otherwise"
+
+
 def test_the_mock_provider_names_the_variable_that_enables_it(monkeypatch):
     """MockProvider is always "available", so it cannot explain its own absence."""
     monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)

@@ -119,7 +119,7 @@ from deep_research_client.model_cards import (
     find_models_by_capability,
     resolve_model_alias,
     CostLevel,
-    ModelCapability
+    ResearchCapability
 )
 
 # Get models for a provider
@@ -134,7 +134,7 @@ print(card.capabilities)
 
 # Find models by criteria
 cheap = find_models_by_cost(CostLevel.LOW)
-web_search = find_models_by_capability(ModelCapability.WEB_SEARCH)
+web_search = find_models_by_capability(ResearchCapability.web_search)
 
 # Resolve alias
 full_name = resolve_model_alias("openai", "o3")

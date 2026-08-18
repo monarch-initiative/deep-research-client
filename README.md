@@ -910,7 +910,7 @@ from deep_research_client.model_cards import (
     find_models_by_capability,
     resolve_model_alias,
     CostLevel,
-    ModelCapability
+    ResearchCapability
 )
 
 # Get all models for a provider
@@ -931,7 +931,7 @@ print(f"Limitations: {card.limitations}")
 cheap_models = find_models_by_cost(CostLevel.LOW)
 # Returns: {'perplexity': ['sonar'], 'consensus': ['Consensus Academic Search']}
 
-web_search_models = find_models_by_capability(ModelCapability.WEB_SEARCH)
+web_search_models = find_models_by_capability(ResearchCapability.web_search)
 # Returns: {'openai': ['o3-deep-research-2025-06-26', ...], 'perplexity': [...]}
 
 # Resolve aliases to full model names

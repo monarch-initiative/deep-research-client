@@ -20,7 +20,7 @@ from deep_research_client.model_cards import (
     create_biomni_model_cards,
 )
 from deep_research_client.provider_params import BiomniParams, create_provider_params
-from deep_research_client.providers.biomni import BiomniProvider
+from deep_research_client.providers.biomni import BIOMNI_DEFAULT_TIMEOUT, BiomniProvider
 
 BIOMNI_INSTALLED = importlib.util.find_spec("biomni") is not None
 
@@ -135,11 +135,42 @@ def test_result_to_markdown_object_with_content():
 
 
 def test_extract_citations_pmids_and_dois():
+    """Deduplicated, in first-appearance order, in the project's canonical form."""
     text = "Evidence PMID: 12345678 and PMID:12345678 plus doi:10.1000/abc.def."
     assert BiomniProvider._extract_citations(text) == [
         "PMID:12345678",
-        "doi:10.1000/abc.def",
+        "DOI:10.1000/abc.def",
     ]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # A DOI written as a markdown link: the identifier, not the whole tail.
+        (
+            "[doi:10.1038/nature12373](https://doi.org/10.1038/nature12373)",
+            ["DOI:10.1038/nature12373"],
+        ),
+        # A six-digit PMID is a 1970s paper, not a truncated modern one.
+        ("Shown decades ago (PMID: 942051).", ["PMID:942051"]),
+        # A bare PubMed URL is how agents most often cite.
+        ("https://pubmed.ncbi.nlm.nih.gov/12345678", ["PMID:12345678"]),
+        # Accessions a biomedical agent emits routinely.
+        ("See PMC11000121 for details.", ["PMC:PMC11000121"]),
+        ("Deposited under GSE68086.", ["GEO:GSE68086"]),
+        # Parenthesised DOIs are real; the closing paren is not part of them.
+        ("(doi:10.1016/0092-8674(94)90302-6)", ["DOI:10.1016/0092-8674(94)90302-6"]),
+        ("nothing to cite here", []),
+    ],
+)
+def test_extract_citations_handles_the_forms_reports_actually_use(text, expected):
+    """Biomni reads references through the same patterns as reference validation.
+
+    Each case below is one a hand-rolled `PMID:\\d{7,9}` / `doi:(10\\.\\S+)` pair
+    got wrong: it dropped the pre-1990 PMID, the URL, and both accession types,
+    and captured the markdown link's closing bracket as part of the DOI.
+    """
+    assert BiomniProvider._extract_citations(text) == expected
 
 
 def test_biomni_model_card_shape():
@@ -153,21 +184,97 @@ def test_biomni_model_card_shape():
     assert cards.resolve_model_name("biomni") == "biomni-a1"
 
 
-def test_build_agent_kwargs_accepted_by_a1_signature():
-    """Every kwarg _build_agent can emit must be accepted by A1.__init__.
+@pytest.mark.parametrize(
+    "params_timeout,config_timeout,expected",
+    [
+        # An explicit param wins over the config default...
+        (120, 900, 120),
+        # ...the config is used when the param says nothing...
+        (None, 900, 900),
+        # ...and the module default is the floor when neither does.
+        (None, None, BIOMNI_DEFAULT_TIMEOUT),
+        (120, None, 120),
+    ],
+)
+def test_agent_kwargs_timeout_precedence(params_timeout, config_timeout, expected):
+    """A1's parameter is `timeout_seconds`, and params outrank the config.
 
-    Guards against silent signature drift (e.g. `timeout` vs `timeout_seconds`)
-    without mocking or constructing the agent (which would download the data
-    lake). Skipped when the optional package is not installed.
+    Covered here rather than in the signature test below, which cannot run in
+    CI: the biomni extra is never installed there.
     """
-    import inspect
+    config = ProviderConfig(name="biomni", api_key=None, enabled=True, timeout=config_timeout)
+    provider = BiomniProvider(config, BiomniParams(timeout=params_timeout))
 
-    pytest.importorskip("biomni")
-    from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
+    kwargs = provider._agent_kwargs()
 
-    accepted = set(inspect.signature(A1.__init__).parameters)
-    # Superset of keys _build_agent may produce across all param combinations.
-    possible_kwargs = {
+    assert kwargs["timeout_seconds"] == expected
+    assert "timeout" not in kwargs, "A1 takes timeout_seconds; a bare timeout is dropped"
+
+
+def test_agent_kwargs_skip_data_lake_passes_an_empty_expected_file_list():
+    """The empty list is what tells A1 not to load or download the ~11GB lake."""
+    assert make_provider(skip_data_lake=True)._agent_kwargs()["expected_data_lake_files"] == []
+
+
+def test_agent_kwargs_omits_the_data_lake_key_by_default():
+    """Absent, not empty: an empty list would disable the lake for every run."""
+    assert "expected_data_lake_files" not in make_provider()._agent_kwargs()
+
+
+def test_agent_kwargs_omits_unset_optional_parameters():
+    """A1 infers its own defaults, so passing None would override them with nothing."""
+    kwargs = make_provider()._agent_kwargs()
+
+    for unset in ("llm", "source", "base_url", "api_key"):
+        assert unset not in kwargs
+
+    assert kwargs["path"] == "./biomni_data"
+    assert kwargs["use_tool_retriever"] is True
+
+
+def test_agent_kwargs_forwards_the_configured_llm_and_credentials():
+    """What the caller does set has to reach the agent."""
+    config = ProviderConfig(
+        name="biomni", api_key="sk-test", enabled=True, base_url="https://llm.example"
+    )
+    provider = BiomniProvider(
+        config, BiomniParams(llm="claude-sonnet-4-20250514", source="Anthropic")
+    )
+
+    kwargs = provider._agent_kwargs()
+
+    assert kwargs["llm"] == "claude-sonnet-4-20250514"
+    assert kwargs["source"] == "Anthropic"
+    assert kwargs["base_url"] == "https://llm.example"
+    assert kwargs["api_key"] == "sk-test"
+
+
+def _every_possible_agent_kwarg() -> set:
+    """Every key _agent_kwargs can emit, derived by asking it rather than listing.
+
+    A hand-written superset here would drift the moment a parameter is added --
+    the same failure mode the registry-derived guards in test_provider_errors.py
+    exist to avoid. Two configurations cover it: one setting every optional
+    field, and one setting skip_data_lake, which is the only mutually exclusive
+    branch.
+
+    Returns:
+        Union of the kwarg keys across those configurations
+    """
+    fully_configured = BiomniProvider(
+        ProviderConfig(
+            name="biomni", api_key="sk-test", enabled=True, base_url="https://llm.example", timeout=60
+        ),
+        BiomniParams(llm="claude-sonnet-4-20250514", source="Anthropic", timeout=120),
+    )
+    return set(fully_configured._agent_kwargs()) | set(
+        make_provider(skip_data_lake=True)._agent_kwargs()
+    )
+
+
+def test_the_derived_kwarg_set_covers_every_documented_parameter():
+    """A derived superset that silently lost a key would pass the test below."""
+    assert _every_possible_agent_kwarg() == {
         "path",
         "use_tool_retriever",
         "llm",
@@ -177,7 +284,23 @@ def test_build_agent_kwargs_accepted_by_a1_signature():
         "timeout_seconds",
         "expected_data_lake_files",
     }
-    missing = possible_kwargs - accepted
+
+
+def test_build_agent_kwargs_accepted_by_a1_signature():
+    """Every kwarg _agent_kwargs can emit must be accepted by A1.__init__.
+
+    Guards against silent signature drift (e.g. `timeout` vs `timeout_seconds`)
+    without mocking or constructing the agent (which would download the data
+    lake). Skipped when the optional package is not installed -- which is always
+    in CI, so the precedence tests above carry the coverage that can run there.
+    """
+    import inspect
+
+    pytest.importorskip("biomni")
+    from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
+
+    accepted = set(inspect.signature(A1.__init__).parameters)
+    missing = _every_possible_agent_kwarg() - accepted
     assert not missing, f"A1.__init__ does not accept: {sorted(missing)}"
 
 

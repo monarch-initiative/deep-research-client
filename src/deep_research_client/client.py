@@ -41,6 +41,9 @@ REGISTRATION_GATES: dict[str, str] = {
     "claude_code": (
         "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
     ),
+    "biomni": (
+        "requires the optional biomni package, with DISABLE_BIOMNI_PROVIDER unset"
+    ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }
 
@@ -229,8 +232,9 @@ class DeepResearchClient:
 
         Asks the provider class itself where it can answer, so the wording
         matches every other surface. But registration and availability are not
-        the same gate: two providers are held back by an environment variable
-        while considering themselves perfectly available, and asking those why
+        the same gate: the providers in REGISTRATION_GATES are held back by an
+        environment variable while considering themselves perfectly available,
+        and asking those why
         they are unavailable produces a confident wrong answer -- telling a
         reader to install a CLI they already have, for instance.
 

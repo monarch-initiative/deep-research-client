@@ -19,7 +19,6 @@ from datetime import datetime
 import importlib.util
 import logging
 import os
-import re
 from typing import Any, List, Optional
 
 from . import ResearchProvider
@@ -27,6 +26,7 @@ from ..exceptions import ProviderNotInstalledError, classify_exception
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import BiomniParams
 from ..model_cards import ProviderModelCards, create_biomni_model_cards
+from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,10 @@ class BiomniProvider(ResearchProvider):
         if not self.config.enabled:
             return False
         if importlib.util.find_spec("biomni") is None:
-            logger.warning("biomni not installed (pip install deep-research-client[biomni])")
+            # Debug, not warning: availability is polled by provider-listing
+            # paths and on every run, and unavailable_reason() already carries
+            # the user-facing wording for the one place that needs it.
+            logger.debug("biomni not installed (pip install deep-research-client[biomni])")
             return False
         return True
 
@@ -153,10 +156,16 @@ class BiomniProvider(ResearchProvider):
             duration_seconds=duration,
         )
 
-    def _build_agent(self) -> Any:
-        """Construct a Biomni ``A1`` agent from the configured parameters."""
-        from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
+    def _agent_kwargs(self) -> dict[str, Any]:
+        """Build the keyword arguments for a Biomni ``A1`` agent.
 
+        Split out from :meth:`_build_agent` so the precedence rules below can be
+        tested without the optional package: CI never installs the biomni extra,
+        so anything that has to import it does not run there.
+
+        Returns:
+            Keyword arguments to construct ``A1`` with
+        """
         kwargs: dict[str, Any] = {
             "path": self.data_path,
             "use_tool_retriever": self.params.use_tool_retriever,
@@ -178,11 +187,27 @@ class BiomniProvider(ResearchProvider):
             # An empty expected-files list tells A1 not to load/download the lake.
             kwargs["expected_data_lake_files"] = []
 
+        return kwargs
+
+    def _build_agent(self) -> Any:
+        """Construct a Biomni ``A1`` agent from the configured parameters."""
+        from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
+
+        kwargs = self._agent_kwargs()
         logger.debug("Constructing Biomni A1 with: %s", sorted(kwargs))
         return A1(**kwargs)
 
     def _run_agent(self, query: str) -> Any:
-        """Run the Biomni agent synchronously and return its raw output."""
+        """Run the Biomni agent synchronously and return its raw output.
+
+        A fresh agent per call, deliberately: ``research()`` hands this to
+        ``asyncio.to_thread``, so a cached agent would be shared across
+        concurrent runs, and ``A1`` carries per-run conversation state that is
+        not documented as thread-safe. The cost is real -- construction sets up
+        the tool retriever and validates the data lake -- so a caller issuing
+        many queries pays it each time; run isolation is judged the better
+        trade until upstream states otherwise.
+        """
         agent = self._build_agent()
         return agent.go(query)
 
@@ -203,40 +228,53 @@ class BiomniProvider(ResearchProvider):
             if parts:
                 return parts[-1]
             if result:
+                logger.warning(
+                    "Biomni returned a %s of non-string parts; stringifying the last "
+                    "one as the report. This usually means A1.go's return shape "
+                    "changed and the parsing here needs updating.",
+                    type(result).__name__,
+                )
                 return str(result[-1])
             return ""
         for attr in ("content", "output", "final_answer", "answer"):
             value = getattr(result, attr, None)
             if isinstance(value, str):
                 return value
+        logger.warning(
+            "Biomni returned an unrecognised %s with no text attribute; stringifying "
+            "it as the report. This usually means A1.go's return shape changed and "
+            "the parsing here needs updating.",
+            type(result).__name__,
+        )
         return str(result)
 
     @staticmethod
     def _extract_citations(markdown: str) -> List[str]:
-        """Extract PMID and DOI citations from the report text.
+        """Extract reference identifiers from the report text.
 
-        >>> BiomniProvider._extract_citations("See PMID: 12345678 and doi:10.1/xyz")
-        ['PMID:12345678', 'doi:10.1/xyz']
+        Delegates to :func:`deep_research_client.validation.find_reference_ids`,
+        which owns the identifier patterns shared with reference validation, so
+        a Biomni report is read exactly as every other report is. Those patterns
+        already handle what a hand-rolled pair here missed: a DOI written as a
+        markdown link, a bare PubMed URL, and the PMC/GEO accessions a
+        biomedical agent emits routinely.
+
+        >>> BiomniProvider._extract_citations("See PMID: 12345678 and doi:10.1038/nature12373")
+        ['PMID:12345678', 'DOI:10.1038/nature12373']
         >>> BiomniProvider._extract_citations("PMID:11111111 again PMID: 11111111")
         ['PMID:11111111']
-        >>> BiomniProvider._extract_citations("PMID: 123456789")
-        ['PMID:123456789']
+
+        A DOI inside a markdown link is captured as the identifier alone, not
+        as the identifier plus the link's trailing furniture:
+
+        >>> BiomniProvider._extract_citations(
+        ...     "[doi:10.1038/nature12373](https://doi.org/10.1038/nature12373)"
+        ... )
+        ['DOI:10.1038/nature12373']
+
+        A 1976 paper's six-digit PMID is a real citation, not a truncation:
+
+        >>> BiomniProvider._extract_citations("Shown decades ago (PMID: 942051).")
+        ['PMID:942051']
         """
-        citations: List[str] = []
-        seen: set[str] = set()
-
-        # Bound the match with (?!\d) so a longer numeric string is not silently
-        # truncated to a wrong PMID (PubMed IDs are 7-9 digits).
-        for pmid in re.findall(r"PMID:\s*(\d{7,9})(?!\d)", markdown):
-            ref = f"PMID:{pmid}"
-            if ref not in seen:
-                seen.add(ref)
-                citations.append(ref)
-
-        for doi in re.findall(r"\bdoi:\s*(10\.\S+)", markdown, flags=re.IGNORECASE):
-            ref = f"doi:{doi.rstrip('.,);]')}"
-            if ref not in seen:
-                seen.add(ref)
-                citations.append(ref)
-
-        return citations
+        return [found.normalized_id for found in find_reference_ids(markdown)]

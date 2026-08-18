@@ -1139,7 +1139,10 @@ def providers(
 
     if check:
         if show_params:
-            logger.warning("--show-params has no effect with --check; ignoring it.")
+            # Echoed, not logged: every other line this path emits goes to
+            # stdout, and the CLI's logger does not propagate to handlers a
+            # caller (or a test) can see.
+            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
         _check_provider_health(client, provider)
         return
 

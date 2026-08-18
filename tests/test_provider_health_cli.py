@@ -212,3 +212,17 @@ def test_every_unconfigured_answer_carries_its_own_next_step(capsys, provider, e
     assert f"{provider}: NOT CONFIGURED" in out
     assert expected in out
     assert "set the" not in out
+
+
+def test_show_params_with_check_says_it_does_nothing(monkeypatch):
+    """An accepted-but-ineffective flag should say so, not vanish."""
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_check_provider_health", lambda client, provider: None)
+
+    result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--show-params"])
+
+    assert result.exit_code == 0
+    assert "has no effect" in result.stdout

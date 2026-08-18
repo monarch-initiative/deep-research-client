@@ -104,7 +104,9 @@ def test_a_provider_that_names_its_credential_says_which_one():
     from deep_research_client.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(ProviderConfig(name="openai", api_key=None, enabled=True))
-    assert provider.unavailable_reason() == "no OpenAI API key configured (set OPENAI_API_KEY)"
+    assert provider.unavailable_reason() == (
+        "no OpenAI Deep Research API key configured (set OPENAI_API_KEY)"
+    )
 
 
 # --- Client-level integration of the stub ---------------------------------

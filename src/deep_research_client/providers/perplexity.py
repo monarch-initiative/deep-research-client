@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class PerplexityProvider(ResearchProvider):
     """Provider for Perplexity AI API."""
 
-    credential_label = "Perplexity"
+    credential_label = "Perplexity AI"
     credential_env_var = "PERPLEXITY_API_KEY"
 
     def __init__(self, config: ProviderConfig, params: Optional[PerplexityParams] = None):

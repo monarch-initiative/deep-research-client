@@ -56,7 +56,7 @@ def _classify_openai_error(provider: str, exc: BaseException) -> Optional[Provid
 class OpenAIProvider(ResearchProvider):
     """Provider for OpenAI Deep Research API."""
 
-    credential_label = "OpenAI"
+    credential_label = "OpenAI Deep Research"
     credential_env_var = "OPENAI_API_KEY"
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):

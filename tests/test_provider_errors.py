@@ -288,37 +288,62 @@ def test_truncation_leaves_short_text_alone():
     assert "…" not in error.diagnosis
 
 
-@pytest.mark.parametrize(
-    "module_name,class_name",
-    [
-        ("openai", "OpenAIProvider"),
-        ("falcon", "FalconProvider"),
-        ("consensus", "ConsensusProvider"),
-        ("perplexity", "PerplexityProvider"),
-        ("asta", "AstaProvider"),
-        ("openscientist", "OpenScientistProvider"),
-    ],
-)
-def test_every_keyed_provider_reports_a_missing_key_the_same_way(module_name, class_name):
-    """One `except` must cover every provider, or the documented catch lies.
+def _keyed_provider_classes() -> list:
+    """Every registered provider that needs a credential, from the registry.
 
-    Parametrized over the classes rather than written per provider: the gap
-    this closes was one file being left out of a by-hand conversion, and a
-    per-provider test would have been left out the same way.
+    Derived rather than listed: the defect this guards was a provider being
+    left out of a by-hand enumeration, and a hand-written list here would fail
+    the same way. Anything added to PROVIDER_CLASS_PATHS is covered the day it
+    lands, or fails this pin.
+
+    Returns:
+        (name, class) pairs for providers that declare a credential variable
     """
-    import asyncio
     import importlib
+
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    classes = []
+    for name, (module_name, class_name) in PROVIDER_CLASS_PATHS.items():
+        provider_class = getattr(importlib.import_module(module_name), class_name)
+        if provider_class.credential_env_var is not None:
+            classes.append((name, provider_class))
+    return classes
+
+
+@pytest.mark.parametrize(
+    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else ""
+)
+def test_every_keyed_provider_reports_a_missing_key_the_same_way(name, provider_class):
+    """One `except` must cover every provider, or the documented catch lies."""
+    import asyncio
 
     from deep_research_client.exceptions import ProviderNotConfiguredError
 
-    module = importlib.import_module(f"deep_research_client.providers.{module_name}")
-    provider_class = getattr(module, class_name)
-    provider = provider_class(ProviderConfig(name=module_name, api_key=None, enabled=True))
-
-    assert provider.credential_env_var, "a keyed provider must name its variable"
+    provider = provider_class(ProviderConfig(name=name, api_key=None, enabled=True))
 
     with pytest.raises(ProviderNotConfiguredError) as excinfo:
         asyncio.run(provider.research("what causes scurvy"))
 
     # The message names the variable to set, not just that something is absent.
     assert provider.credential_env_var in str(excinfo.value)
+
+
+@pytest.mark.parametrize("name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else "")
+def test_the_cli_hint_table_agrees_with_the_provider_it_describes(name, provider_class):
+    """Two places name each credential; they must not drift into two answers."""
+    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
+
+    assert PROVIDER_CREDENTIAL_HINTS[name] == (
+        provider_class.credential_env_var,
+        provider_class.credential_label,
+    )
+
+
+def test_the_registry_actually_yields_keyed_providers():
+    """A derived parametrize that silently yields nothing would pass vacuously."""
+    names = [name for name, _ in _keyed_provider_classes()]
+
+    assert len(names) >= 6
+    assert "openscientist" in names, "the provider whose omission prompted this test"
+    assert "claude_code" not in names, "no credential variable, so not in scope"

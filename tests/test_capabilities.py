@@ -373,8 +373,8 @@ def test_every_vocabulary_term_is_annotated_or_explicitly_reserved(term):
 
     if term in RESERVED_TERMS:
         assert not matches, (
-            f"{term} is listed in RESERVED_TERMS but is now annotated on "
-            f"{sorted(matches)}; remove it from the reserved list"
+            f"{term} is listed in RESERVED_TERMS ({RESERVED_TERMS[term]}) but is "
+            f"now annotated on {sorted(matches)}; remove it from the reserved list"
         )
         return
 

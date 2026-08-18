@@ -410,6 +410,10 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
 @pytest.mark.parametrize(
     "flag,value,expected_provider,absent_provider",
     [
+        # --cost included deliberately: it shares the parse/render path with the
+        # three vocabulary axes, and a row pairing the wrong enum with the wrong
+        # finder type-checks and prints "No models match" rather than crashing.
+        ("--cost", "low", "ASTA", "BIOMNI"),
         ("--capability", "code_interpretation", "BIOMNI", "ASTA"),
         ("--capability", "retrieval_only", "ASTA", "BIOMNI"),
         ("--resource", "pubmed", "OPENSCIENTIST", "ASTA"),
@@ -451,11 +455,56 @@ def test_models_intersects_filters_rather_than_honouring_only_the_first():
 
 
 def test_a_filter_matching_nothing_says_so_rather_than_printing_nothing():
-    """Default verbosity is WARNING, so a logged-only message was invisible."""
-    result = runner.invoke(app, ["models", "--resource", "arxiv"])
+    """Default verbosity is WARNING, so a logged-only message was invisible.
+
+    Uses a conjunction rather than a term that happens to be unannotated: the
+    day a provider claims `arxiv`, this test should not be the one that fails.
+    """
+    result = runner.invoke(app, ["models", "--archetype", "retriever", "--cost", "very_high"])
 
     assert result.exit_code == 0, result.output
     assert "No models match" in result.output
+
+
+def test_provider_combined_with_a_filter_narrows_instead_of_winning():
+    """--provider was the last flag that silently discarded the others."""
+    matching = runner.invoke(
+        app, ["models", "--provider", "biomni", "--capability", "code_interpretation"]
+    )
+    assert matching.exit_code == 0, matching.output
+    assert "BIOMNI" in matching.output
+
+    # biomni has no web_search capability, so the conjunction is empty. Before
+    # this, --provider won and the capability was dropped without a word.
+    empty = runner.invoke(
+        app, ["models", "--provider", "biomni", "--capability", "web_search"]
+    )
+    assert empty.exit_code == 0, empty.output
+    assert "No models match" in empty.output
+
+
+def test_provider_named_alone_still_reports_its_default_model():
+    """Narrowing must not cost the listing form its Default: header."""
+    result = runner.invoke(app, ["models", "--provider", "biomni"])
+
+    assert result.exit_code == 0, result.output
+    assert "Default: biomni-a1" in result.output
+
+
+def test_research_provider_help_names_every_registered_provider():
+    """A provider added to the registry must not need a second list edited.
+
+    biomni and cyberian were both absent from the hand-written help this
+    replaced.
+    """
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    result = runner.invoke(app, ["research", "--help"])
+
+    assert result.exit_code == 0, result.output
+    rendered = " ".join(result.output.split())
+    for name in PROVIDER_CLASS_PATHS:
+        assert name in rendered, f"{name} is registered but absent from --provider help"
 
 
 @pytest.mark.parametrize(

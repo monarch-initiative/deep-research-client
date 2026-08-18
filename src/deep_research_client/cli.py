@@ -35,6 +35,21 @@ from .model_cards import (
 )
 from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
 
+def _registered_providers() -> str:
+    """Render every provider name the client knows, comma-separated.
+
+    Derived from PROVIDER_CLASS_PATHS so a provider added to the registry
+    appears in CLI help without anyone editing a second list -- the omission
+    that left biomni and cyberian unadvertised.
+
+    Returns:
+        Comma-separated provider names
+    """
+    from .client import PROVIDER_CLASS_PATHS
+
+    return ", ".join(PROVIDER_CLASS_PATHS)
+
+
 # Configure logging
 logger = logging.getLogger("deep_research_client")
 
@@ -530,7 +545,7 @@ def research(
     query: Annotated[Optional[str], typer.Argument(
         help="Research query or question (not needed if using --template)")] = None,
     provider: Annotated[Optional[str], typer.Option(
-        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
+        help=f"Specific provider to use ({_registered_providers()})")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     output: Annotated[Optional[Path], typer.Option(
@@ -1859,7 +1874,7 @@ def models(
     provider: Annotated[Optional[str], typer.Option(
         help="Show models for specific provider")] = None,
     cost: Annotated[Optional[str], typer.Option(
-        help="Filter by cost level (low, medium, high, very_high)")] = None,
+        help=f"Filter by cost level ({_vocabulary(CostLevel)})")] = None,
     capability: Annotated[Optional[str], typer.Option(
         help=f"Filter by capability ({_vocabulary(ResearchCapability)})")] = None,
     resource: Annotated[Optional[str], typer.Option(
@@ -1881,22 +1896,6 @@ def models(
       deep-research-client models --archetype co_scientist          # Co-scientists
       deep-research-client models --detailed         # Show detailed information
     """
-    if provider:
-        # A provider is a listing, not a filter: it names exactly what to show.
-        logger.debug(f"Fetching models for provider: {provider}")
-        cards = get_provider_model_cards(provider)
-        if not cards:
-            logger.error(f"Provider '{provider}' not found")
-            raise typer.Exit(1)
-
-        typer.echo(f"**{cards.provider_name.upper()}** Models")
-        typer.echo(f"Default: {cards.default_model}")
-        typer.echo()
-
-        for model_name, card in cards.models.items():
-            _display_model_card(card, detailed)
-        return
-
     # Each axis contributes a provider -> cards mapping; the result is their
     # intersection, so `--archetype co_scientist --resource pubmed` answers the
     # conjunction a reader expects rather than silently honouring one flag.
@@ -1904,26 +1903,55 @@ def models(
     described: List[str] = []
 
     # Each finder takes its own enum, so the loop is typed at the widest shape
-    # they share: a term in, provider -> cards out.
-    axes: List[tuple[Optional[str], type[Enum], Callable[[Any], Dict[str, List[ModelCard]]], str]] = [
-        (cost, CostLevel, find_models_by_cost, "Cost"),
-        (capability, ResearchCapability, find_models_by_capability, "Capable"),
-        (resource, ResearchResource, find_models_by_resource, "Reaching"),
-        (archetype, ProviderArchetype, find_models_by_archetype, "Archetype"),
+    # they share: a term in, provider -> cards out. The heading is a format
+    # string per axis rather than a bare word, so each reads as English alone
+    # ("LOW Cost") and joined ("LOW Cost + PUBMED Reaching" would not, hence
+    # the phrasing chosen below).
+    axes: List[
+        tuple[Optional[str], str, type[Enum], Callable[[Any], Dict[str, List[ModelCard]]], str]
+    ] = [
+        (cost, "--cost", CostLevel, find_models_by_cost, "{} Cost"),
+        (capability, "--capability", ResearchCapability, find_models_by_capability, "{} Capable"),
+        (resource, "--resource", ResearchResource, find_models_by_resource, "Reaching {}"),
+        (archetype, "--archetype", ProviderArchetype, find_models_by_archetype, "{} Archetype"),
     ]
-    for raw_value, enum_class, finder, label in axes:
+    for raw_value, flag, enum_class, finder, heading in axes:
         if not raw_value:
             continue
         try:
             parsed = enum_class(raw_value.lower())
         except ValueError:
+            # Names the flag the user typed, not the generated class behind it.
             logger.error(
-                f"Invalid {enum_class.__name__} value '{raw_value}'. Use one of: "
+                f"Invalid {flag} value '{raw_value}'. Use one of: "
                 f"{_vocabulary(enum_class)}")
             raise typer.Exit(1)
-        logger.debug("Filtering models by %s: %s", enum_class.__name__, parsed)
+        logger.debug("Filtering models by %s: %s", flag, parsed)
         selections.append(finder(parsed))
-        described.append(f"{label} {raw_value.upper().replace('_', ' ')}")
+        described.append(heading.format(raw_value.upper().replace("_", " ")))
+
+    if provider:
+        cards = get_provider_model_cards(provider)
+        if not cards:
+            logger.error(f"Provider '{provider}' not found")
+            raise typer.Exit(1)
+
+        if not selections:
+            # Named alone, a provider is a listing rather than a filter, and
+            # gets the fuller form including which model is its default.
+            logger.debug(f"Fetching models for provider: {provider}")
+            typer.echo(f"**{cards.provider_name.upper()}** Models")
+            typer.echo(f"Default: {cards.default_model}")
+            typer.echo()
+
+            for model_name, card in cards.models.items():
+                _display_model_card(card, detailed)
+            return
+
+        # Combined with a filter it narrows like any other axis, rather than
+        # silently winning and answering a different question.
+        selections.append({provider: cards._unique_cards(list(cards.models.values()))})
+        described.append(f"{provider.upper()} Provider")
 
     if selections:
         _show_filtered_models(
@@ -1953,7 +1981,9 @@ def models(
         typer.echo()
 
 
-def _display_model_card(card, detailed: bool = False, indent: str = ""):
+def _display_model_card(
+    card: ModelCard, detailed: bool = False, indent: str = ""
+) -> None:
     """Helper function to display a model card."""
     cost_emoji = {
         CostLevel.LOW: "💚",

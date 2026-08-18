@@ -560,6 +560,19 @@ Auth and billing failures are classified even when a provider SDK retries
 internally and reports the result as a timeout — the status is recovered from
 the wrapped exception rather than lost.
 
+### OpenAI
+
+OpenAI reports a spent quota as **429 with `code: "insufficient_quota"`** — the
+same status it uses for ordinary throttling. Reading the status alone would
+mark a spent quota retryable and loop on it forever, so the body's error code
+is checked first and only falls back to the status when there is no code we
+recognise. A model name that does not exist is deliberately left unclassified:
+that is a caller error, not a provider outage.
+
+Its probe (`models.list`) is authenticated but not billed, so like Edison it
+proves the key and nothing more — a key with no quota left still passes. OpenAI
+exposes no balance endpoint; the spent quota only announces itself on a run.
+
 ### Claude Code
 
 The `claude_code` provider is a subprocess wrapper, so it has no status codes

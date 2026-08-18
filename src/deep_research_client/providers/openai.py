@@ -1,5 +1,6 @@
 """OpenAI Deep Research provider."""
 
+import asyncio
 import logging
 from typing import List, Optional, Any, Dict, cast
 
@@ -8,12 +9,47 @@ from openai import OpenAI
 from openai.types.responses import WebSearchPreviewToolParam
 
 from . import ResearchProvider
-from ..models import ResearchResult, ProviderConfig
+from ..exceptions import (
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderError,
+    classify_exception,
+)
+from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import OpenAIParams
 from ..model_cards import ProviderModelCards, create_openai_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+# OpenAI reports a spent quota as 429 -- the same status it uses for ordinary
+# throttling -- and distinguishes the two only by the body's error code. Reading
+# the status alone would mark a spent quota retryable and loop on it forever.
+_ERROR_CODE_TYPES: dict[str, type[ProviderError]] = {
+    "insufficient_quota": ProviderBillingError,
+    "billing_hard_limit_reached": ProviderBillingError,
+    "invalid_api_key": ProviderAuthError,
+    "account_deactivated": ProviderAuthError,
+}
+
+
+def _classify_openai_error(provider: str, exc: BaseException) -> Optional[ProviderError]:
+    """Classify an OpenAI SDK exception, preferring its error code to its status.
+
+    Args:
+        provider: Name of the provider that raised.
+        exc: The exception raised by the OpenAI SDK.
+
+    Returns:
+        A typed error to raise in its place, or None to leave the original alone.
+    """
+    code = getattr(exc, "code", None)
+    error_class = _ERROR_CODE_TYPES.get(code) if isinstance(code, str) else None
+    if error_class is not None:
+        status_code = getattr(exc, "status_code", None)
+        return error_class(provider, getattr(exc, "message", None) or str(exc), status_code)
+    # No recognised code: fall back to reading the HTTP status.
+    return classify_exception(provider, exc)
 
 
 class OpenAIProvider(ResearchProvider):
@@ -45,6 +81,46 @@ class OpenAIProvider(ResearchProvider):
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for OpenAI provider."""
         return create_openai_model_cards()
+
+    async def check_health(self) -> ProviderHealth:
+        """Probe OpenAI by listing models, which is authenticated but not billed.
+
+        Like Edison, this proves the key is accepted and nothing more: listing
+        models does not consume quota, so a key whose quota is spent still
+        passes. OpenAI exposes no balance endpoint to read instead -- the spent
+        quota only announces itself as a ``429`` on the run.
+
+        Returns:
+            Health record for this provider
+        """
+        if not self.is_available():
+            return ProviderHealth(
+                provider=self.name,
+                configured=False,
+                reachable=False,
+                detail=self.unavailable_reason(),
+            )
+
+        client_kwargs: Dict[str, Any] = {"api_key": self.config.api_key}
+        if self.config.base_url:
+            client_kwargs["base_url"] = self.config.base_url
+
+        client = OpenAI(**client_kwargs)
+        try:
+            await asyncio.to_thread(client.models.list)
+        except Exception as e:
+            classified = _classify_openai_error(self.name, e)
+            detail = classified.diagnosis if classified else str(e)
+            logger.debug("OpenAI health probe failed:", exc_info=True)
+            return ProviderHealth(
+                provider=self.name, configured=True, reachable=False, detail=detail
+            )
+        return ProviderHealth(
+            provider=self.name,
+            configured=True,
+            reachable=True,
+            detail="credentials accepted (quota not readable until a run)",
+        )
 
     async def research(self, query: str) -> ResearchResult:
         """Perform research using OpenAI Deep Research API."""
@@ -133,6 +209,10 @@ class OpenAIProvider(ResearchProvider):
         except Exception as e:
             logger.error(f"OpenAI API request failed: {e}")
             logger.debug("Error details:", exc_info=True)
+            classified = _classify_openai_error(self.name, e)
+            if classified is not None:
+                logger.error(classified.actionable_message())
+                raise classified from e
             raise
         finally:
             http_client.close()

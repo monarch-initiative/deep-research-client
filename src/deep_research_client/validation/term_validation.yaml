@@ -1,0 +1,161 @@
+id: https://w3id.org/monarch-initiative/deep-research-client/term-validation
+name: term_validation
+title: Deep Research Client Ontology Term Validation
+description: >-
+  Data model for the outcome of validating the ontology terms cited by a deep
+  research report: whether each CURIE resolves to a real term, whether the label
+  the report wrote next to it is that term's label, and whether the term has
+  since been obsoleted.
+
+  A resolvable identifier is not the same as a correct one. NCIT:C16814 is a real
+  NCIT term, so every existence check passes it; it denotes Malaysia, which only
+  a label check can tell you. That gap is what this model records.
+
+  This schema is the source of truth for
+  deep_research_client/validation/term_datamodel.py, which is generated from it
+  with `just gen-term-datamodel`. Derived quantities (counts, rates) and markdown
+  rendering are added in deep_research_client/validation/term_models.py; they are
+  computed from these slots rather than stored.
+
+license: BSD-3-Clause
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  term_validation: https://w3id.org/monarch-initiative/deep-research-client/term-validation/
+
+default_prefix: term_validation
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+
+  TermStatus:
+    description: Outcome of resolving a single ontology term identifier.
+    permissible_values:
+      VERIFIED:
+        description: The CURIE resolves to a term that is current.
+      NOT_FOUND:
+        description: >-
+          The CURIE did not resolve, in an ontology that demonstrably resolves
+          other terms. The identifier is likely to have been confabulated.
+      OBSOLETE:
+        description: >-
+          The CURIE resolves, but the term has been deprecated. Not a
+          fabrication: the report cites something real that should no longer be
+          used, and often has a stated replacement.
+      UNVERIFIABLE:
+        description: >-
+          No resolver could be reached for this prefix, or the prefix was
+          skipped. Distinct from NOT_FOUND: nothing was learned either way, so
+          this is never evidence of fabrication.
+
+  LabelAgreement:
+    description: >-
+      How the label a report wrote next to a CURIE compares with that term's own
+      label. This is a string comparison, not a judgement about whether the term
+      is the right one to have cited: a report can name a term perfectly and
+      still have chosen the wrong term for the sentence.
+    permissible_values:
+      MATCH:
+        description: >-
+          The report's label is the term's label, up to case, punctuation,
+          word order and plurals.
+      VARIANT:
+        description: >-
+          The labels differ but are recognisably related - a spelling variant, a
+          subtype suffix, an added qualifier. Worth reading, because "Long QT
+          syndrome" and "Long QT syndrome 1" are different terms, but not by
+          itself evidence of a mistake.
+      MISMATCH:
+        description: >-
+          The labels have almost nothing in common. The report is calling this
+          identifier something the ontology does not call it, which usually
+          means the identifier is wrong.
+      NOT_ASSESSED:
+        description: >-
+          Label agreement was not judged, because the report wrote no label
+          beside the CURIE, the term did not resolve, or label checking was
+          disabled.
+
+classes:
+
+  TermCheck:
+    description: Result of resolving one ontology term cited by a report.
+    attributes:
+      term_id:
+        description: Normalized CURIE, for example HP:0001250.
+        required: true
+      prefix:
+        description: The CURIE's prefix, for example HP.
+        required: true
+      status:
+        description: Resolution outcome.
+        range: TermStatus
+        required: true
+      occurrences:
+        description: Number of times the CURIE is mentioned in the report.
+        range: integer
+        required: true
+        minimum_value: 1
+        ifabsent: int(1)
+      ontology_label:
+        description: The term's own label, when it resolved.
+      reported_labels:
+        description: >-
+          The labels the report wrote beside this CURIE, in first-appearance
+          order. More than one entry means the report named the same identifier
+          inconsistently, which is worth seeing even when each name is close
+          enough to pass.
+        multivalued: true
+      agreement:
+        description: How the reported label compares with the term's own label.
+        range: LabelAgreement
+        required: true
+        ifabsent: LabelAgreement(NOT_ASSESSED)
+      label_similarity:
+        description: >-
+          Similarity between the reported label and the term's own label, from 0
+          to 1, for the reported label that agreed least. Zero when agreement was
+          not assessed.
+
+          This is the raw measurement behind `agreement`; read the verdict rather
+          than re-thresholding this slot.
+        range: float
+        required: true
+        minimum_value: 0.0
+        maximum_value: 1.0
+        ifabsent: float(0.0)
+      replaced_by:
+        description: >-
+          Replacement term for an obsolete one, when the ontology states it.
+      message:
+        description: Explanation of the outcome, present when not verified.
+
+  TermValidationReport:
+    description: Aggregate result of validating every ontology term cited by a report.
+    attributes:
+      terms:
+        description: Per-term resolution results.
+        range: TermCheck
+        multivalued: true
+        inlined_as_list: true
+      unresolvable_prefixes:
+        description: >-
+          Prefixes encountered that no configured resolver covers, in
+          first-appearance order. Terms carrying one are reported UNVERIFIABLE
+          rather than NOT_FOUND: an unrecognised prefix may name an ontology this
+          run could not reach as easily as one that does not exist.
+        multivalued: true
+      adapter:
+        description: OAK adapter string terms were resolved through.
+      validator_version:
+        description: Version of linkml-term-validator used to produce this report.
+      truncated:
+        description: >-
+          Whether validation stopped early because a term limit was reached,
+          meaning the counts cover only part of the report's terms.
+        range: boolean
+        required: true
+        ifabsent: "False"

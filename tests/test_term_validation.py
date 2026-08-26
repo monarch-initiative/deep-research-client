@@ -1,0 +1,836 @@
+"""Tests for ontology term validation.
+
+Offline tests exercise the real ``linkml-term-validator`` code paths without
+network access, by pre-seeding its on-disk label cache and running the validator
+in offline mode, where it never builds an OAK adapter and answers exclusively
+from that cache. Tests that need a live ontology service to assert that an
+identifier genuinely does not exist, or that a term has been obsoleted, are
+marked ``integration``.
+
+The running example throughout is the failure this feature exists for:
+``NCIT:C16814`` is a real NCIT term that resolves cleanly, and it denotes
+Malaysia rather than the echocardiography a report claimed for it.
+"""
+
+import csv
+import json
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from deep_research_client.cli import app
+from deep_research_client.models import ResearchResult
+from deep_research_client.processing import ResultFormatter
+from deep_research_client.validation import (
+    FoundTerm,
+    LabelAgreement,
+    TermCheck,
+    TermStatus,
+    TermValidationReport,
+    TermValidator,
+    compare_labels,
+    extract_terms,
+    find_term_ids,
+    label_similarity,
+    strip_validation_section,
+)
+
+# Labels as the ontologies actually give them, used to seed the offline cache.
+CACHED_LABELS = {
+    "NCIT:C16814": "Malaysia",
+    "HP:0001250": "Seizure",
+    "HP:0001083": "Ectopia lentis",
+    "HP:0002616": "Aortic root aneurysm",
+    "MONDO:0007947": "Marfan syndrome",
+    "GO:0008543": "fibroblast growth factor receptor signaling pathway",
+}
+
+
+@pytest.fixture
+def label_cache(tmp_path: Path) -> Path:
+    """A pre-seeded label cache, in the layout the validator reads.
+
+    One CSV per prefix, which is what ``linkml-term-validator`` writes after a
+    live run, so an offline test reads exactly what an online one would have
+    left behind.
+    """
+    cache_dir = tmp_path / "terms_cache"
+    by_prefix: dict[str, dict[str, str]] = {}
+    for curie, label in CACHED_LABELS.items():
+        by_prefix.setdefault(curie.split(":", 1)[0], {})[curie] = label
+
+    for prefix, entries in by_prefix.items():
+        prefix_dir = cache_dir / prefix.lower()
+        prefix_dir.mkdir(parents=True, exist_ok=True)
+        with open(prefix_dir / "terms.csv", "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, ["curie", "label", "retrieved_at"])
+            writer.writeheader()
+            for curie in sorted(entries):
+                writer.writerow(
+                    {
+                        "curie": curie,
+                        "label": entries[curie],
+                        "retrieved_at": "2026-01-01T00:00:00",
+                    }
+                )
+    return cache_dir
+
+
+@pytest.fixture
+def offline_validator(label_cache: Path) -> TermValidator:
+    """A validator that answers only from the seeded cache."""
+    return TermValidator(cache_dir=label_cache, offline=True, cache_labels=False)
+
+
+# --------------------------------------------------------------------------
+# Extraction
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Marfan syndrome (MONDO:0007947) is inherited.", ["MONDO:0007947"]),
+        ("See HP:0001250 and NCIT:C16814.", ["HP:0001250", "NCIT:C16814"]),
+        ("MESH:D008382 is cited too.", ["MESH:D008382"]),
+        ("http://purl.obolibrary.org/obo/UBERON_0002101", ["UBERON:0002101"]),
+        ("https://bioregistry.io/HP:0001250", ["HP:0001250"]),
+        ("Taxon NCBITaxon:9606 was studied.", ["NCBITaxon:9606"]),
+    ],
+)
+def test_curies_are_extracted(text: str, expected: list[str]) -> None:
+    assert [t.term_id for t in find_term_ids(text)] == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Bibliographic namespaces belong to reference validation; extracting
+        # them here would report every citation twice.
+        "Cited as PMID:7913883.",
+        "Cited as DOI:10.1038/ng1234.",
+        "Cited as PMC11000121.",
+        "Deposited under GEO:GSE68086.",
+        # Shapes that look like CURIEs and are not.
+        "Recorded at 2024-01-02T10:30:00 in the log.",
+        "The ratio was 3:14 across sites.",
+        "Note: 2019 was the peak year.",
+        "See Table 2 for details.",
+        "Read https://example.org/page for more.",
+    ],
+)
+def test_non_terms_are_not_extracted(text: str) -> None:
+    assert find_term_ids(text) == []
+
+
+def test_mentions_are_counted() -> None:
+    terms = find_term_ids("HP:0001250 recurs; see HP:0001250 again, and HP:0001250.")
+
+    assert [(t.term_id, t.count) for t in terms] == [("HP:0001250", 3)]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("| Echocardiography Test | NCIT:C16814 |", "Echocardiography Test"),
+        ("| NCIT:C16814 | Echocardiography Test |", "Echocardiography Test"),
+        ("- **Ectopia lentis** (HP:0001083)", "Ectopia lentis"),
+        ("- Ectopia lentis (HP:0001083)", "Ectopia lentis"),
+        ("HP:0001083: Ectopia lentis", "Ectopia lentis"),
+        ("HP:0001083 - Ectopia lentis", "Ectopia lentis"),
+        ("HP:0001083 (Ectopia lentis)", "Ectopia lentis"),
+        ('"Ectopia lentis" (HP:0001083)', "Ectopia lentis"),
+    ],
+)
+def test_labels_are_read_from_label_positions(text: str, expected: str) -> None:
+    assert find_term_ids(text)[0].labels == (expected,)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A clause before a bracket is a clause, not a name. Reading it as one
+        # manufactures a label mismatch for a correctly cited term.
+        "Patients with aortic root dilation (HP:0002616) need monitoring.",
+        # A parenthetical that is plainly not a name.
+        "HP:0002616 (seen in 4 of 11 probands)",
+        "HP:0002616 (see Table 2)",
+        # A link target is not a label.
+        "[HP:0002616](https://bioregistry.io/HP:0002616)",
+    ],
+)
+def test_prose_is_not_read_as_a_label(text: str) -> None:
+    assert find_term_ids(text)[0].labels == ()
+
+
+def test_a_label_column_that_links_out_is_still_the_label() -> None:
+    """The CURIE in a label cell's href must not disqualify that cell."""
+    row = "| [Seizure](https://bioregistry.io/HP:0001250) | HP:0001250 | rare |"
+
+    assert find_term_ids(row)[0].labels == ("Seizure",)
+
+
+def test_a_term_named_two_ways_keeps_both_names() -> None:
+    report = "| Seizure | HP:0001250 |\n| Convulsion | HP:0001250 |\n"
+
+    assert find_term_ids(report)[0].labels == ("Seizure", "Convulsion")
+
+
+def test_citations_are_scanned_alongside_the_body() -> None:
+    terms = extract_terms("Body cites HP:0001250.", ["Appendix lists MONDO:0007947"])
+
+    assert [t.term_id for t in terms] == ["HP:0001250", "MONDO:0007947"]
+
+
+# --------------------------------------------------------------------------
+# Label comparison
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "reported, canonical, expected",
+    [
+        ("Marfan syndrome", "Marfan syndrome", LabelAgreement.MATCH),
+        ("marfan SYNDROME", "Marfan syndrome", LabelAgreement.MATCH),
+        ("seizures", "Seizure", LabelAgreement.MATCH),
+        ("Seizure, generalized", "generalized seizure", LabelAgreement.MATCH),
+        ("T-cell receptor", "T cell receptor", LabelAgreement.MATCH),
+        ("Long QT syndrome", "Long QT syndrome 1", LabelAgreement.VARIANT),
+        (
+            "fibroblast growth factor receptor signalling pathway",
+            "fibroblast growth factor receptor signaling pathway",
+            LabelAgreement.VARIANT,
+        ),
+        ("Echocardiography Test", "Malaysia", LabelAgreement.MISMATCH),
+        ("water", "oxygen molecule", LabelAgreement.MISMATCH),
+    ],
+)
+def test_label_agreement(reported: str, canonical: str, expected: LabelAgreement) -> None:
+    agreement, _ = compare_labels(reported, canonical)
+
+    assert agreement == expected
+
+
+def test_a_missing_label_is_not_judged() -> None:
+    assert compare_labels("", "Seizure") == (LabelAgreement.NOT_ASSESSED, 0.0)
+    assert compare_labels("Seizure", "") == (LabelAgreement.NOT_ASSESSED, 0.0)
+
+
+def test_mismatches_score_far_below_near_misses() -> None:
+    """The threshold has margin on both sides, so it is not a knife edge."""
+    mismatch = label_similarity("Echocardiography Test", "Malaysia")
+    near_miss = label_similarity("Type 2 diabetes", "type 2 diabetes mellitus")
+
+    assert mismatch < 0.3 < 0.7 < near_miss
+
+
+# --------------------------------------------------------------------------
+# Validation, offline
+# --------------------------------------------------------------------------
+
+
+def test_a_correctly_named_term_passes(offline_validator: TermValidator) -> None:
+    report = offline_validator.validate_markdown("| Seizure | HP:0001250 |")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement == LabelAgreement.MATCH
+    assert check.ontology_label == "Seizure"
+    assert not report.has_problems
+
+
+def test_a_real_term_named_as_something_else_is_caught(
+    offline_validator: TermValidator,
+) -> None:
+    """The failure from the issue: the identifier resolves and means Malaysia."""
+    report = offline_validator.validate_markdown("| Echocardiography Test | NCIT:C16814 |")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement == LabelAgreement.MISMATCH
+    assert check.ontology_label == "Malaysia"
+    assert check.reported_labels == ["Echocardiography Test"]
+    assert report.has_problems
+    assert [t.term_id for t in report.mislabelled_terms] == ["NCIT:C16814"]
+
+
+def test_an_unlabelled_term_is_resolved_but_not_judged(
+    offline_validator: TermValidator,
+) -> None:
+    report = offline_validator.validate_markdown("Discussed at length in MONDO:0007947.")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement == LabelAgreement.NOT_ASSESSED
+    assert report.labels_checked == 0
+
+
+def test_the_worst_of_several_names_is_the_verdict(
+    offline_validator: TermValidator,
+) -> None:
+    """One correct name does not excuse an incorrect one for the same term."""
+    markdown = "| Seizure | HP:0001250 |\n| Malaysia | HP:0001250 |\n"
+
+    check = offline_validator.validate_markdown(markdown).checked_terms[0]
+
+    assert check.agreement == LabelAgreement.MISMATCH
+    assert check.reported_labels == ["Seizure", "Malaysia"]
+
+
+def test_label_checking_can_be_turned_off(label_cache: Path) -> None:
+    validator = TermValidator(
+        cache_dir=label_cache, offline=True, cache_labels=False, check_labels=False
+    )
+
+    check = validator.validate_markdown("| Echocardiography Test | NCIT:C16814 |").checked_terms[0]
+
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement == LabelAgreement.NOT_ASSESSED
+
+
+def test_an_unreachable_term_is_unverifiable_not_invented(
+    offline_validator: TermValidator,
+) -> None:
+    """Offline, an uncached term teaches us nothing, so it is not an accusation."""
+    report = offline_validator.validate_markdown("Cites HP:0000118.")
+
+    assert report.checked_terms[0].status == TermStatus.UNVERIFIABLE
+    assert not report.has_problems
+
+
+def test_an_unknown_prefix_is_unverifiable(offline_validator: TermValidator) -> None:
+    report = offline_validator.validate_markdown("Cites FAKEONT:0001234.")
+
+    assert report.checked_terms[0].status == TermStatus.UNVERIFIABLE
+    assert report.unresolvable_prefixes == ["FAKEONT"]
+
+
+def test_a_skipped_prefix_is_not_looked_up(label_cache: Path) -> None:
+    validator = TermValidator(
+        cache_dir=label_cache, offline=True, cache_labels=False, skip_prefixes=["NCIT"]
+    )
+
+    report = validator.validate_markdown("| Echocardiography Test | NCIT:C16814 |")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.UNVERIFIABLE
+    assert "skipped" in (check.message or "")
+    # A skipped prefix is a choice, not a gap in coverage, so it is not listed
+    # among the prefixes nothing could resolve.
+    assert report.unresolvable_prefixes == []
+
+
+def test_a_term_limit_truncates_and_says_so(offline_validator: TermValidator) -> None:
+    offline_validator.max_terms = 1
+
+    report = offline_validator.validate_markdown("HP:0001250 and HP:0001083 and MONDO:0007947")
+
+    assert report.total_terms == 1
+    assert report.truncated
+    assert "stopped early" in report.to_markdown()
+
+
+def test_a_previous_section_is_not_re_extracted(offline_validator: TermValidator) -> None:
+    """Re-validating an annotated report must not read its own output back in."""
+    body = "| Echocardiography Test | NCIT:C16814 |\n"
+    once = offline_validator.validate_markdown(body)
+    annotated = body + "\n" + once.to_markdown()
+
+    twice = offline_validator.validate_markdown(annotated)
+
+    assert [t.term_id for t in twice.checked_terms] == ["NCIT:C16814"]
+    assert twice.checked_terms[0].reported_labels == ["Echocardiography Test"]
+
+
+def test_a_research_result_is_validated(offline_validator: TermValidator) -> None:
+    result = ResearchResult(
+        query="Marfan syndrome",
+        markdown="| Seizure | HP:0001250 |",
+        provider="mock",
+        citations=["Appendix: MONDO:0007947"],
+    )
+
+    report = offline_validator.validate_result(result)
+
+    assert [t.term_id for t in report.checked_terms] == ["HP:0001250", "MONDO:0007947"]
+
+
+def test_terms_can_be_supplied_directly(offline_validator: TermValidator) -> None:
+    """The library entry point below extraction, for callers with their own terms."""
+    report = offline_validator.validate_terms(
+        [FoundTerm(term_id="NCIT:C16814", prefix="NCIT", labels=("Echocardiography Test",))]
+    )
+
+    assert report.checked_terms[0].agreement == LabelAgreement.MISMATCH
+
+
+def test_the_extra_is_required() -> None:
+    from deep_research_client.validation import term_validator_is_available
+
+    assert term_validator_is_available() is True
+
+
+# --------------------------------------------------------------------------
+# Report model and rendering
+# --------------------------------------------------------------------------
+
+
+def test_an_empty_report_says_it_found_nothing() -> None:
+    assert "No ontology term identifiers" in TermValidationReport().to_markdown()
+
+
+def test_counts_exclude_unverifiable_terms_from_the_rate() -> None:
+    """Skipping half a term list must not halve its apparent failure rate."""
+    report = TermValidationReport(
+        terms=[
+            TermCheck(term_id="HP:0000001", prefix="HP", status=TermStatus.NOT_FOUND),
+            TermCheck(term_id="HP:0000002", prefix="HP", status=TermStatus.VERIFIED),
+            TermCheck(term_id="XX:0000003", prefix="XX", status=TermStatus.UNVERIFIABLE),
+        ]
+    )
+
+    assert report.resolvable_count == 2
+    assert report.confabulation_rate == 0.5
+
+
+def test_a_clean_sweep_of_failures_is_hedged() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(term_id=f"HP:999999{n}", prefix="HP", status=TermStatus.NOT_FOUND)
+            for n in range(3)
+        ]
+    )
+
+    assert report.all_terms_failed
+    assert "ontology service" in report.to_markdown()
+
+
+def test_one_failure_is_not_hedged_away() -> None:
+    """Hedging a single failure would excuse the mistake the check exists for."""
+    report = TermValidationReport(
+        terms=[TermCheck(term_id="HP:9999999", prefix="HP", status=TermStatus.NOT_FOUND)]
+    )
+
+    assert not report.all_terms_failed
+
+
+def test_the_summary_states_what_the_rate_hides() -> None:
+    """A clean resolution rate must not read as an all-clear for labels."""
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="NCIT:C16814",
+                prefix="NCIT",
+                status=TermStatus.VERIFIED,
+                ontology_label="Malaysia",
+                reported_labels=["Echocardiography Test"],
+                agreement=LabelAgreement.MISMATCH,
+            )
+        ]
+    )
+
+    summary = report.summary()
+
+    assert summary["confabulation_rate"] == 0.0
+    assert summary["labels_mismatched"] == 1
+    assert summary["mislabelled_terms"] == ["NCIT:C16814"]
+    assert summary["needs_review"] is True
+
+
+def test_obsolete_terms_do_not_fail_a_build_but_are_flagged() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="GO:0008022",
+                prefix="GO",
+                status=TermStatus.OBSOLETE,
+                ontology_label="obsolete protein C-terminus binding",
+                replaced_by="GO:0005515",
+            )
+        ]
+    )
+
+    assert not report.has_problems
+    assert report.summary()["needs_review"] is True
+    assert "GO:0005515" in report.to_markdown()
+
+
+def test_variant_labels_are_listed_rather_than_judged() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="MONDO:0100316",
+                prefix="MONDO",
+                status=TermStatus.VERIFIED,
+                ontology_label="Long QT syndrome 1",
+                reported_labels=["Long QT syndrome"],
+                agreement=LabelAgreement.VARIANT,
+            )
+        ]
+    )
+
+    assert not report.has_problems
+    assert "worth a second look" in report.to_markdown().lower()
+
+
+def test_inconsistent_naming_is_surfaced() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="HP:0001250",
+                prefix="HP",
+                status=TermStatus.VERIFIED,
+                ontology_label="Seizure",
+                reported_labels=["Seizure", "Seizures"],
+                agreement=LabelAgreement.MATCH,
+            )
+        ]
+    )
+
+    assert [t.term_id for t in report.inconsistently_named_terms] == ["HP:0001250"]
+    assert "named inconsistently" in report.to_markdown()
+
+
+def test_the_markdown_contrasts_both_names() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="NCIT:C16814",
+                prefix="NCIT",
+                status=TermStatus.VERIFIED,
+                ontology_label="Malaysia",
+                reported_labels=["Echocardiography Test"],
+                agreement=LabelAgreement.MISMATCH,
+            )
+        ]
+    )
+
+    markdown = report.to_markdown()
+
+    assert "Echocardiography Test" in markdown
+    assert "Malaysia" in markdown
+
+
+def test_status_is_stored_as_a_string() -> None:
+    """Pins the use_enum_values behaviour inherited from the generated base."""
+    check = TermCheck(term_id="HP:11", prefix="HP", status=TermStatus.VERIFIED)
+
+    assert check.status == TermStatus.VERIFIED
+    assert check.status == "VERIFIED"
+    assert not isinstance(check.status, TermStatus)
+
+
+def test_report_serialises_with_exclude_none() -> None:
+    assert TermValidationReport().model_dump(exclude_none=True) == {"truncated": False}
+
+
+# --------------------------------------------------------------------------
+# Sections
+# --------------------------------------------------------------------------
+
+
+def test_both_validation_sections_are_stripped() -> None:
+    annotated = (
+        "# Report\n\nBody.\n\n"
+        "## Reference Validation\n\nRefs.\n\n"
+        "## Term Validation\n\nTerms.\n"
+    )
+
+    assert strip_validation_section(annotated) == "# Report\n\nBody.\n"
+
+
+def test_a_discussed_heading_is_left_alone() -> None:
+    body = (
+        "# Report\n\n## Term Validation\n\nWe explain the method.\n\n"
+        "## Conclusions\n\nText.\n"
+    )
+
+    assert strip_validation_section(body) == body
+
+
+def test_the_formatter_embeds_a_term_section() -> None:
+    result = ResearchResult(query="q", markdown="Body", provider="mock")
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="NCIT:C16814",
+                prefix="NCIT",
+                status=TermStatus.VERIFIED,
+                ontology_label="Malaysia",
+                reported_labels=["Echocardiography Test"],
+                agreement=LabelAgreement.MISMATCH,
+            )
+        ]
+    )
+
+    formatted = ResultFormatter().format_full_markdown(result, term_validation=report)
+
+    assert "## Term Validation" in formatted
+    assert "term_validation:" in formatted
+    assert "needs_review: true" in formatted
+
+
+def test_both_validation_sections_can_be_embedded_together() -> None:
+    """--validate-references and --validate-terms compose in one report."""
+    from deep_research_client.validation import (
+        ReferenceCheck,
+        ReferenceStatus,
+        ReferenceValidationReport,
+    )
+
+    result = ResearchResult(query="q", markdown="Body", provider="mock")
+    references = ReferenceValidationReport(
+        references=[ReferenceCheck(reference_id="PMID:1", status=ReferenceStatus.VERIFIED)]
+    )
+    terms = TermValidationReport(
+        terms=[TermCheck(term_id="HP:0001250", prefix="HP", status=TermStatus.VERIFIED)]
+    )
+
+    formatted = ResultFormatter().format_full_markdown(
+        result, reference_validation=references, term_validation=terms
+    )
+
+    assert "## Reference Validation" in formatted
+    assert "## Term Validation" in formatted
+    assert "reference_validation:" in formatted
+    assert "term_validation:" in formatted
+    # Both come off again, so re-validating does not read them back in.
+    assert strip_validation_section(formatted).endswith("Body\n")
+
+
+# --------------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def report_file(tmp_path: Path) -> Path:
+    path = tmp_path / "report.md"
+    path.write_text(
+        "# Marfan syndrome\n\n"
+        "| Assessment | Term |\n"
+        "| --- | --- |\n"
+        "| Echocardiography Test | NCIT:C16814 |\n"
+        "| Seizure | HP:0001250 |\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _offline_args(report_file: Path, label_cache: Path) -> list[str]:
+    return [
+        "validate-terms",
+        str(report_file),
+        "--offline",
+        "--cache-dir",
+        str(label_cache),
+    ]
+
+
+def test_cli_prints_a_report(report_file: Path, label_cache: Path) -> None:
+    result = CliRunner().invoke(app, _offline_args(report_file, label_cache))
+
+    assert result.exit_code == 0
+    assert "Malaysia" in result.stdout
+
+
+def test_cli_writes_in_place(report_file: Path, label_cache: Path) -> None:
+    result = CliRunner().invoke(app, _offline_args(report_file, label_cache) + ["--in-place"])
+
+    assert result.exit_code == 0
+    written = report_file.read_text(encoding="utf-8")
+    assert written.startswith("# Marfan syndrome")
+    assert "## Term Validation" in written
+
+
+def test_cli_in_place_is_idempotent(report_file: Path, label_cache: Path) -> None:
+    """A second run must replace the section, not stack another one on it."""
+    args = _offline_args(report_file, label_cache) + ["--in-place"]
+    CliRunner().invoke(app, args)
+    CliRunner().invoke(app, args)
+
+    assert report_file.read_text(encoding="utf-8").count("## Term Validation") == 1
+
+
+def test_cli_in_place_refreshes_a_stale_frontmatter_summary(
+    tmp_path: Path, label_cache: Path
+) -> None:
+    """A summary left by an earlier run must not contradict the fresh section."""
+    path = tmp_path / "annotated.md"
+    path.write_text(
+        "---\n"
+        "title: Report\n"
+        "term_validation:\n"
+        "  total_terms: 99\n"
+        "  needs_review: false\n"
+        "---\n"
+        "| Echocardiography Test | NCIT:C16814 |\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(app, _offline_args(path, label_cache) + ["--in-place"])
+
+    assert result.exit_code == 0
+    written = path.read_text(encoding="utf-8")
+    assert "total_terms: 1" in written
+    assert "total_terms: 99" not in written
+    assert "needs_review: true" in written
+    assert "title: Report" in written
+
+
+def test_cli_in_place_leaves_a_hand_written_frontmatter_alone(
+    tmp_path: Path, label_cache: Path
+) -> None:
+    """A file that never carried a summary is not reformatted by this tool."""
+    path = tmp_path / "handwritten.md"
+    path.write_text(
+        "---\ntitle: Report\nauthor:   Someone\n---\n| Seizure | HP:0001250 |\n",
+        encoding="utf-8",
+    )
+
+    CliRunner().invoke(app, _offline_args(path, label_cache) + ["--in-place"])
+
+    assert "author:   Someone" in path.read_text(encoding="utf-8")
+
+
+def test_cli_writes_json(report_file: Path, label_cache: Path, tmp_path: Path) -> None:
+    out = tmp_path / "terms.json"
+
+    result = CliRunner().invoke(app, _offline_args(report_file, label_cache) + ["--json", str(out)])
+
+    assert result.exit_code == 0
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert payload["terms"][0]["term_id"] == "NCIT:C16814"
+    assert payload["terms"][0]["ontology_label"] == "Malaysia"
+
+
+def test_cli_fails_the_build_on_a_mislabelled_term(
+    report_file: Path, label_cache: Path
+) -> None:
+    result = CliRunner().invoke(
+        app, _offline_args(report_file, label_cache) + ["--fail-on-unresolved"]
+    )
+
+    assert result.exit_code == 2
+
+
+def test_cli_passes_a_clean_report(tmp_path: Path, label_cache: Path) -> None:
+    clean = tmp_path / "clean.md"
+    clean.write_text("| Seizure | HP:0001250 |\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app, _offline_args(clean, label_cache) + ["--fail-on-unresolved"]
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_rejects_a_missing_file(tmp_path: Path) -> None:
+    result = CliRunner().invoke(app, ["validate-terms", str(tmp_path / "nope.md")])
+
+    assert result.exit_code == 1
+
+
+def test_cli_rejects_multiple_files_with_one_output(
+    report_file: Path, tmp_path: Path
+) -> None:
+    other = tmp_path / "other.md"
+    other.write_text("HP:0001250\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        ["validate-terms", str(report_file), str(other), "--output", str(tmp_path / "o.md")],
+    )
+
+    assert result.exit_code == 1
+
+
+# --------------------------------------------------------------------------
+# Generated model
+# --------------------------------------------------------------------------
+
+
+def test_term_datamodel_matches_linkml_schema() -> None:
+    """term_datamodel.py is generated; regenerate it with `just gen-term-datamodel`.
+
+    Guards against the checked-in Pydantic model drifting from the LinkML schema
+    that is its source of truth.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    repo_root = Path(__file__).resolve().parent.parent
+    schema = Path("src/deep_research_client/validation/term_validation.yaml")
+    generated = repo_root / "src/deep_research_client/validation/term_datamodel.py"
+
+    gen_pydantic = shutil.which("gen-pydantic", path=str(Path(sys.executable).parent))
+    if not gen_pydantic:
+        pytest.skip("linkml is not installed; install the dev dependency group to check drift")
+
+    completed = subprocess.run(
+        [gen_pydantic, str(schema)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, f"gen-pydantic failed:\n{completed.stderr}"
+
+    assert completed.stdout == generated.read_text(encoding="utf-8"), (
+        "term_datamodel.py does not match term_validation.yaml. Either the schema "
+        "changed or linkml was upgraded; run `just gen-term-datamodel` and review the diff."
+    )
+
+
+# --------------------------------------------------------------------------
+# Integration: these need a live ontology service
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_live_lookup_catches_the_malaysia_case(tmp_path: Path) -> None:
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    report = validator.validate_markdown("| Echocardiography Test | NCIT:C16814 |")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert check.ontology_label == "Malaysia"
+    assert check.agreement == LabelAgreement.MISMATCH
+
+
+@pytest.mark.integration
+def test_live_lookup_reports_an_invented_identifier(tmp_path: Path) -> None:
+    """A live ontology is the only thing that can say a term does not exist."""
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    report = validator.validate_markdown("Cites HP:0001250 and HP:9999999.")
+
+    by_id = {t.term_id: t for t in report.checked_terms}
+    assert by_id["HP:0001250"].status == TermStatus.VERIFIED
+    assert by_id["HP:9999999"].status == TermStatus.NOT_FOUND
+    assert report.has_problems
+
+
+@pytest.mark.integration
+def test_live_lookup_reports_an_obsolete_term(tmp_path: Path) -> None:
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    check = validator.validate_markdown("Cites GO:0008022.").checked_terms[0]
+
+    assert check.status == TermStatus.OBSOLETE
+    assert check.replaced_by == "GO:0005515"
+
+
+@pytest.mark.integration
+def test_live_lookup_caches_labels_for_reuse(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    TermValidator(cache_dir=cache_dir).validate_markdown("Cites HP:0001250.")
+
+    # The second run is offline, so it can only answer from what the first wrote.
+    offline = TermValidator(cache_dir=cache_dir, offline=True, cache_labels=False)
+    check = offline.validate_markdown("| Seizure | HP:0001250 |").checked_terms[0]
+
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement == LabelAgreement.MATCH

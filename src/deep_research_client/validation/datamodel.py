@@ -29,7 +29,7 @@ from pydantic import (
 )
 
 
-metamodel_version = "None"
+metamodel_version = "1.11.0"
 version = "None"
 
 
@@ -45,19 +45,7 @@ class ConfiguredBaseModel(BaseModel):
         strict = False,
     )
 
-    @model_serializer(mode='wrap', when_used='unless-none')
-    def treat_empty_lists_as_none(
-            self, handler: SerializerFunctionWrapHandler,
-            info: SerializationInfo) -> dict[str, Any]:
-        if info.exclude_none:
-            _instance = self.model_copy()
-            for field, field_info in type(_instance).model_fields.items():
-                if getattr(_instance, field) == [] and not(
-                        field_info.is_required()):
-                    setattr(_instance, field, None)
-        else:
-            _instance = self
-        return handler(_instance, info)
+
 
 
 
@@ -161,7 +149,7 @@ class ReferenceCheck(ConfiguredBaseModel):
     relevance: TopicalRelevance = Field(default=TopicalRelevance.NOT_ASSESSED, description="""Whether the resolved record looks like it is about the same subject as the report citing it.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck'], 'ifabsent': 'TopicalRelevance(NOT_ASSESSED)'} })
     relevance_score: float = Field(default=0.0, description="""Share of the report's keyword weight that appears in this reference's own metadata, from 0 to 1. Zero when relevance was not assessed.
 This is the raw measurement and is not revised when a verdict is withdrawn, so a reference whose OFF_TOPIC verdict was withheld because nothing in the report matched still carries the low score that prompted it. Read `relevance` for the verdict; thresholding this slot re-derives an accusation the validator declined to make.""", ge=0.0, le=1.0, json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck'], 'ifabsent': 'float(0.0)'} })
-    matched_keywords: Optional[list[str]] = Field(default=[], description="""Report keywords found in this reference's metadata, most heavily weighted first. Recorded so a reader can see what the verdict rests on.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
+    matched_keywords: Optional[list[str]] = Field(default=None, description="""Report keywords found in this reference's metadata, most heavily weighted first. Recorded so a reader can see what the verdict rests on.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceCheck']} })
 
 
 class SupportingTextCheck(ConfiguredBaseModel):
@@ -188,9 +176,9 @@ class ReferenceValidationReport(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/reference-validation'})
 
-    references: Optional[list[ReferenceCheck]] = Field(default=[], description="""Per-reference resolution results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
-    supporting_text: Optional[list[SupportingTextCheck]] = Field(default=[], description="""Per-quote supporting text results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
-    report_keywords: Optional[list[str]] = Field(default=[], description="""The report's own distinctive terms, most heavily weighted first, as used to assess topical relevance. Empty when relevance was not assessed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
+    references: Optional[list[ReferenceCheck]] = Field(default=None, description="""Per-reference resolution results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
+    supporting_text: Optional[list[SupportingTextCheck]] = Field(default=None, description="""Per-quote supporting text results.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
+    report_keywords: Optional[list[str]] = Field(default=None, description="""The report's own distinctive terms, most heavily weighted first, as used to assess topical relevance. Empty when relevance was not assessed.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
     validator_version: Optional[str] = Field(default=None, description="""Version of linkml-reference-validator used to produce this report.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport']} })
     truncated: bool = Field(default=False, description="""Whether validation stopped early because a reference limit was reached, meaning the counts cover only part of the bibliography.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceValidationReport'], 'ifabsent': 'False'} })
 

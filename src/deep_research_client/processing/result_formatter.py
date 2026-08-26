@@ -8,6 +8,7 @@ from ..models import ResearchResult
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
     from ..validation.models import ReferenceValidationReport
+    from ..validation.term_models import TermValidationReport
 
 
 class ResultFormatter:
@@ -18,6 +19,7 @@ class ResultFormatter:
         result: ResearchResult,
         separate_citations: bool = False,
         reference_validation: Optional["ReferenceValidationReport"] = None,
+        term_validation: Optional["TermValidationReport"] = None,
     ) -> str:
         """Format result as markdown with YAML frontmatter.
 
@@ -27,6 +29,8 @@ class ResultFormatter:
             reference_validation: Optional reference validation report; when
                 given, a summary is added to the frontmatter and a
                 "Reference Validation" section is appended to the body
+            term_validation: Optional ontology term validation report, added the
+                same way under a "Term Validation" section
 
         Returns:
             Formatted markdown with frontmatter
@@ -84,6 +88,10 @@ class ResultFormatter:
         # Add reference validation summary
         if reference_validation is not None:
             metadata["reference_validation"] = reference_validation.summary()
+
+        # Add term validation summary
+        if term_validation is not None:
+            metadata["term_validation"] = term_validation.summary()
 
         if result.artifacts:
             metadata["artifact_count"] = len(result.artifacts)
@@ -160,6 +168,11 @@ class ResultFormatter:
         if reference_validation is not None:
             parts.append("")
             parts.append(reference_validation.to_markdown().rstrip())
+
+        # Add term validation section
+        if term_validation is not None:
+            parts.append("")
+            parts.append(term_validation.to_markdown().rstrip())
 
         return "\n".join(parts)
 

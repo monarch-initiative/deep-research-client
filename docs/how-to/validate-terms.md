@@ -70,6 +70,7 @@ the one the sentence needs:
 
 - `NCIT:C16814` (1 mention) - the report calls it "Echocardiography Test"; NCIT calls it **Malaysia**
 - `NCIT:C38048` (1 mention) - the report calls it "Ophthalmologic examination"; NCIT calls it **Vasovagal**
+- `GO:0008022` (1 mention) - the report calls it "Obsolete example"; GO calls it **obsolete protein C-terminus binding**
 
 ### Unresolved terms
 
@@ -84,6 +85,22 @@ These terms are real but deprecated. Citing one is not a fabrication; it does me
 report is naming something the ontology has retired:
 
 - `GO:0008022` (obsolete protein C-terminus binding) (1 mention) - replaced by `GO:0005515`
+
+### Terms whose name is worth a second look
+
+The report's name for these is recognisably related to the term's own name without being one
+of them. A loose paraphrase reads the same way as a citation of the wrong sibling term - and
+so does a *related* synonym, which the ontology records precisely because it names something
+adjacent rather than the same thing - so these are listed rather than judged:
+
+- `HP:0002616` (1 mention) - the report calls it "Aortic root dilation"; HP calls it **Aortic root aneurysm**, and lists "Aortic root dilatation" among its other names
+- `GO:0008543` (1 mention) - the report calls it "fibroblast growth factor receptor signalling pathway"; GO calls it **fibroblast growth factor receptor signaling pathway**, and lists "fibroblast growth factor receptor signalling pathway" among its other names
+
+### Prefixes with no resolver
+
+Terms carrying these prefixes were not checked either way, because no configured ontology
+covers them. An unrecognised prefix may name an ontology this run could not reach as easily
+as one that does not exist, so nothing here is evidence of fabrication: `FAKEONT`.
 ```
 
 Use `--in-place` to write that section into the report itself, or `--json` to get the same

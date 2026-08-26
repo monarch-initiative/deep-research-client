@@ -36,6 +36,7 @@ from deep_research_client.validation import (
     label_similarity,
     strip_validation_section,
 )
+from deep_research_client.validation.term_validator import TermNames, _synonyms_for
 
 # Labels as the ontologies actually give them, used to seed the offline cache.
 CACHED_LABELS = {
@@ -558,8 +559,6 @@ def test_offline_fetches_no_synonyms(offline_validator: TermValidator) -> None:
     NotImplementedError, the OLS payload route would run, and an offline suite
     would reach the network while staying green - just slower.
     """
-    from deep_research_client.validation.term_validator import TermNames, _synonyms_for
-
     ontology = offline_validator._build_ontology_access()
 
     assert _synonyms_for(ontology, "HP:0001250") == TermNames()
@@ -1340,6 +1339,13 @@ def test_live_exact_synonyms_are_matches(tmp_path: Path) -> None:
         # pathway", 0.42) that only the synonym keeps it out of MISMATCH. This is
         # the row that shows what losing the fallback would cost.
         ("FGFR signalling", "FGFR signaling pathway"),
+        # Verbatim, which scores 1.0 against the synonym: the exact loop returns
+        # MATCH on a 1.0 score, the related path yields VARIANT at the same
+        # score. So this row pins the *bucket* rather than the presence -
+        # promoting these names to exact would turn it MATCH, and the docs
+        # promise that an unscoped name is only ever under-credited would be
+        # false with the rest of the suite still green.
+        ("FGF receptor signalling pathway", "FGF receptor signalling pathway"),
     ],
 )
 def test_live_unscoped_synonyms_still_count(
@@ -1359,8 +1365,19 @@ def test_live_unscoped_synonyms_still_count(
     something else", tripping --fail-on-unresolved. That is the accusation this
     module exists to avoid, and the second case above is where it lands - the
     first stays VARIANT on label similarity alone and pins only the synonym.
+
+    All three rows score below 1.0 against the *label*, so they reach VARIANT
+    through `best_score` rather than the exact shortcut - which means they would
+    pass whether these names arrived scoped or not. The precondition that keeps
+    this test on the unscoped branch is asserted rather than assumed: if OLS
+    ever starts scoping GO's synonyms, this fails here instead of silently
+    re-covering the branch the exact-synonym test already holds.
     """
     validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    names = _synonyms_for(validator._build_ontology_access(), "GO:0008543")
+    assert names.exact == (), "OLS scopes none of GO:0008543's synonyms"
+    assert expected_synonym in names.related
 
     report = validator.validate_markdown(f"| {reported} | GO:0008543 |")
 

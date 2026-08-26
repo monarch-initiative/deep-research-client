@@ -94,7 +94,7 @@ so does a *related* synonym, which the ontology records precisely because it nam
 adjacent rather than the same thing - so these are listed rather than judged:
 
 - `HP:0002616` (1 mention) - the report calls it "Aortic root dilation"; HP calls it **Aortic root aneurysm**, and lists "Aortic root dilatation" among its other names
-- `GO:0008543` (1 mention) - the report calls it "fibroblast growth factor receptor signalling pathway"; GO calls it **fibroblast growth factor receptor signaling pathway**, and lists "fibroblast growth factor receptor signalling pathway" among its other names
+- `GO:0008543` (1 mention) - the report calls it "FGF receptor signalling"; GO calls it **fibroblast growth factor receptor signaling pathway**, and lists "FGF receptor signalling pathway" among its other names
 
 ### Prefixes with no resolver
 
@@ -134,6 +134,14 @@ term_validation:
     reported_labels:
     - Echocardiography Test
     ontology_label: Malaysia
+  - term_id: NCIT:C38048
+    reported_labels:
+    - Ophthalmologic examination
+    ontology_label: Vasovagal
+  - term_id: GO:0008022
+    reported_labels:
+    - Obsolete example
+    ontology_label: obsolete protein C-terminus binding
   labels_variant: 2
   unresolved_terms:
   - HP:9999999
@@ -231,6 +239,13 @@ synonyms are read from the OLS term payload instead — which the obsolescence c
 already fetched and cached, so this costs no extra request either way. Its `obo_synonym`
 entries carry a scope each; anything appearing only in its unscoped list is treated as
 merely related, since calling it exact would be a claim the payload never made.
+
+This means a verdict can depend on the adapter. OLS returns some ontologies' synonyms with
+no scope at all — every synonym `GO:0008543` carries arrives that way — so a report using
+one of them *verbatim* reads as a `VARIANT` under `ols:` and as a `MATCH` under
+`sqlite:obo:`, where the same synonym carries its `hasExactSynonym` scope. The difference is
+always in that direction: an unscoped name can only be under-credited, never over-credited,
+so the default adapter errs toward asking for a second look rather than toward silence.
 
 In `--offline` mode no adapter is built at all, so no synonyms are available and comparison
 falls back to the label alone.

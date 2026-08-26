@@ -240,12 +240,15 @@ already fetched and cached, so this costs no extra request either way. Its `obo_
 entries carry a scope each; anything appearing only in its unscoped list is treated as
 merely related, since calling it exact would be a claim the payload never made.
 
-This means a verdict can depend on the adapter. OLS returns some ontologies' synonyms with
-no scope at all — every synonym `GO:0008543` carries arrives that way — so a report using
-one of them *verbatim* reads as a `VARIANT` under `ols:` and as a `MATCH` under
-`sqlite:obo:`, where the same synonym carries its `hasExactSynonym` scope. The difference is
-always in that direction: an unscoped name can only be under-credited, never over-credited,
-so the default adapter errs toward asking for a second look rather than toward silence.
+This means a verdict can depend on the adapter, though not uniformly. OLS scopes some
+ontologies' synonyms and not others: `HP:0001250` comes back with "Seizures" marked as an
+exact synonym, while every synonym `GO:0008543` carries arrives with no scope at all. Where
+the scope is missing, a report using one of those names *verbatim* reads as a `VARIANT`
+under `ols:` and as a `MATCH` under `sqlite:obo:`, which has the scope locally.
+
+The difference is always in that direction: an unscoped name can only be under-credited,
+never over-credited, so the default adapter errs toward asking for a second look rather than
+toward silence.
 
 In `--offline` mode no adapter is built at all, so no synonyms are available and comparison
 falls back to the label alone.

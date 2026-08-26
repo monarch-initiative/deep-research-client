@@ -1304,12 +1304,29 @@ def test_live_synonyms_do_not_rescue_a_wrong_identifier(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_live_exact_synonyms_are_matches(tmp_path: Path) -> None:
-    """An exact synonym is one of the term's own names, not a near miss."""
+    """An exact synonym is one of the term's own names, not a near miss.
+
+    The reported name has to be one that does *not* fold onto the label, or the
+    test proves nothing: "Seizures" against HP:0001250's "Seizure" scores 1.0 on
+    the plural fold alone, so `_compare` skips the synonym fetch and
+    `compare_labels` returns at the canonical short-circuit without reading a
+    synonym at all. "Long slender fingers" shares no words with
+    "Arachnodactyly", so reaching MATCH is only possible by resolving the
+    synonym and reading its scope as exact.
+
+    That makes this the one test covering the OLS payload's bare
+    `hasExactSynonym` spelling, which is what every default-adapter run depends
+    on: drop it from `_EXACT_SYNONYM_PREDICATES` and every exact synonym demotes
+    to related, turning this MATCH into a VARIANT.
+    """
     validator = TermValidator(cache_dir=tmp_path / "cache")
 
-    check = validator.validate_markdown("| Seizures | HP:0001250 |").checked_terms[0]
+    check = validator.validate_markdown(
+        "| Long slender fingers | HP:0001166 |"
+    ).checked_terms[0]
 
     assert check.agreement == LabelAgreement.MATCH
+    assert check.matched_synonym == "Long slender fingers"
 
 
 @pytest.mark.integration

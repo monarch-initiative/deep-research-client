@@ -272,11 +272,19 @@ def test_a_perfectly_named_term_needs_no_synonym_fetch(
     precondition living in another module. If that short-circuit ever moves,
     the guard starts changing verdicts, and only for perfectly-named terms,
     which is a hard shape to notice. Pinned from the side that would break.
-    """
-    from deep_research_client.validation.term_extraction import FoundTerm
 
+    Both hazards the guard faces are covered, and the second one only because
+    "Seizures" folds to score exactly 1.0 against "Seizure": `compare_labels`
+    returns from its exact-synonym loop on a 1.0 score, so were that loop ever
+    moved above the canonical short-circuit, the unguarded side would come back
+    naming a synonym while the guarded side would not. That is load-bearing
+    rather than incidental, so it is asserted below - a future edit swapping the
+    fixture for a synonym that scores less would quietly lose the coverage.
+    """
     term = FoundTerm(term_id="HP:0001250", prefix="HP", labels=("Seizure",))
     ontology = offline_validator._build_ontology_access()
+
+    assert label_similarity("Seizure", "Seizures") == 1.0
 
     guarded = offline_validator._compare(term, "Seizure", ontology)
     with_synonyms = compare_labels("Seizure", "Seizure", ["Seizures"], ["Epilepsy"])

@@ -544,7 +544,7 @@ class TermValidationReport(GeneratedTermValidationReport):
             lines.append("")
 
         if self.variant_label_terms:
-            lines.append("### Labels worth a second look")
+            lines.append("### Terms whose name is worth a second look")
             lines.append("")
             lines.append(
                 "The report's name for these is recognisably related to the term's own "

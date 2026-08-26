@@ -204,6 +204,23 @@ LABELS_WITH_FUNCTION_WORD_SEGMENTS = [
 ]
 
 
+def test_the_clause_openers_are_a_subset_of_the_first_word_openers() -> None:
+    """The two word lists answer different questions, and one implies the other.
+
+    A word that can appear nowhere in a label certainly cannot appear first, so
+    the narrow set belongs inside the wider one. They are maintained by hand, so
+    this pins the containment rather than leaving the drift silent - and
+    reversing the relation is what produced the truncation bug they were split
+    apart to fix.
+    """
+    from deep_research_client.validation.term_extraction import (
+        _NON_LABEL_OPENERS,
+        _TRAILING_CLAUSE_OPENERS,
+    )
+
+    assert _TRAILING_CLAUSE_OPENERS <= _NON_LABEL_OPENERS
+
+
 @pytest.mark.parametrize("label", LABELS_WITH_FUNCTION_WORD_SEGMENTS)
 @pytest.mark.parametrize("layout", ["table", "separator"])
 def test_a_real_name_with_function_word_segments_survives_whole(

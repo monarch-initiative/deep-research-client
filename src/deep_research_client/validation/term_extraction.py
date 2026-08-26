@@ -27,6 +27,14 @@ Two things this deliberately does not see:
   truncate real labels, several of which run past eight words, so the trade is
   not worth taking. A finite-verb marker would be the way in if this turns up in
   practice.
+* A comma-led aside opening with a function word, on a term whose own label is
+  short: "HP:0001250 - Seizure, with onset in infancy" is read whole and scores
+  as a mismatch against "Seizure". Cutting it would mean cutting
+  "Deafness, autosomal recessive, with or without vestibular dysfunction", which
+  is a real name of the same shape, so there is no discriminator here that is
+  not a guess. The exposure is bounded by the *canonical* label's length rather
+  than the aside's: the same aside on "Marfan syndrome" scores as a variant, not
+  a mismatch, and a variant does not fail a build.
 """
 
 import re
@@ -154,7 +162,10 @@ _NON_LABEL_OPENERS = frozenset(
 # exists to prevent, in a shape this repo's own subject matter is full of.
 #
 # So this set holds only reporting and citation words, which no ontology label
-# contains anywhere.
+# contains anywhere. That is the stronger property, so every word here belongs in
+# _NON_LABEL_OPENERS too - a word that cannot appear at all cannot appear first.
+# Spelled out rather than derived, because the literal reads better than a set
+# expression; a test pins the containment so the two cannot drift apart.
 _TRAILING_CLAUSE_OPENERS = frozenset(
     {
         "cited",
@@ -359,7 +370,9 @@ def _drop_trailing_clause(label: str) -> str:
     "Seizure" and then says something about it. Reading the whole run as the
     label reports a correctly cited term as mislabelled, so the clause is cut at
     the first comma-separated segment that opens with a word from
-    :data:`_NON_LABEL_OPENERS`.
+    :data:`_TRAILING_CLAUSE_OPENERS` - the narrow set, not
+    :data:`_NON_LABEL_OPENERS`, whose function words are safe to reject at the
+    start of a candidate and would truncate a real name mid-label.
 
     Only such segments are cut, because commas are ordinary inside real labels -
     "Seizure, generalized" is one, and OMIM-derived disease names are built of

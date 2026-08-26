@@ -176,10 +176,41 @@ often an unreachable ontology service than a report in which every identifier is
 
 | Agreement | Meaning |
 |-----------|---------|
-| `MATCH` | The report's label is the term's label, up to case, punctuation, word order and plurals. `seizures` matches `Seizure`. |
-| `VARIANT` | Recognisably related without being the same. `Long QT syndrome` against `Long QT syndrome 1`, or a British spelling. Listed, not judged. |
-| `MISMATCH` | Almost nothing in common. The report is calling the identifier something the ontology does not. |
+| `MATCH` | The report's label is one of the names the term carries — its own label or an **exact synonym** — up to case, punctuation, word order and plurals. `seizures` matches `Seizure`; so does `Marfan's syndrome` against `Marfan syndrome`. |
+| `VARIANT` | Recognisably related without being one of them. `Long QT syndrome` against `Long QT syndrome 1`, a British spelling, or a broad/narrow/related synonym. Listed, not judged. |
+| `MISMATCH` | Almost nothing in common with any name the term carries. The report is calling the identifier something the ontology does not. |
 | `NOT_ASSESSED` | The report wrote no label beside the CURIE, the term did not resolve, or `--no-check-labels` was passed. |
+
+### Synonyms
+
+A term is not only its label. `HP:0001250` is labelled `Seizure`, and the ontology also
+records `Seizures` as an exact synonym and `Epilepsy` as a related one. A report using any
+of those has not invented anything, so all of them are consulted — which is what stops the
+most common false `MISMATCH`.
+
+Scope is kept, because a synonym is not always another way of saying the same thing:
+
+- an **exact** synonym is another name for the same thing, so matching one is a `MATCH`;
+- a **related**, **broad** or **narrow** synonym names something adjacent, so matching one
+  is a `VARIANT` — worth reading, not worth failing a build over.
+
+When a name is recognised as a synonym rather than the label, the report says which:
+
+```markdown
+- `HP:0001166` (1 mention) - the report calls it "Long fingers"; HP calls it
+  **Arachnodactyly**, and lists "Long slender fingers" among its other names
+```
+
+Synonyms come from OAK, the same way [OntoGPT](https://github.com/monarch-initiative/ontogpt)
+reads them: `entity_alias_map` on a local adapter such as `sqlite:obo:`, which is keyed by
+predicate so scope survives. The default `ols:` adapter does not implement that call, so
+synonyms are read from the OLS term payload instead — which the obsolescence check has
+already fetched and cached, so this costs no extra request either way. Its `obo_synonym`
+entries carry a scope each; anything appearing only in its unscoped list is treated as
+merely related, since calling it exact would be a claim the payload never made.
+
+In `--offline` mode no adapter is built at all, so no synonyms are available and comparison
+falls back to the label alone.
 
 The threshold between `VARIANT` and `MISMATCH` was set against real pairs rather than
 guessed. `NCIT:C16814` written as "Echocardiography Test" against its actual label
@@ -208,9 +239,10 @@ still checked for existence. That undercounts rather than invents, which is the 
 round: reading "patients with aortic root dilation" as a label would flag a term that was
 cited perfectly well.
 
-Synonyms are not consulted, because the default OLS adapter does not expose them through
-OAK. A report that calls `NCIT:C12727` "heart" rather than "Cardiac" will show a
-`MISMATCH`. Read the section, do not just count it.
+A name that is neither the label nor close to any synonym still shows a `MISMATCH`, which
+is the intended behaviour — that is how `NCIT:C16814` is caught. Read the section rather
+than just counting it: an ontology's synonym list is not exhaustive, so an unusual but
+correct paraphrase can still land there.
 
 ## When the ontology service is unreachable
 

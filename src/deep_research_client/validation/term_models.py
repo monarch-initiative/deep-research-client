@@ -542,9 +542,11 @@ class TermValidationReport(GeneratedTermValidationReport):
             lines.append("")
             lines.append(
                 "The report's name for these is recognisably related to the term's own "
-                "name without being it. A loose paraphrase reads the same way as a "
-                "citation of the wrong sibling term, so these are listed rather than "
-                "judged:"
+                "name without being one of them. A loose paraphrase reads the same way "
+                "as a citation of the wrong sibling term - and so does a *related* "
+                "synonym, which the ontology records precisely because it names "
+                "something adjacent rather than the same thing - so these are listed "
+                "rather than judged:"
             )
             lines.append("")
             lines.extend(self._label_lines(self.variant_label_terms))
@@ -635,13 +637,34 @@ class TermValidationReport(GeneratedTermValidationReport):
             ...     )
             ... ])
             ['- `NCIT:C16814` (1 mention) - the report calls it "Echocardiography Test"; NCIT calls it **Malaysia**']
+
+            A name recognised as a synonym says which one, so a reader can see
+            what the report was reaching for rather than guessing:
+
+            >>> TermValidationReport._label_lines([
+            ...     TermCheck(
+            ...         term_id="HP:0001250",
+            ...         prefix="HP",
+            ...         status=TermStatus.VERIFIED,
+            ...         ontology_label="Seizure",
+            ...         reported_labels=["Epilepsy"],
+            ...         agreement=LabelAgreement.VARIANT,
+            ...         matched_synonym="Epilepsy",
+            ...     )
+            ... ])
+            ['- `HP:0001250` (1 mention) - the report calls it "Epilepsy"; HP calls it **Seizure**, and lists "Epilepsy" among its other names']
         """
         lines = []
         for check in checks:
             reported = ", ".join(f'"{label}"' for label in check.reported_labels or [])
+            synonym = (
+                f', and lists "{check.matched_synonym}" among its other names'
+                if check.matched_synonym
+                else ""
+            )
             lines.append(
                 f"- `{check.term_id}` ({TermValidationReport._mentions(check)}) - "
                 f"the report calls it {reported}; {check.prefix} calls it "
-                f"**{check.ontology_label}**"
+                f"**{check.ontology_label}**{synonym}"
             )
         return lines

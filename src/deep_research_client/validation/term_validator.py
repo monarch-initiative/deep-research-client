@@ -37,7 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
-from .label_matching import compare_labels
+from .label_matching import LabelComparison, compare_labels
 from .sections import strip_validation_section
 from .term_datamodel import LabelAgreement, TermCheck, TermStatus
 from .term_extraction import FoundTerm, extract_terms
@@ -259,7 +259,7 @@ class TermValidator:
             )
 
         is_obsolete = obsolete.get(term.term_id, False)
-        agreement, similarity = self._compare(term, label)
+        comparison = self._compare(term, label, ontology)
         return TermCheck(
             term_id=term.term_id,
             prefix=term.prefix,
@@ -267,21 +267,30 @@ class TermValidator:
             occurrences=term.count,
             ontology_label=label,
             reported_labels=list(term.labels),
-            agreement=agreement,
-            label_similarity=similarity,
+            agreement=comparison.agreement,
+            label_similarity=comparison.similarity,
+            matched_synonym=comparison.matched_synonym,
             replaced_by=_replacement_for(ontology, term.term_id) if is_obsolete else None,
             message="the term is obsolete" if is_obsolete else None,
         )
 
-    def _compare(self, term: FoundTerm, label: str) -> tuple[LabelAgreement, float]:
+    def _compare(
+        self, term: FoundTerm, label: str, ontology: "OntologyAccess"
+    ) -> LabelComparison:
         """Judge every name the report gave a term, keeping the worst verdict.
 
         A report that names one identifier twice, once correctly, has still
         named it incorrectly once, and reporting the better of the two would
         hide exactly the mistake worth finding.
+
+        Synonyms are fetched once per term rather than once per reported label,
+        and only when there is a label to compare, so a report that names
+        nothing costs nothing.
         """
         if not self.check_labels or not term.labels:
-            return LabelAgreement.NOT_ASSESSED, 0.0
+            return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
+
+        names = _synonyms_for(ontology, term.term_id)
 
         # Ordered worst to best, so `min` picks the verdict to report.
         severity = {
@@ -290,8 +299,11 @@ class TermValidator:
             LabelAgreement.MATCH: 2,
             LabelAgreement.NOT_ASSESSED: 3,
         }
-        judged = [compare_labels(reported, label) for reported in term.labels]
-        return min(judged, key=lambda pair: (severity[pair[0]], pair[1]))
+        judged = [
+            compare_labels(reported, label, names.exact, names.related)
+            for reported in term.labels
+        ]
+        return min(judged, key=lambda c: (severity[c.agreement], c.similarity))
 
     @staticmethod
     def _unverifiable(term: FoundTerm, message: str) -> TermCheck:
@@ -304,6 +316,136 @@ class TermValidator:
             reported_labels=list(term.labels),
             message=message,
         )
+
+
+#: OAK's predicate for a synonym that names the same thing as the label. Every
+#: other synonym predicate - broad, narrow, related - names something adjacent,
+#: which is a different claim and gets a different verdict.
+_EXACT_SYNONYM_PREDICATES = frozenset({"oio:hasExactSynonym", "hasExactSynonym"})
+
+#: The label's own predicate in an OAK alias map, which is not a synonym.
+_LABEL_PREDICATE = "rdfs:label"
+
+
+@dataclass(frozen=True)
+class TermNames:
+    """The names a term carries, beyond its label.
+
+    Attributes:
+        exact: Synonyms the ontology marks as exact - other names for the same
+            thing.
+        related: Synonyms of any other scope, or of unrecorded scope.
+
+    Examples:
+        >>> TermNames().exact
+        ()
+    """
+
+    exact: tuple[str, ...] = ()
+    related: tuple[str, ...] = ()
+
+
+def _synonyms_for(ontology: "OntologyAccess", curie: str) -> TermNames:
+    """Collect a term's synonyms, keeping their scope where the source records it.
+
+    Two routes, because the adapters differ in what they implement:
+
+    * OAK's ``entity_alias_map``, which is what a local adapter such as
+      ``sqlite:obo:`` serves and what ontogpt reads. It is keyed by predicate, so
+      scope survives.
+    * The OLS payload, for the default ``ols:`` adapter, whose OAK
+      implementation raises ``NotImplementedError`` for alias lookups. Its
+      ``obo_synonym`` entries carry a scope each; the flat ``synonyms`` list does
+      not, so anything only found there is treated as unscoped and therefore not
+      exact.
+
+    Either way this costs no request the run was not already making: the OLS
+    payload has been fetched and cached by the obsolescence check, and a local
+    adapter answers from its own database.
+
+    Args:
+        ontology: The resolver the term was looked up through.
+        curie: The term to collect names for.
+
+    Returns:
+        The term's synonyms, split by whether the ontology calls them exact.
+    """
+    prefix = curie.split(":", 1)[0]
+    adapter = ontology.get_adapter(prefix)
+    if adapter is None:
+        return TermNames()
+
+    alias_map = getattr(adapter, "entity_alias_map", None)
+    if callable(alias_map):
+        try:
+            mapping = alias_map(curie)
+        except NotImplementedError:
+            mapping = None
+        if mapping:
+            return _names_from_alias_map(mapping)
+
+    return _names_from_ols_payload(ontology, adapter, curie)
+
+
+def _names_from_alias_map(mapping: dict) -> TermNames:
+    """Split an OAK alias map into exact and other synonyms.
+
+    The label's own entry is dropped: it is not a synonym, and it is already
+    compared against directly.
+
+    Examples:
+        >>> names = _names_from_alias_map({
+        ...     "rdfs:label": ["Seizure"],
+        ...     "oio:hasExactSynonym": ["Seizures"],
+        ...     "oio:hasRelatedSynonym": ["Epilepsy"],
+        ... })
+        >>> names.exact, names.related
+        (('Seizures',), ('Epilepsy',))
+    """
+    exact: list[str] = []
+    related: list[str] = []
+    for predicate, values in mapping.items():
+        if predicate == _LABEL_PREDICATE:
+            continue
+        target = exact if predicate in _EXACT_SYNONYM_PREDICATES else related
+        target.extend(value for value in values or [] if value)
+    return TermNames(exact=tuple(dict.fromkeys(exact)), related=tuple(dict.fromkeys(related)))
+
+
+def _names_from_ols_payload(
+    ontology: "OntologyAccess", adapter: object, curie: str
+) -> TermNames:
+    """Read a term's synonyms out of the cached OLS payload.
+
+    Reached through the same guarded private accessor as ``_replacement_for``,
+    and degrading the same way: no payload means no synonyms, which costs
+    coverage rather than correctness.
+    """
+    term_dict = getattr(ontology, "_ols_term_dict", None)
+    is_ols = getattr(ontology, "_is_ols_adapter", None)
+    if term_dict is None or is_ols is None or not is_ols(adapter):
+        return TermNames()
+
+    payload = term_dict(adapter, curie)
+    if not payload:
+        return TermNames()
+
+    exact: list[str] = []
+    related: list[str] = []
+    for entry in payload.get("obo_synonym") or []:
+        name = (entry or {}).get("name")
+        if not name:
+            continue
+        scope = (entry or {}).get("scope") or ""
+        (exact if scope in _EXACT_SYNONYM_PREDICATES else related).append(name)
+
+    # The flat list carries no scope, so whatever it adds beyond the scoped
+    # entries is treated as merely related. Better a variant than a mismatch;
+    # calling an unscoped name exact would be a claim the payload never made.
+    scoped = set(exact) | set(related)
+    related.extend(name for name in payload.get("synonyms") or [] if name and name not in scoped)
+
+    return TermNames(exact=tuple(dict.fromkeys(exact)), related=tuple(dict.fromkeys(related)))
 
 
 def _replacement_for(ontology: "OntologyAccess", curie: str) -> Optional[str]:

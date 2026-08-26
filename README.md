@@ -179,7 +179,7 @@ print(report.obsolete_terms)         # real terms the ontology has since retired
 print(report.to_markdown())          # renderable summary section
 ```
 
-Labels are only read from positions where a label is the only thing the text can be - a table cell, an emphasised run, a bracket or separator right after the CURIE - so a term mentioned in prose is checked for existence but not for naming. That undercounts rather than invents. See the [Validate Ontology Terms guide](docs/how-to/validate-terms.md) for the full rules, outcomes and [timings](docs/how-to/validate-terms.md#how-long-it-takes).
+Labels are only read from positions where a label is the only thing the text can be - a table cell, an emphasised run, a bracket or separator right after the CURIE - so a term mentioned in prose is checked for existence but not for naming. That undercounts rather than invents. Comparison runs against every name a term carries, synonyms included, so a report calling `HP:0001166` "Long fingers" rather than "Arachnodactyly" is not accused of anything. See the [Validate Ontology Terms guide](docs/how-to/validate-terms.md) for the full rules, outcomes and [timings](docs/how-to/validate-terms.md#how-long-it-takes).
 
 ### Python Library Usage
 

@@ -316,14 +316,84 @@ def test_citations_are_scanned_alongside_the_body() -> None:
     ],
 )
 def test_label_agreement(reported: str, canonical: str, expected: LabelAgreement) -> None:
-    agreement, _ = compare_labels(reported, canonical)
+    agreement = compare_labels(reported, canonical).agreement
 
     assert agreement == expected
 
 
+@pytest.mark.parametrize(
+    "reported, exact, related, expected",
+    [
+        # An exact synonym is another name for the same thing, so it is a match.
+        ("Seizures", ["Seizures"], [], LabelAgreement.MATCH),
+        ("seizure", ["Seizures"], [], LabelAgreement.MATCH),
+        # A related synonym names something adjacent, not the same thing.
+        ("Epilepsy", ["Seizures"], ["Epilepsy"], LabelAgreement.VARIANT),
+        # Close to a synonym without being it: still worth a look, not an error.
+        ("Long fingers", [], ["Long slender fingers"], LabelAgreement.VARIANT),
+        # Synonyms must not rescue a genuinely wrong identifier.
+        ("Echocardiography Test", ["Malaysia, Federation of"], [], LabelAgreement.MISMATCH),
+    ],
+)
+def test_synonyms_are_weighed_by_scope(
+    reported: str, exact: list[str], related: list[str], expected: LabelAgreement
+) -> None:
+    """Exact synonyms are the term's own names; other scopes are only adjacent."""
+    canonical = "Malaysia" if expected is LabelAgreement.MISMATCH else "Seizure"
+    if reported == "Long fingers":
+        canonical = "Arachnodactyly"
+
+    assert compare_labels(reported, canonical, exact, related).agreement == expected
+
+
+def test_a_synonym_match_says_which_synonym() -> None:
+    """The reader needs to see what the report was reaching for."""
+    comparison = compare_labels("Epilepsy", "Seizure", [], ["Epilepsy"])
+
+    assert comparison.matched_synonym == "Epilepsy"
+    assert comparison.agreement == LabelAgreement.VARIANT
+
+
+def test_the_terms_own_label_wins_over_a_synonym() -> None:
+    """A name that is the label is a match on the label, with no synonym cited."""
+    comparison = compare_labels("Seizure", "Seizure", ["Seizures"], [])
+
+    assert comparison.agreement == LabelAgreement.MATCH
+    assert comparison.matched_synonym is None
+
+
+@pytest.mark.parametrize(
+    "mapping, expected_exact, expected_related",
+    [
+        (
+            {
+                "rdfs:label": ["Seizure"],
+                "oio:hasExactSynonym": ["Seizures"],
+                "oio:hasRelatedSynonym": ["Epilepsy"],
+                "oio:hasBroadSynonym": ["Neurologic abnormality"],
+            },
+            ("Seizures",),
+            ("Epilepsy", "Neurologic abnormality"),
+        ),
+        # The label is not a synonym of itself, and is compared against directly.
+        ({"rdfs:label": ["Seizure"]}, (), ()),
+    ],
+)
+def test_an_oak_alias_map_is_split_by_scope(
+    mapping: dict, expected_exact: tuple, expected_related: tuple
+) -> None:
+    """The shape OAK's local adapters serve, and ontogpt reads."""
+    from deep_research_client.validation.term_validator import _names_from_alias_map
+
+    names = _names_from_alias_map(mapping)
+
+    assert names.exact == expected_exact
+    assert set(names.related) == set(expected_related)
+
+
 def test_a_missing_label_is_not_judged() -> None:
-    assert compare_labels("", "Seizure") == (LabelAgreement.NOT_ASSESSED, 0.0)
-    assert compare_labels("Seizure", "") == (LabelAgreement.NOT_ASSESSED, 0.0)
+    assert compare_labels("", "Seizure").agreement == LabelAgreement.NOT_ASSESSED
+    assert compare_labels("Seizure", "").agreement == LabelAgreement.NOT_ASSESSED
 
 
 def test_mismatches_score_far_below_near_misses() -> None:
@@ -1111,6 +1181,48 @@ def test_live_lookup_catches_the_malaysia_case(tmp_path: Path) -> None:
     assert check.status == TermStatus.VERIFIED
     assert check.ontology_label == "Malaysia"
     assert check.agreement == LabelAgreement.MISMATCH
+
+
+@pytest.mark.integration
+def test_live_synonyms_prevent_a_false_mismatch(tmp_path: Path) -> None:
+    """A report naming a term by a real synonym must not be accused.
+
+    "Long fingers" is what HP:0001166 means; against the label "Arachnodactyly"
+    alone it scores below the threshold and reads as a mismatch. The ontology
+    lists it, so consulting synonyms is what keeps the check honest here.
+    """
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    report = validator.validate_markdown("| Long fingers | HP:0001166 |")
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert check.agreement != LabelAgreement.MISMATCH
+    assert check.matched_synonym
+    assert not report.has_problems
+
+
+@pytest.mark.integration
+def test_live_synonyms_do_not_rescue_a_wrong_identifier(tmp_path: Path) -> None:
+    """The Malaysia case must survive synonym lookup untouched."""
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    check = validator.validate_markdown(
+        "| Echocardiography Test | NCIT:C16814 |"
+    ).checked_terms[0]
+
+    assert check.agreement == LabelAgreement.MISMATCH
+    assert check.ontology_label == "Malaysia"
+
+
+@pytest.mark.integration
+def test_live_exact_synonyms_are_matches(tmp_path: Path) -> None:
+    """An exact synonym is one of the term's own names, not a near miss."""
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    check = validator.validate_markdown("| Seizures | HP:0001250 |").checked_terms[0]
+
+    assert check.agreement == LabelAgreement.MATCH
 
 
 @pytest.mark.integration

@@ -3,7 +3,12 @@
 Standard library only, so it can be used - and tested - without installing the
 optional ``terms`` extra.
 
-The comparison is deliberately three-valued. Demanding an exact string match
+The comparison is three-valued, and runs against every name a term carries
+rather than its label alone: an ontology's exact synonyms are its own names, and
+a report using one has named the term correctly. Scope is kept, because a
+*related* synonym is adjacent rather than equivalent.
+
+The three values are deliberate. Demanding an exact string match
 would flag "seizures" against HP:0001250's "Seizure" as an error, and a check
 that cries wolf on plurals is a check people switch off. Accepting anything
 loosely similar would let "Long QT syndrome" pass for
@@ -21,11 +26,13 @@ label "Malaysia" scores 0.21; the closest genuine near-miss in the same sample,
 
 import difflib
 import re
+from typing import NamedTuple, Optional, Sequence
 
 from .term_datamodel import LabelAgreement
 
 __all__ = [
     "VARIANT_SIMILARITY_THRESHOLD",
+    "LabelComparison",
     "compare_labels",
     "label_similarity",
     "normalize_label",
@@ -133,47 +140,122 @@ def label_similarity(reported: str, canonical: str) -> float:
     return max(jaccard, ratio)
 
 
-def compare_labels(reported: str, canonical: str) -> tuple[LabelAgreement, float]:
-    """Judge a reported label against a term's own label.
+class LabelComparison(NamedTuple):
+    """The verdict on one reported label, and what it rests on.
+
+    Attributes:
+        agreement: The verdict.
+        similarity: Similarity to the closest name the term carries.
+        matched_synonym: The synonym the reported name was recognised as, when
+            it was a synonym rather than the term's own label.
+    """
+
+    agreement: LabelAgreement
+    similarity: float
+    matched_synonym: Optional[str] = None
+
+
+def compare_labels(
+    reported: str,
+    canonical: str,
+    exact_synonyms: Sequence[str] = (),
+    related_synonyms: Sequence[str] = (),
+) -> LabelComparison:
+    """Judge a reported label against every name a term carries.
+
+    A term is not only its label. HP:0001250's label is "Seizure" and its exact
+    synonyms include "Seizures" and "Epileptic seizure"; a report writing either
+    of those has named the term correctly, and calling that a mismatch is the
+    false positive this check most often produces. So exact synonyms count as the
+    term's own names.
+
+    Scope is kept, though, because a synonym is not always another way of saying
+    the same thing. "Epilepsy" is a *related* synonym of "Seizure" - adjacent,
+    not equivalent - so matching one is a variant rather than a match: worth
+    reading, not worth failing a build over.
 
     Args:
         reported: The label the report wrote beside the CURIE.
         canonical: The label the ontology gives the term.
+        exact_synonyms: Synonyms the ontology marks as exact, which name the
+            same thing as the label.
+        related_synonyms: Synonyms of any other scope - related, broad, narrow,
+            or of unrecorded scope.
 
     Returns:
-        The agreement verdict and the similarity it rests on.
+        The agreement verdict, the similarity it rests on, and the synonym that
+        carried it, if one did.
 
     Examples:
         >>> compare_labels("Marfan syndrome", "Marfan syndrome")
-        (<LabelAgreement.MATCH: 'MATCH'>, 1.0)
-        >>> compare_labels("seizures", "Seizure")
-        (<LabelAgreement.MATCH: 'MATCH'>, 1.0)
+        LabelComparison(agreement=<LabelAgreement.MATCH: 'MATCH'>, similarity=1.0, matched_synonym=None)
+        >>> compare_labels("seizures", "Seizure").agreement
+        <LabelAgreement.MATCH: 'MATCH'>
 
-        A different disease in the same family reads as a variant, not an error:
+        An exact synonym is one of the term's own names, and says which:
 
-        >>> agreement, _ = compare_labels("Long QT syndrome", "Long QT syndrome 1")
-        >>> agreement
+        >>> comparison = compare_labels(
+        ...     "Epileptic seizure", "Seizure", exact_synonyms=["Epileptic seizure"]
+        ... )
+        >>> comparison.agreement, comparison.matched_synonym
+        (<LabelAgreement.MATCH: 'MATCH'>, 'Epileptic seizure')
+
+        A related synonym is adjacent, not equivalent, so it reads as a variant:
+
+        >>> comparison = compare_labels(
+        ...     "Epilepsy", "Seizure", related_synonyms=["Epilepsy"]
+        ... )
+        >>> comparison.agreement, comparison.matched_synonym
+        (<LabelAgreement.VARIANT: 'VARIANT'>, 'Epilepsy')
+
+        A different disease in the same family reads as a variant too:
+
+        >>> compare_labels("Long QT syndrome", "Long QT syndrome 1").agreement
         <LabelAgreement.VARIANT: 'VARIANT'>
 
-        The failure this module exists for:
+        The failure this module exists for, which synonyms do not rescue:
 
-        >>> agreement, score = compare_labels("Echocardiography Test", "Malaysia")
-        >>> agreement
+        >>> comparison = compare_labels(
+        ...     "Echocardiography Test", "Malaysia", exact_synonyms=["Malaysia, Federation of"]
+        ... )
+        >>> comparison.agreement
         <LabelAgreement.MISMATCH: 'MISMATCH'>
-        >>> round(score, 2)
-        0.21
+
+        The similarity is to the closest name the term carries, so it reflects
+        the synonym here rather than the label - and is still nowhere near the
+        threshold:
+
+        >>> round(comparison.similarity, 2)
+        0.23
 
         A label the report never gave, or a term with none, is not judged:
 
         >>> compare_labels("", "Seizure")
-        (<LabelAgreement.NOT_ASSESSED: 'NOT_ASSESSED'>, 0.0)
+        LabelComparison(agreement=<LabelAgreement.NOT_ASSESSED: 'NOT_ASSESSED'>, similarity=0.0, matched_synonym=None)
     """
     if not reported.strip() or not canonical.strip():
-        return LabelAgreement.NOT_ASSESSED, 0.0
+        return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
 
-    score = label_similarity(reported, canonical)
-    if score == 1.0:
-        return LabelAgreement.MATCH, score
-    if score >= VARIANT_SIMILARITY_THRESHOLD:
-        return LabelAgreement.VARIANT, score
-    return LabelAgreement.MISMATCH, score
+    canonical_score = label_similarity(reported, canonical)
+    if canonical_score == 1.0:
+        return LabelComparison(LabelAgreement.MATCH, canonical_score)
+
+    # Scored once, so the best similarity and the name that produced it come out
+    # of the same pass rather than being recomputed and possibly disagreeing.
+    exact_scored = [(label_similarity(reported, name), name) for name in exact_synonyms if name]
+    related_scored = [
+        (label_similarity(reported, name), name) for name in related_synonyms if name
+    ]
+
+    for score, name in exact_scored:
+        if score == 1.0:
+            return LabelComparison(LabelAgreement.MATCH, score, name)
+
+    best_score, best_name = canonical_score, None
+    for score, name in exact_scored + related_scored:
+        if score > best_score:
+            best_score, best_name = score, name
+
+    if best_score >= VARIANT_SIMILARITY_THRESHOLD:
+        return LabelComparison(LabelAgreement.VARIANT, best_score, best_name)
+    return LabelComparison(LabelAgreement.MISMATCH, best_score, best_name)

@@ -53,21 +53,24 @@ enums:
 
   LabelAgreement:
     description: >-
-      How the label a report wrote next to a CURIE compares with that term's own
-      label. This is a string comparison, not a judgement about whether the term
-      is the right one to have cited: a report can name a term perfectly and
-      still have chosen the wrong term for the sentence.
+      How the label a report wrote next to a CURIE compares with the names that
+      term carries - its own label and its synonyms. This is a string comparison,
+      not a judgement about whether the term is the right one to have cited: a
+      report can name a term perfectly and still have chosen the wrong term for
+      the sentence.
     permissible_values:
       MATCH:
         description: >-
-          The report's label is the term's label, up to case, punctuation,
-          word order and plurals.
+          The report's label is one of the names the term carries - its own label
+          or an exact synonym - up to case, punctuation, word order and plurals.
       VARIANT:
         description: >-
-          The labels differ but are recognisably related - a spelling variant, a
-          subtype suffix, an added qualifier. Worth reading, because "Long QT
-          syndrome" and "Long QT syndrome 1" are different terms, but not by
-          itself evidence of a mistake.
+          The name differs from every name the term carries, but is recognisably
+          related to one of them: a spelling variant, a subtype suffix, an added
+          qualifier, or a broad, narrow or related synonym. Worth reading,
+          because "Long QT syndrome" and "Long QT syndrome 1" are different
+          terms, and because a related synonym is by definition not the same
+          thing - but neither is by itself evidence of a mistake.
       MISMATCH:
         description: >-
           The labels have almost nothing in common. The report is calling this
@@ -110,15 +113,16 @@ classes:
           enough to pass.
         multivalued: true
       agreement:
-        description: How the reported label compares with the term's own label.
+        description: >-
+          How the reported label compares with the names the term carries.
         range: LabelAgreement
         required: true
         ifabsent: LabelAgreement(NOT_ASSESSED)
       label_similarity:
         description: >-
-          Similarity between the reported label and the term's own label, from 0
-          to 1, for the reported label that agreed least. Zero when agreement was
-          not assessed.
+          Similarity between the reported label and the closest of the names the
+          term carries - its own label or any synonym - from 0 to 1, for the
+          reported label that agreed least. Zero when agreement was not assessed.
 
           This is the raw measurement behind `agreement`; read the verdict rather
           than re-thresholding this slot.
@@ -127,6 +131,12 @@ classes:
         minimum_value: 0.0
         maximum_value: 1.0
         ifabsent: float(0.0)
+      matched_synonym:
+        description: >-
+          The synonym the report's name was recognised as, when it was a synonym
+          rather than the term's own label. Recorded so a reader can see why a
+          name that is not the label was accepted, and which sense of the term
+          the report may have had in mind.
       replaced_by:
         description: >-
           Replacement term for an obsolete one, when the ontology states it.

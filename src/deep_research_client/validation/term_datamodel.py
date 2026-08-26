@@ -118,15 +118,15 @@ class TermStatus(str, Enum):
 
 class LabelAgreement(str, Enum):
     """
-    How the label a report wrote next to a CURIE compares with that term's own label. This is a string comparison, not a judgement about whether the term is the right one to have cited: a report can name a term perfectly and still have chosen the wrong term for the sentence.
+    How the label a report wrote next to a CURIE compares with the names that term carries - its own label and its synonyms. This is a string comparison, not a judgement about whether the term is the right one to have cited: a report can name a term perfectly and still have chosen the wrong term for the sentence.
     """
     MATCH = "MATCH"
     """
-    The report's label is the term's label, up to case, punctuation, word order and plurals.
+    The report's label is one of the names the term carries - its own label or an exact synonym - up to case, punctuation, word order and plurals.
     """
     VARIANT = "VARIANT"
     """
-    The labels differ but are recognisably related - a spelling variant, a subtype suffix, an added qualifier. Worth reading, because "Long QT syndrome" and "Long QT syndrome 1" are different terms, but not by itself evidence of a mistake.
+    The name differs from every name the term carries, but is recognisably related to one of them: a spelling variant, a subtype suffix, an added qualifier, or a broad, narrow or related synonym. Worth reading, because "Long QT syndrome" and "Long QT syndrome 1" are different terms, and because a related synonym is by definition not the same thing - but neither is by itself evidence of a mistake.
     """
     MISMATCH = "MISMATCH"
     """
@@ -151,9 +151,10 @@ class TermCheck(ConfiguredBaseModel):
     occurrences: int = Field(default=1, description="""Number of times the CURIE is mentioned in the report.""", ge=1, json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck'], 'ifabsent': 'int(1)'} })
     ontology_label: Optional[str] = Field(default=None, description="""The term's own label, when it resolved.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck']} })
     reported_labels: Optional[list[str]] = Field(default=None, description="""The labels the report wrote beside this CURIE, in first-appearance order. More than one entry means the report named the same identifier inconsistently, which is worth seeing even when each name is close enough to pass.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck']} })
-    agreement: LabelAgreement = Field(default=LabelAgreement.NOT_ASSESSED, description="""How the reported label compares with the term's own label.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck'], 'ifabsent': 'LabelAgreement(NOT_ASSESSED)'} })
-    label_similarity: float = Field(default=0.0, description="""Similarity between the reported label and the term's own label, from 0 to 1, for the reported label that agreed least. Zero when agreement was not assessed.
+    agreement: LabelAgreement = Field(default=LabelAgreement.NOT_ASSESSED, description="""How the reported label compares with the names the term carries.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck'], 'ifabsent': 'LabelAgreement(NOT_ASSESSED)'} })
+    label_similarity: float = Field(default=0.0, description="""Similarity between the reported label and the closest of the names the term carries - its own label or any synonym - from 0 to 1, for the reported label that agreed least. Zero when agreement was not assessed.
 This is the raw measurement behind `agreement`; read the verdict rather than re-thresholding this slot.""", ge=0.0, le=1.0, json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck'], 'ifabsent': 'float(0.0)'} })
+    matched_synonym: Optional[str] = Field(default=None, description="""The synonym the report's name was recognised as, when it was a synonym rather than the term's own label. Recorded so a reader can see why a name that is not the label was accepted, and which sense of the term the report may have had in mind.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck']} })
     replaced_by: Optional[str] = Field(default=None, description="""Replacement term for an obsolete one, when the ontology states it.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck']} })
     message: Optional[str] = Field(default=None, description="""Explanation of the outcome, present when not verified.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TermCheck']} })
 

@@ -88,18 +88,33 @@ def split_validation_sections(
 
         >>> split_validation_sections("# Report\\n\\nBody.\\n")
         ('# Report\\n\\nBody.\\n', [])
+
+        A section is cut at its heading, not wherever the heading's text last
+        occurs, so prose mentioning it does not split the section in two:
+
+        >>> _, sections = split_validation_sections(
+        ...     "# Report\\n\\nBody.\\n\\n## Term Validation\\n"
+        ...     "\\nSuperseded; see ## Term Validation in the archive.\\n"
+        ... )
+        >>> len(sections)
+        1
     """
     generated = set(headings) if headings is not None else set(GENERATED_SECTION_HEADINGS)
     text = markdown
     sections: List[Tuple[str, str]] = []
     while True:
-        found = _H2_HEADING_RE.findall(text)
-        if not found or found[-1].strip() not in generated:
+        # The match's own offset, not a search for its text. Searching would find
+        # the last place the heading's characters occur, which is not necessarily
+        # where the heading is: a section whose prose mentions "## Term
+        # Validation" mid-sentence would be cut there instead, splitting it in
+        # two and writing both halves back over the file.
+        matches = list(_H2_HEADING_RE.finditer(text))
+        if not matches or matches[-1].group().strip() not in generated:
             break
         # Repeat, so a file left with stacked sections by an older run is cleaned
         # up rather than losing only the last of them.
-        start = text.rindex(found[-1])
-        sections.append((found[-1].strip(), text[start:].rstrip()))
+        start = matches[-1].start()
+        sections.append((matches[-1].group().strip(), text[start:].rstrip()))
         text = text[:start]
     sections.reverse()
     body = text.rstrip() + "\n" if text.strip() else ""

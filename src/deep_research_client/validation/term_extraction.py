@@ -15,6 +15,18 @@ thing the text can reasonably be - a table cell, an emphasised run, a bracket or
 a colon immediately following the CURIE - and a term mentioned in flowing prose
 is left with no reported label at all. That undercounts rather than invents, and
 the term is still checked for existence.
+
+Two things this deliberately does not see:
+
+* A term named in flowing prose, as above. "Patients with aortic root dilation
+  (HP:0002616) were followed" yields no label, because the run before the
+  bracket is a clause rather than a name.
+* A sentence continuing straight off a separator with neither bracket nor comma
+  to end it - "HP:0001250 - Seizure was observed in three unrelated probands"
+  reads the whole run as the label. A word cap would catch it, and would also
+  truncate real labels, several of which run past eight words, so the trade is
+  not worth taking. A finite-verb marker would be the way in if this turns up in
+  practice.
 """
 
 import re
@@ -126,6 +138,41 @@ _NON_LABEL_OPENERS = frozenset(
         "via",
         "which",
         "with",
+    }
+)
+
+# Words that open an aside *about* a term rather than part of its name, used to
+# cut a trailing clause off a candidate that is otherwise a good label.
+#
+# Deliberately NOT _NON_LABEL_OPENERS, though it started as that and was wrong.
+# That set answers a different question - does this candidate *begin* as prose -
+# and for that job function words like "with", "or" and "in" are safe, because no
+# label begins with them. Plenty of labels *continue* with them: the real MONDO
+# term "microcephaly, with or without chorioretinopathy, lymphedema, or
+# intellectual disability" is cut to "microcephaly" by that set, which reports a
+# correctly cited term as naming something else - the very failure the trimming
+# exists to prevent, in a shape this repo's own subject matter is full of.
+#
+# So this set holds only reporting and citation words, which no ontology label
+# contains anywhere.
+_TRAILING_CLAUSE_OPENERS = frozenset(
+    {
+        "cited",
+        "detected",
+        "e.g",
+        "eg",
+        "estimated",
+        "found",
+        "i.e",
+        "ie",
+        "n",
+        "observed",
+        "ref",
+        "reported",
+        "reviewed",
+        "see",
+        "seen",
+        "source",
     }
 )
 
@@ -315,8 +362,8 @@ def _drop_trailing_clause(label: str) -> str:
     :data:`_NON_LABEL_OPENERS`.
 
     Only such segments are cut, because commas are ordinary inside real labels -
-    "Seizure, generalized" is one - and truncating at every comma would cost
-    more than it saves.
+    "Seizure, generalized" is one, and OMIM-derived disease names are built of
+    them - and truncating at every comma would cost far more than it saves.
 
     Examples:
         >>> _drop_trailing_clause("Seizure, reported in 4 of 11 probands")
@@ -325,11 +372,20 @@ def _drop_trailing_clause(label: str) -> str:
         'Seizure, generalized'
         >>> _drop_trailing_clause("Ectopia lentis")
         'Ectopia lentis'
+
+        A real disease name whose later segments open with function words
+        survives whole:
+
+        >>> _drop_trailing_clause(
+        ...     "microcephaly, with or without chorioretinopathy, lymphedema, "
+        ...     "or intellectual disability"
+        ... )
+        'microcephaly, with or without chorioretinopathy, lymphedema, or intellectual disability'
     """
     segments = label.split(",")
     kept = [segments[0]]
     for segment in segments[1:]:
-        if _first_word(segment.strip()) in _NON_LABEL_OPENERS:
+        if _first_word(segment.strip()) in _TRAILING_CLAUSE_OPENERS:
             break
         kept.append(segment)
     return ",".join(kept).strip()

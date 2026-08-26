@@ -14,6 +14,7 @@ Malaysia rather than the echocardiography a report claimed for it.
 
 import csv
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -189,6 +190,58 @@ def test_prose_after_a_separator_is_not_read_into_the_label(
 ) -> None:
     """Reading an aside as the name reports a correctly cited term as wrong."""
     assert find_term_ids(text)[0].labels == (expected,)
+
+
+# Real MONDO/OMIM-style names, whose later comma-separated segments open with
+# function words. Cutting at those would report a correctly cited term as naming
+# something else - and rare-disease reports, which this tool is aimed at, are
+# full of them.
+LABELS_WITH_FUNCTION_WORD_SEGMENTS = [
+    "microcephaly, with or without chorioretinopathy, lymphedema, "
+    "or intellectual disability",
+    "hypotonia, infantile, with psychomotor retardation and characteristic facies",
+    "deafness, autosomal recessive, with or without vestibular dysfunction",
+]
+
+
+@pytest.mark.parametrize("label", LABELS_WITH_FUNCTION_WORD_SEGMENTS)
+@pytest.mark.parametrize("layout", ["table", "separator"])
+def test_a_real_name_with_function_word_segments_survives_whole(
+    label: str, layout: str
+) -> None:
+    """Trailing-clause trimming must not truncate a name that simply has commas."""
+    line = (
+        f"| {label} | MONDO:0013452 |"
+        if layout == "table"
+        else f"MONDO:0013452 - {label}"
+    )
+
+    assert find_term_ids(line)[0].labels == (label,)
+
+
+@pytest.mark.parametrize("label", LABELS_WITH_FUNCTION_WORD_SEGMENTS)
+def test_a_real_name_with_function_word_segments_is_not_a_mismatch(
+    label: str, label_cache: Path
+) -> None:
+    """End to end: the report names the term exactly, so nothing may be flagged."""
+    prefix_dir = label_cache / "mondo"
+    prefix_dir.mkdir(parents=True, exist_ok=True)
+    with open(prefix_dir / "terms.csv", "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, ["curie", "label", "retrieved_at"])
+        writer.writeheader()
+        writer.writerow(
+            {
+                "curie": "MONDO:0013452",
+                "label": label,
+                "retrieved_at": "2026-01-01T00:00:00",
+            }
+        )
+    validator = TermValidator(cache_dir=label_cache, offline=True, cache_labels=False)
+
+    report = validator.validate_markdown(f"| {label} | MONDO:0013452 |")
+
+    assert report.checked_terms[0].agreement == LabelAgreement.MATCH
+    assert not report.has_problems
 
 
 def test_an_aside_after_a_separator_does_not_become_a_mismatch(
@@ -632,6 +685,38 @@ def test_both_validation_sections_are_stripped() -> None:
     )
 
     assert strip_validation_section(annotated) == "# Report\n\nBody.\n"
+
+
+def test_a_section_is_cut_at_its_heading_not_at_a_later_mention() -> None:
+    """Locating the cut by searching for the heading text can split a section.
+
+    The halves are then both written back, mangling the file - and this runs on
+    the path that overwrites the user's report.
+    """
+    from deep_research_client.validation import render_with_sections, split_validation_sections
+
+    doc = (
+        "# Report\n\nBody text.\n\n"
+        "## Reference Validation\n\nRefs.\n\n"
+        "## Term Validation\n\n"
+        "Superseded; see ## Term Validation in the archive.\n"
+    )
+
+    body, sections = split_validation_sections(doc)
+
+    assert body == "# Report\n\nBody text.\n"
+    assert [heading for heading, _ in sections] == [
+        "## Reference Validation",
+        "## Term Validation",
+    ]
+    # Rewriting the other section must not split the term section in two. The
+    # count is of heading *lines*: the section's own prose mentions the heading
+    # mid-sentence, which is the whole point of the case.
+    rewritten = render_with_sections(
+        body, sections, "## Reference Validation", "## Reference Validation\n\nNew refs."
+    )
+    assert len(re.findall(r"^## Term Validation$", rewritten, re.MULTILINE)) == 1
+    assert "Superseded; see ## Term Validation in the archive." in rewritten
 
 
 def test_a_discussed_heading_is_left_alone() -> None:

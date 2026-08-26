@@ -1330,6 +1330,50 @@ def test_live_exact_synonyms_are_matches(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "reported, expected_synonym",
+    [
+        # The worked example in docs/how-to/validate-terms.md, otherwise the one
+        # bullet in the docs no test holds up.
+        ("FGF receptor signalling", "FGF receptor signalling pathway"),
+        # Far enough from the label ("fibroblast growth factor receptor signaling
+        # pathway", 0.42) that only the synonym keeps it out of MISMATCH. This is
+        # the row that shows what losing the fallback would cost.
+        ("FGFR signalling", "FGFR signaling pathway"),
+    ],
+)
+def test_live_unscoped_synonyms_still_count(
+    tmp_path: Path, reported: str, expected_synonym: str
+) -> None:
+    """OLS returns some ontologies' synonyms with no scope, and they still count.
+
+    The only coverage of the unscoped fallback in `_names_from_ols_payload` -
+    names taken from the payload's flat `synonyms` list, which carries no scope
+    and so is read as related. Every synonym GO:0008543 carries arrives that
+    way, so nothing else in this suite reaches that branch.
+
+    It matters more than the exact-scope branch, because it fails in the
+    accusing direction. Losing the exact spelling costs a MATCH that reads as a
+    VARIANT, which is a hedge. Losing this costs a VARIANT that reads as a
+    MISMATCH: a correctly cited term listed under "Terms the report names
+    something else", tripping --fail-on-unresolved. That is the accusation this
+    module exists to avoid, and the second case above is where it lands - the
+    first stays VARIANT on label similarity alone and pins only the synonym.
+    """
+    validator = TermValidator(cache_dir=tmp_path / "cache")
+
+    report = validator.validate_markdown(f"| {reported} | GO:0008543 |")
+
+    check = report.checked_terms[0]
+    assert check.agreement == LabelAgreement.VARIANT
+    assert check.matched_synonym == expected_synonym
+    # The point of the branch: a term named by one of its own listed names is
+    # not accused, and does not fail a build.
+    assert not report.mislabelled_terms
+    assert not report.has_problems
+
+
+@pytest.mark.integration
 def test_live_lookup_reports_an_invented_identifier(tmp_path: Path) -> None:
     """A live ontology is the only thing that can say a term does not exist."""
     validator = TermValidator(cache_dir=tmp_path / "cache")

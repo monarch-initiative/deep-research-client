@@ -16,7 +16,7 @@ a colon immediately following the CURIE - and a term mentioned in flowing prose
 is left with no reported label at all. That undercounts rather than invents, and
 the term is still checked for existence.
 
-Two things this deliberately does not see:
+What this deliberately does not see:
 
 * A term named in flowing prose, as above. "Patients with aortic root dilation
   (HP:0002616) were followed" yields no label, because the run before the
@@ -29,7 +29,8 @@ Two things this deliberately does not see:
   practice.
 * A comma-led aside opening with a function word, on a term whose own label is
   short: "HP:0001250 - Seizure, with onset in infancy" is read whole and scores
-  as a mismatch against "Seizure". Cutting it would mean cutting
+  as a mismatch against "Seizure" - synonyms do not rescue it, since the aside
+  is no closer to any of them. Cutting it would mean cutting
   "Deafness, autosomal recessive, with or without vestibular dysfunction", which
   is a real name of the same shape, so there is no discriminator here that is
   not a guess. The exposure is bounded by the *canonical* label's length rather

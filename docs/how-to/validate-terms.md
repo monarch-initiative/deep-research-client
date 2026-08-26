@@ -57,10 +57,10 @@ Checked with `linkml-term-validator` 0.4.5, through the `ols:` adapter.
 | Unresolved (possible confabulation) | 1 |
 | Obsolete | 1 |
 | Unverifiable | 1 |
-| Labels checked | 7 |
-| Labels matching the term | 2 |
-| Labels naming a **different** term | 3 |
-| Labels worth a second look | 2 |
+| Terms whose name was checked | 7 |
+| Terms named correctly | 2 |
+| Terms named as a **different** term | 3 |
+| Terms whose name is worth a second look | 2 |
 
 ### Terms the report names something else
 
@@ -134,6 +134,9 @@ term_validation:
 `--validate-terms` and `--validate-references` compose: passing both appends both sections
 and writes both summaries.
 
+The `labels_*` counts are per term, not per name: a report calling one identifier three
+things contributes one to each.
+
 `confabulation_rate` counts identifier resolution and nothing else. A report can resolve
 every CURIE it cites, score `0.0`, and still call half of them by the names of other terms.
 So `labels_mismatched`, `mislabelled_terms` and `needs_review` are written out whenever
@@ -194,7 +197,10 @@ Scope is kept, because a synonym is not always another way of saying the same th
 - a **related**, **broad** or **narrow** synonym names something adjacent, so matching one
   is a `VARIANT` — worth reading, not worth failing a build over.
 
-When a name is recognised as a synonym rather than the label, the report says which:
+When a name is recognised as a synonym rather than the label, the report says which. On a
+`MISMATCH` no synonym is named — the check consulted them and none was accepted, so a
+flagged term that has synonyms is one whose synonyms did not help, not one where they
+were skipped:
 
 ```markdown
 - `HP:0001166` (1 mention) - the report calls it "Long fingers"; HP calls it

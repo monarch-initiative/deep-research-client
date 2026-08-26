@@ -463,15 +463,21 @@ class TermValidationReport(GeneratedTermValidationReport):
         lines.append(f"| Obsolete | {self.obsolete_count} |")
         lines.append(f"| Unverifiable | {self.unverifiable_count} |")
         if self.labels_checked:
-            lines.append(f"| Labels checked | {self.labels_checked} |")
-            lines.append(f"| Labels matching the term | {self.labels_matching} |")
+            # Worded as terms, not labels, because that is what they count: a
+            # report naming one identifier three ways contributes one to each.
+            # The "Terms named inconsistently" section below tells a reader the
+            # two are not the same thing, so these rows must not imply otherwise.
+            lines.append(f"| Terms whose name was checked | {self.labels_checked} |")
+            lines.append(f"| Terms named correctly | {self.labels_matching} |")
             # Spelled out rather than left as the difference of the two rows
             # above: a reader who subtracts is a reader who might not.
             lines.append(
-                f"| Labels naming a **different** term | {len(self.mislabelled_terms)} |"
+                f"| Terms named as a **different** term | {len(self.mislabelled_terms)} |"
             )
             if self.variant_label_terms:
-                lines.append(f"| Labels worth a second look | {len(self.variant_label_terms)} |")
+                lines.append(
+                    f"| Terms whose name is worth a second look | {len(self.variant_label_terms)} |"
+                )
         lines.append("")
 
         if self.mislabelled_terms:

@@ -261,6 +261,29 @@ def test_a_real_name_with_function_word_segments_is_not_a_mismatch(
     assert not report.has_problems
 
 
+def test_a_perfectly_named_term_needs_no_synonym_fetch(
+    offline_validator: TermValidator,
+) -> None:
+    """The fetch guard is a no-op only while compare_labels short-circuits.
+
+    `_compare` skips the synonym lookup when every reported name is already the
+    ontology label, which is correct only because `compare_labels` returns on
+    an exact canonical match before it reads either synonym sequence - a
+    precondition living in another module. If that short-circuit ever moves,
+    the guard starts changing verdicts, and only for perfectly-named terms,
+    which is a hard shape to notice. Pinned from the side that would break.
+    """
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    term = FoundTerm(term_id="HP:0001250", prefix="HP", labels=("Seizure",))
+    ontology = offline_validator._build_ontology_access()
+
+    guarded = offline_validator._compare(term, "Seizure", ontology)
+    with_synonyms = compare_labels("Seizure", "Seizure", ["Seizures"], ["Epilepsy"])
+
+    assert guarded == with_synonyms
+
+
 def test_an_aside_after_a_separator_does_not_become_a_mismatch(
     offline_validator: TermValidator,
 ) -> None:

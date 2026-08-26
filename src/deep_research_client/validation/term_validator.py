@@ -37,7 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
-from .label_matching import LabelComparison, compare_labels
+from .label_matching import LabelComparison, compare_labels, label_similarity
 from .sections import strip_validation_section
 from .term_datamodel import LabelAgreement, TermCheck, TermStatus
 from .term_extraction import FoundTerm, extract_terms
@@ -290,7 +290,16 @@ class TermValidator:
         if not self.check_labels or not term.labels:
             return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
 
-        names = _synonyms_for(ontology, term.term_id)
+        # Synonyms cannot change a verdict when every name the report gave is
+        # already the term's own label, and the worst verdict is what gets
+        # reported, so a term named perfectly throughout needs no lookup. That is
+        # free against the memoised OLS payload and a query per term against a
+        # local adapter - and it is the reports with nothing wrong with them that
+        # would otherwise pay most.
+        if all(label_similarity(reported, label) == 1.0 for reported in term.labels):
+            names = TermNames()
+        else:
+            names = _synonyms_for(ontology, term.term_id)
 
         # Ordered worst to best, so `min` picks the verdict to report.
         severity = {
@@ -318,9 +327,15 @@ class TermValidator:
         )
 
 
-#: OAK's predicate for a synonym that names the same thing as the label. Every
-#: other synonym predicate - broad, narrow, related - names something adjacent,
-#: which is a different claim and gets a different verdict.
+#: How the two sources spell "this synonym names the same thing as the label":
+#: ``oio:hasExactSynonym`` is the predicate in an OAK alias map, and
+#: ``hasExactSynonym`` is the bare scope in an OLS payload. Both spellings live
+#: here because both are matched against this one set. Every other synonym
+#: predicate or scope - broad, narrow, related - names something adjacent, which
+#: is a different claim and earns a different verdict.
+#:
+#: An unrecognised spelling demotes a synonym to related, so a mistake here costs
+#: a MATCH that reads as a VARIANT rather than the other way round.
 _EXACT_SYNONYM_PREDICATES = frozenset({"oio:hasExactSynonym", "hasExactSynonym"})
 
 #: The label's own predicate in an OAK alias map, which is not a synonym.
@@ -380,9 +395,20 @@ def _synonyms_for(ontology: "OntologyAccess", curie: str) -> TermNames:
         try:
             mapping = alias_map(curie)
         except NotImplementedError:
+            # The only failure treated as "this route is not available". Anything
+            # else - a connectivity error above all - is left to propagate, the
+            # same way a failed label lookup is: a run that cannot reach the
+            # ontology should stop rather than quietly report terms as having no
+            # synonyms, which would put the false mismatches back.
             mapping = None
         if mapping:
-            return _names_from_alias_map(mapping)
+            names = _names_from_alias_map(mapping)
+            # An adapter that implements the call shallowly returns the label and
+            # nothing else. That is a non-empty mapping carrying no synonyms, so
+            # testing the mapping alone would skip the payload route and lose
+            # them silently.
+            if names.exact or names.related:
+                return names
 
     return _names_from_ols_payload(ontology, adapter, curie)
 

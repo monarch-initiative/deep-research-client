@@ -147,7 +147,8 @@ class LabelComparison(NamedTuple):
         agreement: The verdict.
         similarity: Similarity to the closest name the term carries.
         matched_synonym: The synonym the reported name was recognised as, when
-            it was a synonym rather than the term's own label.
+            it was a synonym rather than the term's own label. Never set on a
+            mismatch, where nothing was recognised.
     """
 
     agreement: LabelAgreement
@@ -223,10 +224,12 @@ def compare_labels(
 
         The similarity is to the closest name the term carries, so it reflects
         the synonym here rather than the label - and is still nowhere near the
-        threshold:
+        threshold. No synonym is named, because none was accepted:
 
         >>> round(comparison.similarity, 2)
         0.23
+        >>> comparison.matched_synonym is None
+        True
 
         A label the report never gave, or a term with none, is not judged:
 
@@ -258,4 +261,10 @@ def compare_labels(
 
     if best_score >= VARIANT_SIMILARITY_THRESHOLD:
         return LabelComparison(LabelAgreement.VARIANT, best_score, best_name)
-    return LabelComparison(LabelAgreement.MISMATCH, best_score, best_name)
+    # No synonym is named on a mismatch. `best_name` is only the closest of a bad
+    # lot here, and reporting it says the report's name was recognised as that
+    # synonym when it was not - directly against the finding, on the one line
+    # this whole check exists to produce. The score keeps the synonym's
+    # contribution, because that slot is defined as the closest of the term's
+    # names; this one is defined as the name that was accepted, and none was.
+    return LabelComparison(LabelAgreement.MISMATCH, best_score, None)

@@ -322,28 +322,69 @@ def test_label_agreement(reported: str, canonical: str, expected: LabelAgreement
 
 
 @pytest.mark.parametrize(
-    "reported, exact, related, expected",
+    "reported, canonical, exact, related, expected",
     [
         # An exact synonym is another name for the same thing, so it is a match.
-        ("Seizures", ["Seizures"], [], LabelAgreement.MATCH),
-        ("seizure", ["Seizures"], [], LabelAgreement.MATCH),
+        ("Seizures", "Seizure", ["Seizures"], [], LabelAgreement.MATCH),
+        ("seizure", "Seizure", ["Seizures"], [], LabelAgreement.MATCH),
         # A related synonym names something adjacent, not the same thing.
-        ("Epilepsy", ["Seizures"], ["Epilepsy"], LabelAgreement.VARIANT),
+        ("Epilepsy", "Seizure", ["Seizures"], ["Epilepsy"], LabelAgreement.VARIANT),
         # Close to a synonym without being it: still worth a look, not an error.
-        ("Long fingers", [], ["Long slender fingers"], LabelAgreement.VARIANT),
+        ("Long fingers", "Arachnodactyly", [], ["Long slender fingers"], LabelAgreement.VARIANT),
         # Synonyms must not rescue a genuinely wrong identifier.
-        ("Echocardiography Test", ["Malaysia, Federation of"], [], LabelAgreement.MISMATCH),
+        (
+            "Echocardiography Test",
+            "Malaysia",
+            ["Malaysia, Federation of"],
+            [],
+            LabelAgreement.MISMATCH,
+        ),
     ],
 )
 def test_synonyms_are_weighed_by_scope(
-    reported: str, exact: list[str], related: list[str], expected: LabelAgreement
+    reported: str,
+    canonical: str,
+    exact: list[str],
+    related: list[str],
+    expected: LabelAgreement,
 ) -> None:
     """Exact synonyms are the term's own names; other scopes are only adjacent."""
-    canonical = "Malaysia" if expected is LabelAgreement.MISMATCH else "Seizure"
-    if reported == "Long fingers":
-        canonical = "Arachnodactyly"
-
     assert compare_labels(reported, canonical, exact, related).agreement == expected
+
+
+def test_a_mismatch_names_no_synonym() -> None:
+    """The closest of a bad lot is not a name that was recognised.
+
+    Reporting one puts a clause on the mislabelled line saying the ontology
+    lists the report's name among the term's own - which argues against the
+    finding, on the line this whole check exists to produce.
+    """
+    comparison = compare_labels(
+        "Echocardiography Test", "Malaysia", exact_synonyms=["Malaysia, Federation of"]
+    )
+
+    assert comparison.agreement == LabelAgreement.MISMATCH
+    assert comparison.matched_synonym is None
+    # The similarity still reflects the closest name, which is what it documents.
+    assert comparison.similarity > label_similarity("Echocardiography Test", "Malaysia")
+
+
+def test_a_mislabelled_line_carries_no_synonym_clause() -> None:
+    """The renderer must not be the only thing standing between the two."""
+    check = TermCheck(
+        term_id="NCIT:C16814",
+        prefix="NCIT",
+        status=TermStatus.VERIFIED,
+        ontology_label="Malaysia",
+        reported_labels=["Echocardiography Test"],
+        agreement=LabelAgreement.MISMATCH,
+        matched_synonym=None,
+    )
+
+    line = TermValidationReport._label_lines([check])[0]
+
+    assert "among its other names" not in line
+    assert "Malaysia" in line
 
 
 def test_a_synonym_match_says_which_synonym() -> None:
@@ -476,6 +517,21 @@ def test_an_unreachable_term_is_unverifiable_not_invented(
 
     assert report.checked_terms[0].status == TermStatus.UNVERIFIABLE
     assert not report.has_problems
+
+
+def test_offline_fetches_no_synonyms(offline_validator: TermValidator) -> None:
+    """Offline means offline, including for the synonym lookup.
+
+    The documented promise rests on `get_adapter` returning None when offline.
+    If it ever returned a live adapter, the alias call would raise
+    NotImplementedError, the OLS payload route would run, and an offline suite
+    would reach the network while staying green - just slower.
+    """
+    from deep_research_client.validation.term_validator import TermNames, _synonyms_for
+
+    ontology = offline_validator._build_ontology_access()
+
+    assert _synonyms_for(ontology, "HP:0001250") == TermNames()
 
 
 def test_an_unknown_prefix_is_unverifiable(offline_validator: TermValidator) -> None:

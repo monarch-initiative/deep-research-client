@@ -45,6 +45,79 @@ __all__ = [
 OUTAGE_HINT_MIN_TERMS = 3
 
 
+def _mislabelled_entry(check: TermCheck) -> Dict[str, Any]:
+    """Summarise a mislabelled term as both of the names it goes by.
+
+    The CURIE alone does not carry the finding. Reading
+    ``mislabelled_terms: [NCIT:C16814]`` off a report's frontmatter tells you
+    something is wrong and leaves you to go and look up what; the pair of names
+    *is* the finding, and it fits on one line.
+
+    ``reported_labels`` stays a list rather than collapsing to the single name
+    that produced the verdict, because a report that calls one identifier two
+    things has not decided what it cites, and labels contain commas often
+    enough that joining them would be ambiguous.
+
+    Examples:
+        >>> _mislabelled_entry(
+        ...     TermCheck(
+        ...         term_id="NCIT:C16814",
+        ...         prefix="NCIT",
+        ...         status=TermStatus.VERIFIED,
+        ...         ontology_label="Malaysia",
+        ...         reported_labels=["Echocardiography Test"],
+        ...         agreement=LabelAgreement.MISMATCH,
+        ...     )
+        ... )
+        {'term_id': 'NCIT:C16814', 'reported_labels': ['Echocardiography Test'], 'ontology_label': 'Malaysia'}
+    """
+    return {
+        "term_id": check.term_id,
+        "reported_labels": list(check.reported_labels or []),
+        "ontology_label": check.ontology_label,
+    }
+
+
+def _obsolete_entry(check: TermCheck) -> Dict[str, Any]:
+    """Summarise an obsolete term as its name, and its replacement where known.
+
+    The replacement is the actionable half - it is the edit the report needs -
+    so it is written out whenever the ontology states one, and omitted rather
+    than left null when it does not.
+
+    Examples:
+        >>> _obsolete_entry(
+        ...     TermCheck(
+        ...         term_id="GO:0008022",
+        ...         prefix="GO",
+        ...         status=TermStatus.OBSOLETE,
+        ...         ontology_label="obsolete protein C-terminus binding",
+        ...         replaced_by="GO:0005515",
+        ...     )
+        ... )
+        {'term_id': 'GO:0008022', 'ontology_label': 'obsolete protein C-terminus binding', 'replaced_by': 'GO:0005515'}
+
+        An ontology that names no replacement leaves the key out:
+
+        >>> _obsolete_entry(
+        ...     TermCheck(
+        ...         term_id="GO:0000005",
+        ...         prefix="GO",
+        ...         status=TermStatus.OBSOLETE,
+        ...         ontology_label="obsolete ribosomal chaperone activity",
+        ...     )
+        ... )
+        {'term_id': 'GO:0000005', 'ontology_label': 'obsolete ribosomal chaperone activity'}
+    """
+    entry: Dict[str, Any] = {
+        "term_id": check.term_id,
+        "ontology_label": check.ontology_label,
+    }
+    if check.replaced_by:
+        entry["replaced_by"] = check.replaced_by
+    return entry
+
+
 class TermValidationReport(GeneratedTermValidationReport):
     """Aggregate result of validating every ontology term in a report.
 
@@ -289,7 +362,7 @@ class TermValidationReport(GeneratedTermValidationReport):
             >>> summary["confabulation_rate"], summary["labels_mismatched"]
             (0.0, 1)
             >>> summary["mislabelled_terms"]
-            ['NCIT:C16814']
+            [{'term_id': 'NCIT:C16814', 'reported_labels': ['Echocardiography Test'], 'ontology_label': 'Malaysia'}]
             >>> summary["needs_review"]
             True
         """
@@ -306,13 +379,17 @@ class TermValidationReport(GeneratedTermValidationReport):
             summary["labels_matching"] = self.labels_matching
             if self.mislabelled_terms:
                 summary["labels_mismatched"] = len(self.mislabelled_terms)
-                summary["mislabelled_terms"] = [t.term_id for t in self.mislabelled_terms]
+                summary["mislabelled_terms"] = [
+                    _mislabelled_entry(check) for check in self.mislabelled_terms
+                ]
             if self.variant_label_terms:
                 summary["labels_variant"] = len(self.variant_label_terms)
         if self.confabulated_terms:
             summary["unresolved_terms"] = [t.term_id for t in self.confabulated_terms]
         if self.obsolete_terms:
-            summary["obsolete_terms"] = [t.term_id for t in self.obsolete_terms]
+            summary["obsolete_terms"] = [
+                _obsolete_entry(check) for check in self.obsolete_terms
+            ]
         if self.unresolvable_prefixes:
             summary["unresolvable_prefixes"] = list(self.unresolvable_prefixes)
         if self.has_problems or self.obsolete_terms or self.variant_label_terms:

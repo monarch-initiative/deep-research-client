@@ -434,8 +434,15 @@ def test_the_summary_states_what_the_rate_hides() -> None:
 
     assert summary["confabulation_rate"] == 0.0
     assert summary["labels_mismatched"] == 1
-    assert summary["mislabelled_terms"] == ["NCIT:C16814"]
     assert summary["needs_review"] is True
+    # Both names, so the finding is legible without opening the report.
+    assert summary["mislabelled_terms"] == [
+        {
+            "term_id": "NCIT:C16814",
+            "reported_labels": ["Echocardiography Test"],
+            "ontology_label": "Malaysia",
+        }
+    ]
 
 
 def test_obsolete_terms_do_not_fail_a_build_but_are_flagged() -> None:
@@ -453,7 +460,55 @@ def test_obsolete_terms_do_not_fail_a_build_but_are_flagged() -> None:
 
     assert not report.has_problems
     assert report.summary()["needs_review"] is True
+    assert report.summary()["obsolete_terms"] == [
+        {
+            "term_id": "GO:0008022",
+            "ontology_label": "obsolete protein C-terminus binding",
+            "replaced_by": "GO:0005515",
+        }
+    ]
     assert "GO:0005515" in report.to_markdown()
+
+
+def test_an_obsolete_term_without_a_replacement_omits_the_key() -> None:
+    """A replacement the ontology does not state is absent, not null."""
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="GO:0000005",
+                prefix="GO",
+                status=TermStatus.OBSOLETE,
+                ontology_label="obsolete ribosomal chaperone activity",
+            )
+        ]
+    )
+
+    assert report.summary()["obsolete_terms"] == [
+        {
+            "term_id": "GO:0000005",
+            "ontology_label": "obsolete ribosomal chaperone activity",
+        }
+    ]
+
+
+def test_a_term_named_two_ways_keeps_both_in_the_summary() -> None:
+    report = TermValidationReport(
+        terms=[
+            TermCheck(
+                term_id="NCIT:C16814",
+                prefix="NCIT",
+                status=TermStatus.VERIFIED,
+                ontology_label="Malaysia",
+                reported_labels=["Echocardiography Test", "Echocardiogram"],
+                agreement=LabelAgreement.MISMATCH,
+            )
+        ]
+    )
+
+    assert report.summary()["mislabelled_terms"][0]["reported_labels"] == [
+        "Echocardiography Test",
+        "Echocardiogram",
+    ]
 
 
 def test_variant_labels_are_listed_rather_than_judged() -> None:

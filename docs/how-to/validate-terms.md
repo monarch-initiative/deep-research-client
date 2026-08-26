@@ -112,12 +112,17 @@ term_validation:
   labels_matching: 2
   labels_mismatched: 3
   mislabelled_terms:
-  - NCIT:C16814
+  - term_id: NCIT:C16814
+    reported_labels:
+    - Echocardiography Test
+    ontology_label: Malaysia
   labels_variant: 2
   unresolved_terms:
   - HP:9999999
   obsolete_terms:
-  - GO:0008022
+  - term_id: GO:0008022
+    ontology_label: obsolete protein C-terminus binding
+    replaced_by: GO:0005515
   unresolvable_prefixes:
   - FAKEONT
   needs_review: true
@@ -133,6 +138,13 @@ every CURIE it cites, score `0.0`, and still call half of them by the names of o
 So `labels_mismatched`, `mislabelled_terms` and `needs_review` are written out whenever
 they apply, rather than left to be worked out. If `needs_review` is absent, nothing needed
 reviewing.
+
+`mislabelled_terms` and `obsolete_terms` carry the names rather than bare CURIEs, because
+the CURIE alone is not the finding. `mislabelled_terms: [NCIT:C16814]` tells you something
+is wrong and leaves you to go and look up what; the pair of names is the thing you needed to
+know. `reported_labels` stays a list even when there is one, since a report that calls one
+identifier two things has not decided what it cites. `replaced_by` is written out only when
+the ontology states one.
 
 `needs_review` is deliberately wider than the thing that fails a build. An obsolete term or
 a variant label sets it, but does not make `--fail-on-unresolved` exit non-zero: both are

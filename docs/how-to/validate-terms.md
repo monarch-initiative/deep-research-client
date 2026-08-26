@@ -88,7 +88,8 @@ report is naming something the ontology has retired:
 
 Use `--in-place` to write that section into the report itself, or `--json` to get the same
 result as structured data. `--in-place` replaces any section a previous run left behind, so
-it is safe to re-run over a whole corpus.
+it is safe to re-run over a whole corpus, and it leaves a `## Reference Validation` section
+where it found one — running the two commands over the same file in either order keeps both.
 
 ## Validate as part of the research run
 
@@ -210,6 +211,18 @@ cited perfectly well.
 Synonyms are not consulted, because the default OLS adapter does not expose them through
 OAK. A report that calls `NCIT:C12727` "heart" rather than "Cardiac" will show a
 `MISMATCH`. Read the section, do not just count it.
+
+## When the ontology service is unreachable
+
+A lookup that fails is not the same as a term that does not exist, and the two are kept
+apart. A definitive 404 is an answer: the term is absent. A connectivity failure, a 5xx, a
+408 or a 429 is not, and raises rather than returning nothing — so a rate-limited run exits
+with code `3` and says the service was unreachable, instead of quietly reporting real terms
+as fabricated.
+
+That is why there is no rate-limit delay option here, unlike
+[reference validation](validate-references.md). Running into a limit costs you a re-run, not
+a confidently wrong report.
 
 ## Fail a pipeline on bad terms
 

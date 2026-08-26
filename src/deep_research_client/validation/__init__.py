@@ -45,13 +45,18 @@ from .relevance import (
     reference_text,
 )
 from .label_matching import compare_labels, label_similarity
-from .sections import TERM_VALIDATION_SECTION_HEADING
+from .sections import (
+    TERM_VALIDATION_SECTION_HEADING,
+    render_with_sections,
+    split_validation_sections,
+)
 from .term_extraction import FoundTerm, extract_terms, find_term_ids
 from .term_models import LabelAgreement, TermCheck, TermStatus, TermValidationReport
 from .term_validator import (
     DEFAULT_ADAPTER,
     TERM_INSTALL_HINT,
     TermValidator,
+    lookup_error_types,
     term_validator_is_available,
 )
 from .validator import INSTALL_HINT, ReferenceValidator, validator_is_available
@@ -73,6 +78,7 @@ __all__ = [
     "INSTALL_HINT",
     "label_similarity",
     "LabelAgreement",
+    "lookup_error_types",
     "QuotedClaim",
     "reference_text",
     "ReferenceCheck",
@@ -80,7 +86,9 @@ __all__ = [
     "ReferenceValidationReport",
     "ReferenceValidator",
     "RelevanceAssessment",
+    "render_with_sections",
     "ScoredTerm",
+    "split_validation_sections",
     "strip_validation_section",
     "SupportingTextCheck",
     "TERM_INSTALL_HINT",

@@ -245,7 +245,8 @@ pip install "deep_research_client[terms]"
 - Obsolete terms and variant labels are reported separately, set `needs_review`, and do not trip `--fail-on-unresolved`: both are go-and-looks, not failures.
 - Bibliographic prefixes — PMID, DOI, PMC, GEO — are left to [validate-references](#validate-references) rather than reported here as terms no ontology contains.
 - Labels are cached on disk. A warm run costs about half a cold one rather than nothing, because obsolescence is asked per term on every run; `--adapter sqlite:obo:` makes both checks local after the first download. See [how long it takes](../how-to/validate-terms.md#how-long-it-takes).
-- `--in-place` is idempotent: an existing term validation section is replaced rather than appended to.
+- `--in-place` is idempotent: an existing term validation section is replaced rather than appended to, and a `## Reference Validation` section written by the other command is preserved in place. The same holds in reverse for [validate-references](#validate-references), so a report can carry both and be re-validated by either.
+- A lookup that cannot determine anything — a connectivity failure, a 5xx, a 408 or a 429 — exits `3` rather than reporting the term as absent, so a rate-limited run costs a re-run rather than producing false `NOT_FOUND` findings. This is why there is no rate-limit delay option.
 - Exit codes: `0` success, `1` usage, input or filesystem error, `2` validation found problems (only with `--fail-on-unresolved`), `3` an ontology service was unreachable.
 
 #### Examples

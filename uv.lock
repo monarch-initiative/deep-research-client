@@ -824,6 +824,7 @@ cyberian = [
 ]
 terms = [
     { name = "linkml-term-validator" },
+    { name = "prefixmaps" },
 ]
 validation = [
     { name = "linkml-reference-validator" },
@@ -862,6 +863,7 @@ requires-dist = [
     { name = "linkml-reference-validator", marker = "extra == 'validation'", specifier = ">=0.2.1" },
     { name = "linkml-term-validator", marker = "extra == 'terms'", specifier = ">=0.4.5" },
     { name = "openai", specifier = ">=2.0.0" },
+    { name = "prefixmaps", marker = "extra == 'terms'", specifier = ">=0.2.6" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "typer", specifier = ">=0.9.0" },

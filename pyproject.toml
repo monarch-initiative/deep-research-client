@@ -41,6 +41,10 @@ terms = [
     # out of the base install because OAK and its ontology tooling are a large
     # dependency for users who only want to run research.
     "linkml-term-validator>=0.4.5",
+    # Imported directly, for the registry of prefixes a resolver is expected to
+    # cover. It arrives via oaklib today; a direct import deserves a direct
+    # declaration rather than an ImportError mid-validation if that changes.
+    "prefixmaps>=0.2.6",
 ]
 # NOTE: browser extra removed - linkml-browser is not on PyPI
 # Install manually: uv pip install "linkml-browser @ git+https://github.com/linkml/linkml-browser.git"

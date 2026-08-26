@@ -17,6 +17,15 @@ default adapter is ``ols:``, which looks terms up over the network one at a
 time: right for the handful of terms in a report, wrong for bulk work, where
 ``sqlite:obo:`` downloads each ontology once and answers locally afterwards.
 
+There is deliberately no rate-limit delay, unlike the reference side. The
+distinction that makes one necessary there is drawn upstream here: a definitive
+404 comes back as "no such term", while a connectivity failure, a 5xx, a 408 or
+a 429 raises ``OntologyServiceUnavailableError`` rather than returning nothing.
+So a throttled lookup fails the run instead of quietly becoming a
+``NOT_FOUND`` accusation, and the cost of running into a rate limit is having to
+run again rather than a confidently wrong report. Verified against
+``linkml-term-validator`` 0.4.5.
+
 ``linkml-term-validator`` is an optional dependency; install it with::
 
     pip install "deep_research_client[terms]"
@@ -229,6 +238,11 @@ class TermValidator:
 
         label = resolved.get(term.term_id)
         if label is None:
+            # Skipping is matched case-insensitively above, membership here
+            # exactly. The asymmetry is deliberate: a prefix written in an
+            # unexpected case falls out as UNVERIFIABLE, never as an accusation,
+            # so erring here costs coverage rather than correctness. Matching
+            # loosely would be the unsafe direction.
             if term.prefix not in expected:
                 return self._unverifiable(
                     term, f"no configured ontology resolves the prefix {term.prefix}"
@@ -302,6 +316,11 @@ def _replacement_for(ontology: "OntologyAccess", curie: str) -> Optional[str]:
     replacement rather than as an error. The term is still flagged as obsolete
     either way; only the suggested fix is missing.
 
+    These are private attributes of ``OntologyAccess``, verified against
+    ``linkml-term-validator`` 0.4.5. A rename upstream degrades this to "no
+    replacement known" silently, which is why the integration test asserts a
+    known replacement against the live service rather than trusting the path.
+
     Args:
         ontology: The resolver the term was looked up through.
         curie: The obsolete term.
@@ -347,6 +366,30 @@ def _known_ontology_prefixes() -> frozenset[str]:
     from prefixmaps import load_converter
 
     return frozenset(load_converter("obo").prefix_map)
+
+
+def lookup_error_types() -> tuple:
+    """Exception types raised when a lookup could determine nothing at all.
+
+    Separate from an ordinary "no such term", which is an answer.
+    ``linkml-term-validator`` raises this for a connectivity failure, a 5xx, a
+    408 or a 429 - cases where treating the term as absent would turn an outage
+    into an accusation. The CLI reports them as an unreachable service, the same
+    exit code the reference side uses, rather than as a traceback.
+
+    Returns an empty tuple when the extra is not installed, so a caller can
+    always splice it into an ``except`` clause.
+
+    Examples:
+        >>> isinstance(lookup_error_types(), tuple)
+        True
+    """
+    if not term_validator_is_available():
+        return ()
+
+    from linkml_term_validator.utils.oak_utils import OntologyServiceUnavailableError
+
+    return (OntologyServiceUnavailableError,)
 
 
 def term_validator_is_available() -> bool:

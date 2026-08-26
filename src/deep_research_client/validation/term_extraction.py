@@ -164,11 +164,17 @@ _BRACKETED_AFTER = re.compile(
     r"(?P<curie>" + _CURIE_PREFIX + r":" + _CURIE_LOCAL + r")"
     r"\s*[(\[]\s*(?P<label>[^()\[\]\n]{2,120}?)\s*[)\]]"
 )
+# Brackets end the label rather than being swallowed into it. Without that,
+# "HP:0001250 - Seizure (observed in 3 patients)" runs to the closing bracket and
+# reports a correctly cited term as naming something else - the "cries wolf"
+# outcome this module exists to avoid. The bracketed form of the same aside is
+# already handled, by _NON_LABEL_OPENERS; this holds the separator form to the
+# same standard.
 _SEPARATED_AFTER = re.compile(
     r"(?P<curie>" + _CURIE_PREFIX + r":" + _CURIE_LOCAL + r")"
     r"\s*(?:[:–—]|-{1,2})\s+"
-    r"(?P<label>[^|\n]{2,120}?)"
-    r"\s*(?=[.;]\s|[|)\]]|$)"
+    r"(?P<label>[^|\n()\[\]]{2,120}?)"
+    r"\s*(?=[.;]\s|[|()\[\]]|$)"
 )
 
 
@@ -278,10 +284,55 @@ def clean_label(raw: str) -> Optional[str]:
         return None
     if not re.search(r"[A-Za-z]{2}", text):
         return None
-    first_word = re.split(r"[\s,]+", text.lower(), maxsplit=1)[0].rstrip(".")
+    first_word = _first_word(text)
     if first_word in _NON_LABEL_OPENERS:
         return None
+    text = _drop_trailing_clause(text)
+    if not (2 <= len(text) <= _MAX_LABEL_LENGTH):
+        return None
     return text
+
+
+def _first_word(text: str) -> str:
+    """The first word of a candidate, lowercased and stripped of punctuation.
+
+    Examples:
+        >>> _first_word("Reported in 4 probands")
+        'reported'
+        >>> _first_word("e.g. seizures")
+        'e.g'
+    """
+    return re.split(r"[\s,]+", text.lower(), maxsplit=1)[0].rstrip(".")
+
+
+def _drop_trailing_clause(label: str) -> str:
+    """Cut a comma-led clause that no ontology label would carry.
+
+    ``HP:0001250: Seizure, reported in 4 of 11 probands`` names the term
+    "Seizure" and then says something about it. Reading the whole run as the
+    label reports a correctly cited term as mislabelled, so the clause is cut at
+    the first comma-separated segment that opens with a word from
+    :data:`_NON_LABEL_OPENERS`.
+
+    Only such segments are cut, because commas are ordinary inside real labels -
+    "Seizure, generalized" is one - and truncating at every comma would cost
+    more than it saves.
+
+    Examples:
+        >>> _drop_trailing_clause("Seizure, reported in 4 of 11 probands")
+        'Seizure'
+        >>> _drop_trailing_clause("Seizure, generalized")
+        'Seizure, generalized'
+        >>> _drop_trailing_clause("Ectopia lentis")
+        'Ectopia lentis'
+    """
+    segments = label.split(",")
+    kept = [segments[0]]
+    for segment in segments[1:]:
+        if _first_word(segment.strip()) in _NON_LABEL_OPENERS:
+            break
+        kept.append(segment)
+    return ",".join(kept).strip()
 
 
 def _labelled_curies_in_line(line: str) -> list[tuple[str, str]]:

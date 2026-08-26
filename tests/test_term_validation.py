@@ -164,6 +164,45 @@ def test_prose_is_not_read_as_a_label(text: str) -> None:
     assert find_term_ids(text)[0].labels == ()
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # A parenthetical aside after a separator is not part of the name. The
+        # bracketed form of the same aside was always handled; this is the
+        # separator form held to the same standard.
+        ("- HP:0001250 - Seizure (observed in 3 patients)", "Seizure"),
+        ("| HP:0001250 - Seizure (observed) | note |", "Seizure"),
+        # A comma-led clause that opens with a word no label opens with.
+        ("HP:0001250: Seizure, reported in 4 of 11 probands.", "Seizure"),
+        ("HP:0001250 - Seizure, seen in most patients", "Seizure"),
+        # Commas are ordinary inside real labels, so these survive whole.
+        ("HP:0001250: Seizure, generalized", "Seizure, generalized"),
+        # Long labels are common and legitimate; no word cap may truncate them.
+        (
+            "GO:0000122 - negative regulation of transcription by RNA polymerase II",
+            "negative regulation of transcription by RNA polymerase II",
+        ),
+    ],
+)
+def test_prose_after_a_separator_is_not_read_into_the_label(
+    text: str, expected: str
+) -> None:
+    """Reading an aside as the name reports a correctly cited term as wrong."""
+    assert find_term_ids(text)[0].labels == (expected,)
+
+
+def test_an_aside_after_a_separator_does_not_become_a_mismatch(
+    offline_validator: TermValidator,
+) -> None:
+    """End to end: the term is cited correctly, so nothing may be flagged."""
+    report = offline_validator.validate_markdown(
+        "- HP:0001250 - Seizure (observed in 3 patients)"
+    )
+
+    assert report.checked_terms[0].agreement == LabelAgreement.MATCH
+    assert not report.has_problems
+
+
 def test_a_label_column_that_links_out_is_still_the_label() -> None:
     """The CURIE in a label cell's href must not disqualify that cell."""
     row = "| [Seizure](https://bioregistry.io/HP:0001250) | HP:0001250 | rare |"
@@ -749,6 +788,78 @@ def test_cli_in_place_leaves_a_hand_written_frontmatter_alone(
     assert "author:   Someone" in path.read_text(encoding="utf-8")
 
 
+@pytest.fixture
+def report_with_both_sections(tmp_path: Path) -> Path:
+    """A report already annotated by both validation commands."""
+    path = tmp_path / "both.md"
+    path.write_text(
+        "---\n"
+        "title: Report\n"
+        "reference_validation:\n"
+        "  total_references: 1\n"
+        "term_validation:\n"
+        "  total_terms: 1\n"
+        "---\n"
+        "# Report\n\n"
+        "| Seizure | HP:0001250 |\n\n"
+        "## Reference Validation\n\n"
+        "All extracted references resolved successfully.\n\n"
+        "## Term Validation\n\n"
+        "Stale section from an earlier run.\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_cli_in_place_keeps_the_other_commands_section(
+    report_with_both_sections: Path, label_cache: Path
+) -> None:
+    """Stripping both sections to re-extract must not delete the other one.
+
+    Losing it would also leave its frontmatter summary describing a section no
+    longer in the file, which is worse than either failure alone.
+    """
+    result = CliRunner().invoke(
+        app, _offline_args(report_with_both_sections, label_cache) + ["--in-place"]
+    )
+
+    assert result.exit_code == 0
+    written = report_with_both_sections.read_text(encoding="utf-8")
+    assert written.count("## Reference Validation") == 1
+    assert "All extracted references resolved successfully." in written
+    assert "reference_validation:" in written
+    # The term section was rewritten, not stacked.
+    assert written.count("## Term Validation") == 1
+    assert "Stale section from an earlier run." not in written
+    # And the reference section keeps its place ahead of the term section.
+    assert written.index("## Reference Validation") < written.index("## Term Validation")
+
+
+def test_cli_validate_references_in_place_keeps_the_term_section(
+    report_with_both_sections: Path
+) -> None:
+    """The mirror image: the reference command must not drop the term section."""
+    result = CliRunner().invoke(
+        app,
+        [
+            "validate-references",
+            str(report_with_both_sections),
+            "--in-place",
+            "--no-check-quotes",
+            "--skip-prefix",
+            "PMID",
+            "--skip-prefix",
+            "DOI",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = report_with_both_sections.read_text(encoding="utf-8")
+    assert written.count("## Term Validation") == 1
+    assert "Stale section from an earlier run." in written
+    assert written.count("## Reference Validation") == 1
+
+
 def test_cli_writes_json(report_file: Path, label_cache: Path, tmp_path: Path) -> None:
     out = tmp_path / "terms.json"
 
@@ -799,6 +910,51 @@ def test_cli_rejects_multiple_files_with_one_output(
     )
 
     assert result.exit_code == 1
+
+
+def test_cli_research_warns_about_a_term_flag_passed_without_validation(
+    monkeypatch,
+) -> None:
+    """The unused-flag warning compares against each option's default.
+
+    A repeatable option whose framework default is not None would make this fire
+    on every plain research run; its absence is covered by the reference suite's
+    equivalent test, and this pins the other direction for the term flags.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "research",
+            "widgets",
+            "--provider",
+            "mock",
+            "--no-cache",
+            "--term-skip-prefix",
+            "HP",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--term-skip-prefix has no effect" in result.output
+
+
+def test_lookup_errors_are_reported_as_an_unreachable_service() -> None:
+    """A rate-limited or erroring ontology is an outage, not a traceback.
+
+    The resolver raises rather than reporting a term as absent, so the type has
+    to be one the CLI catches; catching only OSError and ValueError would let it
+    through as a stack trace.
+    """
+    from deep_research_client.validation import lookup_error_types
+
+    types = lookup_error_types()
+
+    assert types, "the terms extra is installed, so the outage type should resolve"
+    assert all(issubclass(t, Exception) for t in types)
+    # Precisely the reason it needs naming: it is not already covered.
+    assert not any(issubclass(t, (OSError, ValueError)) for t in types)
 
 
 # --------------------------------------------------------------------------

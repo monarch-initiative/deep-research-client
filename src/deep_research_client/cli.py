@@ -1064,9 +1064,13 @@ def research(
             check_labels=term_labels,
         )
         logger.info("Validating ontology terms...")
+        from .validation import lookup_error_types
+
         try:
             term_report = term_validator.validate_result(result)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError) + lookup_error_types() as exc:
+            # The report is already saved, so an unreachable ontology service
+            # costs the term section, not the research.
             logger.error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
@@ -1163,7 +1167,7 @@ def validate_references_command(
       deep-research-client validate-references report.md --no-check-quotes --max-references 20
     """
     from .markdown_parser import parse_frontmatter
-    from .validation import strip_validation_section
+    from .validation import VALIDATION_SECTION_HEADING, render_with_sections, split_validation_sections
 
     if not files:
         logger.error("Provide at least one markdown file to validate")
@@ -1192,7 +1196,12 @@ def validate_references_command(
     any_problems = False
 
     for path in files:
-        content = strip_validation_section(path.read_text(encoding="utf-8"))
+        # Both kinds of section come off before extraction, so a previous run's
+        # output is never re-read as report content; the term section is kept
+        # aside so that writing this one back does not delete it.
+        content, existing_sections = split_validation_sections(
+            path.read_text(encoding="utf-8")
+        )
         # Scan the whole body rather than the Output section alone: identifiers
         # routinely appear in the Citations section and in provider-specific
         # sections that sit alongside it.
@@ -1220,7 +1229,15 @@ def validate_references_command(
                 updated = _refresh_validation_frontmatter(
                     content, frontmatter, report.summary()
                 )
-                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                path.write_text(
+                    render_with_sections(
+                        updated,
+                        existing_sections,
+                        VALIDATION_SECTION_HEADING,
+                        markdown_report,
+                    ),
+                    encoding="utf-8",
+                )
                 logger.info(f"Wrote validation section to {path}")
 
             if output:
@@ -1298,7 +1315,12 @@ def validate_terms_command(
       deep-research-client validate-terms reports/*.md --adapter sqlite:obo:
     """
     from .markdown_parser import parse_frontmatter
-    from .validation import strip_validation_section
+    from .validation import (
+        TERM_VALIDATION_SECTION_HEADING,
+        lookup_error_types,
+        render_with_sections,
+        split_validation_sections,
+    )
 
     if not files:
         logger.error("Provide at least one markdown file to validate")
@@ -1323,20 +1345,29 @@ def validate_terms_command(
         skip_prefix=skip_prefix,
         check_labels=check_labels,
     )
+    lookup_errors = (OSError, ValueError) + lookup_error_types()
 
     any_problems = False
 
     for path in files:
-        content = strip_validation_section(path.read_text(encoding="utf-8"))
+        # As above: strip both for extraction, keep the reference section aside
+        # so writing this one back leaves it, and its frontmatter summary,
+        # describing something still in the file.
+        content, existing_sections = split_validation_sections(
+            path.read_text(encoding="utf-8")
+        )
         frontmatter, body = parse_frontmatter(content)
 
         logger.info(f"Validating terms in {path}")
         try:
             report = validator.validate_markdown(body)
-        except (OSError, ValueError) as exc:
+        except lookup_errors as exc:
             # OSError covers network failures (urllib raises subclasses of it);
-            # ValueError covers a malformed cached record. Neither should reach
-            # the user as a traceback when every neighbouring path exits cleanly.
+            # ValueError covers a malformed cached record; the resolver's own
+            # outage error covers a rate-limited or erroring ontology service,
+            # which it raises rather than reporting the term as absent. None of
+            # them should reach the user as a traceback when every neighbouring
+            # path exits cleanly.
             logger.error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
@@ -1350,7 +1381,15 @@ def validate_terms_command(
                 updated = _refresh_validation_frontmatter(
                     content, frontmatter, report.summary(), key="term_validation"
                 )
-                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                path.write_text(
+                    render_with_sections(
+                        updated,
+                        existing_sections,
+                        TERM_VALIDATION_SECTION_HEADING,
+                        markdown_report,
+                    ),
+                    encoding="utf-8",
+                )
                 logger.info(f"Wrote term validation section to {path}")
 
             if output:

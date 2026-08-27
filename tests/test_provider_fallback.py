@@ -660,6 +660,33 @@ def test_the_report_never_carries_the_providers_own_error_text(formatter_class):
     assert secret in result.provider_attempts[0].reason
 
 
+@pytest.mark.parametrize("formatter_class", FORMATTERS)
+def test_a_quota_resets_at_does_not_reach_the_report(formatter_class):
+    """The one error type that sharpens its own remedy with provider text.
+
+    `_LIMIT_RESET` stops at a full stop or semicolon but deliberately keeps
+    commas, so "10am, Tuesday 19 August" survives as one time -- and so does
+    anything else comma-separated after it, up to the character cap.
+    """
+    spent = ProviderQuotaError(
+        "claude_code", "usage limit reached", resets_at="10am, acct_9f3b21c7ee"
+    )
+    result = ResearchResult(
+        markdown="body", provider=BACKUP, query="q", requested_provider="claude_code",
+        provider_attempts=[
+            ProviderAttempt.from_exception("claude_code", spent),
+            ProviderAttempt(provider=BACKUP, succeeded=True),
+        ],
+    )
+    rendered = formatter_class().format_full_markdown(result)
+
+    assert "acct_9f3b21c7ee" not in rendered
+    assert "renews at" not in rendered
+    assert "the plan's usage limit is spent" in rendered
+    # Still on the object, for whoever is actually debugging the outage.
+    assert "acct_9f3b21c7ee" in result.provider_attempts[0].reason
+
+
 def test_the_report_the_cli_writes_admits_the_fallback():
     """The processor is the path a saved report actually travels."""
     client = _client(
@@ -710,6 +737,66 @@ def test_cli_reaches_the_named_fallback_provider(tmp_path, monkeypatch):
     assert "no public API or code release yet" in result.output
     # Fail-closed: every candidate failed, so no report was written.
     assert not output.exists()
+
+
+def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
+    """The CLI's own fallback output, which no other test reaches.
+
+    `test_cli_reaches_the_named_fallback_provider` ends in exit code 1, so the
+    `if result.fell_back:` branch never runs there -- deleting it would fail
+    nothing. Reaching it needs two *available* providers, and no environment a
+    test can arrange gives the CLI that: `mock` is the only one without a
+    credential, and the rest would make real network calls.
+
+    So the client the command builds is substituted for one registered with two
+    real providers. Nothing is mocked in the `unittest.mock` sense -- the CLI,
+    the client, both providers, the formatter and the file write all run for
+    real; only the wiring between two of them is redirected.
+    """
+    real_client_class = cli_module.DeepResearchClient
+
+    def _two_providers(cache_config=None, provider_configs=None):
+        # provider_configs is passed deliberately, not forwarded: it skips
+        # environment detection, so whatever this machine happens to have
+        # configured cannot join the ordering. Without it the fallback found
+        # the `claude` CLI on PATH and made a real subprocess call.
+        client = real_client_class(
+            cache_config=cache_config,
+            provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
+        )
+        client.registry.register(
+            StandInProvider(ProviderConfig(name=PRIMARY), _params(error_type="billing"))
+        )
+        client.registry.register(
+            StandInProvider(ProviderConfig(name=BACKUP), _params())
+        )
+        return client
+
+    monkeypatch.setattr(cli_module, "DeepResearchClient", _two_providers)
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "research", "q",
+            "--provider", PRIMARY,
+            "--fallback",
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 0
+    # The client states the switch; the CLI adds the trail. Neither repeats
+    # the other, which is what the de-duplication was for.
+    assert "not the provider first tried" in result.output
+    assert "Providers tried:" in result.output
+    assert f"{BACKUP}: produced the report" in result.output
+    # The console keeps the provider's own words; the report does not.
+    assert "simulated billing failure" in result.output
+    content = output.read_text()
+    assert "fell_back: true" in content
+    assert "simulated billing failure" not in content
 
 
 def test_cli_rejects_nothing_when_fallback_is_absent(tmp_path, monkeypatch):

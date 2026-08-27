@@ -207,6 +207,14 @@ That text can quote whatever the provider chose to put in a response body —
 including, for a rejected key, the key — and these reports get committed, so
 the raw version stays on the result object and in the logs rather than on disk.
 
+Every key in `provider_attempts` is one the client produces, which is what
+makes the rule checkable by reading the list. A quota error's reset time is
+withheld for the same reason even though it is harmless in itself: it is parsed
+out of provider text, so keeping it would make the rule "ours, except one
+field". The console still prints the provider's own words — an operator
+diagnosing a failed provider needs them, and they are reading their own
+terminal rather than a file someone else committed.
+
 The result *object* is the exception: `requested_provider` and
 `provider_attempts` are always populated, so a library caller serialising a
 result sees them on every run, recording the single provider that answered.

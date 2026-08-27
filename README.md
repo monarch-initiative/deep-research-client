@@ -211,7 +211,7 @@ provider_attempts:
   succeeded: true
 ```
 
-Reports and cache entries produced without a fallback gain none of these keys, though the result object always carries `provider_attempts`. Only failures meaning *this provider cannot do the work* are followed. A 429 or a 5xx says to wait and retry the same provider, not to switch, and an unrecognised failure is not evidence that anyone else would do better. From Python:
+`remedy` is our reading of the failure, not the provider's own error text: that text can quote whatever a provider puts in a response body — including, for a rejected key, the key — and these reports get committed, so the raw version stays on the result object and in the logs. Reports and cache entries produced without a fallback gain none of these keys, though the result object always carries `provider_attempts`. Only failures meaning *this provider cannot do the work* are followed. A 429 or a 5xx says to wait and retry the same provider, not to switch, and an unrecognised failure is not evidence that anyone else would do better. From Python:
 
 ```python
 result = client.research("Statins and myopathy", provider="falcon", fallback=True)

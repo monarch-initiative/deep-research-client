@@ -985,6 +985,14 @@ def research(
         # The client already warned that someone else produced this. Restating
         # it here made one fallback emit the same sentence twice; what the CLI
         # adds is the trail, so that is all it prints.
+        #
+        # summary() carries the provider's own error text, which the *report*
+        # deliberately withholds. That difference is intended and was weighed:
+        # the console is where an operator diagnoses a failed provider, and
+        # withholding it there costs them the evidence while protecting
+        # nothing the raised error did not already print. A committed file is
+        # read by people who were not running the command, which is the
+        # distinction -- not secrecy.
         if result.fell_back:
             logger.warning(
                 "Providers tried:\n  %s",

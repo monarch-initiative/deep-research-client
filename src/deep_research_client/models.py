@@ -104,9 +104,12 @@ class ProviderAttempt(BaseModel):
     remedy: Optional[str] = Field(
         default=None,
         description=(
-            "What the failure means and what would fix it, in our words rather "
-            "than the provider's. Safe to write into a file that gets committed, "
-            "which `reason` is not: see fallback_frontmatter."
+            "What the failure means and what would fix it. Read from the error "
+            "*class*, never the instance, so it is ours in every case rather "
+            "than in most: ProviderQuotaError sharpens its own remedy with a "
+            "provider-supplied reset time, and an invariant with one silent "
+            "exception is not one a reader can rely on. The sharpened wording "
+            "is still on `reason`."
         ),
     )
 
@@ -146,7 +149,8 @@ class ProviderAttempt(BaseModel):
                 reason=exc.diagnosis,
                 retryable=exc.retryable,
                 status_code=exc.status_code,
-                remedy=exc.remedy,
+                # The class attribute, not exc.remedy: see the field above.
+                remedy=type(exc).remedy,
             )
         return cls(
             provider=provider,
@@ -170,6 +174,14 @@ class ProviderAttempt(BaseModel):
         logs and on the object, where it was before any of this was written to
         disk.
 
+        The rule this keeps is that every key here is one *we* produce, so it
+        can be checked by reading this list rather than by tracing each value
+        back to its origin. That is why a quota error's reset time -- parsed
+        out of provider text, and bounded only by a character cap that a
+        comma-separated account id fits inside -- does not appear, despite
+        being useful: it is worth little in a report read months later, and
+        keeping it would make the rule "ours, except one field".
+
         Returns:
             Keys safe to persist, with empty ones omitted.
 
@@ -182,6 +194,17 @@ class ProviderAttempt(BaseModel):
         'the API key is missing, invalid, or lacks access to this endpoint'
         >>> ProviderAttempt(provider="openai", succeeded=True).frontmatter_entry()
         {'provider': 'openai', 'succeeded': True}
+
+        A quota error keeps the reset time on ``reason`` and out of the report:
+
+        >>> from .exceptions import ProviderQuotaError
+        >>> spent = ProviderQuotaError(
+        ...     "claude_code", "usage limit reached", resets_at="10am, acct_9f3b21")
+        >>> attempt = ProviderAttempt.from_exception("claude_code", spent)
+        >>> attempt.frontmatter_entry()["remedy"]
+        "the plan's usage limit is spent"
+        >>> "acct_9f3b21" in attempt.reason
+        True
         """
         entry: Dict[str, Any] = {"provider": self.provider, "succeeded": self.succeeded}
         for key, value in (

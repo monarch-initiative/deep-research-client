@@ -81,6 +81,10 @@ class ResultFormatter:
         if result.run_metadata:
             metadata["run_metadata"] = result.run_metadata
 
+        # Record a fallback, and only a fallback: `provider` on its own would
+        # make a report produced by a stand-in read as a deliberate choice.
+        metadata.update(result.fallback_frontmatter())
+
         # Add citation count
         if result.citations:
             metadata["citation_count"] = len(result.citations)

@@ -9,7 +9,7 @@ import os
 import re
 import typer
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -607,6 +607,10 @@ def research(
         help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
+    fallback: Annotated[bool, typer.Option(
+        "--fallback", help="If the chosen provider cannot do the work (no credits, spent quota, rejected or missing credentials), try the other configured providers instead. Off by default: the report records which provider actually produced it")] = False,
+    fallback_provider: Annotated[Optional[List[str]], typer.Option(
+        "--fallback-provider", help="Provider to fall back to, in preference order (repeatable). Implies --fallback and replaces its automatic ordering")] = None,
     output: Annotated[Optional[Path], typer.Option(
         help="Output file path (prints to stdout if not provided)")] = None,
     no_cache: Annotated[bool, typer.Option(
@@ -692,6 +696,12 @@ def research(
 
       # Use provider-specific parameters
       deep-research-client research "Medical research" --provider perplexity --param reasoning_effort=high --param search_recency_filter=week
+
+      # Let another provider take over if this one is out of credits
+      deep-research-client research "Statins and myopathy" --provider falcon --fallback
+
+      # Name the fallback order explicitly
+      deep-research-client research "CRISPR delivery" --provider falcon --fallback-provider openai --fallback-provider perplexity
 
       # Use template with variables
       deep-research-client research --template research_template.md --var topic="machine learning" --var focus="healthcare applications"
@@ -951,6 +961,11 @@ def research(
     try:
         # Perform research
         logger.debug(f"Starting research with query: {query[:100]}...")
+        # An explicit list is an ordering instruction, so it replaces the
+        # automatic one rather than adding to it.
+        fallback_request: Union[bool, List[str]] = (
+            list(fallback_provider) if fallback_provider else fallback
+        )
         result = client.research(
             query,
             provider,
@@ -958,6 +973,7 @@ def research(
             effective_options.model,
             provider_params,
             metadata,
+            fallback_request,
         )
 
         # Show cache status
@@ -965,6 +981,15 @@ def research(
             logger.info("Result retrieved from cache")
         else:
             logger.info(f"Research completed using {result.provider}")
+
+        # Warn, not inform: the report came from someone other than the
+        # provider asked for, and that changes what the report means.
+        if result.fell_back:
+            logger.warning(
+                "Fell back to %s. Providers tried:\n  %s",
+                result.provider,
+                "\n  ".join(attempt.summary() for attempt in result.provider_attempts),
+            )
 
         # Determine if we're separating citations
         should_separate_citations = separate_citations is not None

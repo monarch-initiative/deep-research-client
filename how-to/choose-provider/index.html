@@ -528,6 +528,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fall-back-to-another-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fall Back to Another Provider
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fall Back to Another Provider">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-gets-recorded" class="md-nav__link">
+    <span class="md-ellipsis">
+      What gets recorded
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-failures-are-followed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Which failures are followed
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      Things to know
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trying-it-without-an-outage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trying it without an outage
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#check-available-models" class="md-nav__link">
     <span class="md-ellipsis">
       Check Available Models
@@ -1170,6 +1221,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fall-back-to-another-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fall Back to Another Provider
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fall Back to Another Provider">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-gets-recorded" class="md-nav__link">
+    <span class="md-ellipsis">
+      What gets recorded
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-failures-are-followed" class="md-nav__link">
+    <span class="md-ellipsis">
+      Which failures are followed
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      Things to know
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trying-it-without-an-outage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trying it without an outage
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#check-available-models" class="md-nav__link">
     <span class="md-ellipsis">
       Check Available Models
@@ -1349,6 +1451,185 @@ deep-research-client research &quot;Clinical trial evidence for alpha-synuclein 
   --provider consensus \
   --output synuclein-trials.md
 </code></pre>
+<h2 id="fall-back-to-another-provider">Fall Back to Another Provider</h2>
+<p>A run can fail for reasons no retry fixes: an account out of credits, a spent
+plan allowance, a rejected or missing key. <code>--fallback</code> lets a different
+provider take the work instead.</p>
+<pre><code class="language-bash">deep-research-client research &quot;Statins and myopathy&quot; \
+  --provider falcon --fallback --output report.md
+</code></pre>
+<p>It is <strong>off by default, and deliberately so.</strong> A report records the provider
+that produced it, and downstream curation reads that field: silently swapping
+providers would make those records wrong. So you have to ask for it.</p>
+<p><code>--fallback</code> tries the other configured providers in <strong>registration order</strong>,
+which is a fixed sequence filtered down to whichever you have configured — not
+a preference ranking, and not dependent on how your environment is set up:</p>
+<pre><code>openai, falcon, asta, perplexity, consensus, openscientist, cyberian, claude_code
+</code></pre>
+<p>Each candidate is a paid account, so when it matters which one you spend money
+on, name them yourself rather than relying on that order:</p>
+<pre><code class="language-bash">deep-research-client research &quot;CRISPR delivery mechanisms&quot; \
+  --provider falcon \
+  --fallback-provider openai \
+  --fallback-provider perplexity \
+  --output report.md
+</code></pre>
+<p>Naming providers <em>replaces</em> the automatic ordering rather than adding to it, so
+a configured provider you leave out is never tried. For a single fallback the
+bare name works too — <code>fallback="openai"</code> from Python is the same as
+<code>fallback=["openai"]</code>.</p>
+<h3 id="what-gets-recorded">What gets recorded</h3>
+<p>A report produced by a fallback says so in its frontmatter, and says why:</p>
+<pre><code class="language-yaml">provider: openai
+fell_back: true
+requested_provider: falcon
+provider_attempts:
+- provider: falcon
+  succeeded: false
+  error_type: ProviderBillingError
+  status_code: 402
+  remedy: the account is out of credits
+  retryable: false
+- provider: openai
+  succeeded: true
+</code></pre>
+<p>A report that came from the provider you asked for gains none of these fields:
+their presence <em>is</em> the finding.</p>
+<p><code>remedy</code> is our reading of the failure, not the provider's own error text.
+That text can quote whatever the provider chose to put in a response body —
+including, for a rejected key, the key — and these reports get committed, so
+the raw version stays on the result object and in the logs rather than on disk.</p>
+<p>Every key in <code>provider_attempts</code> is one the client produces, which is what
+makes the rule checkable by reading the list. A quota error's reset time is
+withheld for the same reason even though it is harmless in itself: it is parsed
+out of provider text, so keeping it would make the rule "ours, except one
+field". The console still prints the provider's own words — an operator
+diagnosing a failed provider needs them, and they are reading their own
+terminal rather than a file someone else committed.</p>
+<p>Two other places behave differently, and it is worth being precise about how:</p>
+<ul>
+<li><strong>Cache entries</strong> do carry <code>requested_provider</code> and <code>provider_attempts</code>, as
+  <code>null</code> and <code>[]</code>. Nothing from a run is stored in them — the entry is written
+  before the provenance is stamped, so a cached answer can never be replayed as
+  a fallback that never happened — but the keys themselves are present.</li>
+<li><strong>The result object</strong> always populates both, so a library caller serialising
+  a result sees them on every run, recording the single provider that answered.
+  <code>fell_back</code> is a property rather than a stored field, so it is <em>not</em> in
+  <code>model_dump()</code>; read it off the object, or derive it from
+  <code>provider_attempts</code>.</li>
+</ul>
+<h3 id="which-failures-are-followed">Which failures are followed</h3>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Falls back?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No credits (402), spent quota, rejected key (401/403), not configured</td>
+<td>Yes*</td>
+<td>This provider cannot do the work; another might</td>
+</tr>
+<tr>
+<td>Rate limited (429)</td>
+<td>No</td>
+<td>The same provider will take it shortly -- wait and retry</td>
+</tr>
+<tr>
+<td>Server error (5xx)</td>
+<td>No</td>
+<td>A temporary fault, not a reason to change who answers</td>
+</tr>
+<tr>
+<td>Anything unrecognised</td>
+<td>No</td>
+<td>An unexplained failure is not evidence another provider would do better</td>
+</tr>
+</tbody>
+</table>
+<p>The last row is the conservative default: a fallback changes who produced your
+report, so it is taken only where the failure type is evidence it should be.</p>
+<p>* Unless that provider has already answered this query, in which case its own
+cached report is served and nothing falls back — see <em>A provider you can no
+longer reach</em> below.</p>
+<h3 id="things-to-know">Things to know</h3>
+<p><strong><code>--model</code> and <code>--param</code> apply to the first provider only.</strong> They were chosen
+for the provider you named -- a Perplexity model name means nothing to OpenAI,
+and an unknown parameter is a hard error. A fallback provider therefore runs on
+its own defaults, and the run says so on stderr when it happens.</p>
+<p><strong>Nothing is written until a provider succeeds.</strong> If every candidate fails, the
+run raises with the last failure and no report, no cache entry, and no partial
+file is left behind. Since there is no result, there is no
+<code>provider_attempts</code> on one — so the trail is carried on the error instead.
+Read it with <code>getattr(err, "provider_attempts", ())</code>: it lists every candidate
+tried, including the one whose failure ended the run, but only when that
+failure is one the client classified. A provider that cannot recognise its own
+SDK error re-raises it bare, and a plain exception has no field to carry a
+trail; the run logs it in that case instead. <code>err.__cause__</code> is left alone
+either way, because providers set it themselves to the upstream API error.</p>
+<p>The CLI prints the same trail on a run where every candidate failed, so you do
+not need to catch anything to see it.</p>
+<p><strong>A provider you can no longer reach can still answer from its own cache.</strong>
+When a candidate cannot be prepared — its key revoked, say — and <em>another
+candidate remains</em>, that candidate's cache is consulted before the next
+provider is called. You get the original provider's report, attributed to it,
+and no second provider is billed.</p>
+<p>The rule is "another candidate remains", not "someone would otherwise be
+billed", and the two come apart: <code>--fallback-provider deeper_med</code> unlocks the
+read even though that stub could never be billed, while <code>--provider falcon
+--fallback</code> with nothing else configured does not, because falcon is then the
+only candidate. Without any fallback flag an unconfigured provider fails
+exactly as it always did — which is the property the narrow rule protects.</p>
+<p>Two more things worth knowing. Cache entries never expire, so a report served
+this way may be arbitrarily old. And nothing falls back when the <em>first</em>
+candidate answers from cache; if a later one does, the earlier failures are
+still recorded and the report reads <code>fell_back: true</code> — accurate about them,
+though silent about the serving candidate, as below.</p>
+<p><strong>This is the case the report does not record.</strong> When a candidate answers from
+its own cache, nothing marks that it could not be reached this run. At the
+first candidate the saved report is identical to an ordinary cache hit —
+<code>provider: falcon</code>, <code>cached: true</code>, and no <code>fell_back</code> or <code>provider_attempts</code>
+entry, because nothing fell back and the report really was produced by falcon.
+At a later one the earlier failures are recorded and <code>fell_back</code> is true, but
+the serving candidate is still listed only as having produced the report.
+That the provider was unreachable <em>this</em> run is an operational fact about
+the run rather than about the report, so it goes to the log and nowhere
+else. If you need it durably, capture stderr: the run
+warns <code>Provider falcon cannot do this run: … Serving the report it produced
+for this query earlier</code>.</p>
+<h3 id="trying-it-without-an-outage">Trying it without an outage</h3>
+<p>The mock provider can simulate any of these failures, so you can see the
+behaviour before you rely on it. With a second provider configured, this
+produces a real report whose frontmatter has the shape shown above, with
+<code>requested_provider: mock</code> and whichever provider answered:</p>
+<pre><code class="language-bash">ENABLE_MOCK_PROVIDER=true deep-research-client research &quot;test&quot; \
+  --provider mock --param error_type=billing --fallback \
+  --output report.md
+</code></pre>
+<p>If you have no other provider configured, the run has nowhere to go and stops
+with the mock's simulated billing failure -- which is the fail-closed behaviour,
+not a bug. To watch the switch happen without configuring anything, name
+<code>deeper_med</code> as the fallback: it is a permanently unavailable stub, so the run
+still ends in an error and writes no report, but the log shows the fallback
+being taken and each provider explaining itself:</p>
+<pre><code class="language-bash">ENABLE_MOCK_PROVIDER=true deep-research-client research &quot;test&quot; \
+  --provider mock --param error_type=billing \
+  --fallback-provider deeper_med
+</code></pre>
+<p>Swap <code>error_type=billing</code> for <code>error_type=quota</code> in the <strong>first</strong> command
+above — the one that writes <code>report.md</code> — to watch the withholding happen. A
+quota failure is the only kind whose remedy embeds a provider-supplied reset
+time, so the console prints <code>renews at 3pm, pool quota_pool_7f21</code> while the
+saved report keeps only <code>the plan's usage limit is spent</code>. Running it against
+the <code>deeper_med</code> command just above shows you the console half and no report,
+since that one is fail-closed by design.</p>
+<p>Note that <code>mock</code> is reached by <code>--fallback-provider mock</code> but never by
+<code>--fallback</code> on its own: a provider that invents its reports is excluded from
+the automatic ordering, so a real run that runs out of credits fails rather
+than quietly handing you a fabricated report.</p>
 <h2 id="check-available-models">Check Available Models</h2>
 <p>List all available models and their characteristics:</p>
 <pre><code class="language-bash"># All models

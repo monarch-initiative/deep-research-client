@@ -2036,6 +2036,14 @@
 <td>Model to use (overrides provider default)</td>
 </tr>
 <tr>
+<td><code>--fallback</code></td>
+<td>If the chosen provider cannot do the work, try the other configured providers instead, in registration order (off by default)</td>
+</tr>
+<tr>
+<td><code>--fallback-provider TEXT</code></td>
+<td>Provider to fall back to, in preference order (repeatable); implies <code>--fallback</code></td>
+</tr>
+<tr>
 <td><code>--output PATH</code></td>
 <td>Output file path (prints to stdout if not provided)</td>
 </tr>
@@ -2216,6 +2224,13 @@ deep-research-client research &quot;CFAP300 gene function&quot; \
 deep-research-client research &quot;AI&quot; \
   --base-url https://api.example.com \
   --api-key-env CUSTOM_API_KEY
+
+# Let another provider take over if this one is out of credits
+deep-research-client research &quot;Statins and myopathy&quot; --provider falcon --fallback
+
+# Name the fallback order explicitly
+deep-research-client research &quot;CRISPR delivery&quot; \
+  --provider falcon --fallback-provider openai --fallback-provider perplexity
 
 # Check every cited identifier before trusting the report
 deep-research-client research &quot;Statins and myopathy risk&quot; \

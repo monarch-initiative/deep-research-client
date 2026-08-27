@@ -55,6 +55,8 @@ __all__ = [
     "ProviderRateLimitError",
     "ProviderTransientError",
     "truncate_detail",
+    "FALLBACK_WORTHY_ERRORS",
+    "is_fallback_worthy",
     "classify_status",
     "classify_exception",
     "extract_status_code",
@@ -397,3 +399,55 @@ def classify_exception(provider: str, exc: BaseException) -> Optional[ProviderEr
     if status_code is None:
         return None
     return classify_status(provider, status_code, str(exc))
+
+
+#: Failures that mean "this provider cannot do the work" -- so a *different*
+#: provider might succeed at the same request.
+#:
+#: This is deliberately a separate axis from :attr:`ProviderError.retryable`,
+#: not its inverse. ``retryable`` answers "would calling this provider again
+#: help?"; this answers "would calling someone else help?". Today's types make
+#: the two look complementary, but they are not the same question, and a future
+#: error meaning "the request itself is malformed" would answer no to both.
+FALLBACK_WORTHY_ERRORS: tuple[type[ProviderError], ...] = (
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderQuotaError,
+    # Covers ProviderNotInstalledError, which subclasses it.
+    ProviderNotConfiguredError,
+)
+
+
+def is_fallback_worthy(exc: BaseException) -> bool:
+    """Report whether another provider could succeed where this one failed.
+
+    Unrecognised failures answer False. A fallback is a silent change of who
+    produced the report, so it is taken only where the type is evidence that
+    this provider specifically cannot do the work -- never on a bare
+    ``ValueError`` whose cause nobody has established.
+
+    Args:
+        exc: The exception a provider raised.
+
+    Returns:
+        True when trying a different provider is justified.
+
+    >>> is_fallback_worthy(ProviderBillingError("falcon", "no credits", 402))
+    True
+    >>> is_fallback_worthy(ProviderNotInstalledError("cyberian", "no agentapi"))
+    True
+
+    A throttle or a 5xx is the same provider saying "not right now", so the
+    remedy is to wait, not to switch:
+
+    >>> is_fallback_worthy(ProviderRateLimitError("openai", "slow down", 429))
+    False
+    >>> is_fallback_worthy(ProviderTransientError("asta", "bad gateway", 502))
+    False
+
+    And an unclassified failure is not evidence of anything:
+
+    >>> is_fallback_worthy(ValueError("malformed response"))
+    False
+    """
+    return isinstance(exc, FALLBACK_WORTHY_ERRORS)

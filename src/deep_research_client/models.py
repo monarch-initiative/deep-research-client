@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from .exceptions import MAX_DETAIL_CHARS, truncate_detail
+from .exceptions import MAX_DETAIL_CHARS, ProviderError, truncate_detail
 
 
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
@@ -71,6 +71,91 @@ class ResearchArtifact(BaseModel):
         return (self.media_type or "").startswith("image/")
 
 
+class ProviderAttempt(BaseModel):
+    """One provider asked to do a research run, and how it answered.
+
+    A fallback changes who produced a report, which is exactly the kind of
+    thing a curator must be able to see afterwards rather than infer. One of
+    these is recorded per provider tried, in the order they were tried, so the
+    trail reads as a sequence rather than a single verdict.
+
+    >>> ProviderAttempt(provider="openai", succeeded=True).summary()
+    'openai: produced the report'
+    """
+
+    provider: str = Field(..., description="Name of the provider that was tried")
+    succeeded: bool = Field(..., description="Whether this provider produced the report")
+    error_type: Optional[str] = Field(
+        default=None, description="Class name of the failure, when this provider failed"
+    )
+    reason: Optional[str] = Field(
+        default=None, description="What the provider said, and what it means"
+    )
+    retryable: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether calling this same provider again could have helped; None "
+            "when the failure was not one we classify"
+        ),
+    )
+
+    @classmethod
+    def from_exception(cls, provider: str, exc: BaseException) -> "ProviderAttempt":
+        """Record a failed attempt from the exception that ended it.
+
+        Args:
+            provider: Name of the provider that failed.
+            exc: The exception it raised.
+
+        Returns:
+            A failed attempt carrying whatever the failure could tell us.
+
+        >>> from .exceptions import ProviderBillingError
+        >>> attempt = ProviderAttempt.from_exception(
+        ...     "falcon", ProviderBillingError("falcon", "no credits", 402))
+        >>> attempt.error_type, attempt.retryable
+        ('ProviderBillingError', False)
+        >>> attempt.reason
+        '402 no credits -- the account is out of credits'
+
+        An unclassified failure records what it can and leaves ``retryable``
+        unset rather than guessing:
+
+        >>> plain = ProviderAttempt.from_exception("mock", RuntimeError("boom"))
+        >>> plain.error_type, plain.reason, plain.retryable
+        ('RuntimeError', 'boom', None)
+        """
+        if isinstance(exc, ProviderError):
+            return cls(
+                provider=provider,
+                succeeded=False,
+                error_type=type(exc).__name__,
+                reason=exc.diagnosis,
+                retryable=exc.retryable,
+            )
+        return cls(
+            provider=provider,
+            succeeded=False,
+            error_type=type(exc).__name__,
+            reason=truncate_detail(str(exc), MAX_DETAIL_CHARS),
+        )
+
+    def summary(self) -> str:
+        """Render this attempt as a single human-readable line.
+
+        Returns:
+            One line naming the provider and what happened.
+
+        >>> from .exceptions import ProviderQuotaError
+        >>> print(ProviderAttempt.from_exception(
+        ...     "claude_code", ProviderQuotaError("claude_code", "limit reached")).summary())
+        claude_code: limit reached -- the plan's usage limit is spent
+        """
+        if self.succeeded:
+            return f"{self.provider}: produced the report"
+        return f"{self.provider}: {self.reason or self.error_type or 'failed'}"
+
+
 class ResearchResult(BaseModel):
     """Result from a deep research query."""
 
@@ -108,6 +193,79 @@ class ResearchResult(BaseModel):
             "configuration in provider_config."
         ),
     )
+
+    # Which provider actually did the work. ``provider`` above already names
+    # the one that produced this report; these say what was *asked for* and
+    # what was tried on the way, so a report produced by a fallback can never
+    # read as one produced by the provider the caller named.
+    requested_provider: Optional[str] = Field(
+        default=None,
+        description=(
+            "Provider the caller asked for, when they named one. Differs from "
+            "provider only when a fallback was taken; None when the caller let "
+            "the client choose."
+        ),
+    )
+    provider_attempts: List[ProviderAttempt] = Field(
+        default_factory=list,
+        description=(
+            "Providers tried for this run, in order, and why each failed. "
+            "Describes this run only, so it is never read back from cache."
+        ),
+    )
+
+    @property
+    def fell_back(self) -> bool:
+        """Report whether a provider other than the first choice produced this.
+
+        Returns:
+            True when at least one provider was tried and failed first.
+
+        >>> ResearchResult(markdown="x", provider="openai", query="q").fell_back
+        False
+        >>> ResearchResult(markdown="x", provider="openai", query="q", provider_attempts=[
+        ...     ProviderAttempt(provider="falcon", succeeded=False, reason="402"),
+        ...     ProviderAttempt(provider="openai", succeeded=True),
+        ... ]).fell_back
+        True
+        """
+        return any(not attempt.succeeded for attempt in self.provider_attempts)
+
+    def fallback_frontmatter(self) -> Dict[str, Any]:
+        """Render the fallback provenance for a report's frontmatter.
+
+        Lives here rather than in a formatter because there is more than one
+        formatter, and a fallback that only some reports admit to would be
+        worse than one none of them mention.
+
+        Returns:
+            Frontmatter keys describing the fallback, or an empty dict when no
+            fallback happened -- the presence of these keys is the finding.
+
+        >>> ResearchResult(markdown="x", provider="openai", query="q").fallback_frontmatter()
+        {}
+        >>> result = ResearchResult(
+        ...     markdown="x", provider="openai", query="q", requested_provider="falcon",
+        ...     provider_attempts=[
+        ...         ProviderAttempt(provider="falcon", succeeded=False, reason="402"),
+        ...         ProviderAttempt(provider="openai", succeeded=True),
+        ...     ])
+        >>> result.fallback_frontmatter()["fell_back"]
+        True
+        >>> result.fallback_frontmatter()["requested_provider"]
+        'falcon'
+        >>> result.fallback_frontmatter()["provider_attempts"]
+        [{'provider': 'falcon', 'succeeded': False, 'reason': '402'}, {'provider': 'openai', 'succeeded': True}]
+        """
+        if not self.fell_back:
+            return {}
+        metadata: Dict[str, Any] = {"fell_back": True}
+        if self.requested_provider:
+            metadata["requested_provider"] = self.requested_provider
+        metadata["provider_attempts"] = [
+            attempt.model_dump(exclude_none=True) for attempt in self.provider_attempts
+        ]
+        return metadata
 
 
 class ProviderConfig(BaseModel):

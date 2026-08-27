@@ -429,7 +429,7 @@ def test_an_unclassified_terminal_failure_logs_the_trail_instead(caplog):
     client = _client((PRIMARY, _params(error_type="billing")))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(RuntimeError) as caught:
             client.research("q", provider=PRIMARY, fallback=[BACKUP])
 
@@ -452,7 +452,7 @@ def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
     client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(RuntimeError):
             client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
 
@@ -579,7 +579,7 @@ def test_the_log_says_the_run_ends_rather_than_leaving_it_open(caplog):
     client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(RuntimeError):
             client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
 
@@ -647,7 +647,7 @@ def test_a_typo_in_the_fallback_list_fails_before_anything_is_called(caplog):
         (PRIMARY, _params(error_type="billing")),
         (BACKUP, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(ValueError, match="'mok_backup' not found"):
             client.research("q", provider=PRIMARY, fallback=["mok_backup", BACKUP])
 
@@ -800,7 +800,7 @@ def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path
     later = _client((BACKUP, _params()), cache_dir=tmp_path)
     assert "falcon" not in [p.name for p in later.registry.get_available_providers()]
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         result = later.research("q", provider="falcon", fallback=[BACKUP])
 
     assert result.provider == "falcon"
@@ -943,7 +943,7 @@ def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
         (BACKUP, _params()),
         cache_dir=tmp_path,
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         result = client.research("q", provider=PRIMARY, fallback=True)
 
     assert result.cached is warm_the_cache
@@ -959,7 +959,7 @@ def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
 def test_no_fallback_is_announced_when_none_happened(caplog):
     """The warning must not fire on an ordinary run."""
     client = _client((PRIMARY, _params()))
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research("q", provider=PRIMARY)
 
     assert not [
@@ -1006,7 +1006,7 @@ def test_dropping_overrides_is_said_out_loud(caplog):
         (PRIMARY, _params(error_type="billing")),
         (BACKUP, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research(
             "q",
             provider=PRIMARY,
@@ -1029,7 +1029,7 @@ def test_the_dropped_override_warning_names_the_provider_that_got_them(caplog):
         (BACKUP, _params(error_type="auth")),
         (SPARE, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research(
             "q",
             provider=PRIMARY,

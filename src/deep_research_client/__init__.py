@@ -39,13 +39,20 @@ from .model_cards import (
     list_all_aliases
 )
 from .validation import (
+    LabelAgreement,
     ReferenceCheck,
     ReferenceStatus,
     ReferenceValidationReport,
     ReferenceValidator,
     SupportingTextCheck,
+    TermCheck,
+    TermStatus,
+    TermValidationReport,
+    TermValidator,
     TopicalRelevance,
     extract_references,
+    extract_terms,
+    term_validator_is_available,
     validator_is_available,
 )
 
@@ -96,4 +103,11 @@ __all__ = [
     "TopicalRelevance",
     "extract_references",
     "validator_is_available",
+    "LabelAgreement",
+    "TermCheck",
+    "TermStatus",
+    "TermValidationReport",
+    "TermValidator",
+    "extract_terms",
+    "term_validator_is_available",
 ]

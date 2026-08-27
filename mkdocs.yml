@@ -24,6 +24,7 @@ nav:
     - Use Cyberian + Codex: how-to/use-cyberian-codex.md
     - Use Templates: how-to/templates.md
     - Validate References: how-to/validate-references.md
+    - Validate Ontology Terms: how-to/validate-terms.md
     - Manage Cache: how-to/cache.md
     - Browse Cache: how-to/browse-cache.md
     - Browse Files: how-to/browse-files.md

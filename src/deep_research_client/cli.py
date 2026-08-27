@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING, Optional, List
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
-    from .validation import ReferenceValidationReport, ReferenceValidator
+    from .validation import (
+        ReferenceValidationReport,
+        ReferenceValidator,
+        TermValidationReport,
+        TermValidator,
+    )
 
 from .client import DeepResearchClient
 from .processing import ResearchProcessor
@@ -424,16 +429,90 @@ def _build_reference_validator(
     return ReferenceValidator(**kwargs)
 
 
+def _build_term_validator(
+    adapter: Optional[str],
+    cache_dir: Optional[Path],
+    oak_config: Optional[Path],
+    offline: bool,
+    max_terms: Optional[int],
+    skip_prefix: Optional[List[str]] = None,
+    check_labels: bool = True,
+) -> "TermValidator":
+    """Build a TermValidator, exiting with a hint if the extra is missing."""
+    from .validation import DEFAULT_ADAPTER, TERM_INSTALL_HINT, TermValidator, term_validator_is_available
+
+    if not term_validator_is_available():
+        logger.error(TERM_INSTALL_HINT)
+        raise typer.Exit(1)
+
+    return TermValidator(
+        adapter=adapter or DEFAULT_ADAPTER,
+        cache_dir=cache_dir,
+        oak_config=oak_config,
+        offline=offline,
+        max_terms=max_terms,
+        skip_prefixes=list(skip_prefix or []),
+        check_labels=check_labels,
+    )
+
+
+def _echo_term_validation_summary(report: "TermValidationReport") -> None:
+    """Log a one-line-per-outcome summary of a term validation report."""
+    if not report.checked_terms:
+        logger.info("No ontology term identifiers found to validate")
+        return
+
+    logger.info(
+        "Validated %d terms: %d resolved, %d unresolved, %d obsolete, %d unverifiable",
+        report.total_terms,
+        report.verified_count,
+        report.not_found_count,
+        report.obsolete_count,
+        report.unverifiable_count,
+    )
+    if report.all_terms_failed:
+        logger.warning(
+            "Every term failed to resolve, which usually means the ontology service "
+            "could not be reached rather than a report full of invented identifiers"
+        )
+    for check in report.confabulated_terms:
+        logger.warning("Unresolved term: %s (%s)", check.term_id, check.message)
+    for check in report.obsolete_terms:
+        replacement = f", replaced by {check.replaced_by}" if check.replaced_by else ""
+        logger.warning("Obsolete term: %s%s", check.term_id, replacement)
+    if report.labels_checked:
+        logger.info(
+            "Checked %d labels: %d match the term, %d name a different one",
+            report.labels_checked,
+            report.labels_matching,
+            len(report.mislabelled_terms),
+        )
+    for check in report.mislabelled_terms:
+        logger.warning(
+            "%s is %r, but the report calls it %s",
+            check.term_id,
+            check.ontology_label,
+            ", ".join(repr(label) for label in check.reported_labels or []),
+        )
+    if report.unresolvable_prefixes:
+        logger.info(
+            "No resolver covers these prefixes, so their terms were not checked: %s",
+            ", ".join(report.unresolvable_prefixes),
+        )
+
+
 def _refresh_validation_frontmatter(
     content: str,
     frontmatter: dict,
-    report: "ReferenceValidationReport",
+    summary: dict,
+    key: str = "reference_validation",
 ) -> str:
-    """Bring a stale ``reference_validation`` frontmatter summary up to date.
+    """Bring a stale validation summary in a report's frontmatter up to date.
 
-    A report produced by ``research --validate-references`` carries a summary in
-    its frontmatter. Re-validating it would otherwise leave that summary
-    contradicting the section written below it.
+    A report produced by ``research --validate-references`` or
+    ``research --validate-terms`` carries a summary in its frontmatter.
+    Re-validating it would otherwise leave that summary contradicting the
+    section written below it.
 
     The frontmatter is only rewritten when such a summary is already present, so
     a hand-written file is never reformatted by a tool that was asked to check
@@ -442,12 +521,13 @@ def _refresh_validation_frontmatter(
     Args:
         content: The report text, with any previous validation section removed.
         frontmatter: Frontmatter already parsed from that text.
-        report: The fresh validation report.
+        summary: The fresh summary to write under ``key``.
+        key: Frontmatter key the summary belongs under.
 
     Returns:
         The report text, with the summary refreshed if there was one.
     """
-    if "reference_validation" not in frontmatter:
+    if key not in frontmatter:
         return content
 
     import yaml
@@ -455,7 +535,7 @@ def _refresh_validation_frontmatter(
     from .markdown_parser import parse_frontmatter
 
     updated = dict(frontmatter)
-    updated["reference_validation"] = report.summary()
+    updated[key] = summary
     _, body = parse_frontmatter(content)
     rendered = yaml.dump(updated, default_flow_style=False, sort_keys=False).rstrip()
     return f"---\n{rendered}\n---\n{body}"
@@ -577,8 +657,25 @@ def research(
         "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
     validation_relevance: Annotated[bool, typer.Option(
         "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
+    # Ontology term validation options
+    validate_terms: Annotated[bool, typer.Option(
+        "--validate-terms", help="Resolve every cited ontology CURIE, check it against the label the report gave it, and append a validation section (requires the 'terms' extra)")] = False,
+    term_adapter: Annotated[Optional[str], typer.Option(
+        "--term-adapter", help="OAK adapter to resolve terms through (default: ols:; use sqlite:obo: to download each ontology once and answer locally)")] = None,
+    term_oak_config: Annotated[Optional[Path], typer.Option(
+        "--term-oak-config", help="oak_config.yaml mapping prefixes to adapters, for ontologies the default adapter does not serve")] = None,
+    term_cache_dir: Annotated[Optional[Path], typer.Option(
+        "--term-cache-dir", help="Directory for cached term labels (default: ./terms_cache)")] = None,
+    term_offline: Annotated[bool, typer.Option(
+        "--term-offline", help="Resolve terms only from the label cache, never reaching the network")] = False,
+    term_max_terms: Annotated[Optional[int], typer.Option(
+        "--term-max-terms", min=1, help="Stop after validating this many ontology terms")] = None,
+    term_skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--term-skip-prefix", help="CURIE prefix to report as unverifiable instead of resolving (repeatable)")] = None,
+    term_labels: Annotated[bool, typer.Option(
+        "--term-labels/--no-term-labels", help="Compare the label written beside each CURIE with the term's own label (free: no extra lookups)")] = True,
     fail_on_unresolved: Annotated[bool, typer.Option(
-        "--fail-on-unresolved", help="Exit non-zero if any reference fails to resolve or any quote is unsupported")] = False,
+        "--fail-on-unresolved", help="Exit non-zero if any reference or ontology term fails to resolve, any quote is unsupported, or any term is named as a different term")] = False,
 ):
     """Perform deep research on a query.
 
@@ -808,19 +905,45 @@ def research(
             ("--validation-skip-prefix", validation_skip_prefix, None),
             ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
             ("--validation-no-relevance", validation_relevance, True),
-            ("--fail-on-unresolved", fail_on_unresolved, False),
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
                 logger.warning(f"{flag_name} has no effect without --validate-references")
 
+    if not validate_terms:
+        unused_term_flags: tuple[tuple[str, object, object], ...] = (
+            ("--term-adapter", term_adapter, None),
+            ("--term-oak-config", term_oak_config, None),
+            ("--term-cache-dir", term_cache_dir, None),
+            ("--term-offline", term_offline, False),
+            ("--term-max-terms", term_max_terms, None),
+            ("--term-skip-prefix", term_skip_prefix, None),
+            ("--no-term-labels", term_labels, True),
+        )
+        for flag_name, flag_value, default in unused_term_flags:
+            if flag_value != default:
+                logger.warning(f"{flag_name} has no effect without --validate-terms")
+
+    if not validate_references and not validate_terms and fail_on_unresolved:
+        logger.warning(
+            "--fail-on-unresolved has no effect without --validate-references "
+            "or --validate-terms"
+        )
+
+    # Checked before the provider call: discovering a missing extra after a run
+    # that took minutes and real money would be a poor trade.
     if validate_references:
-        # Checked before the provider call: discovering a missing extra after a
-        # run that took minutes and real money would be a poor trade.
         from .validation import INSTALL_HINT, validator_is_available
 
         if not validator_is_available():
             logger.error(INSTALL_HINT)
+            raise typer.Exit(1)
+
+    if validate_terms:
+        from .validation import TERM_INSTALL_HINT, term_validator_is_available
+
+        if not term_validator_is_available():
+            logger.error(TERM_INSTALL_HINT)
             raise typer.Exit(1)
 
     logger.info("Researching...")
@@ -898,56 +1021,91 @@ def research(
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
-    if not validate_references:
+    if not validate_references and not validate_terms:
         return
 
     # Validation runs only after the report has been written or printed. It is
     # network-bound and can fail long after the expensive part of the run has
     # succeeded; losing a report that cost minutes and real money to an NCBI
     # outage would be a poor trade for a citation check.
-    reference_validator = _build_reference_validator(
-        cache_dir=validation_cache_dir,
-        email=validation_email,
-        full_text=validation_full_text,
-        max_references=validation_max_references,
-        skip_prefix=validation_skip_prefix,
-        rate_limit_delay=validation_rate_limit_delay,
-        check_relevance=validation_relevance,
-    )
-    logger.info("Validating references...")
-    try:
-        validation_report = reference_validator.validate_result(result)
-    except (OSError, ValueError) as exc:
-        # urllib raises OSError subclasses for network failures. The report is
-        # already saved, so report the real cause rather than letting it surface
-        # as a filesystem error.
-        logger.error(f"Reference validation failed: {exc}")
-        logger.debug("Exception details:", exc_info=True)
-        raise typer.Exit(3)
+    validation_report = None
+    if validate_references:
+        reference_validator = _build_reference_validator(
+            cache_dir=validation_cache_dir,
+            email=validation_email,
+            full_text=validation_full_text,
+            max_references=validation_max_references,
+            skip_prefix=validation_skip_prefix,
+            rate_limit_delay=validation_rate_limit_delay,
+            check_relevance=validation_relevance,
+        )
+        logger.info("Validating references...")
+        try:
+            validation_report = reference_validator.validate_result(result)
+        except (OSError, ValueError) as exc:
+            # urllib raises OSError subclasses for network failures. The report is
+            # already saved, so report the real cause rather than letting it surface
+            # as a filesystem error.
+            logger.error(f"Reference validation failed: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
 
-    _echo_validation_summary(validation_report)
+        _echo_validation_summary(validation_report)
+
+    term_report = None
+    if validate_terms:
+        term_validator = _build_term_validator(
+            adapter=term_adapter,
+            cache_dir=term_cache_dir,
+            oak_config=term_oak_config,
+            offline=term_offline,
+            max_terms=term_max_terms,
+            skip_prefix=term_skip_prefix,
+            check_labels=term_labels,
+        )
+        logger.info("Validating ontology terms...")
+        from .validation import lookup_error_types
+
+        try:
+            term_report = term_validator.validate_result(result)
+        except (OSError, ValueError) + lookup_error_types() as exc:
+            # The report is already saved, so an unreachable ontology service
+            # costs the term section, not the research.
+            logger.error(f"Term validation failed: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
+
+        _echo_term_validation_summary(term_report)
 
     validated_content = processor.format_research_result(
         result,
         separate_citations=should_separate_citations,
         reference_validation=validation_report,
+        term_validation=term_report,
     )
     if output:
         try:
             output.write_text(validated_content, encoding='utf-8')
         except OSError as exc:
-            # The report without its validation section is already on disk, so
-            # this loses the section, not the research.
+            # The report without its validation sections is already on disk, so
+            # this loses the sections, not the research.
             logger.error(f"Could not add the validation section to {output}: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
     else:
-        typer.echo("\n" + "=" * 60)
-        typer.echo(validation_report.to_markdown())
+        for report in (validation_report, term_report):
+            if report is not None:
+                typer.echo("\n" + "=" * 60)
+                typer.echo(report.to_markdown())
 
-    if fail_on_unresolved and validation_report.has_confabulations:
+    if not fail_on_unresolved:
+        return
+    if validation_report is not None and validation_report.has_confabulations:
         logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
+    if term_report is not None and term_report.has_problems:
+        logger.error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 
@@ -1009,7 +1167,7 @@ def validate_references_command(
       deep-research-client validate-references report.md --no-check-quotes --max-references 20
     """
     from .markdown_parser import parse_frontmatter
-    from .validation import strip_validation_section
+    from .validation import VALIDATION_SECTION_HEADING, render_with_sections, split_validation_sections
 
     if not files:
         logger.error("Provide at least one markdown file to validate")
@@ -1038,7 +1196,12 @@ def validate_references_command(
     any_problems = False
 
     for path in files:
-        content = strip_validation_section(path.read_text(encoding="utf-8"))
+        # Both kinds of section come off before extraction, so a previous run's
+        # output is never re-read as report content; the term section is kept
+        # aside so that writing this one back does not delete it.
+        content, existing_sections = split_validation_sections(
+            path.read_text(encoding="utf-8")
+        )
         # Scan the whole body rather than the Output section alone: identifiers
         # routinely appear in the Citations section and in provider-specific
         # sections that sit alongside it.
@@ -1063,8 +1226,18 @@ def validate_references_command(
 
         try:
             if in_place:
-                updated = _refresh_validation_frontmatter(content, frontmatter, report)
-                path.write_text(updated.rstrip() + "\n\n" + markdown_report, encoding="utf-8")
+                updated = _refresh_validation_frontmatter(
+                    content, frontmatter, report.summary()
+                )
+                path.write_text(
+                    render_with_sections(
+                        updated,
+                        existing_sections,
+                        VALIDATION_SECTION_HEADING,
+                        markdown_report,
+                    ),
+                    encoding="utf-8",
+                )
                 logger.info(f"Wrote validation section to {path}")
 
             if output:
@@ -1084,6 +1257,158 @@ def validate_references_command(
 
     if fail_on_unresolved and any_problems:
         logger.error("Reference validation found unresolved references or unsupported quotes")
+        raise typer.Exit(2)
+
+
+@app.command(name="validate-terms")
+def validate_terms_command(
+    files: Annotated[List[Path], typer.Argument(
+        help="Markdown report file(s) to validate")],
+    check_labels: Annotated[bool, typer.Option(
+        "--check-labels/--no-check-labels",
+        help="Also compare the label written beside each CURIE with the term's own label (free: no extra lookups)")] = True,
+    adapter: Annotated[Optional[str], typer.Option(
+        "--adapter", help="OAK adapter to resolve terms through (default: ols:; use sqlite:obo: to download each ontology once and answer locally)")] = None,
+    oak_config: Annotated[Optional[Path], typer.Option(
+        "--oak-config", help="oak_config.yaml mapping prefixes to adapters, for ontologies the default adapter does not serve")] = None,
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Directory for cached term labels (default: ./terms_cache)")] = None,
+    offline: Annotated[bool, typer.Option(
+        "--offline", help="Resolve only from the label cache, never reaching the network; uncached terms are reported as unverifiable")] = False,
+    max_terms: Annotated[Optional[int], typer.Option(
+        "--max-terms", min=1, help="Stop after validating this many terms per file")] = None,
+    skip_prefix: Annotated[Optional[List[str]], typer.Option(
+        "--skip-prefix", help="CURIE prefix to report as unverifiable instead of resolving (repeatable)")] = None,
+    in_place: Annotated[bool, typer.Option(
+        "--in-place", help="Replace or append the term validation section in each input file")] = False,
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", help="Write the markdown validation report to this file (single input file only)")] = None,
+    json_output: Annotated[Optional[Path], typer.Option(
+        "--json", help="Write the validation report as JSON to this file (single input file only)")] = None,
+    fail_on_unresolved: Annotated[bool, typer.Option(
+        "--fail-on-unresolved", help="Exit non-zero if any term fails to resolve or is named as a different term")] = False,
+):
+    """Check that the ontology terms cited in a report are the terms it names.
+
+    Every CURIE in the report is resolved through OAK, and the label the report
+    wrote beside it is compared with the term's own label. Identifiers that do
+    not resolve are flagged as likely confabulations; identifiers that resolve to
+    a term the report calls something else are flagged too, which existence
+    checking alone cannot see - NCIT:C16814 is a real term, and it means
+    Malaysia.
+
+    Requires the optional 'terms' extra:
+    pip install "deep_research_client[terms]"
+
+    \b
+    Examples:
+      # Validate a saved report
+      deep-research-client validate-terms report.md
+
+      # Validate several reports and append the results to each
+      deep-research-client validate-terms reports/*.md --in-place
+
+      # Fail a pipeline when a term is invented or mislabelled
+      deep-research-client validate-terms report.md --fail-on-unresolved
+
+      # Bulk work: download each ontology once, then answer locally
+      deep-research-client validate-terms reports/*.md --adapter sqlite:obo:
+    """
+    from .markdown_parser import parse_frontmatter
+    from .validation import (
+        TERM_VALIDATION_SECTION_HEADING,
+        lookup_error_types,
+        render_with_sections,
+        split_validation_sections,
+    )
+
+    if not files:
+        logger.error("Provide at least one markdown file to validate")
+        raise typer.Exit(1)
+
+    if len(files) > 1 and (output or json_output):
+        logger.error("--output and --json require exactly one input file")
+        raise typer.Exit(1)
+
+    missing = [f for f in files if not f.is_file()]
+    if missing:
+        for path in missing:
+            logger.error(f"File not found: {path}")
+        raise typer.Exit(1)
+
+    validator = _build_term_validator(
+        adapter=adapter,
+        cache_dir=cache_dir,
+        oak_config=oak_config,
+        offline=offline,
+        max_terms=max_terms,
+        skip_prefix=skip_prefix,
+        check_labels=check_labels,
+    )
+    lookup_errors = (OSError, ValueError) + lookup_error_types()
+
+    any_problems = False
+
+    for path in files:
+        # As above: strip both for extraction, keep the reference section aside
+        # so writing this one back leaves it, and its frontmatter summary,
+        # describing something still in the file.
+        content, existing_sections = split_validation_sections(
+            path.read_text(encoding="utf-8")
+        )
+        frontmatter, body = parse_frontmatter(content)
+
+        logger.info(f"Validating terms in {path}")
+        try:
+            report = validator.validate_markdown(body)
+        except lookup_errors as exc:
+            # OSError covers network failures (urllib raises subclasses of it);
+            # ValueError covers a malformed cached record; the resolver's own
+            # outage error covers a rate-limited or erroring ontology service,
+            # which it raises rather than reporting the term as absent. None of
+            # them should reach the user as a traceback when every neighbouring
+            # path exits cleanly.
+            logger.error(f"Term validation failed: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(3)
+        _echo_term_validation_summary(report)
+        any_problems = any_problems or report.has_problems
+
+        markdown_report = report.to_markdown()
+
+        try:
+            if in_place:
+                updated = _refresh_validation_frontmatter(
+                    content, frontmatter, report.summary(), key="term_validation"
+                )
+                path.write_text(
+                    render_with_sections(
+                        updated,
+                        existing_sections,
+                        TERM_VALIDATION_SECTION_HEADING,
+                        markdown_report,
+                    ),
+                    encoding="utf-8",
+                )
+                logger.info(f"Wrote term validation section to {path}")
+
+            if output:
+                output.write_text(markdown_report, encoding="utf-8")
+                logger.info(f"Validation report written to {output}")
+
+            if json_output:
+                json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+                logger.info(f"Validation report written to {json_output}")
+        except OSError as exc:
+            logger.error(f"Filesystem error: {exc}")
+            logger.debug("Exception details:", exc_info=True)
+            raise typer.Exit(1)
+
+        if not in_place and not output and not json_output:
+            typer.echo(markdown_report)
+
+    if fail_on_unresolved and any_problems:
+        logger.error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 

@@ -54,11 +54,21 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--validation-skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
 | `--validation-rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
 | `--validation-relevance / --validation-no-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
-| `--fail-on-unresolved` | Exit with code 2 if any reference or quote fails validation |
+| `--validate-terms` | Resolve every cited ontology CURIE, check it against the label the report gave it, and append a validation section |
+| `--term-adapter TEXT` | OAK adapter to resolve terms through (default: `ols:`; `sqlite:obo:` for bulk work) |
+| `--term-oak-config PATH` | `oak_config.yaml` mapping prefixes to adapters, for ontologies the default adapter does not serve |
+| `--term-cache-dir PATH` | Directory for cached term labels (default: `./terms_cache`) |
+| `--term-offline` | Resolve terms only from the label cache, never reaching the network |
+| `--term-max-terms INT` | Stop after validating this many ontology terms |
+| `--term-skip-prefix TEXT` | CURIE prefix to report as unverifiable rather than resolving (repeatable) |
+| `--term-labels / --no-term-labels` | Compare the label written beside each CURIE with the term's own label (default: on, costs no extra lookups) |
+| `--fail-on-unresolved` | Exit with code 2 if any reference, quote or ontology term fails validation |
 
 When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
 
 The `--validate-*` options require the optional `validation` extra; see [validate-references](#validate-references) and the [Validate References how-to](../how-to/validate-references.md). Validation runs *after* the report has been written or printed, so a lookup service being unreachable never costs you the research result; that case exits with code `3`. On a cold cache it adds roughly 10-25% to the wall time of the research call, and next to nothing on a warm one.
+
+The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). They behave the same way: term validation runs after the report is written, and an unreachable ontology service exits with code `3` without costing you the research result. `--validate-references` and `--validate-terms` compose - passing both appends both sections.
 
 #### Examples
 
@@ -115,6 +125,11 @@ deep-research-client research "AI" \
 deep-research-client research "Statins and myopathy risk" \
   --output statins.md \
   --validate-references
+
+# Check that the ontology terms it cites are the terms it names them as
+deep-research-client research "Marfan syndrome surveillance" \
+  --output marfan.md \
+  --validate-terms
 ```
 
 ---
@@ -182,6 +197,76 @@ deep-research-client validate-references report.md --no-check-quotes --max-refer
 
 # Machine-readable output
 deep-research-client validate-references report.md --json validation.json
+```
+
+---
+
+### validate-terms
+
+Check that the ontology terms cited in a saved report are the terms the report names them as. Resolves every CURIE through OAK and compares it with the label written beside it.
+
+```bash
+deep-research-client validate-terms [OPTIONS] FILES...
+```
+
+Requires the optional `terms` extra:
+
+```bash
+pip install "deep_research_client[terms]"
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `FILES...` | One or more markdown report files to validate |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--check-labels / --no-check-labels` | Compare the label written beside each CURIE with the term's own label (default: on, costs no extra lookups) |
+| `--adapter TEXT` | OAK adapter to resolve terms through (default: `ols:`; `sqlite:obo:` downloads each ontology once and answers locally) |
+| `--oak-config PATH` | `oak_config.yaml` mapping prefixes to adapters, for ontologies the default adapter does not serve |
+| `--cache-dir PATH` | Directory for cached term labels (default: `./terms_cache`) |
+| `--offline` | Resolve only from the label cache, never reaching the network; uncached terms are reported as unverifiable |
+| `--max-terms INT` | Stop after validating this many terms per file |
+| `--skip-prefix TEXT` | CURIE prefix to report as unverifiable rather than resolving (repeatable) |
+| `--in-place` | Replace or append the term validation section in each input file |
+| `--output PATH` | Write the markdown validation report to a file (single input file only) |
+| `--json PATH` | Write the validation report as JSON (single input file only) |
+| `--fail-on-unresolved` | Exit with code 2 if any term is unresolved or named as a different term |
+
+#### Notes
+
+- The check that matters most is the label comparison. `NCIT:C16814` is a real NCIT term that resolves cleanly, and it means Malaysia; a report that writes it beside "Echocardiography Test" passes every existence check ever written. See [what the outcomes mean](../how-to/validate-terms.md#what-the-outcomes-mean).
+- Comparison runs against every name a term carries, not just its label. Exact synonyms count as the term's own names, so a report using one — up to case, punctuation, word order and plurals — reads as `MATCH`; a near miss on one reads as `VARIANT`, as do broad, narrow and related synonyms, which the ontology records precisely because they name something adjacent. Synonyms are read from OAK, or from the already-cached OLS payload on the default adapter, so they cost no extra request. See [synonyms](../how-to/validate-terms.md#synonyms).
+- Labels are only read from positions where a label is the only thing the text can be — a table cell, an emphasised run, a bracket or separator immediately after the CURIE. A term mentioned in flowing prose is resolved but not label-checked, because reading a clause as a name would flag correctly cited terms. See [where labels are read from](../how-to/validate-terms.md#where-labels-are-read-from).
+- A failed lookup is reported as `NOT_FOUND` only under a prefix this run has reason to believe is resolvable — an OBO-library prefix, one configured in `oak_config.yaml`, or one some other term resolved under. Anything else is `UNVERIFIABLE`, which is never evidence of fabrication.
+- Obsolete terms and variant labels are reported separately, set `needs_review`, and do not trip `--fail-on-unresolved`: both are go-and-looks, not failures.
+- Bibliographic prefixes — PMID, DOI, PMC, GEO — are left to [validate-references](#validate-references) rather than reported here as terms no ontology contains.
+- Labels are cached on disk. A warm run costs about half a cold one rather than nothing, because obsolescence is asked per term on every run; `--adapter sqlite:obo:` makes both checks local after the first download. See [how long it takes](../how-to/validate-terms.md#how-long-it-takes).
+- `--in-place` is idempotent: an existing term validation section is replaced rather than appended to, and a `## Reference Validation` section written by the other command is preserved in place. The same holds in reverse for [validate-references](#validate-references), so a report can carry both and be re-validated by either.
+- A lookup that cannot determine anything — a connectivity failure, a 5xx, a 408 or a 429 — exits `3` rather than reporting the term as absent, so a rate-limited run costs a re-run rather than producing false `NOT_FOUND` findings. This is why there is no rate-limit delay option.
+- Exit codes: `0` success, `1` usage, input or filesystem error, `2` validation found problems (only with `--fail-on-unresolved`), `3` an ontology service was unreachable.
+
+#### Examples
+
+```bash
+# Validate a saved report
+deep-research-client validate-terms report.md
+
+# Validate several reports and append the results to each
+deep-research-client validate-terms reports/*.md --in-place
+
+# Fail a pipeline when a term is invented or mislabelled
+deep-research-client validate-terms report.md --fail-on-unresolved
+
+# Bulk work: download each ontology once, then answer locally
+deep-research-client validate-terms reports/*.md --adapter sqlite:obo:
+
+# Machine-readable output
+deep-research-client validate-terms report.md --json terms.json
 ```
 
 ---

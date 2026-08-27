@@ -9,3 +9,12 @@ gen-datamodel:
     > src/deep_research_client/validation/datamodel.py.tmp
   mv src/deep_research_client/validation/datamodel.py.tmp \
     src/deep_research_client/validation/datamodel.py
+
+# Regenerate the Pydantic datamodel for term validation from its LinkML schema.
+# Same two-step as gen-datamodel: a redirect onto the target would truncate it
+# before gen-pydantic ran, leaving an empty module behind a schema typo.
+gen-term-datamodel:
+  uv run gen-pydantic src/deep_research_client/validation/term_validation.yaml \
+    > src/deep_research_client/validation/term_datamodel.py.tmp
+  mv src/deep_research_client/validation/term_datamodel.py.tmp \
+    src/deep_research_client/validation/term_datamodel.py

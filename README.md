@@ -15,6 +15,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
 - ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
+- 🏷️ **Ontology Term Validation**: Resolve every cited CURIE and check it against the label the report gave it, catching the real term that means something else entirely
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -31,6 +32,9 @@ uv add deep-research-client
 
 # With reference validation (checks cited identifiers actually exist)
 pip install "deep-research-client[validation]"
+
+# With ontology term validation (checks cited CURIEs are the terms they are named as)
+pip install "deep-research-client[terms]"
 
 # For development
 git clone <repo-url>
@@ -127,6 +131,10 @@ deep-research-client clear-cache  # Remove all cache
 # Check that cited identifiers exist and quotes are real (needs the `validation` extra)
 deep-research-client research "Statins and myopathy" --output report.md --validate-references
 deep-research-client validate-references report.md --fail-on-unresolved
+
+# Check that cited ontology terms are the terms the report names them as (needs the `terms` extra)
+deep-research-client research "Marfan syndrome surveillance" --output report.md --validate-terms
+deep-research-client validate-terms report.md --fail-on-unresolved
 ```
 
 You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
@@ -151,6 +159,27 @@ print(report.to_markdown())               # renderable summary section
 ```
 
 On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
+
+### Ontology Term Validation
+
+An ontology identifier that does not exist is the easy case. The hard case is the one that does: `NCIT:C16814` is a real NCIT term, so every check that asks whether a term exists passes it, and it means **Malaysia**. A report that writes it beside "Echocardiography Test" is wrong in a way only a label lookup will show.
+
+With the `terms` extra installed, every CURIE in a report is resolved through OAK, compared with the label the report wrote beside it, and checked for obsolescence:
+
+```python
+from deep_research_client import DeepResearchClient, TermValidator
+
+result = DeepResearchClient().research("Marfan syndrome surveillance")
+report = TermValidator().validate_result(result)
+
+print(report.confabulation_rate)     # fraction of CURIEs that do not resolve
+print(report.confabulated_terms)     # identifiers no ontology contains
+print(report.mislabelled_terms)      # identifiers the report names as a different term
+print(report.obsolete_terms)         # real terms the ontology has since retired
+print(report.to_markdown())          # renderable summary section
+```
+
+Labels are only read from positions where a label is the only thing the text can be - a table cell, an emphasised run, a bracket or separator right after the CURIE - so a term mentioned in prose is checked for existence but not for naming. That undercounts rather than invents. Comparison runs against every name a term carries, synonyms included, so a report calling `HP:0001166` "Long fingers" rather than "Arachnodactyly" is not accused of anything. See the [Validate Ontology Terms guide](docs/how-to/validate-terms.md) for the full rules, outcomes and [timings](docs/how-to/validate-terms.md#how-long-it-takes).
 
 ### Python Library Usage
 

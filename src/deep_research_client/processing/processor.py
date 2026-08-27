@@ -9,6 +9,7 @@ from ..models import ResearchResult
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
     from ..validation.models import ReferenceValidationReport
+    from ..validation.term_models import TermValidationReport
 
 
 class ResearchProcessor:
@@ -50,6 +51,7 @@ class ResearchProcessor:
         result: ResearchResult,
         separate_citations: bool = False,
         reference_validation: Optional["ReferenceValidationReport"] = None,
+        term_validation: Optional["TermValidationReport"] = None,
     ) -> str:
         """Format a research result as markdown.
 
@@ -57,12 +59,13 @@ class ResearchProcessor:
             result: Research result to format
             separate_citations: If True, excludes citations from main content
             reference_validation: Optional reference validation report to embed
+            term_validation: Optional ontology term validation report to embed
 
         Returns:
             Formatted markdown string
         """
         return self.result_formatter.format_full_markdown(
-            result, separate_citations, reference_validation
+            result, separate_citations, reference_validation, term_validation
         )
 
     def format_citations_only(self, result: ResearchResult) -> str:

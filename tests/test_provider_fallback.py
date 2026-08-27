@@ -501,7 +501,7 @@ def test_a_cache_hit_is_stamped_with_this_run_not_the_stored_one(tmp_path):
     ]
 
 
-def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path):
+def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path, caplog):
     """Reading a report off disk needs no credential.
 
     On a fallback-worthy preparation failure, and only while another candidate
@@ -518,10 +518,17 @@ def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path
     later = _client((BACKUP, _params()), cache_dir=tmp_path)
     assert "falcon" not in [p.name for p in later.registry.get_available_providers()]
 
-    result = later.research("q", provider="falcon", fallback=[BACKUP])
+    with caplog.at_level("WARNING"):
+        result = later.research("q", provider="falcon", fallback=[BACKUP])
 
     assert result.provider == "falcon"
     assert result.cached is True
+    # The run succeeds, but the revoked credential is still the operator's
+    # news -- the next uncached query will fail. Nothing else on this path
+    # records it: no attempt is appended, because the cached report really
+    # was produced by falcon.
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("falcon" in m and "not configured" in m for m in messages)
     # No fallback happened, so the report claims nothing it should not.
     assert result.fell_back is False
     assert [(a.provider, a.succeeded) for a in result.provider_attempts] == [
@@ -577,6 +584,22 @@ def test_naming_the_mock_reaches_its_cache_even_with_the_gate_off(tmp_path, monk
     assert result.provider == "mock"
     assert result.cached is True
     assert result.fell_back is False
+
+
+@pytest.mark.parametrize("no_fallback", [False, None], ids=["false", "none"])
+def test_no_fallback_is_spelled_two_ways(no_fallback):
+    """None arrives the same way the bare string did, and means the same as False.
+
+    A wrapper passing `config.get("fallback")` for an absent key would
+    otherwise reach `list(None)` and get a TypeError from inside the client
+    naming nothing.
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params()),
+    )
+    with pytest.raises(ProviderBillingError):
+        client.research("q", provider=PRIMARY, fallback=no_fallback)
 
 
 def test_an_unreachable_provider_with_no_cache_still_falls_back(tmp_path):

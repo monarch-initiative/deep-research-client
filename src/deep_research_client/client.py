@@ -350,15 +350,15 @@ class DeepResearchClient:
     def _fallback_candidates(
         self,
         provider: Optional[str],
-        fallback: Union[bool, str, Sequence[str]],
+        fallback: Optional[Union[bool, str, Sequence[str]]],
     ) -> list[str]:
         """Work out which providers to try, in order.
 
         Args:
             provider: Provider the caller named, if any.
-            fallback: False for no fallback, True to fall back to whatever else
-                is available, or an ordered list of provider names. A single
-                name may be given as a bare string.
+            fallback: False or None for no fallback, True to fall back to
+                whatever else is available, or an ordered list of provider
+                names. A single name may be given as a bare string.
 
         Returns:
             Provider names to try, most-preferred first, without duplicates.
@@ -373,7 +373,10 @@ class DeepResearchClient:
             # become six one-letter providers. The singular form is the obvious
             # thing to reach for next to a list, so honour it.
             extra = [fallback]
-        elif isinstance(fallback, bool):
+        elif fallback is None or isinstance(fallback, bool):
+            # None arrives the same way the bare string does -- a wrapper
+            # passing config.get("fallback") for an absent key -- and means
+            # the same thing as False. Falling through would reach list(None).
             extra = (
                 [
                     candidate.name
@@ -538,7 +541,7 @@ class DeepResearchClient:
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
-        fallback: Union[bool, str, Sequence[str]] = False,
+        fallback: Optional[Union[bool, str, Sequence[str]]] = False,
     ) -> ResearchResult:
         """Perform research on the given query.
 
@@ -585,7 +588,7 @@ class DeepResearchClient:
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
-        fallback: Union[bool, str, Sequence[str]] = False,
+        fallback: Optional[Union[bool, str, Sequence[str]]] = False,
     ) -> ResearchResult:
         """Async version of research method.
 
@@ -673,6 +676,17 @@ class DeepResearchClient:
                     candidate, effective_model, cache_provider_params
                 )
                 if served is not None:
+                    # Say it even though the run succeeds: the next uncached
+                    # query will not, and nothing else on this path records
+                    # why. No attempt is appended, because the cached report
+                    # really was produced by this provider -- so the log line
+                    # is the only thing standing between a revoked credential
+                    # and silence.
+                    logger.warning(
+                        "Provider %s cannot do this run: %s. "
+                        "Serving the report it produced for this query earlier",
+                        candidate, exc,
+                    )
                     return served
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(

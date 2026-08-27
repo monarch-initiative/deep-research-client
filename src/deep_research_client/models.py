@@ -287,7 +287,10 @@ class ResearchResult(BaseModel):
         default_factory=list,
         description=(
             "Providers tried for this run, in order, and why each failed. "
-            "Describes this run only, so it is never read back from cache."
+            "`succeeded` means 'produced this report', which a provider that "
+            "answered from cache did even if this run could not reach it -- "
+            "`cached` is what tells the two apart. Describes this run only, "
+            "so it is never read back from cache."
         ),
     )
 

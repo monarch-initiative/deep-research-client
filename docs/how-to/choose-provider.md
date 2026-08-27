@@ -242,7 +242,7 @@ report, so it is taken only where the failure type is evidence it should be.
 cached report is served and nothing falls back — see *A provider you can no
 longer reach* below.
 
-### Two things to know
+### Things to know
 
 **`--model` and `--param` apply to the first provider only.** They were chosen
 for the provider you named -- a Perplexity model name means nothing to OpenAI,

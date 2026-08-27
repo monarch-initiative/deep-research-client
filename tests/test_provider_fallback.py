@@ -1296,6 +1296,42 @@ def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monk
     assert "ProviderNotConfiguredError" in content
 
 
+def test_cli_v_surfaces_the_inert_fallback_diagnostic(tmp_path, monkeypatch):
+    """The docs promise `-v` shows it, so pin that the wiring delivers.
+
+    The message is INFO and the CLI defaults to WARNING, so by default an
+    operator sees nothing -- deliberately, since it also fires on runs that
+    succeed. That makes `-v` the whole of its reachability from the command
+    line, and `-v` is a *global* option: it goes before the subcommand.
+    """
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with((PRIMARY, _params(error_type="billing"))),
+    )
+    output = tmp_path / "report.md"
+
+    # Asserted on the captured output, not caplog: the CLI's setup_logging
+    # calls basicConfig(force=True), which closes caplog's handler, so records
+    # emitted inside the invocation never reach it. This is the handler half
+    # of the leak that _restore_package_log_level deliberately does not cover.
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "-v",
+            "research", "q",
+            "--provider", PRIMARY,
+            "--fallback",
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "candidate: no other provider is available." in result.output
+    assert not output.exists()
+
+
 def test_cli_prints_no_trail_header_when_there_is_no_trail(tmp_path, monkeypatch):
     """An ordinary single-provider failure must not grow a bare header.
 

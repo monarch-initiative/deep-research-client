@@ -884,7 +884,14 @@ def research(
     # Show available providers
     if provider:
         if provider not in available_providers:
-            if not fallback_request:
+            # A name that is not a provider at all is a typo, and the remedy
+            # for a typo is the list of names that exist. Standing down for one
+            # would replace that list with a bare "not found" from inside the
+            # loop, and assert on the way past that the provider was merely
+            # unconfigured -- which is the error 89e5840 rejected in the other
+            # direction. The client answers the distinction; asking it here is
+            # what keeps the two surfaces from drifting.
+            if not fallback_request or not client.knows_provider(provider):
                 logger.error(
                     f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
                 raise typer.Exit(1)

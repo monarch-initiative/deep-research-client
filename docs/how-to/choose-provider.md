@@ -199,8 +199,7 @@ provider_attempts:
 ```
 
 A report that came from the provider you asked for gains none of these fields:
-their presence *is* the finding. The same goes for cache entries, which are
-written before the provenance is stamped.
+their presence *is* the finding.
 
 `remedy` is our reading of the failure, not the provider's own error text.
 That text can quote whatever the provider chose to put in a response body —
@@ -215,10 +214,17 @@ field". The console still prints the provider's own words — an operator
 diagnosing a failed provider needs them, and they are reading their own
 terminal rather than a file someone else committed.
 
-The result *object* is the exception: `requested_provider` and
-`provider_attempts` are always populated, so a library caller serialising a
-result sees them on every run, recording the single provider that answered.
-`fell_back` is what distinguishes the two cases.
+Two other places behave differently, and it is worth being precise about how:
+
+- **Cache entries** do carry `requested_provider` and `provider_attempts`, as
+  `null` and `[]`. Nothing from a run is stored in them — the entry is written
+  before the provenance is stamped, so a cached answer can never be replayed as
+  a fallback that never happened — but the keys themselves are present.
+- **The result object** always populates both, so a library caller serialising
+  a result sees them on every run, recording the single provider that answered.
+  `fell_back` is a property rather than a stored field, so it is *not* in
+  `model_dump()`; read it off the object, or derive it from
+  `provider_attempts`.
 
 ### Which failures are followed
 
@@ -268,6 +274,11 @@ ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \
   --provider mock --param error_type=billing \
   --fallback-provider deeper_med
 ```
+
+`--param error_type=quota` is the one worth running against the rule above:
+a quota failure is the only kind whose remedy embeds a provider-supplied reset
+time, so the console prints `renews at 3pm, pool quota_pool_7f21` while the
+report keeps only `the plan's usage limit is spent`.
 
 Note that `mock` is reached by `--fallback-provider mock` but never by
 `--fallback` on its own: a provider that invents its reports is excluded from

@@ -739,40 +739,54 @@ def test_cli_reaches_the_named_fallback_provider(tmp_path, monkeypatch):
     assert not output.exists()
 
 
+def _cli_client_with(*named_params):
+    """Build a substitute for the client the research command constructs.
+
+    The command builds its own client from the environment, and no environment
+    a test can arrange gives it two *available* providers: `mock` is the only
+    one needing no credential, and the rest would make real network calls.
+
+    Nothing is mocked in the `unittest.mock` sense -- the CLI, the client, the
+    providers, the formatter and the file write all run for real; only the
+    wiring between two of them is redirected.
+
+    `provider_configs` is accepted and deliberately not forwarded: passing our
+    own skips environment detection, so whatever this machine happens to have
+    configured cannot join the ordering. Without that, an early version of
+    these tests found the `claude` CLI on PATH and made a real subprocess call.
+
+    Args:
+        named_params: ``(name, MockParams)`` pairs to register, in order.
+
+    Returns:
+        A callable matching the constructor call the research command makes.
+    """
+    real_client_class = cli_module.DeepResearchClient
+
+    def _factory(cache_config=None, provider_configs=None):
+        client = real_client_class(
+            cache_config=cache_config,
+            provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
+        )
+        for name, params in named_params:
+            client.registry.register(StandInProvider(ProviderConfig(name=name), params))
+        return client
+
+    return _factory
+
+
 def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     """The CLI's own fallback output, which no other test reaches.
 
     `test_cli_reaches_the_named_fallback_provider` ends in exit code 1, so the
     `if result.fell_back:` branch never runs there -- deleting it would fail
-    nothing. Reaching it needs two *available* providers, and no environment a
-    test can arrange gives the CLI that: `mock` is the only one without a
-    credential, and the rest would make real network calls.
-
-    So the client the command builds is substituted for one registered with two
-    real providers. Nothing is mocked in the `unittest.mock` sense -- the CLI,
-    the client, both providers, the formatter and the file write all run for
-    real; only the wiring between two of them is redirected.
+    nothing. See `_cli_client_with` for why the client is substituted.
     """
-    real_client_class = cli_module.DeepResearchClient
-
-    def _two_providers(cache_config=None, provider_configs=None):
-        # provider_configs is passed deliberately, not forwarded: it skips
-        # environment detection, so whatever this machine happens to have
-        # configured cannot join the ordering. Without it the fallback found
-        # the `claude` CLI on PATH and made a real subprocess call.
-        client = real_client_class(
-            cache_config=cache_config,
-            provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
-        )
-        client.registry.register(
-            StandInProvider(ProviderConfig(name=PRIMARY), _params(error_type="billing"))
-        )
-        client.registry.register(
-            StandInProvider(ProviderConfig(name=BACKUP), _params())
-        )
-        return client
-
-    monkeypatch.setattr(cli_module, "DeepResearchClient", _two_providers)
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with((PRIMARY, _params(error_type="billing")), (BACKUP, _params())),
+    )
     output = tmp_path / "report.md"
 
     result = CliRunner().invoke(
@@ -797,26 +811,6 @@ def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     content = output.read_text()
     assert "fell_back: true" in content
     assert "simulated billing failure" not in content
-
-
-def _cli_client_with(*named_params):
-    """Build a substitute for the client the research command constructs.
-
-    See `test_cli_reports_the_trail_on_a_successful_fallback` for why the
-    substitution is needed and what it does and does not replace.
-    """
-    real_client_class = cli_module.DeepResearchClient
-
-    def _factory(cache_config=None, provider_configs=None):
-        client = real_client_class(
-            cache_config=cache_config,
-            provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
-        )
-        for name, params in named_params:
-            client.registry.register(StandInProvider(ProviderConfig(name=name), params))
-        return client
-
-    return _factory
 
 
 def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monkeypatch):
@@ -849,6 +843,38 @@ def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monk
     assert "requested_provider: falcon" in content
     # The provider that could not run is in the trail, not dropped from it.
     assert "ProviderNotConfiguredError" in content
+
+
+def test_cli_still_names_the_available_providers_for_a_typo(tmp_path, monkeypatch):
+    """Standing the pre-check down must not swallow the remedy for a typo.
+
+    A name that is not a provider at all is not "unconfigured", and the fix for
+    it is the list of names that exist -- which lives only in this check. So
+    the stand-down asks the client whether the name is a provider, rather than
+    treating every unavailable name alike.
+    """
+    monkeypatch.setattr(
+        cli_module, "DeepResearchClient", _cli_client_with((BACKUP, _params()))
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "research", "q",
+            "--provider", "falcn",
+            "--fallback-provider", BACKUP,
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not available" in result.output
+    assert BACKUP in result.output
+    # Never the sentence for a provider that exists but has no credential.
+    assert "not configured" not in result.output
+    assert not output.exists()
 
 
 def test_cli_still_refuses_an_unconfigured_provider_without_a_fallback(tmp_path, monkeypatch):

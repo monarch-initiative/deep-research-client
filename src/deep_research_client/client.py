@@ -418,6 +418,33 @@ class DeepResearchClient:
 
         if not ordered:
             raise ValueError("No research providers available")
+
+        # A fallback was asked for and there is nobody to fall back to. The
+        # run is about to behave exactly as it would with no flag at all, and
+        # without this nothing distinguishes that from "the fallback ran and
+        # also failed" -- the trail is empty either way at position 0.
+        #
+        # Both routes are easy to hit: the automatic ordering drops providers
+        # that do not produce real reports, and a named fallback that repeats
+        # the primary deduplicates away. The reason is the invisible part, so
+        # say which one it was.
+        if fallback and len(ordered) == 1:
+            excluded = [
+                candidate.name
+                for candidate in self.registry.get_available_providers()
+                if not candidate.produces_real_reports and candidate.name != ordered[0]
+            ]
+            logger.info(
+                "Fallback was requested, but %s is the only candidate: %s. "
+                "The run will behave as though no fallback was asked for",
+                ordered[0],
+                (
+                    "the other available provider(s) do not produce real "
+                    f"reports ({', '.join(excluded)})"
+                    if excluded
+                    else "no other provider was named or available"
+                ),
+            )
         return ordered
 
     def _prepare_provider(
@@ -533,10 +560,11 @@ class DeepResearchClient:
             return
         logger.warning(
             "Provider %s failed with %s, which cannot carry the trail. "
+            "The run ends here; any candidate after it was not tried. "
             "Providers tried:\n  %s",
             candidate,
             type(exc).__name__,
-            "\n  ".join(attempt.summary() for attempt in trail),
+            ProviderAttempt.render_trail(trail),
         )
 
     @staticmethod

@@ -238,6 +238,14 @@ Two other places behave differently, and it is worth being precise about how:
 The last row is the conservative default: a fallback changes who produced your
 report, so it is taken only where the failure type is evidence it should be.
 
+**A "No" ends the run; it does not skip to the next candidate.** This is the
+part that surprises people. If you write `--fallback-provider a
+--fallback-provider b` and `a` returns a 429, the run stops there and `b` is
+never called — the same failure that does not justify switching also does not
+justify carrying on. So the trail lists what was tried, which on such a run is
+a prefix of what you named, and the log says the run ended rather than that
+everything failed.
+
 \* Unless that provider has already answered this query, in which case its own
 cached report is served and nothing falls back — see *A provider you can no
 longer reach* below.
@@ -249,10 +257,12 @@ for the provider you named -- a Perplexity model name means nothing to OpenAI,
 and an unknown parameter is a hard error. A fallback provider therefore runs on
 its own defaults, and the run says so on stderr when it happens.
 
-**Nothing is written until a provider succeeds.** If every candidate fails, the
-run raises with the last failure and no report, no cache entry, and no partial
-file is left behind. Since there is no result, there is no
-`provider_attempts` on one — so the trail is carried on the error instead.
+**Nothing is written until a provider succeeds.** When the run ends on a
+failure it cannot follow — the last candidate failing, or an earlier one
+failing in a way that does not justify a switch — it raises with that failure
+and no report, no cache entry, and no partial file is left behind. Since there
+is no result, there is no `provider_attempts` on one — so the trail is carried
+on the error instead.
 Read it with `getattr(err, "provider_attempts", ())`: it lists every candidate
 tried, including the one whose failure ended the run, but only when that
 failure is one the client classified. A provider that cannot recognise its own
@@ -260,8 +270,8 @@ SDK error re-raises it bare, and a plain exception has no field to carry a
 trail; the run logs it in that case instead. `err.__cause__` is left alone
 either way, because providers set it themselves to the upstream API error.
 
-The CLI prints the same trail on a run where every candidate failed, so you do
-not need to catch anything to see it.
+The CLI prints the same trail on any run that ends this way, so you do not need
+to catch anything to see it.
 
 **A provider you can no longer reach can still answer from its own cache.**
 When a candidate cannot be prepared — its key revoked, say — and *another

@@ -1,6 +1,6 @@
 """Pydantic models for deep research client."""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Sequence
 from datetime import datetime
 import re
 
@@ -231,6 +231,38 @@ class ProviderAttempt(BaseModel):
         if self.succeeded:
             return f"{self.provider}: produced the report"
         return f"{self.provider}: {self.reason or self.error_type or 'failed'}"
+
+    @staticmethod
+    def render_trail(attempts: "Sequence[ProviderAttempt]") -> str:
+        """Render a run's attempts as the indented block three callers print.
+
+        The CLI prints this on a successful fallback and again when every
+        candidate failed, and the client logs it when the terminal failure
+        cannot carry the trail. An operator meets those on different days and
+        should recognise the second from the first, so the indent and the
+        choice of ``summary()`` belong here rather than in three call sites
+        that have to stay in step.
+
+        ``summary()`` carries the provider's own error text, which
+        :meth:`frontmatter_entry` withholds. That split is deliberate: this
+        renders to a console or a log, read by whoever ran the command, and
+        never to a file that gets committed.
+
+        Args:
+            attempts: The attempts to render, in the order they were tried.
+
+        Returns:
+            One line per attempt, each indented two spaces after the first.
+
+        >>> from .exceptions import ProviderBillingError
+        >>> spent = ProviderAttempt.from_exception(
+        ...     "falcon", ProviderBillingError("falcon", "no credits", 402))
+        >>> print(ProviderAttempt.render_trail(
+        ...     [spent, ProviderAttempt(provider="openai", succeeded=True)]))
+        falcon: 402 no credits -- the account is out of credits
+          openai: produced the report
+        """
+        return "\n  ".join(attempt.summary() for attempt in attempts)
 
 
 class ResearchResult(BaseModel):

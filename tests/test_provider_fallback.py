@@ -54,6 +54,17 @@ class StandInProvider(MockProvider):
     produces_real_reports = True
 
 
+class UnclassifiableFailure(StandInProvider):
+    """A provider whose SDK error nothing recognises.
+
+    `openai.py` re-raises bare what `_classify_openai_error` cannot place, so
+    an exception with no `provider_attempts` field really does reach the loop.
+    """
+
+    async def research(self, query):
+        raise RuntimeError("connection reset by peer")
+
+
 def _params(**kwargs) -> MockParams:
     """Build mock parameters with no artificial delay."""
     kwargs.setdefault("response_delay", 0.0)
@@ -384,12 +395,6 @@ def test_an_unclassified_terminal_failure_logs_the_trail_instead(caplog):
     of losing it.
     """
 
-    class UnclassifiableFailure(StandInProvider):
-        """A provider whose SDK error nothing recognises."""
-
-        async def research(self, query):
-            raise RuntimeError("connection reset by peer")
-
     client = _client((PRIMARY, _params(error_type="billing")))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
@@ -413,12 +418,6 @@ def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
     when the last one was never reached.
     """
 
-    class UnclassifiableFailure(StandInProvider):
-        """A provider whose SDK error nothing recognises."""
-
-        async def research(self, query):
-            raise RuntimeError("connection reset by peer")
-
     client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
@@ -432,6 +431,84 @@ def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
     assert f"Provider {BACKUP} failed with RuntimeError" in trail[0]
     # SPARE was never reached, so it must not appear as an attempt.
     assert SPARE not in trail[0]
+
+
+def test_a_requested_fallback_with_nobody_to_switch_to_says_so(caplog):
+    """A flag that changes nothing must not do it silently.
+
+    The automatic ordering drops providers that invent their reports. When
+    that leaves one candidate, the run fails exactly as it would with no flag
+    at all -- and the trail is empty at position 0 either way, so nothing
+    distinguishes it from "the fallback ran and also failed". The reason is
+    the invisible part, so the run names it.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")))
+    # MockProvider, not StandInProvider: it is excluded from the ordering
+    # precisely because it does not produce real reports.
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    # Named explicitly: at_level with no logger raises the *root* level, and a
+    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
+    # an INFO record would be dropped before any handler saw it.
+    with caplog.at_level("INFO", logger="deep_research_client.client"):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=True)
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "do not produce real reports" in said[0]
+    assert BACKUP in said[0]
+
+
+def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
+    """The other route to one candidate: the name deduplicates away."""
+    client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
+
+    # Named explicitly: at_level with no logger raises the *root* level, and a
+    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
+    # an INFO record would be dropped before any handler saw it.
+    with caplog.at_level("INFO", logger="deep_research_client.client"):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "no other provider was named or available" in said[0]
+
+
+def test_a_real_fallback_does_not_claim_it_had_nobody(caplog):
+    """The diagnostic must not fire on the runs it is not about."""
+    client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
+
+    # Named explicitly: at_level with no logger raises the *root* level, and a
+    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
+    # an INFO record would be dropped before any handler saw it.
+    with caplog.at_level("INFO", logger="deep_research_client.client"):
+        result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
+
+    assert result.provider == BACKUP
+    assert not [r for r in caplog.records if "only candidate" in r.getMessage()]
+
+
+def test_the_log_says_the_run_ends_rather_than_leaving_it_open(caplog):
+    """Not misleading is not the same as informing.
+
+    Naming the candidate removed the false claim that every provider failed.
+    It did not tell an operator what became of the candidates behind it, and
+    `Providers tried:` reads as the whole list rather than a prefix of it --
+    on this path the log is the entire record, since an unclassified failure
+    carries no `provider_attempts`.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
+    client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(RuntimeError):
+            client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
+
+    trail = [r.getMessage() for r in caplog.records if "Providers tried" in r.getMessage()]
+    assert len(trail) == 1
+    assert "The run ends here; any candidate after it was not tried." in trail[0]
 
 
 def test_a_lone_failure_carries_no_trail():
@@ -1140,6 +1217,35 @@ def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monk
     assert "requested_provider: falcon" in content
     # The provider that could not run is in the trail, not dropped from it.
     assert "ProviderNotConfiguredError" in content
+
+
+def test_cli_prints_no_trail_header_when_there_is_no_trail(tmp_path, monkeypatch):
+    """An ordinary single-provider failure must not grow a bare header.
+
+    `ProviderError` subclasses `ValueError`, so a run with no fallback reaches
+    the same handler that prints the trail -- carrying `provider_attempts ==
+    ()`. Without the guard the handler prints "Providers tried:" with nothing
+    under it. The typo test cannot see this: that path exits from the
+    pre-check and never reaches the handler at all.
+    """
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with((PRIMARY, _params(error_type="billing"))),
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        ["research", "q", "--provider", PRIMARY, "--output", str(output), "--no-cache"],
+    )
+
+    assert result.exit_code == 1
+    # The failure itself is reported...
+    assert "out of credits" in result.output
+    # ...but a list of one provider we already named is not a trail.
+    assert "Providers tried:" not in result.output
+    assert not output.exists()
 
 
 def test_cli_still_names_the_available_providers_for_a_typo(tmp_path, monkeypatch):

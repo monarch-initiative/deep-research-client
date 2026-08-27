@@ -5,12 +5,14 @@ except ImportError:  # pragma: no cover
     __version_tuple__ = (0, 0, 0)
 
 from .client import DeepResearchClient
-from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry, ProviderHealth
+from .models import ResearchResult, ProviderAttempt, ProviderConfig, CacheConfig, QueryMetadata, EditHistoryEntry, ProviderHealth
 from .exceptions import (
     MAX_DETAIL_CHARS,
     MIN_DETAIL_CHARS,
     MAX_RESET_CHARS,
     truncate_detail,
+    FALLBACK_WORTHY_ERRORS,
+    is_fallback_worthy,
     ProviderError,
     ProviderAuthError,
     ProviderBillingError,
@@ -59,6 +61,7 @@ from .validation import (
 __all__ = [
     "DeepResearchClient",
     "ResearchResult",
+    "ProviderAttempt",
     "ProviderConfig",
     "CacheConfig",
     "QueryMetadata",
@@ -68,6 +71,8 @@ __all__ = [
     "MIN_DETAIL_CHARS",
     "MAX_RESET_CHARS",
     "truncate_detail",
+    "FALLBACK_WORTHY_ERRORS",
+    "is_fallback_worthy",
     "ProviderError",
     "ProviderAuthError",
     "ProviderBillingError",

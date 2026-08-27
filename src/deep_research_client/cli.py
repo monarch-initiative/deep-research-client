@@ -9,7 +9,7 @@ import os
 import re
 import typer
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -607,6 +607,10 @@ def research(
         help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
+    fallback: Annotated[bool, typer.Option(
+        "--fallback", help="If the chosen provider cannot do the work (no credits, spent quota, rejected or missing credentials), try the other configured providers instead, in registration order. Off by default: the report records which provider actually produced it. Use --fallback-provider when the order matters")] = False,
+    fallback_provider: Annotated[Optional[List[str]], typer.Option(
+        "--fallback-provider", help="Provider to fall back to, in preference order (repeatable). Implies --fallback and replaces its automatic ordering")] = None,
     output: Annotated[Optional[Path], typer.Option(
         help="Output file path (prints to stdout if not provided)")] = None,
     no_cache: Annotated[bool, typer.Option(
@@ -692,6 +696,12 @@ def research(
 
       # Use provider-specific parameters
       deep-research-client research "Medical research" --provider perplexity --param reasoning_effort=high --param search_recency_filter=week
+
+      # Let another provider take over if this one is out of credits
+      deep-research-client research "Statins and myopathy" --provider falcon --fallback
+
+      # Name the fallback order explicitly
+      deep-research-client research "CRISPR delivery" --provider falcon --fallback-provider openai --fallback-provider perplexity
 
       # Use template with variables
       deep-research-client research --template research_template.md --var topic="machine learning" --var focus="healthcare applications"
@@ -865,13 +875,37 @@ def research(
         _echo_no_providers_message()
         raise typer.Exit(1)
 
+    # An explicit list is an ordering instruction, so it replaces the
+    # automatic one rather than adding to it.
+    fallback_request: Union[bool, List[str]] = (
+        list(fallback_provider) if fallback_provider else fallback
+    )
+
     # Show available providers
     if provider:
         if provider not in available_providers:
-            logger.error(
-                f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
-            raise typer.Exit(1)
-        logger.info(f"Using provider: {provider}")
+            # A name that is not a provider at all is a typo, and the remedy
+            # for a typo is the list of names that exist. Standing down for one
+            # would replace that list with a bare "not found" from inside the
+            # loop, and assert on the way past that the provider was merely
+            # unconfigured -- which is the error 89e5840 rejected in the other
+            # direction. The client answers the distinction; asking it here is
+            # what keeps the two surfaces from drifting.
+            if not fallback_request or not client.knows_provider(provider):
+                logger.error(
+                    f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
+                raise typer.Exit(1)
+            # "Not configured" is one of the failures a fallback exists to
+            # handle, and the client treats it as one. Ending the run here
+            # would make the CLI refuse what the library allows, and would
+            # drop the provider from the trail the report is supposed to
+            # carry. If nothing else can take the work either, the client
+            # raises and the run still fails -- with every attempt recorded.
+            logger.warning(
+                f"Provider '{provider}' is not configured; continuing because a fallback was requested"
+            )
+        else:
+            logger.info(f"Using provider: {provider}")
     else:
         logger.info(f"Available providers: {', '.join(available_providers)}")
         logger.info(f"Using: {available_providers[0]}")
@@ -958,6 +992,7 @@ def research(
             effective_options.model,
             provider_params,
             metadata,
+            fallback_request,
         )
 
         # Show cache status
@@ -965,6 +1000,23 @@ def research(
             logger.info("Result retrieved from cache")
         else:
             logger.info(f"Research completed using {result.provider}")
+
+        # The client already warned that someone else produced this. Restating
+        # it here made one fallback emit the same sentence twice; what the CLI
+        # adds is the trail, so that is all it prints.
+        #
+        # summary() carries the provider's own error text, which the *report*
+        # deliberately withholds. That difference is intended and was weighed:
+        # the console is where an operator diagnoses a failed provider, and
+        # withholding it there costs them the evidence while protecting
+        # nothing the raised error did not already print. A committed file is
+        # read by people who were not running the command, which is the
+        # distinction -- not secrecy.
+        if result.fell_back:
+            logger.warning(
+                "Providers tried:\n  %s",
+                "\n  ".join(attempt.summary() for attempt in result.provider_attempts),
+            )
 
         # Determine if we're separating citations
         should_separate_citations = separate_citations is not None
@@ -1015,6 +1067,17 @@ def research(
 
     except ValueError as exc:
         logger.error(f"Error: {exc}")
+        # The trail is on the error when every candidate failed. Without this
+        # the CLI says more about who was tried when a fallback *worked* than
+        # when it did not, which is backwards: the total failure is where an
+        # operator needs it. getattr, because an unclassified failure carries
+        # no such attribute -- the client logs the trail itself in that case.
+        attempts = getattr(exc, "provider_attempts", ())
+        if attempts:
+            logger.error(
+                "Providers tried:\n  %s",
+                "\n  ".join(attempt.summary() for attempt in attempts),
+            )
         raise typer.Exit(1)
     except OSError as exc:
         logger.error(f"Filesystem error: {exc}")

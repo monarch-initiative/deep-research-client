@@ -16,6 +16,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
 - ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
 - 🏷️ **Ontology Term Validation**: Resolve every cited CURIE and check it against the label the report gave it, catching the real term that means something else entirely
+- 🔁 **Opt-in Provider Fallback**: Let another provider take over when one is out of credits or unconfigured, with the provider that actually produced the report recorded on it
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -180,6 +181,47 @@ print(report.to_markdown())          # renderable summary section
 ```
 
 Labels are only read from positions where a label is the only thing the text can be - a table cell, an emphasised run, a bracket or separator right after the CURIE - so a term mentioned in prose is checked for existence but not for naming. That undercounts rather than invents. Comparison runs against every name a term carries, synonyms included, so a report calling `HP:0001166` "Long fingers" rather than "Arachnodactyly" is not accused of anything. See the [Validate Ontology Terms guide](docs/how-to/validate-terms.md) for the full rules, outcomes and [timings](docs/how-to/validate-terms.md#how-long-it-takes).
+
+### Provider Fallback
+
+A run can fail for reasons no retry fixes - an account out of credits, a spent plan allowance, a rejected key. `--fallback` lets another configured provider take the work instead:
+
+```bash
+deep-research-client research "Statins and myopathy" --provider falcon --fallback --output report.md
+
+# Or name the order yourself
+deep-research-client research "CRISPR delivery" \
+  --provider falcon --fallback-provider openai --fallback-provider perplexity
+```
+
+It is off by default on purpose. A report records the provider that produced it, and downstream curation reads that field, so a silent switch would make those records wrong. When a fallback does happen, the report says so:
+
+```yaml
+provider: openai
+fell_back: true
+requested_provider: falcon
+provider_attempts:
+- provider: falcon
+  succeeded: false
+  error_type: ProviderBillingError
+  status_code: 402
+  remedy: the account is out of credits
+  retryable: false
+- provider: openai
+  succeeded: true
+```
+
+`remedy` is our reading of the failure, not the provider's own error text: that text can quote whatever a provider puts in a response body — including, for a rejected key, the key — and these reports get committed, so the raw version stays on the result object and in the logs. A report produced without a fallback gains none of these keys. Cache entries carry them empty, and are written before the provenance is stamped, so a cached answer can never be replayed as a fallback that never happened. Only failures meaning *this provider cannot do the work* are followed. A 429 or a 5xx says to wait and retry the same provider, not to switch, and an unrecognised failure is not evidence that anyone else would do better. From Python:
+
+```python
+result = client.research("Statins and myopathy", provider="falcon", fallback=True)
+result.provider            # who actually produced it
+result.requested_provider  # who was asked
+result.fell_back           # whether a switch happened
+result.provider_attempts   # each provider tried, and why it failed
+```
+
+See the [Choose a Provider guide](docs/how-to/choose-provider.md#fall-back-to-another-provider) for the full rules.
 
 ### Python Library Usage
 

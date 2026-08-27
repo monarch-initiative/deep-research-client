@@ -20,6 +20,14 @@ class ResearchProvider(ABC):
     #: Human-facing name for this provider's credential, e.g. "OpenAI".
     credential_label: ClassVar[Optional[str]] = None
 
+    #: Whether this provider's output is real research. False for a provider
+    #: that fabricates its reports, which keeps it out of the *automatic*
+    #: fallback ordering: a run that ran out of credits should fail rather
+    #: than quietly hand a curation record a made-up report. Naming such a
+    #: provider explicitly still honours it -- that is a deliberate choice,
+    #: not a stand-in nobody asked for.
+    produces_real_reports: ClassVar[bool] = True
+
     def __init__(self, config: ProviderConfig, params_or_model: Optional[Union[str, "BaseProviderParams"]] = None):
         """Initialize provider with configuration.
 

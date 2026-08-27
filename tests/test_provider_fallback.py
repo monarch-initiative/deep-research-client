@@ -469,6 +469,59 @@ def test_a_cache_hit_is_stamped_with_this_run_not_the_stored_one(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("warm_the_cache", [False, True], ids=["cold", "warm"])
+def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
+    tmp_path, caplog, warm_the_cache
+):
+    """A cached answer is still someone else's answer.
+
+    The two return paths are easy to let drift: the CLI reads `fell_back` so
+    it warned on both, which is why nothing noticed that the library warned
+    only on the cold one.
+    """
+    if warm_the_cache:
+        _client((BACKUP, _params()), cache_dir=tmp_path).research("q", provider=BACKUP)
+
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params()),
+        cache_dir=tmp_path,
+    )
+    with caplog.at_level("WARNING"):
+        result = client.research("q", provider=PRIMARY, fallback=True)
+
+    assert result.cached is warm_the_cache
+    assert result.fell_back is True
+    announcements = [
+        m for m in (r.getMessage() for r in caplog.records)
+        if "not the provider first tried" in m
+    ]
+    assert len(announcements) == 1
+    assert BACKUP in announcements[0] and PRIMARY in announcements[0]
+
+
+def test_no_fallback_is_announced_when_none_happened():
+    """The warning must not fire on an ordinary run."""
+    client = _client((PRIMARY, _params()))
+    import logging as _logging
+
+    records = []
+
+    class _Capture(_logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    handler = _Capture()
+    logger = _logging.getLogger("deep_research_client.client")
+    logger.addHandler(handler)
+    try:
+        client.research("q", provider=PRIMARY)
+    finally:
+        logger.removeHandler(handler)
+
+    assert not any("not the provider first tried" in m for m in records)
+
+
 # --------------------------------------------------------------------------
 # Overrides chosen for one provider are not handed to another
 # --------------------------------------------------------------------------

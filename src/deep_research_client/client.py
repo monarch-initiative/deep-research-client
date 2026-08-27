@@ -338,20 +338,23 @@ class DeepResearchClient:
     def _fallback_candidates(
         self,
         provider: Optional[str],
-        fallback: Union[bool, Sequence[str]],
+        fallback: Union[bool, str, Sequence[str]],
     ) -> list[str]:
         """Work out which providers to try, in order.
 
         Args:
             provider: Provider the caller named, if any.
             fallback: False for no fallback, True to fall back to whatever else
-                is available, or an explicit ordered list of provider names.
+                is available, or an ordered list of provider names. A single
+                name may be given as a bare string.
 
         Returns:
             Provider names to try, most-preferred first, without duplicates.
+            With True, the automatic ones follow registration order.
 
         Raises:
-            ValueError: If there is nothing at all to try.
+            ValueError: If a named fallback provider does not exist, or there
+                is nothing at all to try.
         """
         if isinstance(fallback, str):
             # A Sequence[str] accepts a str, and list("openai") would quietly
@@ -498,6 +501,10 @@ class DeepResearchClient:
         describe *this* run, and replaying them out of a cache file would
         credit a later run with a fallback that never happened.
 
+        Announcing the fallback is part of stamping it rather than a separate
+        step at each return, so a path that returns a result cannot forget to
+        mention that someone else produced it -- which the cache-hit path did.
+
         Args:
             result: The result to stamp.
             requested: Provider the caller named, if any.
@@ -509,6 +516,11 @@ class DeepResearchClient:
             *failed,
             ProviderAttempt(provider=used, succeeded=True),
         ]
+        if result.fell_back:
+            logger.warning(
+                "Report produced by %s, not the provider first tried (%s)",
+                used, failed[0].provider,
+            )
 
     def research(
         self,
@@ -518,7 +530,7 @@ class DeepResearchClient:
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
-        fallback: Union[bool, Sequence[str]] = False,
+        fallback: Union[bool, str, Sequence[str]] = False,
     ) -> ResearchResult:
         """Perform research on the given query.
 
@@ -531,8 +543,10 @@ class DeepResearchClient:
             metadata: Publication-style metadata (title, abstract, keywords, author, contributors)
             fallback: Opt in to trying another provider when this one cannot do
                 the work. False (the default) never switches providers. True
-                falls back to whatever else is available. A list names the
-                providers to try, in order.
+                falls back to whatever else is available, in registration
+                order, excluding providers that do not do real research. A
+                list -- or a bare string, for one -- names them explicitly, in
+                preference order, and replaces the automatic ordering.
 
         Returns:
             ResearchResult with markdown content and citations
@@ -563,7 +577,7 @@ class DeepResearchClient:
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
-        fallback: Union[bool, Sequence[str]] = False,
+        fallback: Union[bool, str, Sequence[str]] = False,
     ) -> ResearchResult:
         """Async version of research method.
 
@@ -694,11 +708,6 @@ class DeepResearchClient:
             # After caching, so that which providers this run tried never
             # becomes part of what a later run reads back.
             self._record_provenance(result, provider, failed, research_provider.name)
-            if result.fell_back:
-                logger.warning(
-                    "Report produced by %s, not the provider first tried (%s)",
-                    result.provider, failed[0].provider,
-                )
             return result
 
         # Unreachable: _fallback_candidates never returns an empty list, and the

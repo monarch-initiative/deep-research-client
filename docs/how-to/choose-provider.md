@@ -157,7 +157,10 @@ It is **off by default, and deliberately so.** A report records the provider
 that produced it, and downstream curation reads that field: silently swapping
 providers would make those records wrong. So you have to ask for it.
 
-To control the order yourself, name the providers:
+`--fallback` tries the other configured providers in **registration order** —
+the order the client detects them from the environment, which is not a
+preference ranking. Each candidate is a paid account, so when it matters which
+one you spend money on, name them yourself rather than relying on that order:
 
 ```bash
 deep-research-client research "CRISPR delivery mechanisms" \
@@ -168,7 +171,9 @@ deep-research-client research "CRISPR delivery mechanisms" \
 ```
 
 Naming providers *replaces* the automatic ordering rather than adding to it, so
-a configured provider you leave out is never tried.
+a configured provider you leave out is never tried. For a single fallback the
+bare name works too — `fallback="openai"` from Python is the same as
+`fallback=["openai"]`.
 
 ### What gets recorded
 

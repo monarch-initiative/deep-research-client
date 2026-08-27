@@ -31,7 +31,7 @@ deep-research-client research [OPTIONS] [QUERY]
 |--------|-------------|
 | `--provider TEXT` | Provider to use: openai, edison, perplexity, consensus, cyberian |
 | `--model TEXT` | Model to use (overrides provider default) |
-| `--fallback` | If the chosen provider cannot do the work, try the other configured providers instead (off by default) |
+| `--fallback` | If the chosen provider cannot do the work, try the other configured providers instead, in registration order (off by default) |
 | `--fallback-provider TEXT` | Provider to fall back to, in preference order (repeatable); implies `--fallback` |
 | `--output PATH` | Output file path (prints to stdout if not provided) |
 | `--no-cache` | Disable caching for this query |

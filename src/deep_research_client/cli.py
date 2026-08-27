@@ -608,7 +608,7 @@ def research(
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     fallback: Annotated[bool, typer.Option(
-        "--fallback", help="If the chosen provider cannot do the work (no credits, spent quota, rejected or missing credentials), try the other configured providers instead. Off by default: the report records which provider actually produced it")] = False,
+        "--fallback", help="If the chosen provider cannot do the work (no credits, spent quota, rejected or missing credentials), try the other configured providers instead, in registration order. Off by default: the report records which provider actually produced it. Use --fallback-provider when the order matters")] = False,
     fallback_provider: Annotated[Optional[List[str]], typer.Option(
         "--fallback-provider", help="Provider to fall back to, in preference order (repeatable). Implies --fallback and replaces its automatic ordering")] = None,
     output: Annotated[Optional[Path], typer.Option(

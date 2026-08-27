@@ -315,22 +315,34 @@ class DeepResearchClient:
 
     def _get_cache_provider_params(
         self,
-        research_provider: 'ResearchProvider',
+        provider_name: str,
         provider_params: Optional[dict] = None,
     ) -> Optional[dict]:
-        """Build effective cache parameters, including provider-specific cache busting."""
+        """Build effective cache parameters, including provider-specific cache busting.
+
+        Takes a name rather than a provider, because a cache key needs nothing
+        an instance has: that is what lets a cached report be served for a
+        provider this run cannot construct.
+
+        Args:
+            provider_name: Name of the provider whose cache entry is wanted.
+            provider_params: Provider-specific parameters for this run.
+
+        Returns:
+            Parameters to key the cache entry by, or None when there are none.
+        """
         effective_params = dict(provider_params or {})
 
         # Asta response parsing and paper metadata changed after initial release;
         # keep stale cache entries from shadowing current live results.
-        if research_provider.name == "asta":
+        if provider_name == "asta":
             effective_params["_cache_version"] = "snippet-v5"
-        elif research_provider.name in {"falcon", "openscientist"}:
+        elif provider_name in {"falcon", "openscientist"}:
             effective_params["_cache_version"] = "artifacts-v1"
         # The Claude Code prompt scaffolding (inline-report directive) and run
         # provenance capture changed how results are produced; bump to keep
         # stale cache entries from shadowing current live results.
-        elif research_provider.name == "claude_code":
+        elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
 
         return effective_params or None
@@ -608,6 +620,27 @@ class DeepResearchClient:
             effective_model = model if first else None
             effective_params = provider_params if first else None
 
+            # The cache is consulted before the provider is prepared, because
+            # a report already on disk needs no credential. A provider whose
+            # key was revoked can still answer from one -- and paying the next
+            # provider for a report we already have would be a poor trade,
+            # made likelier by the CLI now standing its availability check
+            # down whenever a fallback was asked for.
+            cache_provider_params = self._get_cache_provider_params(
+                candidate, effective_params
+            )
+            cached_result = await self.cache.get(
+                query, candidate, effective_model, cache_provider_params
+            )
+            if cached_result:
+                # Update timing for cached results
+                end_time = datetime.now()
+                cached_result.start_time = start_time
+                cached_result.end_time = end_time
+                cached_result.duration_seconds = time.time() - start_timestamp
+                self._record_provenance(cached_result, provider, failed, candidate)
+                return cached_result
+
             try:
                 research_provider = self._prepare_provider(
                     candidate, effective_model, effective_params
@@ -621,24 +654,6 @@ class DeepResearchClient:
                     provider_params, candidates[0],
                 )
                 continue
-
-            # Check cache first
-            cache_provider_params = self._get_cache_provider_params(
-                research_provider, effective_params
-            )
-            cached_result = await self.cache.get(
-                query, research_provider.name, effective_model, cache_provider_params
-            )
-            if cached_result:
-                # Update timing for cached results
-                end_time = datetime.now()
-                cached_result.start_time = start_time
-                cached_result.end_time = end_time
-                cached_result.duration_seconds = time.time() - start_timestamp
-                self._record_provenance(
-                    cached_result, provider, failed, research_provider.name
-                )
-                return cached_result
 
             # Perform research
             try:
@@ -698,12 +713,12 @@ class DeepResearchClient:
 
             # Cache the result
             await self.cache.set(
-                query, research_provider.name, result, effective_model, cache_provider_params
+                query, candidate, result, effective_model, cache_provider_params
             )
 
             # After caching, so that which providers this run tried never
             # becomes part of what a later run reads back.
-            self._record_provenance(result, provider, failed, research_provider.name)
+            self._record_provenance(result, provider, failed, candidate)
             return result
 
         # Unreachable: _fallback_candidates never returns an empty list, and the
@@ -723,12 +738,6 @@ class DeepResearchClient:
         types. Spelling it out instead is how it came to be missing from one of
         them.
 
-        Args:
-            name: Provider name to check.
-
-        Returns:
-            True when the name is one this client could resolve.
-
         Configuration is a different question, and deliberately not this one:
         ``falcon`` is a provider whether or not a key is set for it, while a
         transposed letter is not.
@@ -740,11 +749,20 @@ class DeepResearchClient:
         >>> client.knows_provider("falcon"), client.knows_provider("falcn")
         (True, False)
 
-        A name registered by a caller counts too, even though no environment
-        variable would ever produce it:
+        The registry is consulted as well as the known names, so a provider put
+        there directly under a name no environment variable produces still
+        counts:
 
-        >>> client.knows_provider("mock")
+        >>> from deep_research_client.providers.mock import MockProvider
+        >>> client.registry.register(MockProvider(ProviderConfig(name="spare")))
+        >>> client.knows_provider("spare")
         True
+
+        Args:
+            name: Provider name to check.
+
+        Returns:
+            True when the name is one this client could resolve.
         """
         return name in PROVIDER_CLASS_PATHS or self.registry.get_provider(name) is not None
 

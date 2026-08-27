@@ -501,6 +501,44 @@ def test_a_cache_hit_is_stamped_with_this_run_not_the_stored_one(tmp_path):
     ]
 
 
+def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path):
+    """Reading a report off disk needs no credential.
+
+    The cache is consulted per candidate before that candidate is prepared, so
+    a provider whose key has gone still answers from a report it produced
+    earlier -- rather than the run paying the next provider for one we already
+    have. Reachable because the CLI now stands its availability check down
+    whenever a fallback was asked for.
+    """
+    # A falcon report is cached while falcon is configured.
+    warm = _client(("falcon", _params()), cache_dir=tmp_path)
+    warm.research("q", provider="falcon")
+
+    # Later the credential is gone, so falcon cannot be prepared at all.
+    later = _client((BACKUP, _params()), cache_dir=tmp_path)
+    assert "falcon" not in [p.name for p in later.registry.get_available_providers()]
+
+    result = later.research("q", provider="falcon", fallback=[BACKUP])
+
+    assert result.provider == "falcon"
+    assert result.cached is True
+    # No fallback happened, so the report claims nothing it should not.
+    assert result.fell_back is False
+    assert [(a.provider, a.succeeded) for a in result.provider_attempts] == [
+        ("falcon", True)
+    ]
+
+
+def test_an_unreachable_provider_with_no_cache_still_falls_back(tmp_path):
+    """The cache-first lookup must not swallow the fallback it sits in front of."""
+    client = _client((BACKUP, _params()), cache_dir=tmp_path)
+    result = client.research("uncached query", provider="falcon", fallback=[BACKUP])
+
+    assert result.provider == BACKUP
+    assert result.fell_back is True
+    assert result.provider_attempts[0].error_type == "ProviderNotConfiguredError"
+
+
 @pytest.mark.parametrize("warm_the_cache", [False, True], ids=["cold", "warm"])
 def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
     tmp_path, caplog, warm_the_cache

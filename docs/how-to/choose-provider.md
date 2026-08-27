@@ -280,8 +280,8 @@ above — the one that writes `report.md` — to watch the withholding happen. A
 quota failure is the only kind whose remedy embeds a provider-supplied reset
 time, so the console prints `renews at 3pm, pool quota_pool_7f21` while the
 saved report keeps only `the plan's usage limit is spent`. Running it against
-the `deeper_med` command below instead shows you the console half and no
-report, since that one is fail-closed by design.
+the `deeper_med` command just above shows you the console half and no report,
+since that one is fail-closed by design.
 
 Note that `mock` is reached by `--fallback-provider mock` but never by
 `--fallback` on its own: a provider that invents its reports is excluded from

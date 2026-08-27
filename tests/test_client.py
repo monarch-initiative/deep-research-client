@@ -163,7 +163,7 @@ def test_asta_cache_params_include_version_tag():
     provider = AstaProvider(ProviderConfig(
         name="asta", api_key="asta-key", enabled=True))
     cache_params = client._get_cache_provider_params(
-        provider, {"paper_limit": 20})
+        provider.name, {"paper_limit": 20})
 
     assert cache_params == {
         "paper_limit": 20,
@@ -179,7 +179,7 @@ def test_falcon_cache_params_include_artifact_version_tag():
 
     provider = FalconProvider(ProviderConfig(
         name="falcon", api_key="edison-key", enabled=True))
-    cache_params = client._get_cache_provider_params(provider)
+    cache_params = client._get_cache_provider_params(provider.name)
 
     assert cache_params == {"_cache_version": "artifacts-v1"}
 
@@ -193,7 +193,7 @@ def test_openscientist_cache_params_include_artifact_version_tag():
     provider = OpenScientistProvider(
         ProviderConfig(name="openscientist", api_key="opensci-key", enabled=True)
     )
-    cache_params = client._get_cache_provider_params(provider)
+    cache_params = client._get_cache_provider_params(provider.name)
 
     assert cache_params == {"_cache_version": "artifacts-v1"}
 
@@ -207,7 +207,7 @@ def test_claude_code_cache_params_include_version_tag():
     provider = ClaudeCodeProvider(
         ProviderConfig(name="claude_code", api_key=None, enabled=True)
     )
-    cache_params = client._get_cache_provider_params(provider)
+    cache_params = client._get_cache_provider_params(provider.name)
 
     assert cache_params == {"_cache_version": "inline-report-v1"}
 

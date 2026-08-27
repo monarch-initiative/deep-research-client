@@ -37,6 +37,10 @@ _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = 
     "quota": (ProviderQuotaError, None, {"resets_at": "3pm, pool quota_pool_7f21"}),
     "rate_limit": (ProviderRateLimitError, 429, {}),
     "transient": (ProviderTransientError, 503, {}),
+    # Reproduces the error *type* rather than the path: a real
+    # ProviderNotConfiguredError is raised while resolving a provider, before
+    # any research call, so nothing outside this table raises one from here.
+    # Simulating the type is still what a fallback test needs.
     "not_configured": (ProviderNotConfiguredError, None, {}),
 }
 

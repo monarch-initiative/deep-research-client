@@ -452,16 +452,24 @@ class DeepResearchClient:
                 if fallback is True
                 else []
             )
+            # Three reasons, not two. "named or available" as one string
+            # asserts on the list route that nobody else is here, when the
+            # truth is usually that nobody else was listed -- and listing one
+            # is the fix the operator needs pointing at.
+            if excluded:
+                reason = (
+                    "the other available provider(s) do not produce real "
+                    f"reports ({', '.join(excluded)})"
+                )
+            elif fallback is True:
+                reason = "no other provider is available"
+            else:
+                reason = "no other provider was named"
             logger.info(
                 "Fallback was requested, but %s is the only candidate: %s. "
                 "The run will behave as though no fallback was asked for",
                 ordered[0],
-                (
-                    "the other available provider(s) do not produce real "
-                    f"reports ({', '.join(excluded)})"
-                    if excluded
-                    else "no other provider was named or available"
-                ),
+                reason,
             )
         return ordered
 

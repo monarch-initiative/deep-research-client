@@ -8,6 +8,7 @@ raises, so the client is exercised through its ordinary code path.
 """
 
 import json
+import logging
 
 import pytest
 from typer.testing import CliRunner
@@ -65,11 +66,34 @@ class UnclassifiableFailure(StandInProvider):
         raise RuntimeError("connection reset by peer")
 
 
-# Named explicitly wherever an INFO record is asserted on: caplog.at_level with
-# no logger raises the *root* level, and a CLI test elsewhere in this suite
-# leaves this one pinned at WARNING -- so an INFO record is dropped before any
-# handler sees it. The tests pass run alone and fail in the full suite.
+# The CLI's _setup_logging calls setLevel on the *package* logger, which is
+# process-global and was never restored -- so a CLI test anywhere in the suite
+# left every later test running under whatever level it chose. That is why the
+# INFO assertions here passed run alone and failed in the full suite.
+_PACKAGE_LOGGER = "deep_research_client"
+
+# Asserting on records still names the child explicitly, and the fixture below
+# does not make that unnecessary -- dropping it fails four tests. The fixture
+# stops *this* file leaking onward; it cannot undo a level another file already
+# pinned before these tests ran. caplog.at_level with no logger raises the
+# *root* level, which the package logger's level is consulted before, so an
+# INFO record is dropped on the way. Setting a non-NOTSET level on the child
+# stops the effective-level walk there instead, whatever the parent holds.
 _CLIENT_LOGGER = "deep_research_client.client"
+
+
+@pytest.fixture(autouse=True)
+def _restore_package_log_level():
+    """Stop this file's CLI tests leaving a level behind for whoever runs next.
+
+    Containing the leak at its source beats working around it downstream,
+    though it only covers tests that run after these -- see _CLIENT_LOGGER for
+    the half that protects against pollution arriving from elsewhere.
+    """
+    package_logger = logging.getLogger(_PACKAGE_LOGGER)
+    original = package_logger.level
+    yield
+    package_logger.setLevel(original)
 
 
 def _params(**kwargs) -> MockParams:
@@ -474,7 +498,36 @@ def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
 
     said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
     assert len(said) == 1
-    assert "no other provider was named or available" in said[0]
+    assert "candidate: no other provider was named." in said[0]
+    # BACKUP is registered and available -- it just was not named. Saying
+    # "named or available" here would have been false.
+    assert "available" not in said[0]
+
+
+def test_the_automatic_route_says_available_where_the_list_route_says_named(caplog):
+    """Two situations, two sentences.
+
+    On the automatic route, one candidate really does mean nothing else is
+    available. On the list route it usually means nothing else was listed --
+    and listing one is the fix. Collapsing both into "named or available"
+    asserts the first while the second is true.
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        # A second real provider: available, and deliberately not named below.
+        (SPARE, _params()),
+    )
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "candidate: no other provider was named." in said[0]
+    # The false half: SPARE was available the whole time, so any claim about
+    # availability -- "is available", "or available" -- would be wrong here.
+    assert "available" not in said[0]
 
 
 def test_the_reason_given_is_the_reason_that_applied(caplog):
@@ -498,7 +551,7 @@ def test_the_reason_given_is_the_reason_that_applied(caplog):
 
     said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
     assert len(said) == 1
-    assert "no other provider was named or available" in said[0]
+    assert "candidate: no other provider was named." in said[0]
     assert "do not produce real reports" not in said[0]
     assert BACKUP not in said[0]
 

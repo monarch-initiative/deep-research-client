@@ -268,7 +268,11 @@ class ProviderAttempt(BaseModel):
           falcon: 402 no credits -- the account is out of credits
           openai: produced the report
         """
-        return "  " + "\n  ".join(attempt.summary() for attempt in attempts)
+        # Per-line rather than a leading concat: identical for every non-empty
+        # input, and "" rather than a lone indent for the empty one -- so a
+        # caller trusting "ready to sit under a bare header" gets nothing
+        # under the header rather than a whitespace line.
+        return "\n".join(f"  {attempt.summary()}" for attempt in attempts)
 
 
 class ResearchResult(BaseModel):

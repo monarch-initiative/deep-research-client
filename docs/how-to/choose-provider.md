@@ -142,6 +142,89 @@ deep-research-client research "Clinical trial evidence for alpha-synuclein targe
   --output synuclein-trials.md
 ```
 
+## Fall Back to Another Provider
+
+A run can fail for reasons no retry fixes: an account out of credits, a spent
+plan allowance, a rejected or missing key. `--fallback` lets a different
+provider take the work instead.
+
+```bash
+deep-research-client research "Statins and myopathy" \
+  --provider falcon --fallback --output report.md
+```
+
+It is **off by default, and deliberately so.** A report records the provider
+that produced it, and downstream curation reads that field: silently swapping
+providers would make those records wrong. So you have to ask for it.
+
+To control the order yourself, name the providers:
+
+```bash
+deep-research-client research "CRISPR delivery mechanisms" \
+  --provider falcon \
+  --fallback-provider openai \
+  --fallback-provider perplexity \
+  --output report.md
+```
+
+Naming providers *replaces* the automatic ordering rather than adding to it, so
+a configured provider you leave out is never tried.
+
+### What gets recorded
+
+A report produced by a fallback says so in its frontmatter, and says why:
+
+```yaml
+provider: openai
+fell_back: true
+requested_provider: falcon
+provider_attempts:
+- provider: falcon
+  succeeded: false
+  error_type: ProviderBillingError
+  reason: 402 no credits -- the account is out of credits
+  retryable: false
+- provider: openai
+  succeeded: true
+```
+
+A report that came from the provider you asked for gains none of these fields:
+their presence *is* the finding.
+
+### Which failures are followed
+
+| Failure | Falls back? | Why |
+|---------|-------------|-----|
+| No credits (402), spent quota, rejected key (401/403), not configured | Yes | This provider cannot do the work; another might |
+| Rate limited (429) | No | The same provider will take it shortly -- wait and retry |
+| Server error (5xx) | No | A temporary fault, not a reason to change who answers |
+| Anything unrecognised | No | An unexplained failure is not evidence another provider would do better |
+
+The last row is the conservative default: a fallback changes who produced your
+report, so it is taken only where the failure type is evidence it should be.
+
+### Two things to know
+
+**`--model` and `--param` apply to the first provider only.** They were chosen
+for the provider you named -- a Perplexity model name means nothing to OpenAI,
+and an unknown parameter is a hard error. A fallback provider therefore runs on
+its own defaults, and the run says so on stderr when it happens.
+
+**Nothing is written until a provider succeeds.** If every candidate fails, the
+run raises with the last failure and no report, no cache entry, and no partial
+file is left behind.
+
+### Trying it without an outage
+
+The mock provider can simulate any of these failures, so you can see the
+behaviour before you rely on it:
+
+```bash
+ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \
+  --provider mock --param error_type=billing \
+  --fallback-provider deeper_med
+```
+
 ## Check Available Models
 
 List all available models and their characteristics:

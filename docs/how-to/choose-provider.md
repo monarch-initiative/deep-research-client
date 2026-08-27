@@ -252,10 +252,16 @@ its own defaults, and the run says so on stderr when it happens.
 **Nothing is written until a provider succeeds.** If every candidate fails, the
 run raises with the last failure and no report, no cache entry, and no partial
 file is left behind. Since there is no result, there is no
-`provider_attempts` on one — so the trail is carried on the error instead:
-`err.provider_attempts` lists every candidate tried, including the one whose
-failure ended the run. `err.__cause__` is left alone, because providers set it
-themselves to the upstream API error.
+`provider_attempts` on one — so the trail is carried on the error instead.
+Read it with `getattr(err, "provider_attempts", ())`: it lists every candidate
+tried, including the one whose failure ended the run, but only when that
+failure is one the client classified. A provider that cannot recognise its own
+SDK error re-raises it bare, and a plain exception has no field to carry a
+trail; the run logs it in that case instead. `err.__cause__` is left alone
+either way, because providers set it themselves to the upstream API error.
+
+The CLI prints the same trail on a run where every candidate failed, so you do
+not need to catch anything to see it.
 
 **A provider you can no longer reach can still answer from its own cache.**
 When a candidate cannot be prepared — its key revoked, say — and *another
@@ -282,11 +288,12 @@ first candidate the saved report is identical to an ordinary cache hit —
 `provider: falcon`, `cached: true`, and no `fell_back` or `provider_attempts`
 entry, because nothing fell back and the report really was produced by falcon.
 At a later one the earlier failures are recorded and `fell_back` is true, but
-the serving candidate is still listed only as having produced the report. That the provider was unreachable *this* run is an
-operational fact about the run rather than about the report, so it goes to the
-log and nowhere else. If you need it durably, capture stderr: the run warns
-`Provider falcon cannot do this run: … Serving the report it produced for this
-query earlier`.
+the serving candidate is still listed only as having produced the report.
+That the provider was unreachable *this* run is an operational fact about
+the run rather than about the report, so it goes to the log and nowhere
+else. If you need it durably, capture stderr: the run
+warns `Provider falcon cannot do this run: … Serving the report it produced
+for this query earlier`.
 
 ### Trying it without an outage
 

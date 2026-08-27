@@ -374,6 +374,37 @@ def test_the_trail_does_not_take_the_cause_a_provider_set_itself():
     assert [a.provider for a in caught.value.provider_attempts] == [PRIMARY, BACKUP]
 
 
+def test_an_unclassified_terminal_failure_logs_the_trail_instead(caplog):
+    """A failure we did not classify has nowhere to carry the trail.
+
+    `openai.py` re-raises bare what `_classify_openai_error` cannot recognise,
+    so a plain SDK error really does reach the loop -- and a plain exception
+    has no field for this. Reading `err.provider_attempts` there is an
+    AttributeError, not an empty trail, so the run says it in the log instead
+    of losing it.
+    """
+
+    class UnclassifiableFailure(StandInProvider):
+        """A provider whose SDK error nothing recognises."""
+
+        async def research(self, query):
+            raise RuntimeError("connection reset by peer")
+
+    client = _client((PRIMARY, _params(error_type="billing")))
+    client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(RuntimeError) as caught:
+            client.research("q", provider=PRIMARY, fallback=[BACKUP])
+
+    # Nothing to attach it to, so the caller must not be told there is.
+    assert not hasattr(caught.value, "provider_attempts")
+    messages = [r.getMessage() for r in caplog.records]
+    trail = [m for m in messages if "Providers tried" in m]
+    assert len(trail) == 1
+    assert PRIMARY in trail[0] and BACKUP in trail[0]
+
+
 def test_a_lone_failure_carries_no_trail():
     """One provider is not a trail, and must not read as one."""
     client = _client((PRIMARY, _params(error_type="billing")))
@@ -1163,6 +1194,40 @@ def test_the_mock_can_demonstrate_the_quota_redaction_end_to_end(tmp_path, monke
     assert "quota_pool_7f21" not in content
     assert "renews at" not in content
     assert "the plan's usage limit is spent" in content
+
+
+def test_cli_shows_the_trail_when_every_candidate_fails(tmp_path, monkeypatch):
+    """The worst case should be as legible as the best.
+
+    The CLI prints `Providers tried:` when a fallback *succeeds*; without this
+    it printed only the last provider's message when the whole run failed --
+    saying more about who was tried when it worked than when it did not.
+    """
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with(
+            (PRIMARY, _params(error_type="billing")),
+            (BACKUP, _params(error_type="auth")),
+        ),
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "research", "q",
+            "--provider", PRIMARY,
+            "--fallback-provider", BACKUP,
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Providers tried:" in result.output
+    assert PRIMARY in result.output and BACKUP in result.output
+    assert not output.exists()
 
 
 def test_cli_rejects_nothing_when_fallback_is_absent(tmp_path, monkeypatch):

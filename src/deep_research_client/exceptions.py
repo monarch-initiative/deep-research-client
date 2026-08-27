@@ -114,6 +114,11 @@ class ProviderError(ValueError):
     #: would displace theirs to ``__context__`` where ``__suppress_context__``
     #: hides it from the printed traceback. A run's trail and a failure's
     #: cause are different facts, so they get different places.
+    #:
+    #: A tuple rather than a list, and deliberately so despite
+    #: ``ResearchResult.provider_attempts`` being a list: a mutable class-level
+    #: default would be shared by every instance. The immutable one is what
+    #: lets every error carry the attribute without an ``__init__`` change.
     provider_attempts: "tuple[ProviderAttempt, ...]" = ()
 
     def __init__(self, provider: str, detail: str, status_code: Optional[int] = None):

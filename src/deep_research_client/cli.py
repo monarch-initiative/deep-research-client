@@ -1067,6 +1067,17 @@ def research(
 
     except ValueError as exc:
         logger.error(f"Error: {exc}")
+        # The trail is on the error when every candidate failed. Without this
+        # the CLI says more about who was tried when a fallback *worked* than
+        # when it did not, which is backwards: the total failure is where an
+        # operator needs it. getattr, because an unclassified failure carries
+        # no such attribute -- the client logs the trail itself in that case.
+        attempts = getattr(exc, "provider_attempts", ())
+        if attempts:
+            logger.error(
+                "Providers tried:\n  %s",
+                "\n  ".join(attempt.summary() for attempt in attempts),
+            )
         raise typer.Exit(1)
     except OSError as exc:
         logger.error(f"Filesystem error: {exc}")

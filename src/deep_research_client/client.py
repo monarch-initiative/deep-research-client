@@ -510,16 +510,27 @@ class DeepResearchClient:
         exception instead -- including the candidate whose failure is being
         raised, so the list is the whole run and not everything before it.
 
+        A failure we did not classify has nowhere to carry it -- a provider
+        that cannot recognise its own SDK error re-raises it bare, and a plain
+        exception has no field for this. That is the run where the fallback
+        machinery worked hardest, so the trail is logged rather than lost.
+
         Args:
             exc: The failure about to be re-raised.
             failed: Attempts that failed earlier, in order.
             candidate: The provider whose failure ends the run.
         """
-        if not failed or not isinstance(exc, ProviderError):
+        if not failed:
             return
-        exc.provider_attempts = (
-            *failed,
-            ProviderAttempt.from_exception(candidate, exc),
+        trail = (*failed, ProviderAttempt.from_exception(candidate, exc))
+        if isinstance(exc, ProviderError):
+            exc.provider_attempts = trail
+            return
+        logger.warning(
+            "Every provider failed, and %s cannot carry the trail. "
+            "Providers tried:\n  %s",
+            type(exc).__name__,
+            "\n  ".join(attempt.summary() for attempt in trail),
         )
 
     @staticmethod

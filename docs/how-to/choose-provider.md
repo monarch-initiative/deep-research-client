@@ -251,7 +251,9 @@ its own defaults, and the run says so on stderr when it happens.
 
 **Nothing is written until a provider succeeds.** If every candidate fails, the
 run raises with the last failure and no report, no cache entry, and no partial
-file is left behind.
+file is left behind. Since there is no result, there is no `provider_attempts`
+to read: the raised error is chained to the failure before it, so
+`err.__cause__` shows the previous candidate, and the full trail is in the log.
 
 **A provider you can no longer reach can still answer from its own cache.**
 When a candidate cannot be prepared — its key revoked, say — and *another
@@ -270,6 +272,16 @@ Two more things worth knowing. Cache entries never expire, so a report served
 this way may be arbitrarily old. And nothing falls back when the *first*
 candidate answers from cache; if a later one does, the earlier failures are
 still recorded and the report reads `fell_back: true`, which is accurate.
+
+**This is the one case the report does not record.** When the first candidate
+answers from its own cache, the saved report is identical to an ordinary cache
+hit — `provider: falcon`, `cached: true`, and no `fell_back` or
+`provider_attempts` entry, because nothing fell back and the report really was
+produced by falcon. That the provider was unreachable *this* run is an
+operational fact about the run rather than about the report, so it goes to the
+log and nowhere else. If you need it durably, capture stderr: the run warns
+`Provider falcon cannot do this run: … Serving the report it produced for this
+query earlier`.
 
 ### Trying it without an outage
 

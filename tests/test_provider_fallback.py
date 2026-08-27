@@ -317,6 +317,38 @@ def test_the_last_failure_propagates_when_everything_fails():
         client.research("q", provider=PRIMARY, fallback=True)
 
 
+def test_exhausting_every_candidate_chains_to_the_failure_before_it():
+    """A caller who catches the last failure can still see there were others.
+
+    Each earlier `except` exits via `continue`, so by the time the last one
+    raises it is no longer being handled and `__context__` is None. Without
+    chaining, a run that tried three providers is indistinguishable to a caller
+    from one that tried the last -- in a feature whose whole point is recording
+    who was tried.
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params(error_type="auth")),
+        (SPARE, _params(error_type="quota")),
+    )
+    with pytest.raises(ProviderQuotaError) as caught:
+        client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
+
+    # The type and traceback the caller would have had with no fallback at
+    # all are preserved; the cause is what is added.
+    assert isinstance(caught.value.__cause__, ProviderAuthError)
+
+
+def test_a_lone_failure_is_not_given_a_spurious_cause():
+    """Chaining must not invent a predecessor where there was none."""
+    client = _client((PRIMARY, _params(error_type="billing")))
+    with pytest.raises(ProviderBillingError) as caught:
+        client.research("q", provider=PRIMARY)
+
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 def test_nothing_is_cached_when_every_provider_fails(tmp_path):
     """Fail-closed: no report exists, so no cache entry may either."""
     client = _client(

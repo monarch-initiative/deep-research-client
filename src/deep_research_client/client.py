@@ -553,7 +553,7 @@ class DeepResearchClient:
             provider_params: Provider-specific parameters
             metadata: Publication-style metadata (title, abstract, keywords, author, contributors)
             fallback: Opt in to trying another provider when this one cannot do
-                the work. False (the default) never switches providers. True
+                the work. False (the default) or None never switches. True
                 falls back to whatever else is available, in registration
                 order, excluding providers that do not do real research. A
                 list -- or a bare string, for one -- names them explicitly, in
@@ -607,9 +607,18 @@ class DeepResearchClient:
 
         candidates = self._fallback_candidates(provider, fallback)
         failed: list[ProviderAttempt] = []
+        # Kept alongside `failed` so the run that exhausts every candidate can
+        # chain rather than discard: each earlier `except` exits via `continue`,
+        # so by the time the last one raises it is no longer being handled and
+        # __context__ is None. Without this a caller sees the final failure and
+        # has no evidence the others were tried.
+        last_failure: Optional[BaseException] = None
 
         async def serve_cached(
-            candidate: str, cached_model: Optional[str], cache_params: Optional[dict]
+            candidate: str,
+            cached_model: Optional[str],
+            cache_params: Optional[dict],
+            unreachable: Optional[BaseException] = None,
         ) -> Optional[ResearchResult]:
             """Return this candidate's cached report, stamped for this run.
 
@@ -622,6 +631,10 @@ class DeepResearchClient:
                 candidate: Provider whose cache entry is wanted.
                 cached_model: Model to key the entry by, if any.
                 cache_params: Provider parameters to key the entry by.
+                unreachable: The failure that stopped this provider running, when
+                    the entry is being served in place of a live call. Announced
+                    before the result is stamped, so the reason reaches the log
+                    ahead of the outcome it caused.
 
             Returns:
                 The stamped result, or None when nothing is cached.
@@ -629,6 +642,17 @@ class DeepResearchClient:
             cached = await self.cache.get(query, candidate, cached_model, cache_params)
             if cached is None:
                 return None
+            if unreachable is not None:
+                # Say it even though the run succeeds: the next uncached query
+                # will not, and nothing else records why. No attempt is
+                # appended, because the cached report really was produced by
+                # this provider -- so this line is the only thing standing
+                # between a revoked credential and silence.
+                logger.warning(
+                    "Provider %s cannot do this run: %s. "
+                    "Serving the report it produced for this query earlier",
+                    candidate, unreachable,
+                )
             cached.start_time = start_time
             cached.end_time = datetime.now()
             cached.duration_seconds = time.time() - start_timestamp
@@ -660,6 +684,8 @@ class DeepResearchClient:
                 )
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
+                    if last_failure is not None:
+                        raise exc from last_failure
                     raise
                 # Reading a report off disk needs no credential, so a
                 # provider we can no longer reach can still serve one it
@@ -673,22 +699,12 @@ class DeepResearchClient:
                 # the run fails exactly as it did before any of this, which is
                 # what keeps the default, no-fallback path byte-identical.
                 served = await serve_cached(
-                    candidate, effective_model, cache_provider_params
+                    candidate, effective_model, cache_provider_params, exc
                 )
                 if served is not None:
-                    # Say it even though the run succeeds: the next uncached
-                    # query will not, and nothing else on this path records
-                    # why. No attempt is appended, because the cached report
-                    # really was produced by this provider -- so the log line
-                    # is the only thing standing between a revoked credential
-                    # and silence.
-                    logger.warning(
-                        "Provider %s cannot do this run: %s. "
-                        "Serving the report it produced for this query earlier",
-                        candidate, exc,
-                    )
                     return served
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
+                last_failure = exc
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
                     provider_params, candidates[0],
@@ -707,8 +723,11 @@ class DeepResearchClient:
                 result = await research_provider.research(query)
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
+                    if last_failure is not None:
+                        raise exc from last_failure
                     raise
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
+                last_failure = exc
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
                     provider_params, candidates[0],

@@ -405,6 +405,35 @@ def test_an_unclassified_terminal_failure_logs_the_trail_instead(caplog):
     assert PRIMARY in trail[0] and BACKUP in trail[0]
 
 
+def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
+    """An unclassified failure ends the run wherever it happens.
+
+    It is not fallback-worthy, so the loop stops even with candidates behind
+    it -- and the log must not tell an operator that every provider failed
+    when the last one was never reached.
+    """
+
+    class UnclassifiableFailure(StandInProvider):
+        """A provider whose SDK error nothing recognises."""
+
+        async def research(self, query):
+            raise RuntimeError("connection reset by peer")
+
+    client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
+    client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(RuntimeError):
+            client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
+
+    trail = [r.getMessage() for r in caplog.records if "Providers tried" in r.getMessage()]
+    assert len(trail) == 1
+    # The candidate that ended the run, not a claim about the whole list.
+    assert f"Provider {BACKUP} failed with RuntimeError" in trail[0]
+    # SPARE was never reached, so it must not appear as an attempt.
+    assert SPARE not in trail[0]
+
+
 def test_a_lone_failure_carries_no_trail():
     """One provider is not a trail, and must not read as one."""
     client = _client((PRIMARY, _params(error_type="billing")))

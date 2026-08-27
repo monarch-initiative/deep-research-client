@@ -515,6 +515,11 @@ class DeepResearchClient:
         exception has no field for this. That is the run where the fallback
         machinery worked hardest, so the trail is logged rather than lost.
 
+        The log names the candidate that ended the run rather than claiming
+        every one failed: an unclassified failure is not fallback-worthy, so
+        it ends the run wherever it happens, and candidates behind it are
+        left untried.
+
         Args:
             exc: The failure about to be re-raised.
             failed: Attempts that failed earlier, in order.
@@ -527,8 +532,9 @@ class DeepResearchClient:
             exc.provider_attempts = trail
             return
         logger.warning(
-            "Every provider failed, and %s cannot carry the trail. "
+            "Provider %s failed with %s, which cannot carry the trail. "
             "Providers tried:\n  %s",
+            candidate,
             type(exc).__name__,
             "\n  ".join(attempt.summary() for attempt in trail),
         )

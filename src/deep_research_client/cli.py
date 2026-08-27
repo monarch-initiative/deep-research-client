@@ -982,12 +982,12 @@ def research(
         else:
             logger.info(f"Research completed using {result.provider}")
 
-        # Warn, not inform: the report came from someone other than the
-        # provider asked for, and that changes what the report means.
+        # The client already warned that someone else produced this. Restating
+        # it here made one fallback emit the same sentence twice; what the CLI
+        # adds is the trail, so that is all it prints.
         if result.fell_back:
             logger.warning(
-                "Fell back to %s. Providers tried:\n  %s",
-                result.provider,
+                "Providers tried:\n  %s",
                 "\n  ".join(attempt.summary() for attempt in result.provider_attempts),
             )
 

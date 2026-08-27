@@ -98,6 +98,17 @@ class ProviderAttempt(BaseModel):
             "when the failure was not one we classify"
         ),
     )
+    status_code: Optional[int] = Field(
+        default=None, description="HTTP status, when the failure came from an HTTP call"
+    )
+    remedy: Optional[str] = Field(
+        default=None,
+        description=(
+            "What the failure means and what would fix it, in our words rather "
+            "than the provider's. Safe to write into a file that gets committed, "
+            "which `reason` is not: see fallback_frontmatter."
+        ),
+    )
 
     @classmethod
     def from_exception(cls, provider: str, exc: BaseException) -> "ProviderAttempt":
@@ -117,6 +128,8 @@ class ProviderAttempt(BaseModel):
         ('ProviderBillingError', False)
         >>> attempt.reason
         '402 no credits -- the account is out of credits'
+        >>> attempt.status_code, attempt.remedy
+        (402, 'the account is out of credits')
 
         An unclassified failure records what it can and leaves ``retryable``
         unset rather than guessing:
@@ -132,6 +145,8 @@ class ProviderAttempt(BaseModel):
                 error_type=type(exc).__name__,
                 reason=exc.diagnosis,
                 retryable=exc.retryable,
+                status_code=exc.status_code,
+                remedy=exc.remedy,
             )
         return cls(
             provider=provider,
@@ -139,6 +154,45 @@ class ProviderAttempt(BaseModel):
             error_type=type(exc).__name__,
             reason=truncate_detail(str(exc), MAX_DETAIL_CHARS),
         )
+
+    def frontmatter_entry(self) -> Dict[str, Any]:
+        """Render this attempt for a report that will be committed somewhere.
+
+        Deliberately drops ``reason``. That field embeds the provider's own
+        error text verbatim -- for an HTTP failure, the response body -- and a
+        401 body is the one most likely to quote the credential that was just
+        rejected. Some providers redact; we control neither their bodies nor,
+        once a report is committed, who reads the file afterwards.
+
+        Nothing is lost that justifies the switch: ``error_type``,
+        ``status_code`` and ``remedy`` say what happened and what would fix it,
+        and none of them is provider-supplied prose. The full text stays in the
+        logs and on the object, where it was before any of this was written to
+        disk.
+
+        Returns:
+            Keys safe to persist, with empty ones omitted.
+
+        >>> from .exceptions import ProviderAuthError
+        >>> leaky = ProviderAuthError("falcon", "Invalid API key: sk-live-abc123", 401)
+        >>> entry = ProviderAttempt.from_exception("falcon", leaky).frontmatter_entry()
+        >>> "sk-live-abc123" in str(entry)
+        False
+        >>> entry["remedy"]
+        'the API key is missing, invalid, or lacks access to this endpoint'
+        >>> ProviderAttempt(provider="openai", succeeded=True).frontmatter_entry()
+        {'provider': 'openai', 'succeeded': True}
+        """
+        entry: Dict[str, Any] = {"provider": self.provider, "succeeded": self.succeeded}
+        for key, value in (
+            ("error_type", self.error_type),
+            ("status_code", self.status_code),
+            ("remedy", self.remedy),
+            ("retryable", self.retryable),
+        ):
+            if value is not None:
+                entry[key] = value
+        return entry
 
     def summary(self) -> str:
         """Render this attempt as a single human-readable line.
@@ -238,6 +292,10 @@ class ResearchResult(BaseModel):
         formatter, and a fallback that only some reports admit to would be
         worse than one none of them mention.
 
+        Each attempt is rendered by :meth:`ProviderAttempt.frontmatter_entry`,
+        which withholds the provider's raw error text -- see there for why a
+        report is not the place for it.
+
         Returns:
             Frontmatter keys describing the fallback, or an empty dict when no
             fallback happened -- the presence of these keys is the finding.
@@ -255,7 +313,7 @@ class ResearchResult(BaseModel):
         >>> result.fallback_frontmatter()["requested_provider"]
         'falcon'
         >>> result.fallback_frontmatter()["provider_attempts"]
-        [{'provider': 'falcon', 'succeeded': False, 'reason': '402'}, {'provider': 'openai', 'succeeded': True}]
+        [{'provider': 'falcon', 'succeeded': False}, {'provider': 'openai', 'succeeded': True}]
         """
         if not self.fell_back:
             return {}
@@ -263,7 +321,7 @@ class ResearchResult(BaseModel):
         if self.requested_provider:
             metadata["requested_provider"] = self.requested_provider
         metadata["provider_attempts"] = [
-            attempt.model_dump(exclude_none=True) for attempt in self.provider_attempts
+            attempt.frontmatter_entry() for attempt in self.provider_attempts
         ]
         return metadata
 

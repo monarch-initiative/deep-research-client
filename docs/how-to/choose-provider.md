@@ -157,10 +157,14 @@ It is **off by default, and deliberately so.** A report records the provider
 that produced it, and downstream curation reads that field: silently swapping
 providers would make those records wrong. So you have to ask for it.
 
-`--fallback` tries the other configured providers in **registration order** —
-the order the client detects them from the environment, which is not a
-preference ranking. Each candidate is a paid account, so when it matters which
-one you spend money on, name them yourself rather than relying on that order:
+`--fallback` tries the other configured providers in **registration order**,
+which is a fixed sequence filtered down to whichever you have configured — not
+a preference ranking, and not dependent on how your environment is set up:
+
+    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, claude_code
+
+Each candidate is a paid account, so when it matters which one you spend money
+on, name them yourself rather than relying on that order:
 
 ```bash
 deep-research-client research "CRISPR delivery mechanisms" \
@@ -187,7 +191,8 @@ provider_attempts:
 - provider: falcon
   succeeded: false
   error_type: ProviderBillingError
-  reason: 402 no credits -- the account is out of credits
+  status_code: 402
+  remedy: the account is out of credits
   retryable: false
 - provider: openai
   succeeded: true
@@ -196,6 +201,11 @@ provider_attempts:
 A report that came from the provider you asked for gains none of these fields:
 their presence *is* the finding. The same goes for cache entries, which are
 written before the provenance is stamped.
+
+`remedy` is our reading of the failure, not the provider's own error text.
+That text can quote whatever the provider chose to put in a response body —
+including, for a rejected key, the key — and these reports get committed, so
+the raw version stays on the result object and in the logs rather than on disk.
 
 The result *object* is the exception: `requested_provider` and
 `provider_attempts` are always populated, so a library caller serialising a
@@ -229,7 +239,8 @@ file is left behind.
 
 The mock provider can simulate any of these failures, so you can see the
 behaviour before you rely on it. With a second provider configured, this
-produces a real report and the frontmatter above:
+produces a real report whose frontmatter has the shape shown above, with
+`requested_provider: mock` and whichever provider answered:
 
 ```bash
 ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \

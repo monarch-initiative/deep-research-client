@@ -26,7 +26,12 @@ from deep_research_client.exceptions import (
 )
 from deep_research_client.formatter import ResultFormatter as LegacyResultFormatter
 from deep_research_client.processing import ResultFormatter
-from deep_research_client.models import CacheConfig, ProviderConfig
+from deep_research_client.models import (
+    CacheConfig,
+    ProviderAttempt,
+    ProviderConfig,
+    ResearchResult,
+)
 from deep_research_client.processing import ResearchProcessor
 from deep_research_client.provider_params import MockParams
 from deep_research_client.providers.mock import MockProvider
@@ -500,26 +505,15 @@ def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
     assert BACKUP in announcements[0] and PRIMARY in announcements[0]
 
 
-def test_no_fallback_is_announced_when_none_happened():
+def test_no_fallback_is_announced_when_none_happened(caplog):
     """The warning must not fire on an ordinary run."""
     client = _client((PRIMARY, _params()))
-    import logging as _logging
-
-    records = []
-
-    class _Capture(_logging.Handler):
-        def emit(self, record):
-            records.append(record.getMessage())
-
-    handler = _Capture()
-    logger = _logging.getLogger("deep_research_client.client")
-    logger.addHandler(handler)
-    try:
+    with caplog.at_level("WARNING"):
         client.research("q", provider=PRIMARY)
-    finally:
-        logger.removeHandler(handler)
 
-    assert not any("not the provider first tried" in m for m in records)
+    assert not [
+        r for r in caplog.records if "not the provider first tried" in r.getMessage()
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -635,6 +629,35 @@ def test_frontmatter_is_unchanged_when_no_fallback_happened(formatter_class):
     assert "fell_back" not in frontmatter
     assert "provider_attempts" not in frontmatter
     assert "requested_provider" not in frontmatter
+
+
+@pytest.mark.parametrize("formatter_class", FORMATTERS)
+def test_the_report_never_carries_the_providers_own_error_text(formatter_class):
+    """A 401 body is the one most likely to quote the credential it rejected.
+
+    These reports get committed, so the frontmatter carries our reading of the
+    failure, never the provider's prose. The full text stays on the object and
+    in the logs, where it was before any of this reached disk.
+    """
+    secret = "sk-live-NOTAREALKEY123456"
+    leaked = ProviderAuthError("falcon", f"Invalid API key: {secret}", 401)
+    result = ResearchResult(
+        markdown="body", provider=BACKUP, query="q", requested_provider="falcon",
+        provider_attempts=[
+            ProviderAttempt.from_exception("falcon", leaked),
+            ProviderAttempt(provider=BACKUP, succeeded=True),
+        ],
+    )
+    rendered = formatter_class().format_full_markdown(result)
+
+    assert secret not in rendered
+    assert "Invalid API key" not in rendered
+    # What justifies the switch survives, in words we chose.
+    assert "ProviderAuthError" in rendered
+    assert "status_code: 401" in rendered
+    assert "lacks access to this endpoint" in rendered
+    # And the object still has the whole thing for a caller who wants it.
+    assert secret in result.provider_attempts[0].reason
 
 
 def test_the_report_the_cli_writes_admits_the_fallback():

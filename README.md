@@ -204,7 +204,8 @@ provider_attempts:
 - provider: falcon
   succeeded: false
   error_type: ProviderBillingError
-  reason: 402 no credits -- the account is out of credits
+  status_code: 402
+  remedy: the account is out of credits
   retryable: false
 - provider: openai
   succeeded: true

@@ -353,9 +353,20 @@ class DeepResearchClient:
         Raises:
             ValueError: If there is nothing at all to try.
         """
-        if isinstance(fallback, bool):
+        if isinstance(fallback, str):
+            # A Sequence[str] accepts a str, and list("openai") would quietly
+            # become six one-letter providers. The singular form is the obvious
+            # thing to reach for next to a list, so honour it.
+            extra = [fallback]
+        elif isinstance(fallback, bool):
             extra = (
-                [candidate.name for candidate in self.registry.get_available_providers()]
+                [
+                    candidate.name
+                    for candidate in self.registry.get_available_providers()
+                    # A provider that invents its reports is not a stand-in for
+                    # one that does the work. Name it and it is honoured.
+                    if candidate.produces_real_reports
+                ]
                 if fallback
                 else []
             )
@@ -364,6 +375,22 @@ class DeepResearchClient:
             # unavailable: each one then reports why it could not be used,
             # rather than vanishing from the trail without explanation.
             extra = list(fallback)
+
+        # Names are checked before any provider is called. A typo found
+        # mid-run would abort after the first provider had already been paid
+        # for, never reach the good candidate behind it, and replace the
+        # failure that started the fallback with a bare "not found".
+        unknown = [
+            name
+            for name in extra
+            if name not in PROVIDER_CLASS_PATHS and self.registry.get_provider(name) is None
+        ]
+        if unknown:
+            raise ValueError(
+                f"Provider '{unknown[0]}' not found"
+                if len(unknown) == 1
+                else f"Providers not found: {', '.join(unknown)}"
+            )
 
         if provider:
             ordered = [provider]
@@ -428,6 +455,7 @@ class DeepResearchClient:
         exc: BaseException,
         model: Optional[str],
         provider_params: Optional[dict],
+        overridden_provider: str,
     ) -> None:
         """Say which provider is taking over, and what is being dropped to do it.
 
@@ -437,6 +465,10 @@ class DeepResearchClient:
             exc: The failure that ended the previous attempt.
             model: Model override the caller asked for, if any.
             provider_params: Provider-specific parameters the caller asked for.
+            overridden_provider: The one candidate the overrides were applied
+                to. Not the same as ``failed_provider`` past the first hop,
+                where the provider that just failed had no overrides either --
+                and a message about provenance must not assert otherwise.
         """
         logger.warning(
             "Provider %s cannot do this run: %s. Falling back to %s",
@@ -450,7 +482,7 @@ class DeepResearchClient:
         if dropped:
             logger.warning(
                 "%s runs on its own defaults: %s applied to %s, not to it",
-                next_provider, " and ".join(dropped), failed_provider,
+                next_provider, " and ".join(dropped), overridden_provider,
             )
 
     @staticmethod
@@ -575,7 +607,8 @@ class DeepResearchClient:
                     raise
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
-                    candidate, candidates[position + 1], exc, model, provider_params
+                    candidate, candidates[position + 1], exc, model,
+                    provider_params, candidates[0],
                 )
                 continue
 
@@ -605,7 +638,8 @@ class DeepResearchClient:
                     raise
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
-                    candidate, candidates[position + 1], exc, model, provider_params
+                    candidate, candidates[position + 1], exc, model,
+                    provider_params, candidates[0],
                 )
                 continue
 

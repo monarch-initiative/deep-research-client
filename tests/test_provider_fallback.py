@@ -36,6 +36,19 @@ BACKUP = "mock_backup"
 SPARE = "mock_spare"
 
 
+class StandInProvider(MockProvider):
+    """A mock standing in for a provider that does real research.
+
+    MockProvider itself is kept out of the *automatic* fallback ordering,
+    because a run that ran out of credits should fail rather than quietly hand
+    a curation record an invented report. Testing that ordering therefore needs
+    a provider that is not excluded from it -- so this subclass says so, rather
+    than the tests reaching around the rule they are meant to exercise.
+    """
+
+    produces_real_reports = True
+
+
 def _params(**kwargs) -> MockParams:
     """Build mock parameters with no artificial delay."""
     kwargs.setdefault("response_delay", 0.0)
@@ -63,7 +76,7 @@ def _client(*named_params, cache_dir=None) -> DeepResearchClient:
         provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
     )
     for name, params in named_params:
-        client.registry.register(MockProvider(ProviderConfig(name=name), params))
+        client.registry.register(StandInProvider(ProviderConfig(name=name), params))
     return client
 
 
@@ -303,6 +316,117 @@ def test_an_unknown_provider_name_is_still_a_plain_error():
 
 
 # --------------------------------------------------------------------------
+# Bad input in the fallback list
+# --------------------------------------------------------------------------
+
+
+def test_a_typo_in_the_fallback_list_fails_before_anything_is_called(caplog):
+    """A name that is not a provider is caught up front, not mid-run.
+
+    Asserting the message alone would prove nothing: the same ValueError
+    surfaces either way, just later. What matters is that no provider was
+    called first -- discovering the typo mid-run would waste that call, never
+    reach the good candidate behind it, and replace the failure that started
+    the fallback with a bare "not found".
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params()),
+    )
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ValueError, match="'mok_backup' not found"):
+            client.research("q", provider=PRIMARY, fallback=["mok_backup", BACKUP])
+
+    # The primary logs a warning the moment it is called and fails, so silence
+    # here is the evidence that nothing ran.
+    assert [r.getMessage() for r in caplog.records] == []
+
+
+def test_a_typo_is_caught_even_when_the_primary_would_have_succeeded():
+    """Fail fast means fast: the primary is never called either."""
+    client = _client((PRIMARY, _params()))
+    with pytest.raises(ValueError, match="not found"):
+        client.research("q", provider=PRIMARY, fallback=["nonesuch"])
+
+
+def test_every_unknown_name_is_named_at_once():
+    """Fixing one typo only to be told about the next is a poor trade."""
+    client = _client((PRIMARY, _params()))
+    with pytest.raises(ValueError, match="alpha, beta"):
+        client.research("q", provider=PRIMARY, fallback=["alpha", "beta"])
+
+
+def test_a_known_but_unconfigured_name_is_not_treated_as_a_typo():
+    """The distinction the up-front check must preserve.
+
+    ``openai`` is a real provider that simply has no credential here, so it
+    belongs in the trail with its reason -- unlike a name that is not a
+    provider at all.
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params()),
+    )
+    result = client.research("q", provider=PRIMARY, fallback=["openai", BACKUP])
+    assert result.provider == BACKUP
+    assert [a.provider for a in result.provider_attempts] == [PRIMARY, "openai", BACKUP]
+
+
+def test_a_single_provider_name_is_not_read_as_a_list_of_letters():
+    """``Sequence[str]`` accepts ``str``; ``list("openai")`` is six providers."""
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params()),
+    )
+    result = client.research("q", provider=PRIMARY, fallback=BACKUP)
+    assert result.provider == BACKUP
+    assert [a.provider for a in result.provider_attempts] == [PRIMARY, BACKUP]
+
+
+# --------------------------------------------------------------------------
+# A provider that invents its reports is not a stand-in for one that does not
+# --------------------------------------------------------------------------
+
+
+def test_a_fabricating_provider_is_left_out_of_the_automatic_ordering():
+    """The premise of the feature: a failed run beats an invented report."""
+    client = _client((PRIMARY, _params(error_type="billing")))
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    assert BACKUP in [p.name for p in client.registry.get_available_providers()]
+    with pytest.raises(ProviderBillingError):
+        client.research("q", provider=PRIMARY, fallback=True)
+
+
+def test_naming_a_fabricating_provider_still_honours_it():
+    """Asking for it explicitly is a decision, not a stand-in nobody wanted."""
+    client = _client((PRIMARY, _params(error_type="billing")))
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
+    assert result.provider == BACKUP
+    assert result.fell_back is True
+
+
+def test_real_providers_declare_themselves_real_by_default():
+    """The exclusion must be opt-in, or it would quietly empty the ordering."""
+    from deep_research_client.providers import ResearchProvider
+
+    assert ResearchProvider.produces_real_reports is True
+    assert MockProvider.produces_real_reports is False
+
+
+def test_a_fabricating_provider_can_still_be_chosen_directly():
+    """Excluding it from fallback must not stop it doing its actual job."""
+    client = DeepResearchClient(
+        cache_config=CacheConfig(enabled=False),
+        provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
+    )
+    result = client.research("q", provider=PRIMARY)
+    assert result.provider == PRIMARY
+
+
+# --------------------------------------------------------------------------
 # Caching must not inherit another run's provenance
 # --------------------------------------------------------------------------
 
@@ -394,6 +518,32 @@ def test_dropping_overrides_is_said_out_loud(caplog):
     messages = [record.getMessage() for record in caplog.records]
     assert any("own defaults" in message for message in messages)
     assert any("--param" in message for message in messages)
+
+
+def test_the_dropped_override_warning_names_the_provider_that_got_them(caplog):
+    """Past the first hop, the provider that just failed had no overrides either.
+
+    Naming it would assert that parameters were applied to a provider which in
+    fact ran on its own defaults -- in a message whose whole job is provenance.
+    """
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (BACKUP, _params(error_type="auth")),
+        (SPARE, _params()),
+    )
+    with caplog.at_level("WARNING"):
+        client.research(
+            "q",
+            provider=PRIMARY,
+            provider_params={"error_type": "billing", "response_delay": 0.0},
+            fallback=[BACKUP, SPARE],
+        )
+
+    dropped = [m for m in (r.getMessage() for r in caplog.records) if "own defaults" in m]
+    assert len(dropped) == 2
+    # Both hops must credit the primary, the only candidate that got them.
+    assert all(f"applied to {PRIMARY}" in message for message in dropped)
+    assert not any(f"applied to {BACKUP}" in message for message in dropped)
 
 
 # --------------------------------------------------------------------------

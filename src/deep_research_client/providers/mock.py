@@ -44,6 +44,10 @@ class MockProvider(ResearchProvider):
         self.params = params or MockParams()
         super().__init__(config, self.params.model)
 
+    #: The reports are invented, so this provider is never fallen back to
+    #: automatically. ``--fallback-provider mock`` still reaches it.
+    produces_real_reports = False
+
     def get_default_model(self) -> str:
         """Get default Mock model."""
         return "mock-model-v1"

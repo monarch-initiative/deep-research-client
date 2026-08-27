@@ -189,7 +189,13 @@ provider_attempts:
 ```
 
 A report that came from the provider you asked for gains none of these fields:
-their presence *is* the finding.
+their presence *is* the finding. The same goes for cache entries, which are
+written before the provenance is stamped.
+
+The result *object* is the exception: `requested_provider` and
+`provider_attempts` are always populated, so a library caller serialising a
+result sees them on every run, recording the single provider that answered.
+`fell_back` is what distinguishes the two cases.
 
 ### Which failures are followed
 
@@ -217,13 +223,32 @@ file is left behind.
 ### Trying it without an outage
 
 The mock provider can simulate any of these failures, so you can see the
-behaviour before you rely on it:
+behaviour before you rely on it. With a second provider configured, this
+produces a real report and the frontmatter above:
+
+```bash
+ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \
+  --provider mock --param error_type=billing --fallback \
+  --output report.md
+```
+
+If you have no other provider configured, the run has nowhere to go and stops
+with the mock's simulated billing failure -- which is the fail-closed behaviour,
+not a bug. To watch the switch happen without configuring anything, name
+`deeper_med` as the fallback: it is a permanently unavailable stub, so the run
+still ends in an error and writes no report, but the log shows the fallback
+being taken and each provider explaining itself:
 
 ```bash
 ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \
   --provider mock --param error_type=billing \
   --fallback-provider deeper_med
 ```
+
+Note that `mock` is reached by `--fallback-provider mock` but never by
+`--fallback` on its own: a provider that invents its reports is excluded from
+the automatic ordering, so a real run that runs out of credits fails rather
+than quietly handing you a fabricated report.
 
 ## Check Available Models
 

@@ -236,11 +236,11 @@ class ProviderAttempt(BaseModel):
     def render_trail(attempts: "Sequence[ProviderAttempt]") -> str:
         """Render a run's attempts as the indented block three callers print.
 
-        The CLI prints this on a successful fallback and again when every
-        candidate failed, and the client logs it when the terminal failure
+        The CLI prints this on a successful fallback and again on a run that
+        ended without one, and the client logs it when the terminal failure
         cannot carry the trail. An operator meets those on different days and
-        should recognise the second from the first, so the indent and the
-        choice of ``summary()`` belong here rather than in three call sites
+        should recognise the second from the first, so the whole format --
+        the indent included -- belongs here rather than in three call sites
         that have to stay in step.
 
         ``summary()`` carries the provider's own error text, which
@@ -252,17 +252,23 @@ class ProviderAttempt(BaseModel):
             attempts: The attempts to render, in the order they were tried.
 
         Returns:
-            One line per attempt, each indented two spaces after the first.
+            One indented line per attempt, ready to sit under a bare header.
+            The leading indent is part of it, so a caller need only put the
+            header and a newline in front; owning half the format here and
+            half at three call sites is what let them drift in the first
+            place.
 
         >>> from .exceptions import ProviderBillingError
         >>> spent = ProviderAttempt.from_exception(
         ...     "falcon", ProviderBillingError("falcon", "no credits", 402))
+        >>> print("Providers tried:")
+        Providers tried:
         >>> print(ProviderAttempt.render_trail(
         ...     [spent, ProviderAttempt(provider="openai", succeeded=True)]))
-        falcon: 402 no credits -- the account is out of credits
+          falcon: 402 no credits -- the account is out of credits
           openai: produced the report
         """
-        return "\n  ".join(attempt.summary() for attempt in attempts)
+        return "  " + "\n  ".join(attempt.summary() for attempt in attempts)
 
 
 class ResearchResult(BaseModel):

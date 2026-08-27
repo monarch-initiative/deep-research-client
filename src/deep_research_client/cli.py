@@ -1007,7 +1007,7 @@ def research(
         # console-versus-report split that used to be argued here.
         if result.fell_back:
             logger.warning(
-                "Providers tried:\n  %s",
+                "Providers tried:\n%s",
                 ProviderAttempt.render_trail(result.provider_attempts),
             )
 
@@ -1079,7 +1079,7 @@ def research(
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
             logger.error(
-                "Providers tried:\n  %s",
+                "Providers tried:\n%s",
                 ProviderAttempt.render_trail(attempts),
             )
         raise typer.Exit(1)

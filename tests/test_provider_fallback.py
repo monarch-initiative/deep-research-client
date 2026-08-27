@@ -65,6 +65,13 @@ class UnclassifiableFailure(StandInProvider):
         raise RuntimeError("connection reset by peer")
 
 
+# Named explicitly wherever an INFO record is asserted on: caplog.at_level with
+# no logger raises the *root* level, and a CLI test elsewhere in this suite
+# leaves this one pinned at WARNING -- so an INFO record is dropped before any
+# handler sees it. The tests pass run alone and fail in the full suite.
+_CLIENT_LOGGER = "deep_research_client.client"
+
+
 def _params(**kwargs) -> MockParams:
     """Build mock parameters with no artificial delay."""
     kwargs.setdefault("response_delay", 0.0)
@@ -447,10 +454,7 @@ def test_a_requested_fallback_with_nobody_to_switch_to_says_so(caplog):
     # precisely because it does not produce real reports.
     client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
 
-    # Named explicitly: at_level with no logger raises the *root* level, and a
-    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
-    # an INFO record would be dropped before any handler saw it.
-    with caplog.at_level("INFO", logger="deep_research_client.client"):
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
         with pytest.raises(ProviderBillingError):
             client.research("q", provider=PRIMARY, fallback=True)
 
@@ -464,10 +468,7 @@ def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
     """The other route to one candidate: the name deduplicates away."""
     client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
 
-    # Named explicitly: at_level with no logger raises the *root* level, and a
-    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
-    # an INFO record would be dropped before any handler saw it.
-    with caplog.at_level("INFO", logger="deep_research_client.client"):
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
         with pytest.raises(ProviderBillingError):
             client.research("q", provider=PRIMARY, fallback=[PRIMARY])
 
@@ -476,14 +477,37 @@ def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
     assert "no other provider was named or available" in said[0]
 
 
+def test_the_reason_given_is_the_reason_that_applied(caplog):
+    """Naming a cause that is not the cause is the bug this PR is about.
+
+    The `produces_real_reports` filter runs only on the automatic route. An
+    explicitly named provider that invents its reports is honoured -- so when
+    a list route dedups to one candidate while a mock happens to sit in the
+    registry, that mock was not excluded for fabricating. It simply was not
+    named. Blaming the filter would tell an operator that their own
+    `--fallback-provider mock_backup` would be dropped, which is the reverse
+    of what happens.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")))
+    # Available, and not a real-report provider -- the bait for the wrong reason.
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "no other provider was named or available" in said[0]
+    assert "do not produce real reports" not in said[0]
+    assert BACKUP not in said[0]
+
+
 def test_a_real_fallback_does_not_claim_it_had_nobody(caplog):
     """The diagnostic must not fire on the runs it is not about."""
     client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
 
-    # Named explicitly: at_level with no logger raises the *root* level, and a
-    # CLI test elsewhere in the suite leaves this logger pinned at WARNING, so
-    # an INFO record would be dropped before any handler saw it.
-    with caplog.at_level("INFO", logger="deep_research_client.client"):
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
         result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
 
     assert result.provider == BACKUP

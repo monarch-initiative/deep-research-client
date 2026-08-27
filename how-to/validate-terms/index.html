@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/cache/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/validate-terms/">
       
       
-        <link rel="prev" href="../validate-terms/">
+        <link rel="prev" href="../validate-references/">
       
       
-        <link rel="next" href="../browse-cache/">
+        <link rel="next" href="../cache/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -22,7 +22,7 @@
     
     
       
-        <title>Manage Cache - deep-research-client</title>
+        <title>Validate Ontology Terms - deep-research-client</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-to-manage-cache" class="md-skip">
+        <a href="#validate-ontology-terms" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Manage Cache
+              Validate Ontology Terms
             
           </span>
         </div>
@@ -480,29 +480,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../validate-terms/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Validate Ontology Terms
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -520,7 +497,7 @@
   
   
   <span class="md-ellipsis">
-    Manage Cache
+    Validate Ontology Terms
     
   </span>
   
@@ -533,7 +510,7 @@
   
   
   <span class="md-ellipsis">
-    Manage Cache
+    Validate Ontology Terms
     
   </span>
   
@@ -556,55 +533,64 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-caching-works" class="md-nav__link">
+  <a href="#install" class="md-nav__link">
     <span class="md-ellipsis">
-      How Caching Works
+      Install
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-makes-a-cache-hit" class="md-nav__link">
+  <a href="#validate-a-report-you-already-have" class="md-nav__link">
     <span class="md-ellipsis">
-      What Makes a Cache Hit?
+      Validate a report you already have
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#view-cached-results" class="md-nav__link">
+  <a href="#validate-as-part-of-the-research-run" class="md-nav__link">
     <span class="md-ellipsis">
-      View Cached Results
+      Validate as part of the research run
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="View Cached Results">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-outcomes-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the outcomes mean
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the outcomes mean">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#detailed-view" class="md-nav__link">
+  <a href="#term-status" class="md-nav__link">
     <span class="md-ellipsis">
-      Detailed View
+      Term status
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#filter-by-provider" class="md-nav__link">
+  <a href="#label-agreement" class="md-nav__link">
     <span class="md-ellipsis">
-      Filter by Provider
+      Label agreement
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#limit-results" class="md-nav__link">
+  <a href="#synonyms" class="md-nav__link">
     <span class="md-ellipsis">
-      Limit Results
+      Synonyms
     </span>
   </a>
   
@@ -616,105 +602,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#search-cache" class="md-nav__link">
+  <a href="#where-labels-are-read-from" class="md-nav__link">
     <span class="md-ellipsis">
-      Search Cache
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Search Cache">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#search-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Search Options
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#browse-cache-interactive-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      Browse Cache (Interactive Browser)
+      Where labels are read from
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#bypass-cache" class="md-nav__link">
+  <a href="#when-the-ontology-service-is-unreachable" class="md-nav__link">
     <span class="md-ellipsis">
-      Bypass Cache
+      When the ontology service is unreachable
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#clear-cache" class="md-nav__link">
+  <a href="#fail-a-pipeline-on-bad-terms" class="md-nav__link">
     <span class="md-ellipsis">
-      Clear Cache
+      Fail a pipeline on bad terms
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#clear-specific-cache-files" class="md-nav__link">
+  <a href="#how-long-it-takes" class="md-nav__link">
     <span class="md-ellipsis">
-      Clear Specific Cache Files
+      How long it takes
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#check-if-result-is-cached" class="md-nav__link">
+  <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
-      Check If Result Is Cached
+      Options
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-file-format" class="md-nav__link">
+  <a href="#what-this-does-not-check" class="md-nav__link">
     <span class="md-ellipsis">
-      Cache File Format
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#custom-cache-location" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Cache Location
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#disable-caching-entirely" class="md-nav__link">
-    <span class="md-ellipsis">
-      Disable Caching Entirely
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tips" class="md-nav__link">
-    <span class="md-ellipsis">
-      Tips
+      What this does not check
     </span>
   </a>
   
@@ -723,7 +658,7 @@
         <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
-      See Also
+      See also
     </span>
   </a>
   
@@ -733,6 +668,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1152,55 +1110,64 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-caching-works" class="md-nav__link">
+  <a href="#install" class="md-nav__link">
     <span class="md-ellipsis">
-      How Caching Works
+      Install
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-makes-a-cache-hit" class="md-nav__link">
+  <a href="#validate-a-report-you-already-have" class="md-nav__link">
     <span class="md-ellipsis">
-      What Makes a Cache Hit?
+      Validate a report you already have
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#view-cached-results" class="md-nav__link">
+  <a href="#validate-as-part-of-the-research-run" class="md-nav__link">
     <span class="md-ellipsis">
-      View Cached Results
+      Validate as part of the research run
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="View Cached Results">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-outcomes-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the outcomes mean
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the outcomes mean">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#detailed-view" class="md-nav__link">
+  <a href="#term-status" class="md-nav__link">
     <span class="md-ellipsis">
-      Detailed View
+      Term status
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#filter-by-provider" class="md-nav__link">
+  <a href="#label-agreement" class="md-nav__link">
     <span class="md-ellipsis">
-      Filter by Provider
+      Label agreement
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#limit-results" class="md-nav__link">
+  <a href="#synonyms" class="md-nav__link">
     <span class="md-ellipsis">
-      Limit Results
+      Synonyms
     </span>
   </a>
   
@@ -1212,105 +1179,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#search-cache" class="md-nav__link">
+  <a href="#where-labels-are-read-from" class="md-nav__link">
     <span class="md-ellipsis">
-      Search Cache
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Search Cache">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#search-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Search Options
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#browse-cache-interactive-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      Browse Cache (Interactive Browser)
+      Where labels are read from
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#bypass-cache" class="md-nav__link">
+  <a href="#when-the-ontology-service-is-unreachable" class="md-nav__link">
     <span class="md-ellipsis">
-      Bypass Cache
+      When the ontology service is unreachable
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#clear-cache" class="md-nav__link">
+  <a href="#fail-a-pipeline-on-bad-terms" class="md-nav__link">
     <span class="md-ellipsis">
-      Clear Cache
+      Fail a pipeline on bad terms
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#clear-specific-cache-files" class="md-nav__link">
+  <a href="#how-long-it-takes" class="md-nav__link">
     <span class="md-ellipsis">
-      Clear Specific Cache Files
+      How long it takes
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#check-if-result-is-cached" class="md-nav__link">
+  <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
-      Check If Result Is Cached
+      Options
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cache-file-format" class="md-nav__link">
+  <a href="#what-this-does-not-check" class="md-nav__link">
     <span class="md-ellipsis">
-      Cache File Format
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#custom-cache-location" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Cache Location
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#disable-caching-entirely" class="md-nav__link">
-    <span class="md-ellipsis">
-      Disable Caching Entirely
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tips" class="md-nav__link">
-    <span class="md-ellipsis">
-      Tips
+      What this does not check
     </span>
   </a>
   
@@ -1319,7 +1235,7 @@
         <li class="md-nav__item">
   <a href="#see-also" class="md-nav__link">
     <span class="md-ellipsis">
-      See Also
+      See also
     </span>
   </a>
   
@@ -1344,160 +1260,407 @@
   
 
 
-<h1 id="how-to-manage-cache">How to Manage Cache</h1>
-<p>The client caches all research results to avoid expensive re-queries.</p>
-<h2 id="how-caching-works">How Caching Works</h2>
-<ul>
-<li><strong>Location</strong>: <code>~/.deep_research_cache/</code></li>
-<li><strong>Persistence</strong>: Cache never expires (manual clearing only)</li>
-<li><strong>Key components</strong>: provider, query, model, and provider parameters</li>
-</ul>
-<p>When you run the same query twice, the second call returns instantly from cache.</p>
-<h2 id="what-makes-a-cache-hit">What Makes a Cache Hit?</h2>
-<p>A cached result is returned only when <strong>all</strong> of these match exactly:</p>
+<h1 id="validate-ontology-terms">Validate Ontology Terms</h1>
+<p>Deep research providers cite ontology terms with the same confidence they cite papers, and
+with the same reliability. A report will attach <code>HP:9999999</code> to a phenotype that has no
+such identifier - and, worse, will attach a <em>real</em> identifier to the wrong thing.</p>
+<p>That second failure is why this check exists. <code>NCIT:C16814</code> is a genuine NCIT term. It
+resolves. It has a label, a definition and a URL. Every check that asks "does this term
+exist?" passes it. It means <strong>Malaysia</strong>, and a report that writes it beside the words
+"Echocardiography Test" is wrong in a way nothing but a label lookup will show.</p>
+<p><code>deep-research-client</code> integrates
+<a href="https://pypi.org/project/linkml-term-validator/">linkml-term-validator</a> so a report's
+terms can be checked as soon as it is produced.</p>
+<p>Three things are checked:</p>
 <ol>
-<li><strong>Provider</strong> - same provider (e.g., <code>perplexity</code>)</li>
-<li><strong>Query</strong> - identical query text (case-sensitive)</li>
-<li><strong>Model</strong> - same model (or both unspecified)</li>
-<li><strong>Provider parameters</strong> - same parameters (or both unspecified)</li>
+<li><strong>Existence.</strong> Every CURIE in the report is resolved through
+   <a href="https://incatools.github.io/ontology-access-kit/">OAK</a>. Identifiers that do not resolve
+   in an ontology that resolved other terms from the same prefix are flagged as suspect.</li>
+<li><strong>Label agreement.</strong> The label the report writes beside a CURIE is compared with that
+   term's own label. This is the check that catches <code>NCIT:C16814</code>.</li>
+<li><strong>Obsolescence.</strong> Terms that resolve but have been deprecated are reported separately,
+   with their replacement where the ontology states one. Citing an obsolete term is not a
+   fabrication; it does mean the report names something the ontology has retired.</li>
 </ol>
-<p>This means:</p>
-<pre><code class="language-bash"># These are DIFFERENT cache entries:
-deep-research-client research &quot;Research TP53 gene&quot; --provider perplexity
-deep-research-client research &quot;Research TP53 gene&quot; --provider openai
-deep-research-client research &quot;Research TP53 gene&quot; --provider perplexity --model sonar
-deep-research-client research &quot;research TP53 gene&quot; --provider perplexity  # lowercase 'r'
+<h2 id="install">Install</h2>
+<p>Term validation pulls in OAK and its ontology tooling, which most users do not need, so it
+is an optional extra:</p>
+<pre><code class="language-bash">pip install &quot;deep_research_client[terms]&quot;
 </code></pre>
-<p>For full details on the cache key algorithm, see <a href="../../reference/cache/">Cache Reference</a>.</p>
-<h2 id="view-cached-results">View Cached Results</h2>
-<p>List all cached queries with metadata:</p>
-<pre><code class="language-bash">deep-research-client list-cache
+<p>Or, in a uv project:</p>
+<pre><code class="language-bash">uv add &quot;deep_research_client[terms]&quot;
 </code></pre>
-<p>Output shows provider, size, and date for each entry:</p>
-<pre><code>Found 42 cached files (15.2MB) in ~/.deep_research_cache/:
+<h2 id="validate-a-report-you-already-have">Validate a report you already have</h2>
+<pre><code class="language-bash">deep-research-client validate-terms report.md
+</code></pre>
+<pre><code class="language-markdown">## Term Validation
 
-  [openai] openai-what-is-crispr-gene-a1b2c3d4.json (75.3KB, 2025-12-13 00:06)
-  [perplexity] perplexity-gene-research-for-func-82faf01b.json (53.6KB, 2025-12-12 07:13)
-  [falcon] falcon-gene-research-for-func-646a20c3.json (34.1KB, 2025-12-04 10:39)
-</code></pre>
-<h3 id="detailed-view">Detailed View</h3>
-<p>Show full metadata including query, model, duration, and citation count:</p>
-<pre><code class="language-bash">deep-research-client list-cache --detailed
-</code></pre>
-<pre><code>  [openai] openai-gene-research-for-functional-a-0ed516e3.json
-    Modified: 2025-12-13 00:06  Size: 75.3KB
-    Query: # Gene Research for Functional Annotation...
-    Model: o3-deep-research-2025-06-26
-    Duration: 1007.8s
-    Citations: 100
-</code></pre>
-<h3 id="filter-by-provider">Filter by Provider</h3>
-<pre><code class="language-bash">deep-research-client list-cache --provider perplexity
-deep-research-client list-cache -p openai
-</code></pre>
-<h3 id="limit-results">Limit Results</h3>
-<pre><code class="language-bash">deep-research-client list-cache --limit 10
-deep-research-client list-cache -n 5
-</code></pre>
-<h2 id="search-cache">Search Cache</h2>
-<p>Find cached results by keyword (searches both queries and content):</p>
-<pre><code class="language-bash">deep-research-client search-cache &quot;BRCA1&quot;
-</code></pre>
-<p>Output shows matching files with context snippets:</p>
-<pre><code>Found 8 cached files matching 'BRCA1':
+Checked with `linkml-term-validator` 0.4.5, through the `ols:` adapter.
 
-  [perplexity] perplexity-gene-set-enrichment-7b968613.json (71.8KB, 2025-10-19) [match in: query, content]
-      [query] ...list of genes from human. ## Gene Set TP53 BRCA1 BRCA2 PTEN RB1...
-      [content] ...enrichment analysis on five genes: TP53, BRCA1, BRCA2, PTEN, and RB1...
-</code></pre>
-<h3 id="search-options">Search Options</h3>
-<pre><code class="language-bash"># More context around matches (default: 60 chars)
-deep-research-client search-cache &quot;CRISPR&quot; --context 100
+| Outcome | Count |
+| --- | --- |
+| Terms checked | 10 |
+| Resolved | 7 |
+| Unresolved (possible confabulation) | 1 |
+| Obsolete | 1 |
+| Unverifiable | 1 |
+| Terms whose name was checked | 7 |
+| Terms named correctly | 2 |
+| Terms named as a **different** term | 3 |
+| Terms whose name is worth a second look | 2 |
 
-# More snippets per match (default: 3)
-deep-research-client search-cache &quot;mutation&quot; --max-snippets 5
+### Terms the report names something else
 
-# Only search in query text, not content
-deep-research-client search-cache &quot;gene&quot; --query-only
+These identifiers resolve, so nothing about them looks wrong, and the ontology calls them
+something unrelated to what the report calls them. That usually means the identifier is not
+the one the sentence needs:
 
-# Hide snippets (just show matching files)
-deep-research-client search-cache &quot;protein&quot; --no-snippets
+- `NCIT:C16814` (1 mention) - the report calls it &quot;Echocardiography Test&quot;; NCIT calls it **Malaysia**
+- `NCIT:C38048` (1 mention) - the report calls it &quot;Ophthalmologic examination&quot;; NCIT calls it **Vasovagal**
+- `GO:0008022` (1 mention) - the report calls it &quot;Obsolete example&quot;; GO calls it **obsolete protein C-terminus binding**
 
-# Detailed metadata with snippets
-deep-research-client search-cache &quot;kinase&quot; --detailed
-</code></pre>
-<h2 id="browse-cache-interactive-browser">Browse Cache (Interactive Browser)</h2>
-<p>Generate a standalone HTML browser for exploring cached results:</p>
-<pre><code class="language-bash"># Install browser dependency
-pip install deep-research-client[browser]
+### Unresolved terms
 
-# Generate browser
-deep-research-client browse-cache ./my-browser
+These identifiers do not exist in an ontology that resolved other terms from the same
+prefix, so they were most likely invented:
 
-# Open in browser
-open ./my-browser/index.html
-</code></pre>
-<p>This creates a faceted browser with filters for provider, model, date, and keywords, plus individual HTML pages for each research result.</p>
-<p>For full documentation including custom templates, hosting options, and workflow examples, see <a href="../browse-cache/">Browse Cache</a></p>
-<h2 id="bypass-cache">Bypass Cache</h2>
-<p>Skip the cache for a fresh result:</p>
-<pre><code class="language-bash">deep-research-client research &quot;What is CRISPR?&quot; --no-cache
-</code></pre>
-<p>This still saves the result to cache for future queries.</p>
-<h2 id="clear-cache">Clear Cache</h2>
-<p>Remove all cached results:</p>
-<pre><code class="language-bash">deep-research-client clear-cache
-</code></pre>
-<h2 id="clear-specific-cache-files">Clear Specific Cache Files</h2>
-<p>Navigate to the cache directory and remove specific files:</p>
-<pre><code class="language-bash">ls ~/.deep_research_cache/
-rm ~/.deep_research_cache/openai-specific-query*.json
-</code></pre>
-<h2 id="check-if-result-is-cached">Check If Result Is Cached</h2>
-<p>The output frontmatter shows cache status:</p>
-<pre><code class="language-yaml">---
-provider: perplexity
-cached: true    # &lt;-- This result came from cache
----
-</code></pre>
-<h2 id="cache-file-format">Cache File Format</h2>
-<p>Each cache file is JSON:</p>
-<pre><code class="language-json">{
-  &quot;markdown&quot;: &quot;# Research Report\n...&quot;,
-  &quot;citations&quot;: [&quot;Citation 1&quot;, &quot;Citation 2&quot;],
-  &quot;provider&quot;: &quot;openai&quot;,
-  &quot;model&quot;: &quot;o3-deep-research-2025-06-26&quot;,
-  &quot;query&quot;: &quot;original query text&quot;
-}
-</code></pre>
-<h2 id="custom-cache-location">Custom Cache Location</h2>
-<p>In Python, configure a custom cache directory:</p>
-<pre><code class="language-python">from deep_research_client import DeepResearchClient, CacheConfig
+- `HP:9999999` (1 mention), reported as &quot;Invented phenotype&quot; - HP does not contain this term
 
-cache_config = CacheConfig(
-    enabled=True,
-    directory=&quot;./project_cache&quot;
-)
+### Obsolete terms
 
-client = DeepResearchClient(cache_config=cache_config)
-</code></pre>
-<h2 id="disable-caching-entirely">Disable Caching Entirely</h2>
-<p>In Python:</p>
-<pre><code class="language-python">from deep_research_client import DeepResearchClient, CacheConfig
+These terms are real but deprecated. Citing one is not a fabrication; it does mean the
+report is naming something the ontology has retired:
 
-cache_config = CacheConfig(enabled=False)
-client = DeepResearchClient(cache_config=cache_config)
+- `GO:0008022` (obsolete protein C-terminus binding) (1 mention) - replaced by `GO:0005515`
+
+### Terms whose name is worth a second look
+
+The report's name for these is recognisably related to the term's own name without being one
+of them. A loose paraphrase reads the same way as a citation of the wrong sibling term - and
+so does a *related* synonym, which the ontology records precisely because it names something
+adjacent rather than the same thing - so these are listed rather than judged:
+
+- `HP:0002616` (1 mention) - the report calls it &quot;Aortic root dilation&quot;; HP calls it **Aortic root aneurysm**, and lists &quot;Aortic root dilatation&quot; among its other names
+- `GO:0008543` (1 mention) - the report calls it &quot;FGF receptor signalling&quot;; GO calls it **fibroblast growth factor receptor signaling pathway**, and lists &quot;FGF receptor signalling pathway&quot; among its other names
+
+### Prefixes with no resolver
+
+Terms carrying these prefixes were not checked either way, because no configured ontology
+covers them. An unrecognised prefix may name an ontology this run could not reach as easily
+as one that does not exist, so nothing here is evidence of fabrication: `FAKEONT`.
 </code></pre>
-<h2 id="tips">Tips</h2>
+<p>Use <code>--in-place</code> to write that section into the report itself, or <code>--json</code> to get the same
+result as structured data. <code>--in-place</code> replaces any section a previous run left behind, so
+it is safe to re-run over a whole corpus, and it leaves a <code>## Reference Validation</code> section
+where it found one — running the two commands over the same file in either order keeps both.</p>
+<h2 id="validate-as-part-of-the-research-run">Validate as part of the research run</h2>
+<pre><code class="language-bash">deep-research-client research &quot;Marfan syndrome surveillance&quot; \
+  --output marfan.md \
+  --validate-terms
+</code></pre>
+<p>The saved report gains both a <code>## Term Validation</code> section and a frontmatter summary:</p>
+<pre><code class="language-yaml">term_validation:
+  total_terms: 10
+  verified: 7
+  not_found: 1
+  obsolete: 1
+  unverifiable: 1
+  confabulation_rate: 0.111
+  labels_checked: 7
+  labels_matching: 2
+  labels_mismatched: 3
+  mislabelled_terms:
+  - term_id: NCIT:C16814
+    reported_labels:
+    - Echocardiography Test
+    ontology_label: Malaysia
+  - term_id: NCIT:C38048
+    reported_labels:
+    - Ophthalmologic examination
+    ontology_label: Vasovagal
+  - term_id: GO:0008022
+    reported_labels:
+    - Obsolete example
+    ontology_label: obsolete protein C-terminus binding
+  labels_variant: 2
+  unresolved_terms:
+  - HP:9999999
+  obsolete_terms:
+  - term_id: GO:0008022
+    ontology_label: obsolete protein C-terminus binding
+    replaced_by: GO:0005515
+  unresolvable_prefixes:
+  - FAKEONT
+  needs_review: true
+  adapter: 'ols:'
+  validator_version: 0.4.5
+</code></pre>
+<p><code>--validate-terms</code> and <code>--validate-references</code> compose: passing both appends both sections
+and writes both summaries.</p>
+<p>The <code>labels_*</code> counts are per term, not per name: a report calling one identifier three
+things contributes one to each.</p>
+<p><code>confabulation_rate</code> counts identifier resolution and nothing else. A report can resolve
+every CURIE it cites, score <code>0.0</code>, and still call half of them by the names of other terms.
+So <code>labels_mismatched</code>, <code>mislabelled_terms</code> and <code>needs_review</code> are written out whenever
+they apply, rather than left to be worked out. If <code>needs_review</code> is absent, nothing needed
+reviewing.</p>
+<p><code>mislabelled_terms</code> and <code>obsolete_terms</code> carry the names rather than bare CURIEs, because
+the CURIE alone is not the finding. <code>mislabelled_terms: [NCIT:C16814]</code> tells you something
+is wrong and leaves you to go and look up what; the pair of names is the thing you needed to
+know. <code>reported_labels</code> stays a list even when there is one, since a report that calls one
+identifier two things has not decided what it cites. <code>replaced_by</code> is written out only when
+the ontology states one.</p>
+<p><code>needs_review</code> is deliberately wider than the thing that fails a build. An obsolete term or
+a variant label sets it, but does not make <code>--fail-on-unresolved</code> exit non-zero: both are
+go-and-looks, not failures.</p>
+<h2 id="what-the-outcomes-mean">What the outcomes mean</h2>
+<h3 id="term-status">Term status</h3>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VERIFIED</code></td>
+<td>The CURIE resolves to a current term.</td>
+</tr>
+<tr>
+<td><code>NOT_FOUND</code></td>
+<td>The CURIE did not resolve, in an ontology that resolved other terms from the same prefix. Likely invented.</td>
+</tr>
+<tr>
+<td><code>OBSOLETE</code></td>
+<td>The CURIE resolves, but the term has been deprecated.</td>
+</tr>
+<tr>
+<td><code>UNVERIFIABLE</code></td>
+<td>No resolver covered this prefix, or it was skipped. Nothing was learned either way, so this is never evidence of fabrication.</td>
+</tr>
+</tbody>
+</table>
+<p>The line between <code>NOT_FOUND</code> and <code>UNVERIFIABLE</code> is drawn from what the run actually learned.
+A prefix counts as resolvable if it is an OBO-library prefix, if it is configured in an
+<code>oak_config.yaml</code>, or if some other term carrying it resolved during this run. A failure
+under such a prefix is reported as a failure. A failure under any other prefix is reported
+as unverifiable, because an unrecognised prefix may name an ontology this run could not
+reach as easily as one that does not exist.</p>
+<p>When <em>every</em> resolvable term fails at once, the report says so and hedges: that is far more
+often an unreachable ontology service than a report in which every identifier is invented.</p>
+<h3 id="label-agreement">Label agreement</h3>
+<table>
+<thead>
+<tr>
+<th>Agreement</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MATCH</code></td>
+<td>The report's label is one of the names the term carries — its own label or an <strong>exact synonym</strong> — up to case, punctuation, word order and plurals. <code>seizures</code> matches <code>Seizure</code>; so does <code>Marfan's syndrome</code> against <code>Marfan syndrome</code>.</td>
+</tr>
+<tr>
+<td><code>VARIANT</code></td>
+<td>Recognisably related without being one of them. <code>Long QT syndrome</code> against <code>Long QT syndrome 1</code>, a British spelling, or a broad/narrow/related synonym. Listed, not judged.</td>
+</tr>
+<tr>
+<td><code>MISMATCH</code></td>
+<td>Almost nothing in common with any name the term carries. The report is calling the identifier something the ontology does not.</td>
+</tr>
+<tr>
+<td><code>NOT_ASSESSED</code></td>
+<td>The report wrote no label beside the CURIE, the term did not resolve, or <code>--no-check-labels</code> was passed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="synonyms">Synonyms</h3>
+<p>A term is not only its label. <code>HP:0001250</code> is labelled <code>Seizure</code>, and the ontology also
+records <code>Seizures</code> as an exact synonym and <code>Epilepsy</code> as a related one. A report using any
+of those has not invented anything, so all of them are consulted — which is what stops the
+most common false <code>MISMATCH</code>.</p>
+<p>Scope is kept, because a synonym is not always another way of saying the same thing:</p>
 <ul>
-<li><strong>Don't clear cache unnecessarily</strong> - Deep research queries are expensive</li>
-<li><strong>Different models = different cache entries</strong> - Changing models creates new cache entries</li>
-<li><strong>Templates expand before caching</strong> - The expanded query is cached, not the template</li>
+<li>an <strong>exact</strong> synonym is another name for the same thing, so matching one is a <code>MATCH</code>;</li>
+<li>a <strong>related</strong>, <strong>broad</strong> or <strong>narrow</strong> synonym names something adjacent, so matching one
+  is a <code>VARIANT</code> — worth reading, not worth failing a build over.</li>
 </ul>
-<h2 id="see-also">See Also</h2>
+<p>When a name is recognised as a synonym rather than the label, the report says which. On a
+<code>MISMATCH</code> no synonym is named — the check consulted them and none was accepted, so a
+flagged term that has synonyms is one whose synonyms did not help, not one where they
+were skipped:</p>
+<pre><code class="language-markdown">- `HP:0001166` (1 mention) - the report calls it &quot;Long fingers&quot;; HP calls it
+  **Arachnodactyly**, and lists &quot;Long slender fingers&quot; among its other names
+</code></pre>
+<p>Synonyms come from OAK, the same way <a href="https://github.com/monarch-initiative/ontogpt">OntoGPT</a>
+reads them: <code>entity_alias_map</code> on a local adapter such as <code>sqlite:obo:</code>, which is keyed by
+predicate so scope survives. The default <code>ols:</code> adapter does not implement that call, so
+synonyms are read from the OLS term payload instead — which the obsolescence check has
+already fetched and cached, so this costs no extra request either way. Its <code>obo_synonym</code>
+entries carry a scope each; anything appearing only in its unscoped list is treated as
+merely related, since calling it exact would be a claim the payload never made.</p>
+<p>This means a verdict can depend on the adapter, though not uniformly. OLS scopes some
+ontologies' synonyms and not others: <code>HP:0001250</code> comes back with "Seizures" marked as an
+exact synonym, while every synonym <code>GO:0008543</code> carries arrives with no scope at all. Where
+the scope is missing, a report using one of those names <em>verbatim</em> reads as a <code>VARIANT</code>
+under <code>ols:</code> and as a <code>MATCH</code> under <code>sqlite:obo:</code>, which has the scope locally.</p>
+<p>The difference is always in that direction: an unscoped name can only be under-credited,
+never over-credited, so the default adapter errs toward asking for a second look rather than
+toward silence.</p>
+<p>In <code>--offline</code> mode no adapter is built at all, so no synonyms are available and comparison
+falls back to the label alone.</p>
+<p>The threshold between <code>VARIANT</code> and <code>MISMATCH</code> was set against real pairs rather than
+guessed. <code>NCIT:C16814</code> written as "Echocardiography Test" against its actual label
+"Malaysia" scores 0.21; the closest genuine near-miss in the same sample, "Type 2 diabetes"
+against "type 2 diabetes mellitus", scores 0.77. The threshold sits at 0.5, with margin on
+both sides.</p>
+<h2 id="where-labels-are-read-from">Where labels are read from</h2>
+<p>Deciding which nearby words are a label and which are prose is the hard part, and getting
+it wrong produces a confident accusation about a term that was cited correctly. So labels
+are only read out of positions where a label is the only thing the text can reasonably be:</p>
+<table>
+<thead>
+<tr>
+<th>Written as</th>
+<th>Read as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>\| Seizure \| HP:0001250 \|</code></td>
+<td>the label column of a table</td>
+</tr>
+<tr>
+<td><code>\| HP:0001250 \| Seizure \|</code></td>
+<td>the same, identifier first</td>
+</tr>
+<tr>
+<td><code>HP:0001250 (Seizure)</code></td>
+<td>a bracket immediately after the CURIE</td>
+</tr>
+<tr>
+<td><code>HP:0001250: Seizure</code>, <code>HP:0001250 - Seizure</code></td>
+<td>a separator immediately after the CURIE</td>
+</tr>
+<tr>
+<td><code>**Seizure** (HP:0001250)</code>, <code>"Seizure" (HP:0001250)</code></td>
+<td>an emphasised or quoted run before it</td>
+</tr>
+<tr>
+<td><code>- Seizure (HP:0001250)</code></td>
+<td>a list item that names the term</td>
+</tr>
+</tbody>
+</table>
+<p>A term mentioned in flowing prose - "patients with aortic root dilation (HP:0002616) were
+followed" - gets <strong>no</strong> reported label, and so no label check. It is still resolved and
+still checked for existence. That undercounts rather than invents, which is the right way
+round: reading "patients with aortic root dilation" as a label would flag a term that was
+cited perfectly well.</p>
+<p>A name that is neither the label nor close to any synonym still shows a <code>MISMATCH</code>, which
+is the intended behaviour — that is how <code>NCIT:C16814</code> is caught. Read the section rather
+than just counting it: an ontology's synonym list is not exhaustive, so an unusual but
+correct paraphrase can still land there.</p>
+<h2 id="when-the-ontology-service-is-unreachable">When the ontology service is unreachable</h2>
+<p>A lookup that fails is not the same as a term that does not exist, and the two are kept
+apart. A definitive 404 is an answer: the term is absent. A connectivity failure, a 5xx, a
+408 or a 429 is not, and raises rather than returning nothing — so a rate-limited run exits
+with code <code>3</code> and says the service was unreachable, instead of quietly reporting real terms
+as fabricated.</p>
+<p>That is why there is no rate-limit delay option here, unlike
+<a href="../validate-references/">reference validation</a>. Running into a limit costs you a re-run, not
+a confidently wrong report.</p>
+<h2 id="fail-a-pipeline-on-bad-terms">Fail a pipeline on bad terms</h2>
+<p>Both commands accept <code>--fail-on-unresolved</code>, which exits with code <code>2</code> when any term fails
+to resolve or is named as a different term. Obsolete terms, variant labels and unverifiable
+prefixes do not trip it:</p>
+<pre><code class="language-bash">deep-research-client validate-terms report.md --fail-on-unresolved
+</code></pre>
+<h2 id="how-long-it-takes">How long it takes</h2>
+<p>Measured against a 20-term list on an ordinary broadband connection, through the default
+<code>ols:</code> adapter. Numbers will move with network conditions and upstream load.</p>
+<table>
+<thead>
+<tr>
+<th>Run</th>
+<th style="text-align: right;">Time</th>
+<th style="text-align: right;">Per term</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cold cache</td>
+<td style="text-align: right;">33.6s</td>
+<td style="text-align: right;">1.7s</td>
+</tr>
+<tr>
+<td>Warm cache</td>
+<td style="text-align: right;">16.0s</td>
+<td style="text-align: right;">0.8s</td>
+</tr>
+</tbody>
+</table>
+<p>A warm cache halves the cost rather than eliminating it, because only labels are cached to
+disk. Obsolescence is asked per term on every run, and over OLS that is a round trip. For a
+report's worth of terms this is a small addition to a research call that already takes
+minutes; for a corpus it is the thing to plan around.</p>
+<p>For bulk work, <code>--adapter sqlite:obo:</code> downloads each ontology once and answers locally
+afterwards, which turns both checks into local lookups - obsolescence included, since a
+whole-ontology scan is cheap against a local database and is done once per prefix. The
+first run pays for the downloads, which are large.</p>
+<h2 id="options">Options</h2>
+<p>Every option below exists on both commands. On <code>research</code> they take a <code>--term-</code> prefix -
+<code>--term-adapter</code>, <code>--term-skip-prefix</code> and so on - so that they cannot be confused with the
+research options they sit beside.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it is for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--adapter</code></td>
+<td>The OAK adapter terms are resolved through. Defaults to <code>ols:</code>, which is right for a report's worth of terms. <code>sqlite:obo:</code> is right for a corpus.</td>
+</tr>
+<tr>
+<td><code>--oak-config</code></td>
+<td>An <code>oak_config.yaml</code> mapping prefixes to adapters, for ontologies the default adapter does not serve. When given it is authoritative: a prefix absent from it gets no adapter at all.</td>
+</tr>
+<tr>
+<td><code>--cache-dir</code></td>
+<td>Where resolved labels are cached between runs. Defaults to <code>./terms_cache</code>. Point several runs at one directory.</td>
+</tr>
+<tr>
+<td><code>--offline</code></td>
+<td>Resolve only from the label cache, never reaching the network. Every uncached term comes back unverifiable. Useful in CI, where a network failure would otherwise look like a fabricated term.</td>
+</tr>
+<tr>
+<td><code>--skip-prefix</code></td>
+<td>Report a prefix as unverifiable instead of resolving it. Repeatable.</td>
+</tr>
+<tr>
+<td><code>--max-terms</code></td>
+<td>Stop after this many terms. The report says it was truncated.</td>
+</tr>
+<tr>
+<td><code>--no-check-labels</code></td>
+<td>Resolve terms but do not compare labels. Costs nothing to leave on, since the label has already been fetched to check that the term resolves.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-this-does-not-check">What this does not check</h2>
+<p>That a term is <em>the right term for the sentence</em>. A report can name <code>HP:0001250</code> "Seizure",
+pass every check here, and still be citing seizures in a paragraph about cardiac
+arrhythmia. Label agreement tells you the report knows what the identifier means; it does
+not tell you the identifier belongs there.</p>
+<h2 id="see-also">See also</h2>
 <ul>
-<li><a href="../../reference/cache/">Cache Reference</a> - Cache key algorithm and data model</li>
-<li><a href="../../reference/configuration/">Configuration Reference</a> - CacheConfig options</li>
+<li><a href="../validate-references/">Validate References</a> - the same treatment for PMIDs, DOIs and
+  accessions.</li>
 </ul>
 
 

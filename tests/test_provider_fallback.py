@@ -34,7 +34,7 @@ from deep_research_client.models import (
 )
 from deep_research_client.processing import ResearchProcessor
 from deep_research_client.provider_params import MockParams
-from deep_research_client.providers.mock import MockProvider
+from deep_research_client.providers.mock import _SIMULATED_ERRORS, MockProvider
 
 PRIMARY = "mock"
 BACKUP = "mock_backup"
@@ -135,6 +135,33 @@ def test_mock_provider_raises_the_named_failure(error_type, expected_class):
     client = _client((PRIMARY, _params(error_type=error_type)))
     with pytest.raises(expected_class):
         client.research("q")
+
+
+def test_the_mocks_quota_failure_has_the_shape_a_real_one_has():
+    """The mock exists to show real behaviour, so it must not invent a shape.
+
+    A real spent allowance is recognised from the CLI's own wording and carries
+    no status code. Giving the mock a 429 made its report entry disagree with
+    every real one -- and with the documented rule that a 429 means wait for
+    the same provider rather than switch, which is a different error class.
+
+    Compared against the real classifier rather than a hardcoded shape, so the
+    two cannot drift apart.
+    """
+    from deep_research_client.providers import claude_code
+
+    real = claude_code._classify_cli_failure(
+        "claude_code", "Usage limit reached. Your limit will reset at 3pm."
+    )
+    assert isinstance(real, ProviderQuotaError)
+
+    error_class, status_code, extra = _SIMULATED_ERRORS["quota"]
+    simulated = error_class("mock", "simulated quota failure", status_code, **extra)
+
+    real_entry = ProviderAttempt.from_exception("x", real).frontmatter_entry()
+    mock_entry = ProviderAttempt.from_exception("x", simulated).frontmatter_entry()
+    assert sorted(real_entry) == sorted(mock_entry)
+    assert "status_code" not in mock_entry
 
 
 def test_typed_error_wins_over_the_generic_one():

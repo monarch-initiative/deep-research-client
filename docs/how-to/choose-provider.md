@@ -275,10 +275,13 @@ ENABLE_MOCK_PROVIDER=true deep-research-client research "test" \
   --fallback-provider deeper_med
 ```
 
-`--param error_type=quota` is the one worth running against the rule above:
-a quota failure is the only kind whose remedy embeds a provider-supplied reset
+Swap `error_type=billing` for `error_type=quota` in the **first** command
+above — the one that writes `report.md` — to watch the withholding happen. A
+quota failure is the only kind whose remedy embeds a provider-supplied reset
 time, so the console prints `renews at 3pm, pool quota_pool_7f21` while the
-report keeps only `the plan's usage limit is spent`.
+saved report keeps only `the plan's usage limit is spent`. Running it against
+the `deeper_med` command below instead shows you the console half and no
+report, since that one is fail-closed by design.
 
 Note that `mock` is reached by `--fallback-provider mock` but never by
 `--fallback` on its own: a provider that invents its reports is excluded from

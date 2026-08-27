@@ -335,25 +335,6 @@ class DeepResearchClient:
 
         return effective_params or None
 
-    def knows_provider(self, name: str) -> bool:
-        """Report whether a name is a provider at all, configured or not.
-
-        The distinction this draws is the one that decides which error a caller
-        gets: a known provider with no credential is *not configured* and can
-        be fallen back from, while an unrecognised name is a typo and the
-        remedy is a list of the names that exist. Both the fallback list and
-        the CLI's pre-check ask it, so it is answered once here rather than
-        spelled out at each site -- it has already been got wrong once by
-        being spelled out twice.
-
-        Args:
-            name: Provider name to check.
-
-        Returns:
-            True when the name is one this client could resolve.
-        """
-        return name in PROVIDER_CLASS_PATHS or self.registry.get_provider(name) is not None
-
     def _fallback_candidates(
         self,
         provider: Optional[str],
@@ -449,7 +430,7 @@ class DeepResearchClient:
             # Providers register only once their credential is present, so
             # a known name that is absent means "not set up", not "no such
             # thing". Saying "not found" sends the caller hunting a typo.
-            if provider_name in PROVIDER_CLASS_PATHS:
+            if self.knows_provider(provider_name):
                 raise ProviderNotConfiguredError(
                     provider_name, self._unregistered_reason(provider_name)
                 )
@@ -728,6 +709,44 @@ class DeepResearchClient:
         # Unreachable: _fallback_candidates never returns an empty list, and the
         # last candidate re-raises rather than falling out of the loop.
         raise ValueError("No research providers available")
+
+    def knows_provider(self, name: str) -> bool:
+        """Report whether a name is a provider at all, configured or not.
+
+        The distinction this draws is the one that decides which error a caller
+        gets: a known provider with no credential is *not configured* and can
+        be fallen back from, while an unrecognised name is a typo and the
+        remedy is a list of the names that exist.
+
+        Every site that has to tell those apart asks this -- the fallback list,
+        the CLI's pre-check, and the resolver that picks between the two error
+        types. Spelling it out instead is how it came to be missing from one of
+        them.
+
+        Args:
+            name: Provider name to check.
+
+        Returns:
+            True when the name is one this client could resolve.
+
+        Configuration is a different question, and deliberately not this one:
+        ``falcon`` is a provider whether or not a key is set for it, while a
+        transposed letter is not.
+
+        >>> client = DeepResearchClient(
+        ...     cache_config=CacheConfig(enabled=False),
+        ...     provider_configs={"mock": ProviderConfig(name="mock")},
+        ... )
+        >>> client.knows_provider("falcon"), client.knows_provider("falcn")
+        (True, False)
+
+        A name registered by a caller counts too, even though no environment
+        variable would ever produce it:
+
+        >>> client.knows_provider("mock")
+        True
+        """
+        return name in PROVIDER_CLASS_PATHS or self.registry.get_provider(name) is not None
 
     def get_available_providers(self) -> list[str]:
         """Get list of available provider names."""

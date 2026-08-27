@@ -30,7 +30,11 @@ from ..provider_params import MockParams
 _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = {
     "auth": (ProviderAuthError, 401, {}),
     "billing": (ProviderBillingError, 402, {}),
-    "quota": (ProviderQuotaError, 429, {"resets_at": "3pm, pool quota_pool_7f21"}),
+    # No status code, matching the real thing: a spent allowance is detected
+    # from the CLI's own wording, so ProviderQuotaError is built without one.
+    # 429 would also read as a contradiction of the documented rule that a 429
+    # means wait rather than switch -- that is ProviderRateLimitError's status.
+    "quota": (ProviderQuotaError, None, {"resets_at": "3pm, pool quota_pool_7f21"}),
     "rate_limit": (ProviderRateLimitError, 429, {}),
     "transient": (ProviderTransientError, 503, {}),
     "not_configured": (ProviderNotConfiguredError, None, {}),

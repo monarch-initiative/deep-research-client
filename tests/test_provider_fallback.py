@@ -529,6 +529,24 @@ def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path
     ]
 
 
+def test_without_a_fallback_an_unreachable_provider_still_raises(tmp_path):
+    """The default path must not quietly gain cache-before-credential reads.
+
+    The cache is consulted for a provider that cannot be prepared only when a
+    later candidate would otherwise be billed for a report we already hold.
+    With no fallback there is nobody to bill, so the run fails exactly as it
+    did before any of this -- which also keeps `ENABLE_MOCK_PROVIDER` gating a
+    cached mock report, and keeps the CLI and the library agreeing about what
+    an unconfigured provider does.
+    """
+    warm = _client(("falcon", _params()), cache_dir=tmp_path)
+    warm.research("q", provider="falcon")
+
+    later = _client((BACKUP, _params()), cache_dir=tmp_path)
+    with pytest.raises(ProviderNotConfiguredError):
+        later.research("q", provider="falcon")
+
+
 def test_an_unreachable_provider_with_no_cache_still_falls_back(tmp_path):
     """The cache-first lookup must not swallow the fallback it sits in front of."""
     client = _client((BACKUP, _params()), cache_dir=tmp_path)

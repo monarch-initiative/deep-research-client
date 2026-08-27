@@ -11,10 +11,6 @@ import pytest
 
 from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
 from deep_research_client.providers import ResearchProvider
-from deep_research_client.providers.asta import AstaProvider
-from deep_research_client.providers.falcon import FalconProvider
-from deep_research_client.providers.openscientist import OpenScientistProvider
-from deep_research_client.providers.claude_code import ClaudeCodeProvider
 
 
 class MockProvider(ResearchProvider):
@@ -160,10 +156,7 @@ def test_asta_cache_params_include_version_tag():
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
-    provider = AstaProvider(ProviderConfig(
-        name="asta", api_key="asta-key", enabled=True))
-    cache_params = client._get_cache_provider_params(
-        provider.name, {"paper_limit": 20})
+    cache_params = client._get_cache_provider_params("asta", {"paper_limit": 20})
 
     assert cache_params == {
         "paper_limit": 20,
@@ -177,9 +170,7 @@ def test_falcon_cache_params_include_artifact_version_tag():
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
-    provider = FalconProvider(ProviderConfig(
-        name="falcon", api_key="edison-key", enabled=True))
-    cache_params = client._get_cache_provider_params(provider.name)
+    cache_params = client._get_cache_provider_params("falcon")
 
     assert cache_params == {"_cache_version": "artifacts-v1"}
 
@@ -190,10 +181,7 @@ def test_openscientist_cache_params_include_artifact_version_tag():
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
-    provider = OpenScientistProvider(
-        ProviderConfig(name="openscientist", api_key="opensci-key", enabled=True)
-    )
-    cache_params = client._get_cache_provider_params(provider.name)
+    cache_params = client._get_cache_provider_params("openscientist")
 
     assert cache_params == {"_cache_version": "artifacts-v1"}
 
@@ -204,10 +192,7 @@ def test_claude_code_cache_params_include_version_tag():
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
-    provider = ClaudeCodeProvider(
-        ProviderConfig(name="claude_code", api_key=None, enabled=True)
-    )
-    cache_params = client._get_cache_provider_params(provider.name)
+    cache_params = client._get_cache_provider_params("claude_code")
 
     assert cache_params == {"_cache_version": "inline-report-v1"}
 

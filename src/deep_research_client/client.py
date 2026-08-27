@@ -313,8 +313,8 @@ class DeepResearchClient:
         # Get provider class and create instance
         return self._create_provider(provider_name, config, params)
 
+    @staticmethod
     def _get_cache_provider_params(
-        self,
         provider_name: str,
         provider_params: Optional[dict] = None,
     ) -> Optional[dict]:
@@ -496,6 +496,34 @@ class DeepResearchClient:
                 next_provider, " and ".join(dropped), overridden_provider,
             )
 
+    def _finish_cached(
+        self,
+        cached_result: ResearchResult,
+        start_time: datetime,
+        start_timestamp: float,
+        requested: Optional[str],
+        failed: list[ProviderAttempt],
+        candidate: str,
+    ) -> ResearchResult:
+        """Stamp a cached result with this run's timing and provenance.
+
+        Args:
+            cached_result: The result read from the cache.
+            start_time: When this run started.
+            start_timestamp: Monotonic start, for the duration.
+            requested: Provider the caller named, if any.
+            failed: Attempts that failed before this one, in order.
+            candidate: Provider whose cache entry this is.
+
+        Returns:
+            The result, ready to return to the caller.
+        """
+        cached_result.start_time = start_time
+        cached_result.end_time = datetime.now()
+        cached_result.duration_seconds = time.time() - start_timestamp
+        self._record_provenance(cached_result, requested, failed, candidate)
+        return cached_result
+
     @staticmethod
     def _record_provenance(
         result: ResearchResult,
@@ -620,26 +648,9 @@ class DeepResearchClient:
             effective_model = model if first else None
             effective_params = provider_params if first else None
 
-            # The cache is consulted before the provider is prepared, because
-            # a report already on disk needs no credential. A provider whose
-            # key was revoked can still answer from one -- and paying the next
-            # provider for a report we already have would be a poor trade,
-            # made likelier by the CLI now standing its availability check
-            # down whenever a fallback was asked for.
             cache_provider_params = self._get_cache_provider_params(
                 candidate, effective_params
             )
-            cached_result = await self.cache.get(
-                query, candidate, effective_model, cache_provider_params
-            )
-            if cached_result:
-                # Update timing for cached results
-                end_time = datetime.now()
-                cached_result.start_time = start_time
-                cached_result.end_time = end_time
-                cached_result.duration_seconds = time.time() - start_timestamp
-                self._record_provenance(cached_result, provider, failed, candidate)
-                return cached_result
 
             try:
                 research_provider = self._prepare_provider(
@@ -648,12 +659,36 @@ class DeepResearchClient:
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
                     raise
+                # Only here, and only before billing someone else: reading a
+                # report off disk needs no credential, so a provider we can no
+                # longer reach can still serve one it produced earlier. On the
+                # last candidate there is nobody to bill, so it fails exactly
+                # as it did before any of this -- which is what keeps the
+                # default, no-fallback path byte-identical.
+                cached_result = await self.cache.get(
+                    query, candidate, effective_model, cache_provider_params
+                )
+                if cached_result:
+                    return self._finish_cached(
+                        cached_result, start_time, start_timestamp,
+                        provider, failed, candidate,
+                    )
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
                     provider_params, candidates[0],
                 )
                 continue
+
+            # Check cache first
+            cached_result = await self.cache.get(
+                query, candidate, effective_model, cache_provider_params
+            )
+            if cached_result:
+                return self._finish_cached(
+                    cached_result, start_time, start_timestamp,
+                    provider, failed, candidate,
+                )
 
             # Perform research
             try:

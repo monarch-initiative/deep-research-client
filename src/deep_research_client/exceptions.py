@@ -22,7 +22,10 @@ See https://github.com/monarch-initiative/deep-research-client/issues/65
 """
 
 import re
-from typing import ClassVar, Optional
+from typing import TYPE_CHECKING, ClassVar, Optional
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from .models import ProviderAttempt
 
 #: Cap on how much provider-supplied text is allowed into an exception message.
 #: A 5xx HTML page or a Node stack trace is a hint, not something to reprint.
@@ -102,6 +105,16 @@ class ProviderError(ValueError):
     #: What the failure means and what would fix it. Usually a class-level
     #: constant, but an instance may sharpen it with provider-supplied detail.
     remedy: str = "check the provider configuration"
+
+    #: Every provider tried, when this failure is the one that ended a run
+    #: with a fallback. Empty on an ordinary single-provider failure.
+    #:
+    #: Deliberately not ``__cause__``: providers set that themselves, to the
+    #: upstream SDK error (``raise classified from e``), and taking the slot
+    #: would displace theirs to ``__context__`` where ``__suppress_context__``
+    #: hides it from the printed traceback. A run's trail and a failure's
+    #: cause are different facts, so they get different places.
+    provider_attempts: "tuple[ProviderAttempt, ...]" = ()
 
     def __init__(self, provider: str, detail: str, status_code: Optional[int] = None):
         """Build a provider error carrying its own remediation advice."""

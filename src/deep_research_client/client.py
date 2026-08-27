@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import Any, Optional, Union
 
 from .cache import CacheManager
-from .exceptions import ProviderNotConfiguredError, is_fallback_worthy
+from .exceptions import ProviderError, ProviderNotConfiguredError, is_fallback_worthy
 from .models import (
     ResearchResult,
     ProviderAttempt,
@@ -500,6 +500,29 @@ class DeepResearchClient:
             )
 
     @staticmethod
+    def _attach_trail(
+        exc: BaseException, failed: list[ProviderAttempt], candidate: str
+    ) -> None:
+        """Record every provider tried on the failure that ends the run.
+
+        With no result there is no ``provider_attempts`` to read, which is
+        exactly the case a caller most wants it. This puts the trail on the
+        exception instead -- including the candidate whose failure is being
+        raised, so the list is the whole run and not everything before it.
+
+        Args:
+            exc: The failure about to be re-raised.
+            failed: Attempts that failed earlier, in order.
+            candidate: The provider whose failure ends the run.
+        """
+        if not failed or not isinstance(exc, ProviderError):
+            return
+        exc.provider_attempts = (
+            *failed,
+            ProviderAttempt.from_exception(candidate, exc),
+        )
+
+    @staticmethod
     def _record_provenance(
         result: ResearchResult,
         requested: Optional[str],
@@ -607,12 +630,6 @@ class DeepResearchClient:
 
         candidates = self._fallback_candidates(provider, fallback)
         failed: list[ProviderAttempt] = []
-        # Kept alongside `failed` so the run that exhausts every candidate can
-        # chain rather than discard: each earlier `except` exits via `continue`,
-        # so by the time the last one raises it is no longer being handled and
-        # __context__ is None. Without this a caller sees the final failure and
-        # has no evidence the others were tried.
-        last_failure: Optional[BaseException] = None
 
         async def serve_cached(
             candidate: str,
@@ -684,8 +701,10 @@ class DeepResearchClient:
                 )
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
-                    if last_failure is not None:
-                        raise exc from last_failure
+                    # Carry the trail out on the exception, then re-raise bare:
+                    # same object, same type, same traceback, and __cause__
+                    # left to whoever set it.
+                    self._attach_trail(exc, failed, candidate)
                     raise
                 # Reading a report off disk needs no credential, so a
                 # provider we can no longer reach can still serve one it
@@ -704,7 +723,6 @@ class DeepResearchClient:
                 if served is not None:
                     return served
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
-                last_failure = exc
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
                     provider_params, candidates[0],
@@ -723,11 +741,12 @@ class DeepResearchClient:
                 result = await research_provider.research(query)
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
-                    if last_failure is not None:
-                        raise exc from last_failure
+                    # Carry the trail out on the exception, then re-raise bare:
+                    # same object, same type, same traceback, and __cause__
+                    # left to whoever set it.
+                    self._attach_trail(exc, failed, candidate)
                     raise
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
-                last_failure = exc
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
                     provider_params, candidates[0],

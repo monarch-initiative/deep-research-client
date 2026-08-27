@@ -317,14 +317,13 @@ def test_the_last_failure_propagates_when_everything_fails():
         client.research("q", provider=PRIMARY, fallback=True)
 
 
-def test_exhausting_every_candidate_chains_to_the_failure_before_it():
-    """A caller who catches the last failure can still see there were others.
+def test_exhausting_every_candidate_carries_the_whole_trail_out():
+    """With no result there is no `provider_attempts` -- so it goes on the error.
 
-    Each earlier `except` exits via `continue`, so by the time the last one
-    raises it is no longer being handled and `__context__` is None. Without
-    chaining, a run that tried three providers is indistinguishable to a caller
-    from one that tried the last -- in a feature whose whole point is recording
-    who was tried.
+    That is the case a caller most wants it: three providers were tried and
+    the exception is all they get. The trail includes the candidate whose
+    failure is being raised, so it describes the run rather than everything
+    before its end.
     """
     client = _client(
         (PRIMARY, _params(error_type="billing")),
@@ -334,17 +333,54 @@ def test_exhausting_every_candidate_chains_to_the_failure_before_it():
     with pytest.raises(ProviderQuotaError) as caught:
         client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
 
-    # The type and traceback the caller would have had with no fallback at
-    # all are preserved; the cause is what is added.
-    assert isinstance(caught.value.__cause__, ProviderAuthError)
+    assert [a.provider for a in caught.value.provider_attempts] == [
+        PRIMARY, BACKUP, SPARE
+    ]
+    assert [a.error_type for a in caught.value.provider_attempts] == [
+        "ProviderBillingError", "ProviderAuthError", "ProviderQuotaError"
+    ]
 
 
-def test_a_lone_failure_is_not_given_a_spurious_cause():
-    """Chaining must not invent a predecessor where there was none."""
+def test_the_trail_does_not_take_the_cause_a_provider_set_itself():
+    """Three shipped providers do `raise classified from e`; that must survive.
+
+    No other test can see this: every provider in this file raises bare, so
+    `__cause__` is always free to take. Chaining the trail onto it displaced
+    the upstream SDK error to `__context__`, where `__suppress_context__`
+    hides it from the printed traceback -- losing the one frame an operator
+    needs to see what the API actually said.
+    """
+
+    class ChainsItsOwnCause(StandInProvider):
+        """A provider that classifies an SDK failure, as the real ones do."""
+
+        async def research(self, query):
+            try:
+                raise RuntimeError("upstream SDK said 402")
+            except RuntimeError as sdk_error:
+                raise ProviderBillingError(self.name, "no credits", 402) from sdk_error
+
+    client = _client((PRIMARY, _params(error_type="auth")))
+    client.registry.register(ChainsItsOwnCause(ProviderConfig(name=BACKUP), _params()))
+
+    with pytest.raises(ProviderBillingError) as caught:
+        client.research("q", provider=PRIMARY, fallback=[BACKUP])
+
+    # The provider's own `raise ... from` also sets __suppress_context__, so
+    # __cause__ is the assertion that matters: it is still the SDK error and
+    # not the previous candidate.
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    # And the trail is still carried, on its own attribute.
+    assert [a.provider for a in caught.value.provider_attempts] == [PRIMARY, BACKUP]
+
+
+def test_a_lone_failure_carries_no_trail():
+    """One provider is not a trail, and must not read as one."""
     client = _client((PRIMARY, _params(error_type="billing")))
     with pytest.raises(ProviderBillingError) as caught:
         client.research("q", provider=PRIMARY)
 
+    assert caught.value.provider_attempts == ()
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
 
@@ -616,6 +652,37 @@ def test_naming_the_mock_reaches_its_cache_even_with_the_gate_off(tmp_path, monk
     assert result.provider == "mock"
     assert result.cached is True
     assert result.fell_back is False
+
+
+def test_a_later_unreachable_candidate_also_answers_from_its_own_cache(tmp_path):
+    """The cached-serve path runs at any non-last position, not only the first.
+
+    At position > 0 the earlier failures are recorded and `fell_back` is true,
+    but the serving candidate's own unreachability is not -- the same as at
+    position 0. Pinned because nothing else exercises the interaction between
+    that read and an already-populated trail.
+    """
+    # `falcon`, not a mock name: the middle candidate has to be known-but-
+    # unregistered so it raises ProviderNotConfiguredError rather than being
+    # rejected up front as a typo.
+    warm = _client(("falcon", _params()), cache_dir=tmp_path)
+    warm.research("q", provider="falcon")
+
+    client = _client(
+        (PRIMARY, _params(error_type="billing")),
+        (SPARE, _params()),
+        cache_dir=tmp_path,
+    )
+    result = client.research("q", provider=PRIMARY, fallback=["falcon", SPARE])
+
+    assert result.provider == "falcon"
+    assert result.cached is True
+    assert result.fell_back is True
+    # The earlier failure is recorded; the server's own unreachability is not.
+    assert [(a.provider, a.succeeded) for a in result.provider_attempts] == [
+        (PRIMARY, False),
+        ("falcon", True),
+    ]
 
 
 @pytest.mark.parametrize("no_fallback", [False, None], ids=["false", "none"])

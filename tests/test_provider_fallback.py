@@ -89,6 +89,11 @@ def _restore_package_log_level():
     Containing the leak at its source beats working around it downstream,
     though it only covers tests that run after these -- see _CLIENT_LOGGER for
     the half that protects against pollution arriving from elsewhere.
+
+    The level only. _setup_logging also calls basicConfig(force=True), which
+    removes and closes every root handler, and that is deliberately out of
+    scope here: restoring closed handlers is not something a fixture can do
+    honestly. So this narrows the leak rather than closing it.
     """
     package_logger = logging.getLogger(_PACKAGE_LOGGER)
     original = package_logger.level
@@ -498,36 +503,31 @@ def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
 
     said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
     assert len(said) == 1
+    # The exact clause, to the sentence boundary: "no other provider was
+    # named" is a prefix of "...named or available", so a substring check
+    # would pass against the wrong branch. BACKUP is registered and available
+    # here -- it simply was not named -- so that branch would be false.
     assert "candidate: no other provider was named." in said[0]
-    # BACKUP is registered and available -- it just was not named. Saying
-    # "named or available" here would have been false.
-    assert "available" not in said[0]
 
 
-def test_the_automatic_route_says_available_where_the_list_route_says_named(caplog):
-    """Two situations, two sentences.
+def test_the_automatic_route_says_available(caplog):
+    """The automatic route is the one case where "available" is the truth.
 
-    On the automatic route, one candidate really does mean nothing else is
-    available. On the list route it usually means nothing else was listed --
-    and listing one is the fix. Collapsing both into "named or available"
-    asserts the first while the second is true.
+    `fallback=True` takes whatever else is registered, so one candidate really
+    does mean there is nobody else -- unlike the list route, where the usual
+    cause is that nobody else was listed. Two situations, two sentences.
     """
-    client = _client(
-        (PRIMARY, _params(error_type="billing")),
-        # A second real provider: available, and deliberately not named below.
-        (SPARE, _params()),
-    )
+    # Nobody else at all: _client passes provider_configs, so the registry
+    # holds only what is named here.
+    client = _client((PRIMARY, _params(error_type="billing")))
 
     with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
         with pytest.raises(ProviderBillingError):
-            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+            client.research("q", provider=PRIMARY, fallback=True)
 
     said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
     assert len(said) == 1
-    assert "candidate: no other provider was named." in said[0]
-    # The false half: SPARE was available the whole time, so any claim about
-    # availability -- "is available", "or available" -- would be wrong here.
-    assert "available" not in said[0]
+    assert "candidate: no other provider is available." in said[0]
 
 
 def test_the_reason_given_is_the_reason_that_applied(caplog):

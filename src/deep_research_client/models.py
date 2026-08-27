@@ -256,7 +256,8 @@ class ProviderAttempt(BaseModel):
             The leading indent is part of it, so a caller need only put the
             header and a newline in front; owning half the format here and
             half at three call sites is what let them drift in the first
-            place.
+            place. Empty in, empty out -- never a lone indent, so a header
+            with nothing to say has nothing under it.
 
         >>> from .exceptions import ProviderBillingError
         >>> spent = ProviderAttempt.from_exception(

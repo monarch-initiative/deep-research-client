@@ -268,6 +268,13 @@ class ProviderAttempt(BaseModel):
         ...     [spent, ProviderAttempt(provider="openai", succeeded=True)]))
           falcon: 402 no credits -- the account is out of credits
           openai: produced the report
+
+        Nothing in, nothing out -- pinned here because every caller guards
+        against an empty sequence, so this is unreachable from the outside
+        and a leading-concat rewrite would otherwise pass the whole suite:
+
+        >>> ProviderAttempt.render_trail([])
+        ''
         """
         # Per-line rather than a leading concat: identical for every non-empty
         # input, and "" rather than a lone indent for the empty one -- so a

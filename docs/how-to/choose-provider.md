@@ -329,14 +329,14 @@ ENABLE_MOCK_PROVIDER=true deep-research-client -v research "test" \
 ```
 
 ```
-INFO  Fallback was requested, but mock is the only candidate: no other
-      provider is available. The run will behave as though no fallback was
-      asked for
+INFO - Fallback was requested, but mock is the only candidate: no other provider is available. The run will behave as though no fallback was asked for
 ```
 
 That line is `INFO` rather than a warning because it also fires on runs that
 succeed, where a warning would be noise -- so it is there when you go looking
-and quiet when you are not. To watch the switch happen without configuring anything, name
+and quiet when you are not.
+
+To watch the switch happen without configuring anything, name
 `deeper_med` as the fallback: it is a permanently unavailable stub, so the run
 still ends in an error and writes no report, but the log shows the fallback
 being taken and each provider explaining itself:

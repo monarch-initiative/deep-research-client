@@ -1368,15 +1368,23 @@ def test_live_unscoped_synonyms_still_count(
 
     All three rows score below 1.0 against the *label*, so they reach VARIANT
     through `best_score` rather than the exact shortcut - which means they would
-    pass whether these names arrived scoped or not. The precondition that keeps
-    this test on the unscoped branch is asserted rather than assumed: if OLS
-    ever starts scoping GO's synonyms, this fails here instead of silently
-    re-covering the branch the exact-synonym test already holds.
+    pass whether these names arrived scoped or not. So the precondition is
+    asserted rather than assumed, and asserted at the *source*: `related` has
+    two feeds, scoped `obo_synonym` entries that are not exact and the flat
+    `synonyms` list the fallback appends, and only the second is the branch
+    under test. Checking `names.related` alone would not tell them apart, so a
+    future OLS that scoped GO's synonyms narrowly would leave this green while
+    the fallback quietly lost its only coverage.
     """
     validator = TermValidator(cache_dir=tmp_path / "cache")
+    ontology = validator._build_ontology_access()
 
-    names = _synonyms_for(validator._build_ontology_access(), "GO:0008543")
-    assert names.exact == (), "OLS scopes none of GO:0008543's synonyms"
+    payload = ontology._ols_term_dict(ontology.get_adapter("GO"), "GO:0008543")
+    assert not payload.get("obo_synonym"), "GO:0008543's synonyms carry no scope at all"
+    assert expected_synonym in payload["synonyms"]
+
+    names = _synonyms_for(ontology, "GO:0008543")
+    assert names.exact == ()
     assert expected_synonym in names.related
 
     report = validator.validate_markdown(f"| {reported} | GO:0008543 |")

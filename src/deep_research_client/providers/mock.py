@@ -5,8 +5,30 @@ from datetime import datetime
 from typing import List, Optional
 
 from . import ResearchProvider
+from ..exceptions import (
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderError,
+    ProviderNotConfiguredError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
+    ProviderTransientError,
+)
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import MockParams
+
+
+#: The failure each ``error_type`` stands for, with the status code a real
+#: provider would have carried it on. Keyed by the same literals MockParams
+#: accepts, so the two cannot drift apart silently.
+_SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int]]] = {
+    "auth": (ProviderAuthError, 401),
+    "billing": (ProviderBillingError, 402),
+    "quota": (ProviderQuotaError, 429),
+    "rate_limit": (ProviderRateLimitError, 429),
+    "transient": (ProviderTransientError, 503),
+    "not_configured": (ProviderNotConfiguredError, None),
+}
 
 
 class MockProvider(ResearchProvider):
@@ -40,12 +62,25 @@ class MockProvider(ResearchProvider):
             ResearchResult with mock content and citations
 
         Raises:
+            ProviderError: If error_type names a failure to simulate; the
+                subclass matches the name, so a caller can exercise fallback
+                (auth/billing/quota/not_configured) or its refusal to fall back
+                (rate_limit/transient) without a real outage.
             ValueError: If include_error parameter is True
         """
         # Simulate API delay
         await asyncio.sleep(self.params.response_delay)
 
-        # Simulate error if requested
+        # Simulate error if requested. The typed failure is checked first: it
+        # says more than the generic one, so where a caller asked for both,
+        # answering with the vaguer error would be throwing information away.
+        if self.params.error_type:
+            error_class, status_code = _SIMULATED_ERRORS[self.params.error_type]
+            raise error_class(
+                self.name,
+                f"Mock error: simulated {self.params.error_type} failure",
+                status_code,
+            )
         if self.params.include_error:
             raise ValueError("Mock error: This is a simulated API error for testing")
 

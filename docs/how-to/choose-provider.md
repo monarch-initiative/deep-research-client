@@ -230,7 +230,7 @@ Two other places behave differently, and it is worth being precise about how:
 
 | Failure | Falls back? | Why |
 |---------|-------------|-----|
-| No credits (402), spent quota, rejected key (401/403), not configured | Yes[^cache] | This provider cannot do the work; another might |
+| No credits (402), spent quota, rejected key (401/403), not configured | Yes* | This provider cannot do the work; another might |
 | Rate limited (429) | No | The same provider will take it shortly -- wait and retry |
 | Server error (5xx) | No | A temporary fault, not a reason to change who answers |
 | Anything unrecognised | No | An unexplained failure is not evidence another provider would do better |
@@ -238,9 +238,9 @@ Two other places behave differently, and it is worth being precise about how:
 The last row is the conservative default: a fallback changes who produced your
 report, so it is taken only where the failure type is evidence it should be.
 
-[^cache]: Unless that provider has already answered this query — its own cached
-report is served instead and nothing falls back. See *A provider you can no
-longer reach* above.
+\* Unless that provider has already answered this query, in which case its own
+cached report is served and nothing falls back — see *A provider you can no
+longer reach* below.
 
 ### Two things to know
 
@@ -254,13 +254,22 @@ run raises with the last failure and no report, no cache entry, and no partial
 file is left behind.
 
 **A provider you can no longer reach can still answer from its own cache.**
-When a fallback is requested and a candidate cannot be prepared — its key
-revoked, say — that candidate's cache is consulted before the next provider is
-billed for a report you already hold. You get the original provider's report,
-attributed to it, with no fallback recorded, because none happened. Two things
-follow: cache entries never expire, so such a report may be old; and this
-applies only where a later candidate would otherwise be called, so without
-`--fallback` an unconfigured provider still fails exactly as it always did.
+When a candidate cannot be prepared — its key revoked, say — and *another
+candidate remains*, that candidate's cache is consulted before the next
+provider is called. You get the original provider's report, attributed to it,
+and no second provider is billed.
+
+The rule is "another candidate remains", not "someone would otherwise be
+billed", and the two come apart: `--fallback-provider deeper_med` unlocks the
+read even though that stub could never be billed, while `--provider falcon
+--fallback` with nothing else configured does not, because falcon is then the
+only candidate. Without any fallback flag an unconfigured provider fails
+exactly as it always did — which is the property the narrow rule protects.
+
+Two more things worth knowing. Cache entries never expire, so a report served
+this way may be arbitrarily old. And nothing falls back when the *first*
+candidate answers from cache; if a later one does, the earlier failures are
+still recorded and the report reads `fell_back: true`, which is accurate.
 
 ### Trying it without an outage
 

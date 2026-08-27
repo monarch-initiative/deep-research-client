@@ -504,11 +504,11 @@ def test_a_cache_hit_is_stamped_with_this_run_not_the_stored_one(tmp_path):
 def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path):
     """Reading a report off disk needs no credential.
 
-    The cache is consulted per candidate before that candidate is prepared, so
-    a provider whose key has gone still answers from a report it produced
-    earlier -- rather than the run paying the next provider for one we already
-    have. Reachable because the CLI now stands its availability check down
-    whenever a fallback was asked for.
+    On a fallback-worthy preparation failure, and only while another candidate
+    remains, that candidate's cache is consulted before the next provider is
+    called -- so a provider whose key has gone still answers from a report it
+    produced earlier. Reachable because the CLI now stands its availability
+    check down whenever a fallback was asked for.
     """
     # A falcon report is cached while falcon is configured.
     warm = _client(("falcon", _params()), cache_dir=tmp_path)
@@ -532,12 +532,13 @@ def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path
 def test_without_a_fallback_an_unreachable_provider_still_raises(tmp_path):
     """The default path must not quietly gain cache-before-credential reads.
 
-    The cache is consulted for a provider that cannot be prepared only when a
-    later candidate would otherwise be billed for a report we already hold.
-    With no fallback there is nobody to bill, so the run fails exactly as it
-    did before any of this -- which also keeps `ENABLE_MOCK_PROVIDER` gating a
-    cached mock report, and keeps the CLI and the library agreeing about what
-    an unconfigured provider does.
+    The cache is consulted for a provider that cannot be prepared only while
+    another candidate remains. With no fallback there is none, so the run fails
+    exactly as it did before any of this -- which keeps the CLI and the library
+    agreeing about what an unconfigured provider does.
+
+    `ENABLE_MOCK_PROVIDER` still gates a cached mock report on *this* path.
+    It does not on the fallback path; see the test below, which pins both.
     """
     warm = _client(("falcon", _params()), cache_dir=tmp_path)
     warm.research("q", provider="falcon")
@@ -545,6 +546,37 @@ def test_without_a_fallback_an_unreachable_provider_still_raises(tmp_path):
     later = _client((BACKUP, _params()), cache_dir=tmp_path)
     with pytest.raises(ProviderNotConfiguredError):
         later.research("q", provider="falcon")
+
+
+def test_naming_the_mock_reaches_its_cache_even_with_the_gate_off(tmp_path, monkeypatch):
+    """What ENABLE_MOCK_PROVIDER does and does not gate, pinned on both paths.
+
+    The gate keeps `mock` from being *chosen*, and `produces_real_reports`
+    keeps it out of the automatic ordering. Neither is a rule about reading a
+    report you already have from a provider you named yourself -- so with a
+    fallback requested, the cached mock report is served, and says it came
+    from mock.
+
+    Recorded as a decision rather than left to be discovered: an earlier commit
+    message of mine claimed the narrowing restored this gate outright, which is
+    true only of the no-fallback path above.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    monkeypatch.setenv("DISABLE_CLAUDE_CODE_PROVIDER", "true")
+    cache = CacheConfig(enabled=True, directory=str(tmp_path))
+    DeepResearchClient(cache_config=cache).research("q", provider="mock")
+
+    monkeypatch.delenv("ENABLE_MOCK_PROVIDER")
+    client = DeepResearchClient(cache_config=cache)
+    assert client.registry.get_provider("mock") is None
+
+    with pytest.raises(ProviderNotConfiguredError):
+        client.research("q", provider="mock")
+
+    result = client.research("q", provider="mock", fallback=["openai"])
+    assert result.provider == "mock"
+    assert result.cached is True
+    assert result.fell_back is False
 
 
 def test_an_unreachable_provider_with_no_cache_still_falls_back(tmp_path):

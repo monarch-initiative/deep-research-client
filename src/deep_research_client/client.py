@@ -496,34 +496,6 @@ class DeepResearchClient:
                 next_provider, " and ".join(dropped), overridden_provider,
             )
 
-    def _finish_cached(
-        self,
-        cached_result: ResearchResult,
-        start_time: datetime,
-        start_timestamp: float,
-        requested: Optional[str],
-        failed: list[ProviderAttempt],
-        candidate: str,
-    ) -> ResearchResult:
-        """Stamp a cached result with this run's timing and provenance.
-
-        Args:
-            cached_result: The result read from the cache.
-            start_time: When this run started.
-            start_timestamp: Monotonic start, for the duration.
-            requested: Provider the caller named, if any.
-            failed: Attempts that failed before this one, in order.
-            candidate: Provider whose cache entry this is.
-
-        Returns:
-            The result, ready to return to the caller.
-        """
-        cached_result.start_time = start_time
-        cached_result.end_time = datetime.now()
-        cached_result.duration_seconds = time.time() - start_timestamp
-        self._record_provenance(cached_result, requested, failed, candidate)
-        return cached_result
-
     @staticmethod
     def _record_provenance(
         result: ResearchResult,
@@ -633,6 +605,33 @@ class DeepResearchClient:
         candidates = self._fallback_candidates(provider, fallback)
         failed: list[ProviderAttempt] = []
 
+        async def serve_cached(
+            candidate: str, cached_model: Optional[str], cache_params: Optional[dict]
+        ) -> Optional[ResearchResult]:
+            """Return this candidate's cached report, stamped for this run.
+
+            Closes over what does not vary across candidates, so the two places
+            that may serve a cached result cannot drift on how they stamp one --
+            the same reason the fallback warning lives inside _record_provenance
+            rather than at each return.
+
+            Args:
+                candidate: Provider whose cache entry is wanted.
+                cached_model: Model to key the entry by, if any.
+                cache_params: Provider parameters to key the entry by.
+
+            Returns:
+                The stamped result, or None when nothing is cached.
+            """
+            cached = await self.cache.get(query, candidate, cached_model, cache_params)
+            if cached is None:
+                return None
+            cached.start_time = start_time
+            cached.end_time = datetime.now()
+            cached.duration_seconds = time.time() - start_timestamp
+            self._record_provenance(cached, provider, failed, candidate)
+            return cached
+
         for position, candidate in enumerate(candidates):
             # The last candidate has nowhere to fall back to, so its failure is
             # the run's failure and propagates untouched -- same type, same
@@ -659,20 +658,22 @@ class DeepResearchClient:
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
                     raise
-                # Only here, and only before billing someone else: reading a
-                # report off disk needs no credential, so a provider we can no
-                # longer reach can still serve one it produced earlier. On the
-                # last candidate there is nobody to bill, so it fails exactly
-                # as it did before any of this -- which is what keeps the
-                # default, no-fallback path byte-identical.
-                cached_result = await self.cache.get(
-                    query, candidate, effective_model, cache_provider_params
+                # Reading a report off disk needs no credential, so a
+                # provider we can no longer reach can still serve one it
+                # produced earlier, rather than the next candidate being
+                # called for a report we already hold.
+                #
+                # The predicate is "another candidate remains", not "someone
+                # would otherwise be billed" -- the two come apart, since a
+                # remaining candidate may be a permanently unavailable stub.
+                # It is deliberately the narrower one: on the last candidate
+                # the run fails exactly as it did before any of this, which is
+                # what keeps the default, no-fallback path byte-identical.
+                served = await serve_cached(
+                    candidate, effective_model, cache_provider_params
                 )
-                if cached_result:
-                    return self._finish_cached(
-                        cached_result, start_time, start_timestamp,
-                        provider, failed, candidate,
-                    )
+                if served is not None:
+                    return served
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
@@ -680,15 +681,12 @@ class DeepResearchClient:
                 )
                 continue
 
-            # Check cache first
-            cached_result = await self.cache.get(
-                query, candidate, effective_model, cache_provider_params
+            # The ordinary read, for a provider we were able to prepare.
+            served = await serve_cached(
+                candidate, effective_model, cache_provider_params
             )
-            if cached_result:
-                return self._finish_cached(
-                    cached_result, start_time, start_timestamp,
-                    provider, failed, candidate,
-                )
+            if served is not None:
+                return served
 
             # Perform research
             try:

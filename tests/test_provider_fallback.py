@@ -799,6 +799,109 @@ def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     assert "simulated billing failure" not in content
 
 
+def _cli_client_with(*named_params):
+    """Build a substitute for the client the research command constructs.
+
+    See `test_cli_reports_the_trail_on_a_successful_fallback` for why the
+    substitution is needed and what it does and does not replace.
+    """
+    real_client_class = cli_module.DeepResearchClient
+
+    def _factory(cache_config=None, provider_configs=None):
+        client = real_client_class(
+            cache_config=cache_config,
+            provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
+        )
+        for name, params in named_params:
+            client.registry.register(StandInProvider(ProviderConfig(name=name), params))
+        return client
+
+    return _factory
+
+
+def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monkeypatch):
+    """The row the docs list, on the surface most people use.
+
+    The command checks the named provider against the registry before calling
+    the client at all. That check has to stand down when a fallback was asked
+    for, or the CLI refuses what the library allows -- and "not configured" is
+    one of the failures a fallback exists to handle.
+    """
+    monkeypatch.setattr(
+        cli_module, "DeepResearchClient", _cli_client_with((BACKUP, _params()))
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "research", "q",
+            "--provider", "falcon",
+            "--fallback-provider", BACKUP,
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 0
+    content = output.read_text()
+    assert f"provider: {BACKUP}" in content
+    assert "requested_provider: falcon" in content
+    # The provider that could not run is in the trail, not dropped from it.
+    assert "ProviderNotConfiguredError" in content
+
+
+def test_cli_still_refuses_an_unconfigured_provider_without_a_fallback(tmp_path, monkeypatch):
+    """Standing the check down is conditional on having somewhere else to go."""
+    monkeypatch.setattr(
+        cli_module, "DeepResearchClient", _cli_client_with((BACKUP, _params()))
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        ["research", "q", "--provider", "falcon", "--output", str(output), "--no-cache"],
+    )
+
+    assert result.exit_code == 1
+    assert "not available" in result.output
+    assert not output.exists()
+
+
+def test_the_mock_can_demonstrate_the_quota_redaction_end_to_end(tmp_path, monkeypatch):
+    """The one error type that folds provider text into its own remedy.
+
+    Constructing ProviderQuotaError directly tests the redaction, but leaves
+    the guard with no route a reader can run. This is that route.
+    """
+    monkeypatch.setattr(
+        cli_module, "DeepResearchClient", _cli_client_with((BACKUP, _params()))
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "research", "q",
+            "--provider", PRIMARY,
+            "--param", "error_type=quota",
+            "--param", "response_delay=0.0",
+            "--fallback-provider", BACKUP,
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 0
+    # The console keeps the provider's reset text, identifier and all.
+    assert "quota_pool_7f21" in result.output
+    # The committed file keeps only our reading of it.
+    content = output.read_text()
+    assert "quota_pool_7f21" not in content
+    assert "renews at" not in content
+    assert "the plan's usage limit is spent" in content
+
+
 def test_cli_rejects_nothing_when_fallback_is_absent(tmp_path, monkeypatch):
     """The flag is opt-in: an ordinary run is untouched by any of this."""
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")

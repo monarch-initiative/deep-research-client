@@ -875,13 +875,30 @@ def research(
         _echo_no_providers_message()
         raise typer.Exit(1)
 
+    # An explicit list is an ordering instruction, so it replaces the
+    # automatic one rather than adding to it.
+    fallback_request: Union[bool, List[str]] = (
+        list(fallback_provider) if fallback_provider else fallback
+    )
+
     # Show available providers
     if provider:
         if provider not in available_providers:
-            logger.error(
-                f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
-            raise typer.Exit(1)
-        logger.info(f"Using provider: {provider}")
+            if not fallback_request:
+                logger.error(
+                    f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
+                raise typer.Exit(1)
+            # "Not configured" is one of the failures a fallback exists to
+            # handle, and the client treats it as one. Ending the run here
+            # would make the CLI refuse what the library allows, and would
+            # drop the provider from the trail the report is supposed to
+            # carry. If nothing else can take the work either, the client
+            # raises and the run still fails -- with every attempt recorded.
+            logger.warning(
+                f"Provider '{provider}' is not configured; continuing because a fallback was requested"
+            )
+        else:
+            logger.info(f"Using provider: {provider}")
     else:
         logger.info(f"Available providers: {', '.join(available_providers)}")
         logger.info(f"Using: {available_providers[0]}")
@@ -961,11 +978,6 @@ def research(
     try:
         # Perform research
         logger.debug(f"Starting research with query: {query[:100]}...")
-        # An explicit list is an ordering instruction, so it replaces the
-        # automatic one rather than adding to it.
-        fallback_request: Union[bool, List[str]] = (
-            list(fallback_provider) if fallback_provider else fallback
-        )
         result = client.research(
             query,
             provider,

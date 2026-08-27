@@ -18,16 +18,22 @@ from ..models import ResearchResult, ProviderConfig
 from ..provider_params import MockParams
 
 
-#: The failure each ``error_type`` stands for, with the status code a real
-#: provider would have carried it on. Keyed by the same literals MockParams
-#: accepts, so the two cannot drift apart silently.
-_SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int]]] = {
-    "auth": (ProviderAuthError, 401),
-    "billing": (ProviderBillingError, 402),
-    "quota": (ProviderQuotaError, 429),
-    "rate_limit": (ProviderRateLimitError, 429),
-    "transient": (ProviderTransientError, 503),
-    "not_configured": (ProviderNotConfiguredError, None),
+#: The failure each ``error_type`` stands for: the class, the status code a
+#: real provider would have carried it on, and any extra the constructor takes.
+#: Keyed by the same literals MockParams accepts, so the two cannot drift apart
+#: silently.
+#:
+#: The quota entry carries a reset time on purpose. ProviderQuotaError is the
+#: one error that folds provider-supplied text into its own remedy, so without
+#: it the mock cannot reproduce the case the report's redaction exists for --
+#: the comma keeps everything after the time, and none of it reaches the file.
+_SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = {
+    "auth": (ProviderAuthError, 401, {}),
+    "billing": (ProviderBillingError, 402, {}),
+    "quota": (ProviderQuotaError, 429, {"resets_at": "3pm, pool quota_pool_7f21"}),
+    "rate_limit": (ProviderRateLimitError, 429, {}),
+    "transient": (ProviderTransientError, 503, {}),
+    "not_configured": (ProviderNotConfiguredError, None, {}),
 }
 
 
@@ -79,11 +85,12 @@ class MockProvider(ResearchProvider):
         # says more than the generic one, so where a caller asked for both,
         # answering with the vaguer error would be throwing information away.
         if self.params.error_type:
-            error_class, status_code = _SIMULATED_ERRORS[self.params.error_type]
+            error_class, status_code, extra = _SIMULATED_ERRORS[self.params.error_type]
             raise error_class(
                 self.name,
                 f"Mock error: simulated {self.params.error_type} failure",
                 status_code,
+                **extra,
             )
         if self.params.include_error:
             raise ValueError("Mock error: This is a simulated API error for testing")

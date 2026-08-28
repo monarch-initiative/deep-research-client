@@ -223,6 +223,11 @@ def test_no_configured_providers_is_an_error(capsys, bare_machine):
     # and told to set it. "Nothing to probe" explains the failure, not the fix.
     out = capsys.readouterr().out
     assert "OPENAI_API_KEY" in out
+    # Three claims kept apart, so a regression names itself rather than raising
+    # a bare ValueError out of index(): the reason for the exit, the sentence
+    # that makes the list actionable, and the order the two must appear in.
+    assert "nothing to probe" in out
+    assert "Set one of these to get started:" in out
     assert out.index("Set one of these to get started:") < out.index("OPENAI_API_KEY")
 
 
@@ -477,9 +482,13 @@ def test_every_provider_lands_in_exactly_one_section(
 
     result = CliRunner().invoke(cli_module.app, command)
 
-    # Pins the crash and the contract at once: without it a TypeError inside the
-    # command reads as a missing heading, and a command that silently started
-    # exiting differently would go unnoticed.
+    # Two claims, not one. click's CliRunner reports exit_code 1 for any caught
+    # exception, and `--check` legitimately exits 1 -- so on that row the code
+    # alone lets a TypeError through to be misdiagnosed downstream as a missing
+    # heading, which is what this guard exists to prevent.
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit
+    ), result.output
     assert result.exit_code == expected_code, result.output
     sections = _sections_by_provider(result.stdout)
     for name in PROVIDER_CLASS_PATHS:

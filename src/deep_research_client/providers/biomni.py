@@ -61,6 +61,9 @@ BIOMNI_EXTERNAL_SOURCE_PACKAGES = {
     "langchain_ollama": "langchain-ollama",
     "langchain_aws": "langchain-aws",
 }
+BIOMNI_EXTRA_RUNTIME_MODULES = frozenset(
+    (*BIOMNI_EAGER_RUNTIME_MODULES, BIOMNI_SOURCE_MODULES["Anthropic"])
+)
 
 
 def missing_biomni_runtime_modules(source: Optional[str] = None) -> list[str]:
@@ -111,16 +114,20 @@ def biomni_runtime_unavailable_reason(
     "the Biomni Ollama backend requires Python module 'langchain_ollama' (install it with `pip install langchain-ollama` inside the upstream Biomni environment)"
     """
     missing_modules = list(dict.fromkeys(missing))
-    external_modules = [
-        module
-        for module in missing_modules
-        if module in BIOMNI_EXTERNAL_SOURCE_PACKAGES
-    ]
-    extra_modules = [
-        module
-        for module in missing_modules
-        if module not in BIOMNI_EXTERNAL_SOURCE_PACKAGES
-    ]
+    if not missing_modules:
+        raise ValueError("missing must name at least one Biomni runtime module")
+
+    extra_modules: list[str] = []
+    external_modules: list[str] = []
+    environment_modules: list[str] = []
+    for module in missing_modules:
+        if module in BIOMNI_EXTRA_RUNTIME_MODULES:
+            extra_modules.append(module)
+        elif module in BIOMNI_EXTERNAL_SOURCE_PACKAGES:
+            external_modules.append(module)
+        else:
+            environment_modules.append(module)
+
     reasons: list[str] = []
     if "biomni" in extra_modules:
         reasons.append(
@@ -141,14 +148,14 @@ def biomni_runtime_unavailable_reason(
         "inside the upstream Biomni environment)"
         for module in external_modules
     )
-    if reasons:
-        return "; ".join(reasons)
-
-    modules = ", ".join(missing_modules) or "an unknown module"
-    return (
-        f"the Biomni runtime is missing {modules} "
-        "(install it inside the upstream Biomni environment)"
-    )
+    if environment_modules:
+        modules = ", ".join(environment_modules)
+        pronoun = "it" if len(environment_modules) == 1 else "them"
+        reasons.append(
+            f"the Biomni runtime is missing {modules} "
+            f"(install {pronoun} inside the upstream Biomni environment)"
+        )
+    return "; ".join(reasons)
 
 
 class BiomniProvider(ResearchProvider):
@@ -239,11 +246,12 @@ class BiomniProvider(ResearchProvider):
 
         try:
             raw = await asyncio.to_thread(self._run_agent, query)
-        except ModuleNotFoundError as e:
+        except ImportError as e:
             # The core imports are checked by is_available(), but Biomni's
             # generated code and scientific tools can reach deeper optional
-            # modules from its external environment. Preserve this as a typed,
-            # provider-specific configuration failure so --fallback can move on.
+            # modules from its external environment, and incompatible adapter
+            # versions can fail on a missing symbol. Preserve both as typed,
+            # provider-specific configuration failures so --fallback can move on.
             missing = e.name or str(e)
             raise ProviderNotInstalledError(
                 self.name,
@@ -293,8 +301,8 @@ class BiomniProvider(ResearchProvider):
         """Build the keyword arguments for a Biomni ``A1`` agent.
 
         Split out from :meth:`_build_agent` so the precedence rules below can be
-        tested without the optional package: CI never installs the biomni extra,
-        so anything that has to import it does not run there.
+        tested in the ordinary base-install CI jobs. Dedicated clean-extra jobs
+        separately exercise the real import, signature, and construction path.
 
         Returns:
             Keyword arguments to construct ``A1`` with

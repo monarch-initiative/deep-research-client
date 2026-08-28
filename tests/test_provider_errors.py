@@ -475,6 +475,7 @@ def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
 
     message = str(excinfo.value)
     assert "DISABLE_BIOMNI_PROVIDER" in message
+    assert "deep-research-client[biomni]" in message
     assert message.index("DISABLE_BIOMNI_PROVIDER") < message.index(
         "deep-research-client[biomni]"
     )

@@ -111,12 +111,13 @@ def test_unavailable_reason_names_the_package_not_a_key():
     """Biomni has no credential of its own, so the base wording would misdirect."""
     if BIOMNI_RUNTIME_AVAILABLE:
         pytest.skip("Biomni runtime available; the unavailable branch is not reachable")
+    missing = missing_biomni_runtime_modules()
     reason = make_provider().unavailable_reason()
 
-    assert (
-        "biomni package is not installed" in reason
-        or "Biomni Python runtime is incomplete" in reason
-    )
+    if "biomni" in missing:
+        assert "biomni package is not installed" in reason
+    else:
+        assert "Biomni Python runtime is incomplete" in reason
     assert "deep-research-client[biomni]" in reason
     assert "API key" not in reason
 
@@ -153,6 +154,31 @@ def test_fresh_ollama_install_names_both_required_install_steps() -> None:
 
     assert "deep-research-client[biomni]" in reason
     assert "pip install langchain-ollama" in reason
+
+
+@pytest.mark.parametrize(
+    "missing,expected,unexpected",
+    [
+        (
+            ["pandas"],
+            "reinstall deep-research-client[biomni]",
+            "install it inside the upstream Biomni environment",
+        ),
+        (
+            ["rdkit"],
+            "install it inside the upstream Biomni environment",
+            "reinstall deep-research-client[biomni]",
+        ),
+    ],
+)
+def test_runtime_remedy_distinguishes_extra_from_scientific_environment(
+    missing: list[str], expected: str, unexpected: str
+) -> None:
+    """Only dependencies actually owned by the extra recommend reinstalling it."""
+    reason = biomni_runtime_unavailable_reason(None, missing)
+
+    assert expected in reason
+    assert unexpected not in reason
 
 
 @pytest.mark.asyncio

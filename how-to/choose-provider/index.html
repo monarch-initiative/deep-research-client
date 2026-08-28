@@ -1552,6 +1552,13 @@ terminal rather than a file someone else committed.</p>
 </table>
 <p>The last row is the conservative default: a fallback changes who produced your
 report, so it is taken only where the failure type is evidence it should be.</p>
+<p><strong>A "No" ends the run; it does not skip to the next candidate.</strong> This is the
+part that surprises people. If you write <code>--fallback-provider a
+--fallback-provider b</code> and <code>a</code> returns a 429, the run stops there and <code>b</code> is
+never called — the same failure that does not justify switching also does not
+justify carrying on. So the trail lists what was tried, which on such a run is
+a prefix of what you named, and the log says the run ended rather than that
+everything failed.</p>
 <p>* Unless that provider has already answered this query, in which case its own
 cached report is served and nothing falls back — see <em>A provider you can no
 longer reach</em> below.</p>
@@ -1560,18 +1567,20 @@ longer reach</em> below.</p>
 for the provider you named -- a Perplexity model name means nothing to OpenAI,
 and an unknown parameter is a hard error. A fallback provider therefore runs on
 its own defaults, and the run says so on stderr when it happens.</p>
-<p><strong>Nothing is written until a provider succeeds.</strong> If every candidate fails, the
-run raises with the last failure and no report, no cache entry, and no partial
-file is left behind. Since there is no result, there is no
-<code>provider_attempts</code> on one — so the trail is carried on the error instead.
+<p><strong>Nothing is written until a provider succeeds.</strong> When the run ends on a
+failure it cannot follow — the last candidate failing, or an earlier one
+failing in a way that does not justify a switch — it raises with that failure
+and no report, no cache entry, and no partial file is left behind. Since there
+is no result, there is no <code>provider_attempts</code> on one — so the trail is carried
+on the error instead.
 Read it with <code>getattr(err, "provider_attempts", ())</code>: it lists every candidate
 tried, including the one whose failure ended the run, but only when that
 failure is one the client classified. A provider that cannot recognise its own
 SDK error re-raises it bare, and a plain exception has no field to carry a
 trail; the run logs it in that case instead. <code>err.__cause__</code> is left alone
 either way, because providers set it themselves to the upstream API error.</p>
-<p>The CLI prints the same trail on a run where every candidate failed, so you do
-not need to catch anything to see it.</p>
+<p>The CLI prints the same trail on any run that ends this way, so you do not need
+to catch anything to see it.</p>
 <p><strong>A provider you can no longer reach can still answer from its own cache.</strong>
 When a candidate cannot be prepared — its key revoked, say — and <em>another
 candidate remains</em>, that candidate's cache is consulted before the next
@@ -1611,7 +1620,17 @@ produces a real report whose frontmatter has the shape shown above, with
 </code></pre>
 <p>If you have no other provider configured, the run has nowhere to go and stops
 with the mock's simulated billing failure -- which is the fail-closed behaviour,
-not a bug. To watch the switch happen without configuring anything, name
+not a bug. The run will say so itself if you ask it to -- <code>-v</code> is a global
+option, so it goes before the subcommand:</p>
+<pre><code class="language-bash">ENABLE_MOCK_PROVIDER=true deep-research-client -v research &quot;test&quot; \
+  --provider mock --param error_type=billing --fallback
+</code></pre>
+<pre><code>INFO - Fallback was requested, but mock is the only candidate: no other provider is available. The run will behave as though no fallback was asked for
+</code></pre>
+<p>That line is <code>INFO</code> rather than a warning because it also fires on runs that
+succeed, where a warning would be noise -- so it is there when you go looking
+and quiet when you are not.</p>
+<p>To watch the switch happen without configuring anything, name
 <code>deeper_med</code> as the fallback: it is a permanently unavailable stub, so the run
 still ends in an error and writes no report, but the log shows the fallback
 being taken and each provider explaining itself:</p>

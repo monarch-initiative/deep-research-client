@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/reference/models/">
       
       
-        <link rel="prev" href="../providers/">
+        <link rel="prev" href="../capabilities/">
       
       
         <link rel="next" href="../cache/">
@@ -716,6 +716,29 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Capabilities & Archetypes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -866,9 +889,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#filter-by-capability" class="md-nav__link">
+  <a href="#filter-by-capability-resource-or-archetype" class="md-nav__link">
     <span class="md-ellipsis">
-      Filter by Capability
+      Filter by Capability, Resource, or Archetype
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining Filters
     </span>
   </a>
   
@@ -1222,9 +1254,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#filter-by-capability" class="md-nav__link">
+  <a href="#filter-by-capability-resource-or-archetype" class="md-nav__link">
     <span class="md-ellipsis">
-      Filter by Capability
+      Filter by Capability, Resource, or Archetype
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining Filters
     </span>
   </a>
   
@@ -1471,10 +1512,24 @@ deep-research-client models --cost medium
 deep-research-client models --cost high
 deep-research-client models --cost very_high
 </code></pre>
-<h3 id="filter-by-capability">Filter by Capability</h3>
+<h3 id="filter-by-capability-resource-or-archetype">Filter by Capability, Resource, or Archetype</h3>
 <pre><code class="language-bash">deep-research-client models --capability web_search
 deep-research-client models --capability academic_search
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
 </code></pre>
+<p>See <a href="../capabilities/">Capabilities, Resources &amp; Archetypes</a> for the full
+vocabulary; passing an unrecognised term lists it.</p>
+<h3 id="combining-filters">Combining Filters</h3>
+<p>Every filter above composes, so several flags ask for their intersection
+rather than the first one winning:</p>
+<pre><code class="language-bash"># Co-scientists that reach PubMed, not every co-scientist
+deep-research-client models --archetype co_scientist --resource pubmed
+
+# One provider's low-cost models only
+deep-research-client models --provider perplexity --cost low
+</code></pre>
+<p>A combination that matches nothing says so rather than printing an empty list.</p>
 <h3 id="detailed-information">Detailed Information</h3>
 <pre><code class="language-bash">deep-research-client models --detailed
 </code></pre>
@@ -1493,7 +1548,7 @@ deep-research-client models --capability academic_search
     find_models_by_capability,
     resolve_model_alias,
     CostLevel,
-    ModelCapability
+    ResearchCapability
 )
 
 # Get models for a provider
@@ -1508,7 +1563,7 @@ print(card.capabilities)
 
 # Find models by criteria
 cheap = find_models_by_cost(CostLevel.LOW)
-web_search = find_models_by_capability(ModelCapability.WEB_SEARCH)
+web_search = find_models_by_capability(ResearchCapability.web_search)
 
 # Resolve alias
 full_name = resolve_model_alias(&quot;openai&quot;, &quot;o3&quot;)

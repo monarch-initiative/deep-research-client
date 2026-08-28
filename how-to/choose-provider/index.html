@@ -917,6 +917,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Capabilities & Archetypes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/models/" class="md-nav__link">
         
   
@@ -1464,10 +1487,12 @@ providers would make those records wrong. So you have to ask for it.</p>
 <p><code>--fallback</code> tries the other configured providers in <strong>registration order</strong>,
 which is a fixed sequence filtered down to whichever you have configured — not
 a preference ranking, and not dependent on how your environment is set up:</p>
-<pre><code>openai, falcon, asta, perplexity, consensus, openscientist, cyberian, claude_code
+<pre><code>openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, claude_code
 </code></pre>
-<p>Each candidate is a paid account, so when it matters which one you spend money
-on, name them yourself rather than relying on that order:</p>
+<p>Most candidates are a paid account, and <code>biomni</code> is not: it is a local agent
+that executes generated code and may pull down a multi-gigabyte data lake the
+first time it runs. Either way, when it matters which one does the work, name
+them yourself rather than relying on that order:</p>
 <pre><code class="language-bash">deep-research-client research &quot;CRISPR delivery mechanisms&quot; \
   --provider falcon \
   --fallback-provider openai \
@@ -1662,7 +1687,18 @@ deep-research-client models --detailed
 
 # Filter by cost
 deep-research-client models --cost low
+
+# Filter by what a model can do, what it reaches, or what kind of tool it is
+deep-research-client models --capability code_interpretation
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
 </code></pre>
+<p>The filters combine, so several flags ask for their intersection:</p>
+<pre><code class="language-bash"># Co-scientists that reach PubMed, not every co-scientist
+deep-research-client models --archetype co_scientist --resource pubmed
+</code></pre>
+<p><code>--help</code> lists the accepted values for each, generated from the vocabularies
+themselves rather than restated here.</p>
 <h2 id="see-also">See Also</h2>
 <ul>
 <li><a href="../../reference/providers/">Provider Reference</a> - Full provider documentation</li>

@@ -1259,6 +1259,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Capabilities & Archetypes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../models/" class="md-nav__link">
         
   
@@ -2029,7 +2052,7 @@
 <tbody>
 <tr>
 <td><code>--provider TEXT</code></td>
-<td>Provider to use: openai, edison, perplexity, consensus, cyberian</td>
+<td>Provider to use. <code>--help</code> names every registered provider, derived from the registry rather than restated here</td>
 </tr>
 <tr>
 <td><code>--model TEXT</code></td>
@@ -2533,6 +2556,10 @@ deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
 <td><code>--provider TEXT</code></td>
 <td>Show details for specific provider only</td>
 </tr>
+<tr>
+<td><code>--check</code></td>
+<td>Probe the configured providers for live reachability. With nothing configured, lists what every provider needs instead</td>
+</tr>
 </tbody>
 </table>
 <h4 id="examples_4">Examples</h4>
@@ -2561,15 +2588,23 @@ deep-research-client providers --provider perplexity --show-params
 <tbody>
 <tr>
 <td><code>--provider TEXT</code></td>
-<td>Show models for specific provider</td>
+<td>Filter by provider</td>
 </tr>
 <tr>
 <td><code>--cost TEXT</code></td>
-<td>Filter by cost: low, medium, high, very_high</td>
+<td>Filter by cost level</td>
 </tr>
 <tr>
 <td><code>--capability TEXT</code></td>
-<td>Filter by capability: web_search, academic_search, etc.</td>
+<td>Filter by what a model can do</td>
+</tr>
+<tr>
+<td><code>--resource TEXT</code></td>
+<td>Filter by the data resource a model wraps</td>
+</tr>
+<tr>
+<td><code>--archetype TEXT</code></td>
+<td>Filter by provider archetype</td>
 </tr>
 <tr>
 <td><code>--detailed</code></td>
@@ -2577,6 +2612,10 @@ deep-research-client providers --provider perplexity --show-params
 </tr>
 </tbody>
 </table>
+<p>The accepted values for <code>--provider</code>, <code>--capability</code>, <code>--resource</code> and
+<code>--archetype</code> are generated from the registry and the controlled vocabularies,
+so <code>deep-research-client models --help</code> is the current list. Filters combine:
+several flags ask for their intersection.</p>
 <h4 id="examples_5">Examples</h4>
 <pre><code class="language-bash"># List all models
 deep-research-client models
@@ -2586,6 +2625,14 @@ deep-research-client models --provider perplexity
 
 # Filter by cost
 deep-research-client models --cost low
+
+# Filter by capability, wrapped resource, or archetype
+deep-research-client models --capability code_interpretation
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
+
+# Combine filters: co-scientists that reach PubMed
+deep-research-client models --archetype co_scientist --resource pubmed
 
 # Detailed view
 deep-research-client models --detailed

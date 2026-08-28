@@ -14,7 +14,7 @@
         <link rel="prev" href="../cli/">
       
       
-        <link rel="next" href="../models/">
+        <link rel="next" href="../capabilities/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -1241,6 +1241,75 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#biomni-biomedical-co-scientist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Biomni (Biomedical Co-Scientist)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Biomni (Biomedical Co-Scientist)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to Use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -1295,6 +1364,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Capabilities & Archetypes
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -2019,6 +2111,75 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#biomni-biomedical-co-scientist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Biomni (Biomedical Co-Scientist)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Biomni (Biomedical Co-Scientist)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parameters_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      Parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#characteristics_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      Characteristics
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to Use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -2150,6 +2311,12 @@
 <td>Slow</td>
 </tr>
 <tr>
+<td>Biomni</td>
+<td>(upstream local environment)</td>
+<td>Biomedical co-scientist, runs code</td>
+<td>Very slow</td>
+</tr>
+<tr>
 <td>DeepER-Med</td>
 <td>(stub - no API yet)</td>
 <td>Evidence-based agentic medical research (arXiv:2604.15456)</td>
@@ -2157,6 +2324,9 @@
 </tr>
 </tbody>
 </table>
+<p>See <a href="../capabilities/">Capabilities, Resources &amp; Archetypes</a> for the vocabulary
+used to describe each provider, including why a conventional deep-research tool
+is a subset of the co-scientist case.</p>
 <h2 id="openai-deep-research">OpenAI Deep Research</h2>
 <h3 id="setup">Setup</h3>
 <pre><code class="language-bash">export OPENAI_API_KEY=&quot;your-key&quot;
@@ -2615,6 +2785,105 @@ card's <code>limitations</code> say so explicitly.</p>
 <p>Once an API is published, only the body of <code>providers/deeper_med.py</code> needs to
 change.</p>
 <hr />
+<h2 id="biomni-biomedical-co-scientist">Biomni (Biomedical Co-Scientist)</h2>
+<p><a href="https://github.com/snap-stanford/Biomni">Biomni</a> is a general-purpose biomedical
+AI agent from Stanford SNAP. Rather than searching the literature and writing a
+report, it wraps a large toolbox of biomedical software and curated databases and
+<strong>executes generated code</strong> to plan and carry out research tasks — designing a
+CRISPR screen, annotating variants, analysing omics data, and so on. It is a
+<code>co_scientist</code> archetype: hypothesis-driven and code-running, of which a
+conventional deep-research run is a subset (see
+<a href="../capabilities/">Capabilities, Resources &amp; Archetypes</a>).</p>
+<p>This provider wraps the local <code>biomni</code> Python package (<code>biomni.agent.A1</code>).
+Biomni configures and authenticates its own underlying LLM (Claude by default),
+so no separate provider API key is required by this client.</p>
+<h3 id="setup_8">Setup</h3>
+<p>The PyPI package is <strong>not</strong> Biomni's complete software environment. Follow
+Biomni's <a href="https://github.com/snap-stanford/Biomni/tree/main/biomni_env">environment setup</a>
+first: upstream offers a basic agent environment, a reduced environment of
+about 13GB, and a full E1 setup that it documents as taking more than 10 hours
+and at least 30GB. Then, inside that activated environment, install this client:</p>
+<pre><code class="language-bash">pip install deep-research-client[biomni]
+
+# Biomni drives an LLM under the hood; provide that provider's key, e.g.:
+export ANTHROPIC_API_KEY=&quot;your-key&quot;
+
+# Optional: where the (~11GB) data lake is stored (default ./biomni_data)
+export BIOMNI_DATA_PATH=&quot;/data/biomni&quot;
+</code></pre>
+<p>The extra fills gaps in Biomni 0.0.8's package metadata needed for the default
+agent (<code>pandas</code>, <code>langchain-openai</code>, and <code>langchain-anthropic</code>). It does <strong>not</strong>
+install Biomni's R packages, command-line programs, or biomedical Python
+toolbox; those come from the upstream environment. Anthropic and
+OpenAI-compatible sources work with the extra. Other backends may need their
+own adapter, such as <code>langchain-ollama</code> or <code>langchain-aws</code>.</p>
+<p>The provider is auto-detected when this core Python runtime is present. Set
+<code>DISABLE_BIOMNI_PROVIDER=true</code> to opt out of auto-detection.</p>
+<p><strong>Important</strong>: Biomni executes generated code locally and downloads a large data
+lake on first run. Run it only in a trusted / sandboxed environment.</p>
+<h3 id="models_6">Models</h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Aliases</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>biomni-a1</code></td>
+<td>biomni, a1, coscientist</td>
+<td>Biomni A1 biomedical agent</td>
+</tr>
+</tbody>
+</table>
+<p>Note the two model concepts: the <code>model</code> field selects this research model card
+(<code>biomni-a1</code>), while the <code>llm</code> parameter selects the <em>underlying</em> LLM that Biomni
+drives.</p>
+<h3 id="parameters_7">Parameters</h3>
+<pre><code class="language-python">from deep_research_client.provider_params import BiomniParams
+
+params = BiomniParams(
+    llm=&quot;claude-sonnet-4-20250514&quot;,  # underlying LLM (default: Biomni's own)
+    source=&quot;Anthropic&quot;,              # LLM provider: Anthropic, OpenAI, Gemini, ...
+    path=&quot;/data/biomni&quot;,             # workspace root (default: env or ./biomni_data)
+    timeout=3600,                    # timeout for each generated code execution
+    use_tool_retriever=True,         # retrieve most relevant tools per task
+    skip_data_lake=False,            # True skips the ~11GB data lake download
+)
+</code></pre>
+<h3 id="characteristics_8">Characteristics</h3>
+<ul>
+<li><strong>Cost</strong>: Variable (drives an underlying LLM + heavy local compute)</li>
+<li><strong>Speed</strong>: Very slow (multi-step agentic execution)</li>
+<li><strong>Capabilities</strong>: Code execution, data analysis, hypothesis generation,
+  experiment design, evidence synthesis, citation tracking</li>
+<li><strong>Resources</strong>: PubMed, general web, and curated biomedical / genomic /
+  chemical / protein-structure databases</li>
+<li><strong>Citations</strong>: PMIDs, DOIs, PMC and GEO accessions, and bare PubMed URLs,
+  extracted from the final answer with the same patterns reference validation
+  uses</li>
+<li><strong>Timeout</strong>: <code>timeout</code> is handed to the Biomni agent as its own
+  <code>timeout_seconds</code>, which limits each generated code execution. It is not a
+  whole-run deadline; this client does not impose a separate ceiling.</li>
+</ul>
+<h3 id="when-to-use_2">When to Use</h3>
+<ul>
+<li>Designing experiments (e.g. CRISPR screens)</li>
+<li>Variant annotation and interpretation</li>
+<li>Omics and sequence data analysis</li>
+<li>Hypothesis-driven biomedical investigation</li>
+</ul>
+<h3 id="limitations_2">Limitations</h3>
+<ul>
+<li>Requires an upstream Biomni environment plus this package's <code>biomni</code> extra</li>
+<li>Downloads a large (~11GB) data lake on first run</li>
+<li>Executes generated code locally — use a trusted/sandboxed environment</li>
+<li>Needs an LLM API key (e.g. <code>ANTHROPIC_API_KEY</code>) for the underlying model</li>
+<li>Very slow and non-deterministic</li>
+</ul>
+<hr />
 <h2 id="provider-detection">Provider Detection</h2>
 <p>Providers are auto-detected based on environment variables:</p>
 <pre><code class="language-bash"># Check available providers
@@ -2679,7 +2948,7 @@ apart from "try again":</p>
 <td><code>ProviderNotInstalledError</code></td>
 <td>—</td>
 <td>No</td>
-<td>A CLI-backed provider's tool is not on PATH (a kind of "not configured")</td>
+<td>A locally-backed provider's binary is not on PATH, or its optional package is not installed (a kind of "not configured")</td>
 </tr>
 <tr>
 <td><code>ProviderRateLimitError</code></td>
@@ -2696,8 +2965,8 @@ apart from "try again":</p>
 </tbody>
 </table>
 <p><code>ProviderNotInstalledError</code> subclasses <code>ProviderNotConfiguredError</code>, so one
-<code>except ProviderNotConfiguredError</code> covers both a missing key and a missing
-CLI. All of them subclass <code>ProviderError</code> (itself a <code>ValueError</code>, so older callers
+<code>except ProviderNotConfiguredError</code> covers a missing key, a missing CLI, and a
+missing optional package alike. All of them subclass <code>ProviderError</code> (itself a <code>ValueError</code>, so older callers
 still work) and carry <code>provider</code>, <code>status_code</code>, <code>detail</code>, and a <code>retryable</code>
 flag:</p>
 <pre><code class="language-python">from deep_research_client import ProviderBillingError, ProviderError

@@ -181,6 +181,14 @@ def test_runtime_remedy_distinguishes_extra_from_scientific_environment(
     assert unexpected not in reason
 
 
+def test_unnamed_missing_module_keeps_the_diagnostic_path_safe() -> None:
+    """A bare upstream error must not be replaced by a formatter failure."""
+    reason = biomni_runtime_unavailable_reason(None, [""])
+
+    assert "without naming it" in reason
+    assert "Biomni logs" in reason
+
+
 @pytest.mark.asyncio
 async def test_research_rejects_empty_query():
     # The empty-query guard runs before the availability check, so it is

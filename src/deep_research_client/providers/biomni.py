@@ -113,9 +113,12 @@ def biomni_runtime_unavailable_reason(
     >>> biomni_runtime_unavailable_reason("Ollama", ["langchain_ollama"])
     "the Biomni Ollama backend requires Python module 'langchain_ollama' (install it with `pip install langchain-ollama` inside the upstream Biomni environment)"
     """
-    missing_modules = list(dict.fromkeys(missing))
+    missing_modules = list(dict.fromkeys(module for module in missing if module))
     if not missing_modules:
-        raise ValueError("missing must name at least one Biomni runtime module")
+        return (
+            "the Biomni runtime reported a missing Python module without naming it "
+            "(inspect the Biomni logs and verify the upstream environment)"
+        )
 
     extra_modules: list[str] = []
     external_modules: list[str] = []
@@ -246,12 +249,13 @@ class BiomniProvider(ResearchProvider):
 
         try:
             raw = await asyncio.to_thread(self._run_agent, query)
-        except ImportError as e:
+        except ModuleNotFoundError as e:
             # The core imports are checked by is_available(), but Biomni's
             # generated code and scientific tools can reach deeper optional
-            # modules from its external environment, and incompatible adapter
-            # versions can fail on a missing symbol. Preserve both as typed,
-            # provider-specific configuration failures so --fallback can move on.
+            # modules from its external environment. Preserve missing modules
+            # as typed configuration failures so --fallback can move on. A plain
+            # ImportError may instead mean an installed-but-incompatible package;
+            # the generic branch below preserves that distinction and its detail.
             missing = e.name or str(e)
             raise ProviderNotInstalledError(
                 self.name,

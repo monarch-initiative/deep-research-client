@@ -32,7 +32,7 @@ from .model_cards import (
     TimeEstimate,
     ModelCapability
 )
-from .models import ProviderHealth, ResearchResult, sanitize_artifact_filename
+from .models import ProviderAttempt, ProviderHealth, ResearchResult, sanitize_artifact_filename
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -1003,19 +1003,12 @@ def research(
 
         # The client already warned that someone else produced this. Restating
         # it here made one fallback emit the same sentence twice; what the CLI
-        # adds is the trail, so that is all it prints.
-        #
-        # summary() carries the provider's own error text, which the *report*
-        # deliberately withholds. That difference is intended and was weighed:
-        # the console is where an operator diagnoses a failed provider, and
-        # withholding it there costs them the evidence while protecting
-        # nothing the raised error did not already print. A committed file is
-        # read by people who were not running the command, which is the
-        # distinction -- not secrecy.
+        # adds is the trail, so that is all it prints. render_trail owns the
+        # console-versus-report split that used to be argued here.
         if result.fell_back:
             logger.warning(
-                "Providers tried:\n  %s",
-                "\n  ".join(attempt.summary() for attempt in result.provider_attempts),
+                "Providers tried:\n%s",
+                ProviderAttempt.render_trail(result.provider_attempts),
             )
 
         # Determine if we're separating citations
@@ -1067,16 +1060,27 @@ def research(
 
     except ValueError as exc:
         logger.error(f"Error: {exc}")
-        # The trail is on the error when every candidate failed. Without this
-        # the CLI says more about who was tried when a fallback *worked* than
-        # when it did not, which is backwards: the total failure is where an
-        # operator needs it. getattr, because an unclassified failure carries
-        # no such attribute -- the client logs the trail itself in that case.
+        # The trail is on the error whenever the run ended on a failure it
+        # could not follow -- which is not only the last candidate, since a
+        # 429 or an unclassified error ends the run wherever it lands. Without
+        # this the CLI would say more about who was tried when a fallback
+        # *worked* than when it did not, which is backwards: the failed run is
+        # where an operator needs it. getattr, because an unclassified failure
+        # carries no such attribute -- the client logs the trail in that case.
+        #
+        # The guard matters: an ordinary single-provider failure carries an
+        # empty trail, and a bare "Providers tried:" header under it would be
+        # noise. Deleting it is a visible regression, so a test pins it.
         attempts = getattr(exc, "provider_attempts", ())
         if attempts:
+            # The last entry restates the error line above, minus its `Try:`
+            # suffix. Dropping it would make the list stop short of the
+            # failure that ended the run, so the repetition is the lesser
+            # cost -- unlike the success path, where the duplicated sentence
+            # carried nothing the trail did not.
             logger.error(
-                "Providers tried:\n  %s",
-                "\n  ".join(attempt.summary() for attempt in attempts),
+                "Providers tried:\n%s",
+                ProviderAttempt.render_trail(attempts),
             )
         raise typer.Exit(1)
     except OSError as exc:

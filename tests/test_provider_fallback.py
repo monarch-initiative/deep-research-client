@@ -8,6 +8,7 @@ raises, so the client is exercised through its ordinary code path.
 """
 
 import json
+import logging
 
 import pytest
 from typer.testing import CliRunner
@@ -52,6 +53,62 @@ class StandInProvider(MockProvider):
     """
 
     produces_real_reports = True
+
+
+class UnclassifiableFailure(StandInProvider):
+    """A provider whose SDK error nothing recognises.
+
+    `openai.py` re-raises bare what `_classify_openai_error` cannot place, so
+    an exception with no `provider_attempts` field really does reach the loop.
+    """
+
+    async def research(self, query):
+        raise RuntimeError("connection reset by peer")
+
+
+# The CLI's setup_logging calls setLevel on the *package* logger, which is
+# process-global and was never restored -- so a CLI test anywhere in the suite
+# left every later test running under whatever level it chose. That is why the
+# INFO assertions here passed run alone and failed in the full suite.
+_PACKAGE_LOGGER = "deep_research_client"
+
+# Asserting on records still names the child explicitly, and the fixture below
+# does not make that unnecessary -- dropping it fails four tests. The fixture
+# stops *this* file leaking onward; it cannot undo a level another file already
+# pinned before these tests ran. caplog.at_level with no logger raises the
+# *root* level, which the package logger's level is consulted before, so an
+# INFO record is dropped on the way. Setting a non-NOTSET level on the child
+# stops the effective-level walk there instead, whatever the parent holds.
+_CLIENT_LOGGER = "deep_research_client.client"
+
+
+@pytest.fixture(autouse=True)
+def _restore_package_log_level():
+    """Stop this file's CLI tests leaving a level behind for whoever runs next.
+
+    Containing the leak at its source beats working around it downstream,
+    though it only covers tests that run after these -- see _CLIENT_LOGGER for
+    the half that protects against pollution arriving from elsewhere.
+
+    Two levels, because setup_logging pins two: setLevel on the package
+    logger, and basicConfig(level=..., force=True), which sets the root
+    logger's as well. Only one test here passes -v; before it existed every
+    CLI test ran at the default, so root was reassigned the value it already
+    held and the second half never showed. Demonstrated with two tests in a
+    file of their own -- in this suite the next CLI test happens to reset root
+    on its way past, which masks it rather than making it harmless.
+
+    Handlers are deliberately out of scope: basicConfig(force=True) also
+    removes and *closes* every root handler, and restoring closed handlers is
+    not something a fixture can do honestly. So this narrows the leak rather
+    than closing it.
+    """
+    package_logger = logging.getLogger(_PACKAGE_LOGGER)
+    root_logger = logging.getLogger()
+    levels = (package_logger.level, root_logger.level)
+    yield
+    package_logger.setLevel(levels[0])
+    root_logger.setLevel(levels[1])
 
 
 def _params(**kwargs) -> MockParams:
@@ -384,16 +441,10 @@ def test_an_unclassified_terminal_failure_logs_the_trail_instead(caplog):
     of losing it.
     """
 
-    class UnclassifiableFailure(StandInProvider):
-        """A provider whose SDK error nothing recognises."""
-
-        async def research(self, query):
-            raise RuntimeError("connection reset by peer")
-
     client = _client((PRIMARY, _params(error_type="billing")))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(RuntimeError) as caught:
             client.research("q", provider=PRIMARY, fallback=[BACKUP])
 
@@ -413,16 +464,10 @@ def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
     when the last one was never reached.
     """
 
-    class UnclassifiableFailure(StandInProvider):
-        """A provider whose SDK error nothing recognises."""
-
-        async def research(self, query):
-            raise RuntimeError("connection reset by peer")
-
     client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
     client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(RuntimeError):
             client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
 
@@ -432,6 +477,125 @@ def test_an_unclassified_failure_before_the_last_candidate_names_itself(caplog):
     assert f"Provider {BACKUP} failed with RuntimeError" in trail[0]
     # SPARE was never reached, so it must not appear as an attempt.
     assert SPARE not in trail[0]
+
+
+def test_a_requested_fallback_with_nobody_to_switch_to_says_so(caplog):
+    """A flag that changes nothing must not do it silently.
+
+    The automatic ordering drops providers that invent their reports. When
+    that leaves one candidate, the run fails exactly as it would with no flag
+    at all -- and the trail is empty at position 0 either way, so nothing
+    distinguishes it from "the fallback ran and also failed". The reason is
+    the invisible part, so the run names it.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")))
+    # MockProvider, not StandInProvider: it is excluded from the ordering
+    # precisely because it does not produce real reports.
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=True)
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "do not produce real reports" in said[0]
+    assert BACKUP in said[0]
+
+
+def test_a_named_fallback_that_repeats_the_primary_says_so(caplog):
+    """The other route to one candidate: the name deduplicates away."""
+    client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    # The exact clause, to the sentence boundary: "no other provider was
+    # named" is a prefix of "...named or available", so a substring check
+    # would pass against the wrong branch. BACKUP is registered and available
+    # here -- it simply was not named -- so that branch would be false.
+    assert "candidate: no other provider was named." in said[0]
+
+
+def test_the_automatic_route_says_available(caplog):
+    """The automatic route is the one case where "available" is the truth.
+
+    `fallback=True` takes whatever else is registered, so one candidate really
+    does mean there is nobody else -- unlike the list route, where the usual
+    cause is that nobody else was listed. Two situations, two sentences.
+    """
+    # Nobody else at all: _client passes provider_configs, so the registry
+    # holds only what is named here.
+    client = _client((PRIMARY, _params(error_type="billing")))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=True)
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "candidate: no other provider is available." in said[0]
+
+
+def test_the_reason_given_is_the_reason_that_applied(caplog):
+    """Naming a cause that is not the cause is the bug this PR is about.
+
+    The `produces_real_reports` filter runs only on the automatic route. An
+    explicitly named provider that invents its reports is honoured -- so when
+    a list route dedups to one candidate while a mock happens to sit in the
+    registry, that mock was not excluded for fabricating. It simply was not
+    named. Blaming the filter would tell an operator that their own
+    `--fallback-provider mock_backup` would be dropped, which is the reverse
+    of what happens.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")))
+    # Available, and not a real-report provider -- the bait for the wrong reason.
+    client.registry.register(MockProvider(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=[PRIMARY])
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert "candidate: no other provider was named." in said[0]
+    assert "do not produce real reports" not in said[0]
+    assert BACKUP not in said[0]
+
+
+def test_a_real_fallback_does_not_claim_it_had_nobody(caplog):
+    """The diagnostic must not fire on the runs it is not about."""
+    client = _client((PRIMARY, _params(error_type="billing")), (BACKUP, _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
+
+    assert result.provider == BACKUP
+    assert not [r for r in caplog.records if "only candidate" in r.getMessage()]
+
+
+def test_the_log_says_the_run_ends_rather_than_leaving_it_open(caplog):
+    """Not misleading is not the same as informing.
+
+    Naming the candidate removed the false claim that every provider failed.
+    It did not tell an operator what became of the candidates behind it, and
+    `Providers tried:` reads as the whole list rather than a prefix of it --
+    on this path the log is the entire record, since an unclassified failure
+    carries no `provider_attempts`.
+    """
+    client = _client((PRIMARY, _params(error_type="billing")), (SPARE, _params()))
+    client.registry.register(UnclassifiableFailure(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
+        with pytest.raises(RuntimeError):
+            client.research("q", provider=PRIMARY, fallback=[BACKUP, SPARE])
+
+    trail = [r.getMessage() for r in caplog.records if "Providers tried" in r.getMessage()]
+    assert len(trail) == 1
+    assert "The run ends here; any candidate after it was not tried." in trail[0]
 
 
 def test_a_lone_failure_carries_no_trail():
@@ -493,7 +657,7 @@ def test_a_typo_in_the_fallback_list_fails_before_anything_is_called(caplog):
         (PRIMARY, _params(error_type="billing")),
         (BACKUP, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         with pytest.raises(ValueError, match="'mok_backup' not found"):
             client.research("q", provider=PRIMARY, fallback=["mok_backup", BACKUP])
 
@@ -646,7 +810,7 @@ def test_a_cached_report_is_served_even_from_a_provider_we_cannot_reach(tmp_path
     later = _client((BACKUP, _params()), cache_dir=tmp_path)
     assert "falcon" not in [p.name for p in later.registry.get_available_providers()]
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         result = later.research("q", provider="falcon", fallback=[BACKUP])
 
     assert result.provider == "falcon"
@@ -789,7 +953,7 @@ def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
         (BACKUP, _params()),
         cache_dir=tmp_path,
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         result = client.research("q", provider=PRIMARY, fallback=True)
 
     assert result.cached is warm_the_cache
@@ -805,7 +969,7 @@ def test_a_fallback_is_announced_whether_or_not_the_answer_was_cached(
 def test_no_fallback_is_announced_when_none_happened(caplog):
     """The warning must not fire on an ordinary run."""
     client = _client((PRIMARY, _params()))
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research("q", provider=PRIMARY)
 
     assert not [
@@ -852,7 +1016,7 @@ def test_dropping_overrides_is_said_out_loud(caplog):
         (PRIMARY, _params(error_type="billing")),
         (BACKUP, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research(
             "q",
             provider=PRIMARY,
@@ -875,7 +1039,7 @@ def test_the_dropped_override_warning_names_the_provider_that_got_them(caplog):
         (BACKUP, _params(error_type="auth")),
         (SPARE, _params()),
     )
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("WARNING", logger=_CLIENT_LOGGER):
         client.research(
             "q",
             provider=PRIMARY,
@@ -1140,6 +1304,75 @@ def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monk
     assert "requested_provider: falcon" in content
     # The provider that could not run is in the trail, not dropped from it.
     assert "ProviderNotConfiguredError" in content
+
+
+def test_cli_v_surfaces_the_inert_fallback_diagnostic(tmp_path, monkeypatch):
+    """The docs promise `-v` shows it, so pin that the wiring delivers.
+
+    The message is INFO and the CLI defaults to WARNING, so by default an
+    operator sees nothing -- deliberately, since it also fires on runs that
+    succeed. That makes `-v` the whole of its reachability from the command
+    line, and `-v` is a *global* option: it goes before the subcommand.
+    """
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with((PRIMARY, _params(error_type="billing"))),
+    )
+    output = tmp_path / "report.md"
+
+    # Asserted on the captured output, not caplog: the CLI's setup_logging
+    # calls basicConfig(force=True), which closes caplog's handler, so records
+    # emitted inside the invocation never reach it. This is the handler half
+    # of the leak that _restore_package_log_level deliberately does not cover.
+    result = CliRunner().invoke(
+        cli_module.app,
+        [
+            "-v",
+            "research", "q",
+            "--provider", PRIMARY,
+            "--fallback",
+            "--output", str(output),
+            "--no-cache",
+        ],
+    )
+
+    assert result.exit_code == 1
+    # The prefix too, not just the message: the docs quote a literal console
+    # line, and the level-and-format half of it is what a reader diffs
+    # against their terminal.
+    assert "INFO - Fallback was requested" in result.output
+    assert "candidate: no other provider is available." in result.output
+    assert not output.exists()
+
+
+def test_cli_prints_no_trail_header_when_there_is_no_trail(tmp_path, monkeypatch):
+    """An ordinary single-provider failure must not grow a bare header.
+
+    `ProviderError` subclasses `ValueError`, so a run with no fallback reaches
+    the same handler that prints the trail -- carrying `provider_attempts ==
+    ()`. Without the guard the handler prints "Providers tried:" with nothing
+    under it. The typo test cannot see this: that path exits from the
+    pre-check and never reaches the handler at all.
+    """
+    monkeypatch.setattr(
+        cli_module,
+        "DeepResearchClient",
+        _cli_client_with((PRIMARY, _params(error_type="billing"))),
+    )
+    output = tmp_path / "report.md"
+
+    result = CliRunner().invoke(
+        cli_module.app,
+        ["research", "q", "--provider", PRIMARY, "--output", str(output), "--no-cache"],
+    )
+
+    assert result.exit_code == 1
+    # The failure itself is reported...
+    assert "out of credits" in result.output
+    # ...but a list of one provider we already named is not a trail.
+    assert "Providers tried:" not in result.output
+    assert not output.exists()
 
 
 def test_cli_still_names_the_available_providers_for_a_typo(tmp_path, monkeypatch):

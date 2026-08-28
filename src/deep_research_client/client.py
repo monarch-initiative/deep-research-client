@@ -360,6 +360,11 @@ class DeepResearchClient:
                 whatever else is available, or an ordered list of provider
                 names. A single name may be given as a bare string.
 
+        Logs at INFO when a fallback was requested but only one candidate
+        survives, since the run is then about to behave as though no fallback
+        had been asked for. Planning and saying so live together because the
+        reason -- which filter or which absent name -- is known only here.
+
         Returns:
             Provider names to try, most-preferred first, without duplicates.
             With True, the automatic ones follow registration order.
@@ -418,6 +423,54 @@ class DeepResearchClient:
 
         if not ordered:
             raise ValueError("No research providers available")
+
+        # A fallback was asked for and there is nobody to fall back to. The
+        # run is about to behave exactly as it would with no flag at all, and
+        # without this nothing distinguishes that from "the fallback ran and
+        # also failed" -- the trail is empty either way at position 0.
+        #
+        # Both routes are easy to hit: the automatic ordering drops providers
+        # that do not produce real reports, and a named fallback that repeats
+        # the primary deduplicates away. The reason is the invisible part, so
+        # say which one it was.
+        if fallback and len(ordered) == 1:
+            # `is True`, not truthiness: a list is truthy too, and the
+            # produces_real_reports filter above runs only on the automatic
+            # route. An explicitly named provider that invents its reports is
+            # honoured, so on the list route a mock sitting in the registry
+            # was not excluded for fabricating -- it simply was not named.
+            # Blaming the filter there would tell an operator their own
+            # --fallback-provider mock would be dropped, which is the reverse
+            # of what happens.
+            excluded = (
+                [
+                    candidate.name
+                    for candidate in self.registry.get_available_providers()
+                    if not candidate.produces_real_reports
+                    and candidate.name != ordered[0]
+                ]
+                if fallback is True
+                else []
+            )
+            # Three reasons, not two. "named or available" as one string
+            # asserts on the list route that nobody else is here, when the
+            # truth is usually that nobody else was listed -- and listing one
+            # is the fix the operator needs pointing at.
+            if excluded:
+                reason = (
+                    "the other available provider(s) do not produce real "
+                    f"reports ({', '.join(excluded)})"
+                )
+            elif fallback is True:
+                reason = "no other provider is available"
+            else:
+                reason = "no other provider was named"
+            logger.info(
+                "Fallback was requested, but %s is the only candidate: %s. "
+                "The run will behave as though no fallback was asked for",
+                ordered[0],
+                reason,
+            )
         return ordered
 
     def _prepare_provider(
@@ -533,10 +586,11 @@ class DeepResearchClient:
             return
         logger.warning(
             "Provider %s failed with %s, which cannot carry the trail. "
-            "Providers tried:\n  %s",
+            "The run ends here; any candidate after it was not tried. "
+            "Providers tried:\n%s",
             candidate,
             type(exc).__name__,
-            "\n  ".join(attempt.summary() for attempt in trail),
+            ProviderAttempt.render_trail(trail),
         )
 
     @staticmethod
@@ -639,8 +693,9 @@ class DeepResearchClient:
         those propagate as they always did.
 
         Nothing is cached or returned until a provider actually succeeds, so a
-        run that exhausts every candidate raises rather than producing a
-        partial result.
+        run that ends without one raises rather than producing a partial
+        result -- whether it exhausted the candidates or stopped at a failure
+        that did not justify trying the next.
         """
         start_time = datetime.now()
         start_timestamp = time.time()

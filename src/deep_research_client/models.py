@@ -1,6 +1,6 @@
 """Pydantic models for deep research client."""
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Sequence
 from datetime import datetime
 import re
 
@@ -231,6 +231,56 @@ class ProviderAttempt(BaseModel):
         if self.succeeded:
             return f"{self.provider}: produced the report"
         return f"{self.provider}: {self.reason or self.error_type or 'failed'}"
+
+    @staticmethod
+    def render_trail(attempts: "Sequence[ProviderAttempt]") -> str:
+        """Render a run's attempts as the indented block three callers print.
+
+        The CLI prints this on a successful fallback and again on a run that
+        ended without one, and the client logs it when the terminal failure
+        cannot carry the trail. An operator meets those on different days and
+        should recognise the second from the first, so the whole format --
+        the indent included -- belongs here rather than in three call sites
+        that have to stay in step.
+
+        ``summary()`` carries the provider's own error text, which
+        :meth:`frontmatter_entry` withholds. That split is deliberate: this
+        renders to a console or a log, read by whoever ran the command, and
+        never to a file that gets committed.
+
+        Args:
+            attempts: The attempts to render, in the order they were tried.
+
+        Returns:
+            One indented line per attempt, ready to sit under a bare header.
+            The leading indent is part of it, so a caller need only put the
+            header and a newline in front; owning half the format here and
+            half at three call sites is what let them drift in the first
+            place. Empty in, empty out -- never a lone indent, so a header
+            with nothing to say has nothing under it.
+
+        >>> from .exceptions import ProviderBillingError
+        >>> spent = ProviderAttempt.from_exception(
+        ...     "falcon", ProviderBillingError("falcon", "no credits", 402))
+        >>> print("Providers tried:")
+        Providers tried:
+        >>> print(ProviderAttempt.render_trail(
+        ...     [spent, ProviderAttempt(provider="openai", succeeded=True)]))
+          falcon: 402 no credits -- the account is out of credits
+          openai: produced the report
+
+        Nothing in, nothing out -- pinned here because every caller guards
+        against an empty sequence, so this is unreachable from the outside
+        and a leading-concat rewrite would otherwise pass the whole suite:
+
+        >>> ProviderAttempt.render_trail([])
+        ''
+        """
+        # Per-line rather than a leading concat: identical for every non-empty
+        # input, and "" rather than a lone indent for the empty one -- so a
+        # caller trusting "ready to sit under a bare header" gets nothing
+        # under the header rather than a whitespace line.
+        return "\n".join(f"  {attempt.summary()}" for attempt in attempts)
 
 
 class ResearchResult(BaseModel):

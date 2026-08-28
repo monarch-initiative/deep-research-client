@@ -33,6 +33,7 @@ nav:
   - Reference:
     - CLI Reference: reference/cli.md
     - Providers: reference/providers.md
+    - Capabilities & Archetypes: reference/capabilities.md
     - Models: reference/models.md
     - Cache: reference/cache.md
     - Configuration: reference/configuration.md

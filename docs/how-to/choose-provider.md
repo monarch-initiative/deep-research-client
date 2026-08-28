@@ -161,10 +161,12 @@ providers would make those records wrong. So you have to ask for it.
 which is a fixed sequence filtered down to whichever you have configured — not
 a preference ranking, and not dependent on how your environment is set up:
 
-    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, claude_code
+    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, claude_code
 
-Each candidate is a paid account, so when it matters which one you spend money
-on, name them yourself rather than relying on that order:
+Most candidates are a paid account, and `biomni` is not: it is a local agent
+that executes generated code and may pull down a multi-gigabyte data lake the
+first time it runs. Either way, when it matters which one does the work, name
+them yourself rather than relying on that order:
 
 ```bash
 deep-research-client research "CRISPR delivery mechanisms" \
@@ -376,7 +378,22 @@ deep-research-client models --detailed
 
 # Filter by cost
 deep-research-client models --cost low
+
+# Filter by what a model can do, what it reaches, or what kind of tool it is
+deep-research-client models --capability code_interpretation
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
 ```
+
+The filters combine, so several flags ask for their intersection:
+
+```bash
+# Co-scientists that reach PubMed, not every co-scientist
+deep-research-client models --archetype co_scientist --resource pubmed
+```
+
+`--help` lists the accepted values for each, generated from the vocabularies
+themselves rather than restated here.
 
 ## See Also
 

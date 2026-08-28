@@ -29,7 +29,7 @@ deep-research-client research [OPTIONS] [QUERY]
 
 | Option | Description |
 |--------|-------------|
-| `--provider TEXT` | Provider to use: openai, edison, perplexity, consensus, cyberian |
+| `--provider TEXT` | Provider to use. `--help` names every registered provider, derived from the registry rather than restated here |
 | `--model TEXT` | Model to use (overrides provider default) |
 | `--fallback` | If the chosen provider cannot do the work, try the other configured providers instead, in registration order (off by default) |
 | `--fallback-provider TEXT` | Provider to fall back to, in preference order (repeatable); implies `--fallback` |
@@ -336,6 +336,7 @@ deep-research-client providers [OPTIONS]
 |--------|-------------|
 | `--show-params` | Show available parameters for each provider |
 | `--provider TEXT` | Show details for specific provider only |
+| `--check` | Probe the configured providers for live reachability. With nothing configured, lists what every provider needs instead |
 
 #### Examples
 
@@ -364,10 +365,17 @@ deep-research-client models [OPTIONS]
 
 | Option | Description |
 |--------|-------------|
-| `--provider TEXT` | Show models for specific provider |
-| `--cost TEXT` | Filter by cost: low, medium, high, very_high |
-| `--capability TEXT` | Filter by capability: web_search, academic_search, etc. |
+| `--provider TEXT` | Filter by provider |
+| `--cost TEXT` | Filter by cost level |
+| `--capability TEXT` | Filter by what a model can do |
+| `--resource TEXT` | Filter by the data resource a model wraps |
+| `--archetype TEXT` | Filter by provider archetype |
 | `--detailed` | Show detailed model information |
+
+The accepted values for `--provider`, `--capability`, `--resource` and
+`--archetype` are generated from the registry and the controlled vocabularies,
+so `deep-research-client models --help` is the current list. Filters combine:
+several flags ask for their intersection.
 
 #### Examples
 
@@ -380,6 +388,14 @@ deep-research-client models --provider perplexity
 
 # Filter by cost
 deep-research-client models --cost low
+
+# Filter by capability, wrapped resource, or archetype
+deep-research-client models --capability code_interpretation
+deep-research-client models --resource pubmed
+deep-research-client models --archetype co_scientist
+
+# Combine filters: co-scientists that reach PubMed
+deep-research-client models --archetype co_scientist --resource pubmed
 
 # Detailed view
 deep-research-client models --detailed

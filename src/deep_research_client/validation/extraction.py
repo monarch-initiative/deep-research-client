@@ -15,8 +15,11 @@ from typing import Iterable, Optional
 # into a plausible-looking nine-digit PMID.
 _PMID_PATTERN = re.compile(r"PMID[:\s]*(\d{6,9})(?!\d)", re.IGNORECASE)
 # The capture stops at characters that never occur inside a DOI, so a DOI in a
-# tight table cell (|doi:10.1/a|b|) does not swallow the next cell. Parentheses
-# are deliberately allowed through, since DOIs such as
+# tight table cell (|doi:10.1/a|b|) does not swallow the next cell. A closing
+# square bracket is among them because it ends a markdown link's text: without
+# it, [doi:10.x/y](https://doi.org/10.x/y) captures the whole tail as one
+# identifier, and the report then reads as citing a DOI that cannot resolve.
+# Parentheses are deliberately allowed through, since DOIs such as
 # 10.1016/0092-8674(94)90302-6 contain them; trailing ones are stripped below.
 #
 # The third alternative matches publisher landing pages - pnas.org/doi/10.1073/x,
@@ -40,7 +43,7 @@ _DOI_PATTERN = re.compile(
     r"|/articles?/"
     r"|\?id="
     r")"
-    r")(?P<doi>10\.\d{4,}/[^\s|`\"<>]+)",
+    r")(?P<doi>10\.\d{4,}/[^\s|`\"<>\]]+)",
     re.IGNORECASE,
 )
 
@@ -247,6 +250,9 @@ def find_reference_ids(text: str) -> list[FoundReference]:
         >>> [(r.normalized_id, r.count) for r in refs]
         [('PMID:7913883', 2)]
         >>> [r.normalized_id for r in find_reference_ids("See DOI:10.1038/ng1234.")]
+        ['DOI:10.1038/ng1234']
+        >>> [r.normalized_id for r in find_reference_ids(
+        ...     "[doi:10.1038/ng1234](https://doi.org/10.1038/ng1234)")]
         ['DOI:10.1038/ng1234']
         >>> [r.normalized_id for r in find_reference_ids("https://pubmed.ncbi.nlm.nih.gov/12345678")]
         ['PMID:12345678']

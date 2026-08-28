@@ -4,12 +4,22 @@ This is the command people run *because* something is already broken, so it
 has to survive its own probes failing and still report on everything else.
 """
 
+import functools
+from typing import TYPE_CHECKING
+
 import pytest
 import typer
 from typer.testing import CliRunner
 
-from deep_research_client.cli import _check_provider_health
+from deep_research_client.cli import (
+    PROVIDER_CREDENTIAL_HINTS,
+    _check_provider_health,
+    _settable_credential_hints,
+)
 from deep_research_client.models import ProviderHealth
+
+if TYPE_CHECKING:
+    from deep_research_client.client import DeepResearchClient
 
 
 class _StubProvider:
@@ -51,11 +61,52 @@ class _StubRegistry:
 
 
 class _StubClient:
-    """A client that owns only a registry."""
+    """A client that owns only a registry, plus the one explanation hook.
+
+    `unregistered_reason` defers to a real client so these tests exercise the
+    branch users take. Without it the CLI falls back to its own tables, and
+    these assertions would pin wording production can no longer produce -- as
+    they did for cyberian, which reports its missing `agentapi` binary rather
+    than a package it already has.
+
+    That borrowing is why any test reaching the derived "Other unavailable
+    providers" section must use `bare_machine`. Production reads membership and
+    explanation from one client, so the two cannot disagree; this double reads
+    membership from its own registry and wording from the real environment, so
+    on an unpinned machine a provider the registry lacks and the environment
+    has prints "'claude_code' is available" under a heading saying it is not.
+    """
 
     def __init__(self, providers: list[_StubProvider]):
         """Wrap the providers in a registry."""
         self.registry = _StubRegistry(providers)
+
+    def get_available_providers(self) -> list[str]:
+        """Name what the registry holds, as the real client's method does."""
+        return [p.name for p in self.registry.get_available_providers()]
+
+    @functools.cached_property
+    def _real(self) -> "DeepResearchClient":
+        """A real client, built once per double rather than once per call.
+
+        Not shared across tests: it reads the environment at construction, and
+        each test pins its own, which is the whole point of `bare_machine`.
+        """
+        from deep_research_client.client import DeepResearchClient
+        from deep_research_client.models import CacheConfig
+
+        return DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    def unregistered_reason(self, provider: str) -> str:
+        """Answer exactly as the real client does.
+
+        Args:
+            provider: Canonical provider name.
+
+        Returns:
+            The real client's explanation
+        """
+        return self._real.unregistered_reason(provider)
 
 
 def _ok(name: str) -> _StubProvider:
@@ -120,14 +171,64 @@ def test_named_provider_is_the_only_one_probed(capsys):
     assert "b:" not in out
 
 
-def test_no_configured_providers_is_an_error(capsys):
+@pytest.fixture
+def bare_machine(monkeypatch):
+    """Pin PATH and credentials so the explanations below do not depend on the box.
+
+    The CLI now asks the client, and the client asks the provider, so a runner
+    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
+    exported -- gets a different, equally correct sentence. A provider that is
+    actually usable is told so rather than told what it is missing, which is the
+    whole point of the client's availability guard. Fixing the environment is
+    what makes these assertions about wording rather than about the machine.
+
+    The variables are read out of the CLI's own hint table rather than listed
+    here, so a provider added to that table cannot leave a stale exception.
+    """
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    for provider_name in _settable_credential_hints():
+        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
+        monkeypatch.delenv(requirement.split("=")[0], raising=False)
+    # Three gates the table cannot supply: the deprecated alias the client still
+    # accepts for falcon, the mock that `_settable_credential_hints` filters out
+    # by name, and biomni, which is gated on an import rather than a variable --
+    # so `uv sync --extra biomni` would otherwise register it.
+    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
+    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
+    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
+
+    # Assert the state rather than trust the list: a fourth gate should fail
+    # here, naming what stayed available, not downstream as a missing heading.
+    # Only a variable or a PATH probe can be closed from here, so a future
+    # provider registered on a bare import with no opt-out will fail this --
+    # correctly, and the fix is to give that provider an opt-out variable.
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.models import CacheConfig
+
+    still_up = DeepResearchClient(
+        cache_config=CacheConfig(enabled=False)
+    ).get_available_providers()
+    assert not still_up, f"bare_machine left {still_up} registered"
+
+
+def test_no_configured_providers_is_an_error(capsys, bare_machine):
     """Probing nothing is not the same as everything being fine."""
     with pytest.raises(typer.Exit) as excinfo:
         _check_provider_health(_StubClient([]), None)
 
     assert excinfo.value.exit_code == 1
-    # The user is told what to set rather than just that nothing happened.
-    assert "OPENAI_API_KEY" in capsys.readouterr().out
+    # The user is told what to set rather than just that nothing happened --
+    # and told to set it. "Nothing to probe" explains the failure, not the fix.
+    out = capsys.readouterr().out
+    assert "OPENAI_API_KEY" in out
+    # Three claims kept apart, so a regression names itself rather than raising
+    # a bare ValueError out of index(): the reason for the exit, the sentence
+    # that makes the list actionable, and the order the two must appear in.
+    assert "nothing to probe" in out
+    assert "Set one of these to get started:" in out
+    assert out.index("Set one of these to get started:") < out.index("OPENAI_API_KEY")
 
 
 def test_the_check_flag_is_wired_to_the_command(monkeypatch):
@@ -151,7 +252,7 @@ def test_the_check_flag_is_wired_to_the_command(monkeypatch):
     assert "Available providers:" not in result.stdout
 
 
-def test_a_missing_key_is_not_reported_as_a_typo(capsys):
+def test_a_missing_key_is_not_reported_as_a_typo(capsys, bare_machine):
     """Providers register only once their key is set, so absent != misspelled.
 
     Saying "unknown provider" would send the reader hunting for a spelling
@@ -168,16 +269,22 @@ def test_a_missing_key_is_not_reported_as_a_typo(capsys):
     assert "Unknown provider" not in out
 
 
-def test_a_genuine_typo_is_still_called_a_typo(capsys):
+def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     """A name we do not recognise at all keeps the blunt message.
 
     Two assertions for two properties, because neither covers the other. The
     command run proves the message survives the real wiring -- a `caplog`
     assertion would not, since the Typer callback runs
     `logging.basicConfig(force=True)` and drops the handler it relies on. The
-    `capsys` run proves the message is on *stdout*: this click pins
-    `mix_stderr=True`, so `result.stdout` is really both streams merged and
-    would pass just as happily with the message back on stderr.
+    `capsys` run covers the helper called directly, without the command around
+    it.
+
+    `result.stdout` is the stream assertion. The pinned click (8.5.0) has no
+    `mix_stderr`: `result.stdout` is stdout alone and `result.output` is the
+    merged stream, so asserting on `.stdout` here does pin the stream, and a
+    message moved to stderr would fail it. Reach for `.output` only when the
+    text under test is a `logger.error`, as the sibling branch of this same
+    command is.
     """
     from typer.testing import CliRunner
 
@@ -193,7 +300,7 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys):
     assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
 
 
-def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
+def test_an_unconfigured_provider_says_what_would_fix_it(capsys, bare_machine):
     """"NOT CONFIGURED" with no next step is the empty answer this replaces.
 
     cyberian needs an optional package rather than a credential, so there is no
@@ -204,18 +311,22 @@ def test_an_unconfigured_provider_says_what_would_fix_it(capsys):
 
     out = capsys.readouterr().out
     assert "cyberian: NOT CONFIGURED" in out
-    assert "pip install" in out, "a provider with no env var still needs a next step"
+    # What a user is actually told: cyberian ships as a base dependency, so the
+    # missing piece is the `agentapi` binary, not a package to pip install.
+    assert "agentapi" in out, "a provider with no env var still needs a next step"
 
 
 @pytest.mark.parametrize(
     "provider,expected",
     [
-        ("falcon", "set EDISON_API_KEY for Edison Scientific"),
-        ("claude_code", "Claude Code requires the `claude` CLI on PATH"),
-        ("cyberian", "pip install"),
+        ("falcon", "no Edison Scientific API key configured (set EDISON_API_KEY)"),
+        ("claude_code", "was not found on PATH"),
+        ("cyberian", "agentapi"),
     ],
 )
-def test_every_unconfigured_answer_carries_its_own_next_step(capsys, provider, expected):
+def test_every_unconfigured_answer_carries_its_own_next_step(
+    capsys, bare_machine, provider, expected
+):
     """A key, a binary and a package are three different fixes; say which.
 
     The claude_code case is the one that reads as nonsense if every hint is
@@ -282,3 +393,113 @@ def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
     assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
     assert "CLI on PATH" not in result.stdout, "not something you set"
     assert "EDISON_API_KEY" in result.stdout
+
+
+def test_the_cli_calls_a_method_the_client_actually_has():
+    """The name is the contract between the CLI, the client and the double.
+
+    mypy covers the CLI's own three call sites now that the parameter is typed.
+    It does not cover `_StubClient`, which is duck-typed and injected at
+    runtime; a rename would leave the double implementing a method nothing
+    calls, and these tests exercising a branch users do not take.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    assert callable(getattr(DeepResearchClient, "unregistered_reason", None)), (
+        "the CLI and _StubClient both name 'unregistered_reason'; renaming it "
+        "here would silently decouple the double from the client it stands in for"
+    )
+
+
+#: Every heading either command prints. A provider named under none of these is
+#: invisible; named under two, it is being explained twice, differently.
+_SECTION_HEADINGS = (
+    "Available providers:",
+    "Unavailable providers requiring credentials:",
+    "No research providers available. Please set API keys:",
+    # `--check`'s own credential heading. Not the "nothing to probe" sentence
+    # above it: that sentence introduces the section but is not the heading the
+    # lines hang from, and with both listed it would own no lines at all.
+    "Set one of these to get started:",
+    "Other unavailable providers:",
+    "Stub providers (not yet callable):",
+)
+
+
+def _sections_by_provider(output: str) -> dict[str, list[str]]:
+    """Map each provider the output names to the headings it appears under.
+
+    The three list shapes are read back rather than recomputed, so this
+    measures what a reader sees instead of restating what the code decided.
+    Credential lines name a variable rather than a provider, so they are
+    mapped back through the same table that printed them.
+
+    Args:
+        output: Captured stdout of a `providers` invocation.
+
+    Returns:
+        Provider name to the headings under which it appeared
+    """
+    # Only settable hints are ever printed as credential lines. Mapping the rest
+    # would invent keys from their prose -- claude_code's "the `claude` CLI on
+    # PATH" registers "the" -- and attribute any future line starting "- the" to
+    # a provider that is not in that section at all.
+    owner_of = {
+        PROVIDER_CREDENTIAL_HINTS[name][0].split("=")[0]: name
+        for name in _settable_credential_hints()
+    }
+    seen: dict[str, list[str]] = {}
+    heading = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped in _SECTION_HEADINGS:
+            heading = stripped
+            continue
+        if heading is None or not line.startswith("  ") or not stripped:
+            continue
+        if stripped.startswith("- "):
+            body = stripped[2:]
+            # "ENV_VAR for Label" from the credential lists, or "name: reason"
+            # from the derived and stub lists.
+            name = owner_of.get(body.split(" ")[0]) or body.split(":")[0].strip()
+        else:
+            name = stripped
+        if name:
+            seen.setdefault(name, []).append(heading)
+    return seen
+
+
+@pytest.mark.parametrize(
+    "command,expected_code", [(["providers"], 0), (["providers", "--check"], 1)]
+)
+def test_every_provider_lands_in_exactly_one_section(
+    bare_machine, command, expected_code
+):
+    """A reader who has never heard of a provider must still learn it exists.
+
+    Both commands, because `providers --check` is the one a reader runs
+    *because* nothing works, and it used to iterate the raw credential table:
+    biomni and cyberian appeared in no section at all, mock was offered as an
+    answer to "set API keys", and claude_code's binary was rendered through a
+    formatter built for variables.
+    """
+    import deep_research_client.cli as cli_module
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    result = CliRunner().invoke(cli_module.app, command)
+
+    # Two claims, not one. click's CliRunner reports exit_code 1 for any caught
+    # exception, and `--check` legitimately exits 1 -- so on that row the code
+    # alone lets a TypeError through to be misdiagnosed downstream as a missing
+    # heading, which is what this guard exists to prevent.
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit
+    ), result.output
+    assert result.exit_code == expected_code, result.output
+    sections = _sections_by_provider(result.stdout)
+    for name in PROVIDER_CLASS_PATHS:
+        assert sections.get(name), f"{name} is named under no heading of {command}"
+        assert len(sections[name]) == 1, (
+            f"{name} is explained under {sections[name]} -- twice, and so "
+            f"possibly with two different answers"
+        )

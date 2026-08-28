@@ -14,7 +14,12 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
+| Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
+
+See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
+used to describe each provider, including why a conventional deep-research tool
+is a subset of the co-scientist case.
 
 ## OpenAI Deep Research
 
@@ -495,6 +500,109 @@ change.
 
 ---
 
+## Biomni (Biomedical Co-Scientist)
+
+[Biomni](https://github.com/snap-stanford/Biomni) is a general-purpose biomedical
+AI agent from Stanford SNAP. Rather than searching the literature and writing a
+report, it wraps a large toolbox of biomedical software and curated databases and
+**executes generated code** to plan and carry out research tasks — designing a
+CRISPR screen, annotating variants, analysing omics data, and so on. It is a
+`co_scientist` archetype: hypothesis-driven and code-running, of which a
+conventional deep-research run is a subset (see
+[Capabilities, Resources & Archetypes](capabilities.md)).
+
+This provider wraps the local `biomni` Python package (`biomni.agent.A1`).
+Biomni configures and authenticates its own underlying LLM (Claude by default),
+so no separate provider API key is required by this client.
+
+### Setup
+
+The PyPI package is **not** Biomni's complete software environment. Follow
+Biomni's [environment setup](https://github.com/snap-stanford/Biomni/tree/main/biomni_env)
+first: upstream offers a basic agent environment, a reduced environment of
+about 13GB, and a full E1 setup that it documents as taking more than 10 hours
+and at least 30GB. Then, inside that activated environment, install this client:
+
+```bash
+pip install deep-research-client[biomni]
+
+# Biomni drives an LLM under the hood; provide that provider's key, e.g.:
+export ANTHROPIC_API_KEY="your-key"
+
+# Optional: where the (~11GB) data lake is stored (default ./biomni_data)
+export BIOMNI_DATA_PATH="/data/biomni"
+```
+
+The extra fills gaps in Biomni 0.0.8's package metadata needed for the default
+agent (`pandas`, `langchain-openai`, and `langchain-anthropic`). It does **not**
+install Biomni's R packages, command-line programs, or biomedical Python
+toolbox; those come from the upstream environment. Anthropic and
+OpenAI-compatible sources work with the extra. Other backends may need their
+own adapter, such as `langchain-ollama` or `langchain-aws`.
+
+The provider is auto-detected when this core Python runtime is present. Set
+`DISABLE_BIOMNI_PROVIDER=true` to opt out of auto-detection.
+
+**Important**: Biomni executes generated code locally and downloads a large data
+lake on first run. Run it only in a trusted / sandboxed environment.
+
+### Models
+
+| Model | Aliases | Description |
+|-------|---------|-------------|
+| `biomni-a1` | biomni, a1, coscientist | Biomni A1 biomedical agent |
+
+Note the two model concepts: the `model` field selects this research model card
+(`biomni-a1`), while the `llm` parameter selects the *underlying* LLM that Biomni
+drives.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import BiomniParams
+
+params = BiomniParams(
+    llm="claude-sonnet-4-20250514",  # underlying LLM (default: Biomni's own)
+    source="Anthropic",              # LLM provider: Anthropic, OpenAI, Gemini, ...
+    path="/data/biomni",             # workspace root (default: env or ./biomni_data)
+    timeout=3600,                    # timeout for each generated code execution
+    use_tool_retriever=True,         # retrieve most relevant tools per task
+    skip_data_lake=False,            # True skips the ~11GB data lake download
+)
+```
+
+### Characteristics
+
+- **Cost**: Variable (drives an underlying LLM + heavy local compute)
+- **Speed**: Very slow (multi-step agentic execution)
+- **Capabilities**: Code execution, data analysis, hypothesis generation,
+  experiment design, evidence synthesis, citation tracking
+- **Resources**: PubMed, general web, and curated biomedical / genomic /
+  chemical / protein-structure databases
+- **Citations**: PMIDs, DOIs, PMC and GEO accessions, and bare PubMed URLs,
+  extracted from the final answer with the same patterns reference validation
+  uses
+- **Timeout**: `timeout` is handed to the Biomni agent as its own
+  `timeout_seconds`, which limits each generated code execution. It is not a
+  whole-run deadline; this client does not impose a separate ceiling.
+
+### When to Use
+
+- Designing experiments (e.g. CRISPR screens)
+- Variant annotation and interpretation
+- Omics and sequence data analysis
+- Hypothesis-driven biomedical investigation
+
+### Limitations
+
+- Requires an upstream Biomni environment plus this package's `biomni` extra
+- Downloads a large (~11GB) data lake on first run
+- Executes generated code locally — use a trusted/sandboxed environment
+- Needs an LLM API key (e.g. `ANTHROPIC_API_KEY`) for the underlying model
+- Very slow and non-deterministic
+
+---
+
 ## Provider Detection
 
 Providers are auto-detected based on environment variables:
@@ -538,13 +646,13 @@ apart from "try again":
 | `ProviderBillingError` | 402 | No | Account is out of credits |
 | `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says (bounded by the class, so a trailing `…` on it came from us, not the provider) |
 | `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
-| `ProviderNotInstalledError` | — | No | A CLI-backed provider's tool is not on PATH (a kind of "not configured") |
+| `ProviderNotInstalledError` | — | No | A locally-backed provider's binary is not on PATH, or its optional package is not installed (a kind of "not configured") |
 | `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
 | `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
 
 `ProviderNotInstalledError` subclasses `ProviderNotConfiguredError`, so one
-`except ProviderNotConfiguredError` covers both a missing key and a missing
-CLI. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
+`except ProviderNotConfiguredError` covers a missing key, a missing CLI, and a
+missing optional package alike. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
 still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
 flag:
 

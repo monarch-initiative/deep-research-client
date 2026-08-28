@@ -20,6 +20,7 @@ from deep_research_client.exceptions import (
     extract_status_code,
 )
 from deep_research_client.models import CacheConfig, ProviderConfig, ProviderHealth
+from deep_research_client.providers.biomni import BIOMNI_EXTRA_RUNTIME_MODULES
 from deep_research_client.providers.consensus import ConsensusProvider
 
 
@@ -436,6 +437,42 @@ def test_a_disabled_claude_code_is_not_told_to_install_the_cli(monkeypatch):
     message = str(excinfo.value)
     assert "DISABLE_CLAUDE_CODE_PROVIDER" in message
     assert "not found on PATH" not in message, "the CLI is installed; do not say otherwise"
+
+
+def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
+    """The same two-gate confusion as claude_code, for the other local provider.
+
+    With the core runtime importable and DISABLE_BIOMNI_PROVIDER set, the
+    provider considers itself available, so its own unavailable_reason() would
+    tell the reader to install something they already have.
+    """
+    import importlib.util
+
+    # Patched rather than skipped: ordinary CI never installs the biomni extra,
+    # so a skip here would mean this never runs in the base-install job.
+    real_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *args, **kwargs: (
+            object()
+            if name in BIOMNI_EXTRA_RUNTIME_MODULES
+            else real_find_spec(name, *args, **kwargs)
+        ),
+    )
+    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    with pytest.raises(ProviderNotConfiguredError) as excinfo:
+        client.research("what causes scurvy", provider="biomni")
+
+    message = str(excinfo.value)
+    assert "DISABLE_BIOMNI_PROVIDER" in message
+    assert "deep-research-client[biomni]" in message
+    assert message.index("DISABLE_BIOMNI_PROVIDER") < message.index(
+        "deep-research-client[biomni]"
+    )
+    assert "not installed" not in message, "the package is importable; do not say otherwise"
 
 
 def test_the_mock_provider_names_the_variable_that_enables_it(monkeypatch):

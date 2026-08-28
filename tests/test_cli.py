@@ -5,7 +5,15 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import click
 import pytest
+import typer
+
+from deep_research_client.model_cards import (
+    ProviderArchetype,
+    ResearchCapability,
+    ResearchResource,
+)
 from typer.testing import CliRunner
 
 from deep_research_client.cli import (
@@ -394,3 +402,187 @@ def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_pat
     assert "## Citations" not in output_path.read_text(encoding="utf-8")
     assert "# Citations for Research Query" in citations_path.read_text(
         encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# `models` vocabulary filters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "flag,value,expected_provider,absent_provider",
+    [
+        # --cost included deliberately: it shares the parse/render path with the
+        # three vocabulary axes, and a row pairing the wrong enum with the wrong
+        # finder type-checks and prints "No models match" rather than crashing.
+        ("--cost", "low", "ASTA", "BIOMNI"),
+        ("--capability", "code_interpretation", "BIOMNI", "ASTA"),
+        ("--capability", "retrieval_only", "ASTA", "BIOMNI"),
+        ("--resource", "pubmed", "OPENSCIENTIST", "ASTA"),
+        ("--archetype", "co_scientist", "BIOMNI", "ASTA"),
+        ("--archetype", "retriever", "ASTA", "BIOMNI"),
+    ],
+)
+def test_models_filters_by_each_vocabulary_axis(
+    flag, value, expected_provider, absent_provider
+):
+    """All three axes are queryable, not just displayable.
+
+    The negative matters as much as the positive: without it, a filter that
+    fell through to the unfiltered listing would pass every case.
+    """
+    result = runner.invoke(app, ["models", flag, value])
+
+    assert result.exit_code == 0, result.output
+    assert expected_provider in result.output
+    assert absent_provider not in result.output, "the filter did not narrow anything"
+
+
+def test_models_intersects_filters_rather_than_honouring_only_the_first():
+    """Two filters ask a conjunction; answering one of them silently is wrong."""
+    both = runner.invoke(
+        app, ["models", "--archetype", "co_scientist", "--resource", "pubmed"]
+    )
+    archetype_only = runner.invoke(app, ["models", "--archetype", "co_scientist"])
+
+    assert both.exit_code == 0, both.output
+    assert "BIOMNI" in both.output and "BIOMNI" in archetype_only.output
+    # A conjunction with no overlap must say so rather than list one side.
+    empty = runner.invoke(
+        app, ["models", "--archetype", "retriever", "--resource", "pubmed"]
+    )
+    assert empty.exit_code == 0, empty.output
+    assert "No models match" in empty.output
+    assert "ASTA" not in empty.output, "the retriever half was answered alone"
+
+
+def test_a_filter_matching_nothing_says_so_rather_than_printing_nothing():
+    """Default verbosity is WARNING, so a logged-only message was invisible.
+
+    Uses a conjunction rather than a term that happens to be unannotated: the
+    day a provider claims `arxiv`, this test should not be the one that fails.
+    """
+    result = runner.invoke(app, ["models", "--archetype", "retriever", "--cost", "very_high"])
+
+    assert result.exit_code == 0, result.output
+    assert "No models match" in result.output
+
+
+def test_provider_combined_with_a_filter_narrows_instead_of_winning():
+    """--provider was the last flag that silently discarded the others."""
+    matching = runner.invoke(
+        app, ["models", "--provider", "biomni", "--capability", "code_interpretation"]
+    )
+    assert matching.exit_code == 0, matching.output
+    # Not "BIOMNI in output": the provider name is part of the heading, which
+    # the no-match path prints too, so that would pass on an empty result.
+    assert "No models match" not in matching.output
+    assert "Biomni A1 Biomedical Agent" in matching.output, "the card itself, not just the heading"
+
+    # biomni has no web_search capability, so the conjunction is empty. Before
+    # this, --provider won and the capability was dropped without a word.
+    empty = runner.invoke(
+        app, ["models", "--provider", "biomni", "--capability", "web_search"]
+    )
+    assert empty.exit_code == 0, empty.output
+    assert "No models match" in empty.output
+
+
+def test_provider_named_alone_still_reports_its_default_model():
+    """Narrowing must not cost the listing form its Default: header."""
+    result = runner.invoke(app, ["models", "--provider", "biomni"])
+
+    assert result.exit_code == 0, result.output
+    assert "Default: biomni-a1" in result.output
+
+
+def _provider_option(command_name: str) -> "click.Option":
+    """Read the --provider option object off a command, for help assertions.
+
+    Reads the option's own help string rather than the rendered page: matching
+    anywhere in the output would pass if the help were emptied and the names
+    happened to appear in another flag or the epilog.
+
+    Args:
+        command_name: Name of the CLI command to inspect.
+
+    Returns:
+        The click Option backing --provider
+    """
+    import click
+
+    command = typer.main.get_command(app).commands[command_name]  # type: ignore[attr-defined]
+    return next(
+        param for param in command.params
+        if isinstance(param, click.Option) and "--provider" in param.opts
+    )
+
+
+def test_research_provider_help_names_every_registered_provider():
+    """A provider added to the registry must not need a second list edited.
+
+    biomni and cyberian were both absent from the hand-written help this
+    replaced.
+    """
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    provider_option = _provider_option("research")
+
+    for name in PROVIDER_CLASS_PATHS:
+        assert name in (provider_option.help or ""), (
+            f"{name} is registered but absent from --provider help"
+        )
+
+
+def test_models_provider_help_names_every_provider_with_cards():
+    """The two commands ask different questions and advertise different sets.
+
+    `mock` is constructible but ships no card, so it belongs in research's list
+    and not in this one.
+    """
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+
+    rendered = _provider_option("models").help or ""
+
+    for name in PROVIDER_MODEL_CARDS:
+        assert name in rendered, f"{name} ships cards but is absent from --provider help"
+    assert "mock" not in rendered, "mock has no model cards; models --provider rejects it"
+
+
+def test_models_rejects_a_provider_without_cards_by_naming_the_ones_that_have_them():
+    """Provider 'mock' not found left the reader with nowhere to go."""
+    from deep_research_client.model_cards import PROVIDER_MODEL_CARDS
+
+    result = runner.invoke(app, ["models", "--provider", "mock"])
+
+    assert result.exit_code == 1
+    # Derived, so a carded provider dropping out of the message fails here too.
+    for name in PROVIDER_MODEL_CARDS:
+        assert name in result.output
+
+
+@pytest.mark.parametrize(
+    "flag,enum_class",
+    [
+        ("--capability", ResearchCapability),
+        ("--resource", ResearchResource),
+        ("--archetype", ProviderArchetype),
+    ],
+    ids=lambda v: v if isinstance(v, str) else v.__name__,
+)
+def test_models_rejects_an_unknown_vocabulary_value_by_naming_the_whole_vocabulary(
+    flag, enum_class
+):
+    """The error lists every permissible value, derived from the enum.
+
+    Asserting the terms are present, not merely that "etc." is absent: the
+    latter would also pass if the message vanished entirely.
+    """
+    result = runner.invoke(app, ["models", flag, "not-a-real-term"])
+
+    assert result.exit_code == 1
+    for member in enum_class:
+        assert member.value in result.output, (
+            f"{member.value} is a permissible value but the error does not list it"
+        )
+    assert "etc." not in result.output, "the truncated list this replaced"

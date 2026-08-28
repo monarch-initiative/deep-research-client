@@ -32,6 +32,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
@@ -45,6 +46,10 @@ REGISTRATION_GATES: dict[str, str] = {
     # entirely), so a sentence asserting *why* would sometimes be false.
     "claude_code": (
         "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
+    ),
+    "biomni": (
+        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
+        "environment with deep-research-client[biomni]"
     ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }
@@ -163,6 +168,29 @@ class DeepResearchClient:
         except ImportError:
             pass  # Cyberian not installed, skip
 
+        # Biomni provider - require the complete core Python runtime, rather
+        # than only the biomni package spec: biomni 0.0.8 under-declares A1's
+        # eager imports. Biomni configures its own underlying LLM (via
+        # ANTHROPIC_API_KEY etc.), so no provider API key is required here.
+        # Set DISABLE_BIOMNI_PROVIDER=true to opt out of auto-detection.
+        from .providers.biomni import (
+            BIOMNI_DEFAULT_TIMEOUT,
+            missing_biomni_runtime_modules,
+        )
+
+        if (
+            os.getenv("DISABLE_BIOMNI_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and not missing_biomni_runtime_modules()
+        ):
+            biomni_config = ProviderConfig(
+                name="biomni",
+                api_key=None,  # Not required; biomni authenticates its own LLM
+                enabled=True,
+                # Agentic runs with local code execution are slow.
+                timeout=BIOMNI_DEFAULT_TIMEOUT,
+            )
+            self.registry.register(self._create_provider("biomni", biomni_config))
+
         # Claude Code provider - available whenever the `claude` CLI is on PATH.
         # No API key required; auth/billing is handled by the local installation.
         # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
@@ -211,15 +239,43 @@ class DeepResearchClient:
         for name, config in configs.items():
             self.registry.register(self._create_provider(name, config))
 
+    def unregistered_reason(self, provider_name: str) -> str:
+        """Explain why a known provider cannot do work for this client.
+
+        Public because the CLI is now a first-class caller: it renders this in
+        `providers` and `providers --check` rather than keeping a second
+        opinion of its own.
+
+        A provider that *can* work is answered here rather than below, because
+        the explanation below is built from a throwaway instance carrying no
+        credentials -- so for a registered, key-bearing provider it would
+        confidently report the key as missing. Callers in this package guard
+        the call already; a public method must not depend on their doing so.
+
+        The gate is availability rather than registration: deeper_med is
+        registered unconditionally and still needs its own explanation.
+
+        Args:
+            provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+        Returns:
+            Human-readable explanation of what is missing, or a statement that
+            the provider is in fact usable
+        """
+        if provider_name in self.get_available_providers():
+            return f"'{provider_name}' is available"
+        return self._unregistered_reason(provider_name)
+
     def _unregistered_reason(self, provider_name: str) -> str:
         """Explain why a known provider never made it into the registry.
 
         Asks the provider class itself where it can answer, so the wording
         matches every other surface. But registration and availability are not
-        the same gate: two providers are held back by an environment variable
-        while considering themselves perfectly available, and asking those why
-        they are unavailable produces a confident wrong answer -- telling a
-        reader to install a CLI they already have, for instance.
+        the same gate: the providers in REGISTRATION_GATES are held back by an
+        environment variable while considering themselves perfectly available,
+        and asking those why they are unavailable produces a confident wrong
+        answer -- telling a reader to install a CLI they already have, for
+        instance.
 
         Args:
             provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
@@ -256,7 +312,10 @@ class DeepResearchClient:
         gate = REGISTRATION_GATES.get(provider_name)
         if gate:
             return gate
-        module_name, class_name = PROVIDER_CLASS_PATHS[provider_name]
+        paths = PROVIDER_CLASS_PATHS.get(provider_name)
+        if paths is None:
+            return f"'{provider_name}' is not configured"
+        module_name, class_name = paths
         try:
             provider_class = getattr(importlib.import_module(module_name), class_name)
         except Exception:

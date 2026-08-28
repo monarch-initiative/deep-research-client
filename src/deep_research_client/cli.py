@@ -9,7 +9,8 @@ import os
 import re
 import typer
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, List, Union
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -20,19 +21,51 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
-from .client import DeepResearchClient
+from .client import PROVIDER_CLASS_PATHS, DeepResearchClient
 from .processing import ResearchProcessor
 from .model_cards import (
+    PROVIDER_MODEL_CARDS,
     DEEPER_MED_ARXIV_ID,
+    ModelCard,
     get_provider_model_cards,
-    list_all_models,
     find_models_by_cost,
     find_models_by_capability,
+    find_models_by_resource,
+    find_models_by_archetype,
     CostLevel,
     TimeEstimate,
-    ModelCapability
+    ProviderArchetype,
+    ResearchCapability,
+    ResearchResource,
 )
 from .models import ProviderAttempt, ProviderHealth, ResearchResult, sanitize_artifact_filename
+
+def _registered_providers() -> str:
+    """Render every provider name the client can construct, comma-separated.
+
+    Derived from PROVIDER_CLASS_PATHS so a provider added to the registry
+    appears in CLI help without anyone editing a second list -- the omission
+    that left biomni and cyberian unadvertised.
+
+    Returns:
+        Comma-separated provider names
+    """
+    return ", ".join(PROVIDER_CLASS_PATHS)
+
+
+def _carded_providers() -> str:
+    """Render the providers that ship model cards, comma-separated.
+
+    A narrower set than :func:`_registered_providers`: `mock` is constructible
+    but carries no card, so `models --provider mock` has nothing to show even
+    though `research --provider mock` is valid. The two commands ask different
+    questions, so they advertise different lists rather than one wrong one.
+
+    Returns:
+        Comma-separated provider names that have model cards
+    """
+    return ", ".join(PROVIDER_MODEL_CARDS)
+
 
 # Configure logging
 logger = logging.getLogger("deep_research_client")
@@ -255,6 +288,51 @@ def _echo_no_providers_message() -> None:
     _echo_credential_hints(_settable_credential_hints())
 
 
+def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
+    """List every unavailable provider the other two sections do not cover.
+
+    Derived from PROVIDER_CLASS_PATHS rather than a fourth table, and by the
+    same predicate the sections above use, so each provider lands in exactly
+    one of them. Before this, anything whose requirement is neither a settable
+    variable nor a stub was in no section at all: biomni and cyberian always,
+    and claude_code and mock whenever nothing else was configured.
+
+    Membership and explanation both come from the client. Taking the first from
+    a caller-supplied list was one source too many: `unregistered_reason` now
+    answers "'x' is available" for a usable provider, so a caller whose list
+    disagreed produced not a wrong reason but a line contradicting the heading
+    directly above it.
+
+    The heading is deliberately neutral. "needing an optional install" was
+    wrong for cyberian, which ships as a base dependency and fails on a missing
+    `agentapi` binary, and would be wrong again for a provider held back only
+    by an opt-out variable.
+
+    Args:
+        client: Client to ask what is available and why the rest is not.
+    """
+    available = set(client.get_available_providers())
+    settable = set(_settable_credential_hints())
+    other = [
+        name
+        for name in PROVIDER_CLASS_PATHS
+        if name not in available
+        and name not in settable
+        and name not in PROVIDER_STUB_HINTS
+    ]
+    if not other:
+        return
+
+    typer.echo("\nOther unavailable providers:")
+    for name in other:
+        typer.echo(f"  - {name}: {client.unregistered_reason(name)}")
+
+
+#: A credential hint that names an environment variable, rather than something
+#: else the provider needs (a binary on PATH, an installed package).
+_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
+
+
 def _settable_credential_hints() -> list[str]:
     """Providers a user can enable by setting an environment variable.
 
@@ -288,43 +366,6 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
-#: A credential hint that names an environment variable, rather than something
-#: else the provider needs (a binary on PATH, an installed package).
-_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
-
-
-def _why_unconfigured(provider: str) -> str:
-    """Say what would make an unregistered provider usable.
-
-    A provider is registered only once whatever it needs is present, so by the
-    time we are here the reason is knowable but the provider object is not.
-    Reporting "NOT CONFIGURED" without the next step would be the same empty
-    answer this command exists to replace.
-
-    Args:
-        provider: Canonical provider name.
-
-    Returns:
-        Human-readable explanation of what is missing
-    """
-    if provider in PROVIDER_CREDENTIAL_HINTS:
-        requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
-        # Not every entry is a variable to export -- claude_code needs a binary
-        # on PATH -- and "set the `claude` CLI on PATH" reads as nonsense.
-        if _ENV_VAR_HINT.match(requirement):
-            return f"set {requirement} for {label}"
-        return f"{label} requires {requirement}"
-    if provider in PROVIDER_STUB_HINTS:
-        return PROVIDER_STUB_HINTS[provider]
-    # Nothing to export: these register only when an optional package imports.
-    # The extra is named after the provider, which holds for every name that
-    # can reach this branch today.
-    return (
-        f"registered only when its optional package is installed "
-        f"(try `pip install deep-research-client[{provider}]`)"
-    )
-
-
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
     """Probe providers for live reachability and print the results.
 
@@ -351,7 +392,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                     provider=provider,
                     configured=False,
                     reachable=False,
-                    detail=_why_unconfigured(provider),
+                    detail=client.unregistered_reason(provider),
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
@@ -367,7 +408,18 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # and stdout respectively, so redirecting kept the list and lost
             # the line explaining what it was for.
             typer.echo("No providers are configured, so there is nothing to probe.")
-            _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+            # A heading of its own: the sentence above is about probing, and the
+            # two sections below have headings, so an unlabelled list between
+            # them reads as part of that sentence rather than as the answer.
+            typer.echo("\nSet one of these to get started:")
+            # The same three sections `providers` uses, for the same reason:
+            # iterating the raw credential table here advertised mock as an
+            # answer, rendered claude_code's binary through a formatter built
+            # for variables, and left biomni and cyberian in no section at all
+            # -- in the command a reader runs precisely because nothing works.
+            _echo_credential_hints(_settable_credential_hints())
+            _echo_other_unavailable_hints(client)
+            _echo_stub_hints()
             raise typer.Exit(1)
 
     async def _probe() -> list[ProviderHealth | BaseException]:
@@ -604,7 +656,7 @@ def research(
     query: Annotated[Optional[str], typer.Argument(
         help="Research query or question (not needed if using --template)")] = None,
     provider: Annotated[Optional[str], typer.Option(
-        help="Specific provider to use (openai, falcon, asta, perplexity, consensus, openscientist, claude_code, mock)")] = None,
+        help=f"Specific provider to use ({_registered_providers()})")] = None,
     model: Annotated[Optional[str], typer.Option(
         help="Model to use for the provider (overrides provider default)")] = None,
     fallback: Annotated[bool, typer.Option(
@@ -1585,17 +1637,21 @@ def providers(
         elif provider in PROVIDER_STUB_HINTS:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        else:
+        elif provider in _settable_credential_hints():
             status = "Not available (missing API key)"
+        else:
+            # Not every hint is a credential: claude_code needs a binary and
+            # mock an opt-in variable, so keying on table membership made the
+            # header contradict the line printed directly beneath it.
+            status = "Not available"
         typer.echo(f"Provider: {provider} - {status}")
 
         if not is_available:
-            if provider in PROVIDER_STUB_HINTS:
-                typer.echo(f"Status: {PROVIDER_STUB_HINTS[provider]}")
-            elif provider in PROVIDER_CREDENTIAL_HINTS:
-                # Show required environment variable
-                env_var = PROVIDER_CREDENTIAL_HINTS[provider][0]
-                typer.echo(f"Required: {env_var}")
+            # One helper for both paths, so the two cannot drift into two
+            # answers for the same provider again. The label still varies:
+            # nothing is "required" of a reader whose provider has no upstream.
+            label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
+            typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]
@@ -1637,18 +1693,22 @@ def providers(
 
         missing_credential_providers = [
             provider_name
-            for provider_name in PROVIDER_CREDENTIAL_HINTS
+            for provider_name in _settable_credential_hints()
             if provider_name not in available
         ]
         if missing_credential_providers:
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
 
-        _echo_stub_hints()
     else:
-        logger.error("No providers available. Please set API keys:")
-        _echo_credential_hints(_settable_credential_hints())
-        _echo_stub_hints()
+        # One stream, so the heading and its lists stay together -- the failure
+        # _echo_no_providers_message exists to prevent.
+        _echo_no_providers_message()
+
+    # Common to both arms: what differs above is only what is said about
+    # credentials.
+    _echo_other_unavailable_hints(client)
+    _echo_stub_hints()
 
     if not show_params and not provider:
         typer.echo(
@@ -2167,14 +2227,91 @@ def browse_cache(
     typer.echo(f"Open {output_dir}/index.html in a browser to view")
 
 
+def _vocabulary(enum_class: type[Enum]) -> str:
+    """Render a controlled vocabulary as a comma-separated list of its values.
+
+    Derived from the enum so help text and error messages cannot drift from the
+    LinkML schema the way a hand-written list does.
+
+    Args:
+        enum_class: One of the generated vocabulary enums.
+
+    Returns:
+        Comma-separated permissible values
+
+    >>> _vocabulary(CostLevel)
+    'low, medium, high, very_high'
+    """
+    return ", ".join(member.value for member in enum_class)
+
+
+def _intersect_matches(
+    selections: List[Dict[str, List[ModelCard]]],
+) -> Dict[str, List[ModelCard]]:
+    """Intersect several provider -> cards mappings by card name.
+
+    Every finder returns the same shape, so combining filters is set
+    intersection over the cards each one matched.
+
+    Args:
+        selections: One mapping per filter the caller supplied.
+
+    Returns:
+        Provider -> cards present in every selection
+    """
+    combined = selections[0]
+    for selection in selections[1:]:
+        narrowed: Dict[str, List[ModelCard]] = {}
+        for provider_name, cards in combined.items():
+            keep = {card.name for card in selection.get(provider_name, [])}
+            matching = [card for card in cards if card.name in keep]
+            if matching:
+                narrowed[provider_name] = matching
+        combined = narrowed
+    return combined
+
+
+def _show_filtered_models(
+    heading: str, matches: Dict[str, List[ModelCard]], detailed: bool
+) -> None:
+    """Print provider -> cards groups under a heading, or say nothing matched.
+
+    The `models` filters differ only in which finder they call, so the
+    rendering lives here rather than being copied per axis.
+
+    Args:
+        heading: Title to print above the groups.
+        matches: Provider name -> list of matching model cards.
+        detailed: Whether to print the detailed form of each card.
+    """
+    if not matches:
+        # Echoed, not logged: default verbosity is WARNING, so a logged line
+        # here meant a filter naming a real-but-unused vocabulary term printed
+        # nothing at all and exited 0.
+        typer.echo(f"No models match: {heading}")
+        return
+
+    typer.echo(f"**{heading}**")
+    typer.echo()
+    for provider_name, cards in matches.items():
+        typer.echo(f"**{provider_name.upper()}:**")
+        for card in cards:
+            _display_model_card(card, detailed, indent="  ")
+        typer.echo()
+
+
 @app.command()
 def models(
     provider: Annotated[Optional[str], typer.Option(
-        help="Show models for specific provider")] = None,
+        help=f"Filter by provider ({_carded_providers()})")] = None,
     cost: Annotated[Optional[str], typer.Option(
-        help="Filter by cost level (low, medium, high, very_high)")] = None,
+        help=f"Filter by cost level ({_vocabulary(CostLevel)})")] = None,
     capability: Annotated[Optional[str], typer.Option(
-        help="Filter by capability (web_search, academic_search, etc.)")] = None,
+        help=f"Filter by capability ({_vocabulary(ResearchCapability)})")] = None,
+    resource: Annotated[Optional[str], typer.Option(
+        help=f"Filter by wrapped data resource ({_vocabulary(ResearchResource)})")] = None,
+    archetype: Annotated[Optional[str], typer.Option(
+        help=f"Filter by provider archetype ({_vocabulary(ProviderArchetype)})")] = None,
     detailed: Annotated[bool, typer.Option(
         "--detailed", help="Show detailed model information")] = False
 ):
@@ -2185,94 +2322,110 @@ def models(
       deep-research-client models                    # List all models
       deep-research-client models --provider openai # Show OpenAI models
       deep-research-client models --cost low         # Show low-cost models
+      deep-research-client models --capability code_interpretation  # Runs code
+      deep-research-client models --resource pubmed  # Reaches PubMed
+      deep-research-client models --archetype co_scientist          # Co-scientists
       deep-research-client models --detailed         # Show detailed information
+
+    Filters combine, so several flags ask for their intersection:
+
+    \b
+      # Co-scientists that reach PubMed, not every co-scientist
+      deep-research-client models --archetype co_scientist --resource pubmed
+      # One provider's low-cost models only
+      deep-research-client models --provider perplexity --cost low
     """
+    # Each axis contributes a provider -> cards mapping; the result is their
+    # intersection, so `--archetype co_scientist --resource pubmed` answers the
+    # conjunction a reader expects rather than silently honouring one flag.
+    selections: List[Dict[str, List[ModelCard]]] = []
+    described: List[str] = []
+
+    # Each finder takes its own enum, so the loop is typed at the widest shape
+    # they share: a term in, provider -> cards out. The heading is a format
+    # string per axis rather than a bare word, so each reads as English alone
+    # ("LOW Cost") and joined ("LOW Cost + PUBMED Reaching" would not, hence
+    # the phrasing chosen below).
+    axes: List[
+        tuple[Optional[str], str, type[Enum], Callable[[Any], Dict[str, List[ModelCard]]], str]
+    ] = [
+        (cost, "--cost", CostLevel, find_models_by_cost, "{} Cost"),
+        (capability, "--capability", ResearchCapability, find_models_by_capability, "{} Capable"),
+        (resource, "--resource", ResearchResource, find_models_by_resource, "Reaching {}"),
+        (archetype, "--archetype", ProviderArchetype, find_models_by_archetype, "{} Archetype"),
+    ]
+    for raw_value, flag, enum_class, finder, heading in axes:
+        if not raw_value:
+            continue
+        try:
+            parsed = enum_class(raw_value.lower())
+        except ValueError:
+            # Names the flag the user typed, not the generated class behind it.
+            logger.error(
+                f"Invalid {flag} value '{raw_value}'. Use one of: "
+                f"{_vocabulary(enum_class)}")
+            raise typer.Exit(1)
+        logger.debug("Filtering models by %s: %s", flag, parsed)
+        selections.append(finder(parsed))
+        described.append(heading.format(raw_value.upper().replace("_", " ")))
+
     if provider:
-        # Show models for specific provider
-        logger.debug(f"Fetching models for provider: {provider}")
         cards = get_provider_model_cards(provider)
         if not cards:
-            logger.error(f"Provider '{provider}' not found")
-            raise typer.Exit(1)
-
-        typer.echo(f"**{cards.provider_name.upper()}** Models")
-        typer.echo(f"Default: {cards.default_model}")
-        typer.echo()
-
-        for model_name, card in cards.models.items():
-            _display_model_card(card, detailed)
-
-    elif cost:
-        # Filter by cost level
-        try:
-            cost_level = CostLevel(cost.lower())
-        except ValueError:
             logger.error(
-                f"Invalid cost level '{cost}'. Use: low, medium, high, very_high")
+                f"Unknown provider, or no model cards for '{provider}'. "
+                f"Use one of: {_carded_providers()}")
             raise typer.Exit(1)
 
-        logger.debug(f"Filtering models by cost level: {cost_level}")
-        models_by_cost = find_models_by_cost(cost_level)
-        if not models_by_cost:
-            logger.info(f"No models found with cost level: {cost}")
-            return
-
-        typer.echo(f"**{cost.upper()}** Cost Models")
-        typer.echo()
-
-        for provider_name, model_cards_list in models_by_cost.items():
-            typer.echo(f"**{provider_name.upper()}:**")
-            for card in model_cards_list:
-                _display_model_card(card, detailed, indent="  ")
+        if not selections:
+            # Named alone, a provider is a listing rather than a filter, and
+            # gets the fuller form including which model is its default.
+            logger.debug(f"Fetching models for provider: {provider}")
+            typer.echo(f"**{cards.provider_name.upper()}** Models")
+            typer.echo(f"Default: {cards.default_model}")
             typer.echo()
 
-    elif capability:
-        # Filter by capability
-        try:
-            cap = ModelCapability(capability.lower())
-        except ValueError:
-            logger.error(
-                f"Invalid capability '{capability}'. Use: web_search, academic_search, scientific_literature, etc.")
-            raise typer.Exit(1)
-
-        logger.debug(f"Filtering models by capability: {cap}")
-        models_by_cap = find_models_by_capability(cap)
-        if not models_by_cap:
-            logger.info(f"No models found with capability: {capability}")
+            # Deduplicated like the filter branch, so a card aliased under two
+            # keys is not listed twice by one form and once by the other.
+            for card in cards.unique_models():
+                _display_model_card(card, detailed)
             return
 
+        # Combined with a filter it narrows like any other axis, rather than
+        # silently winning and answering a different question.
+        selections.append({provider: cards.unique_models()})
+        described.append(f"{provider.upper()} Provider")
+
+    if selections:
+        _show_filtered_models(
+            " + ".join(described) + " Models",
+            _intersect_matches(selections),
+            detailed,
+        )
+        return
+
+    # Show all models by provider
+    logger.debug("Listing all models")
+    typer.echo("**Available Research Models**")
+    typer.echo()
+
+    # Straight from the registry: list_all_models() built a name mapping whose
+    # values this loop discarded, then looked each provider up again behind a
+    # guard that could not fire, since the names came from here to begin with.
+    for provider_name, cards in PROVIDER_MODEL_CARDS.items():
         typer.echo(
-            f"**{capability.upper().replace('_', ' ')}** Capable Models")
+            f"**{provider_name.upper()}** (Default: {cards.default_model}):")
+
+        # Deduplicated like every other branch: a card aliased under two keys
+        # would otherwise be listed twice here and once everywhere else.
+        for card in cards.unique_models():
+            _display_model_card(card, detailed, indent="  ")
         typer.echo()
 
-        for provider_name, model_cards_list in models_by_cap.items():
-            typer.echo(f"**{provider_name.upper()}:**")
-            for card in model_cards_list:
-                _display_model_card(card, detailed, indent="  ")
-            typer.echo()
 
-    else:
-        # Show all models by provider
-        logger.debug("Listing all models")
-        all_models = list_all_models()
-        typer.echo("**Available Research Models**")
-        typer.echo()
-
-        for provider_name, model_names in all_models.items():
-            cards = get_provider_model_cards(provider_name)
-            if not cards:
-                continue
-            typer.echo(
-                f"**{provider_name.upper()}** (Default: {cards.default_model}):")
-
-            for model_name in model_names:
-                maybe_card = cards.get_model_card(model_name)
-                if maybe_card:
-                    _display_model_card(maybe_card, detailed, indent="  ")
-            typer.echo()
-
-
-def _display_model_card(card, detailed: bool = False, indent: str = ""):
+def _display_model_card(
+    card: ModelCard, detailed: bool = False, indent: str = ""
+) -> None:
     """Helper function to display a model card."""
     cost_emoji = {
         CostLevel.LOW: "💚",
@@ -2299,10 +2452,18 @@ def _display_model_card(card, detailed: bool = False, indent: str = ""):
         typer.echo(f"{indent}  Cost: {cost_icon} {card.cost_level}")
         typer.echo(f"{indent}  Speed: {time_icon} {card.time_estimate}")
 
+        if card.archetype:
+            typer.echo(f"{indent}  Archetype: {card.archetype.replace('_', ' ').title()}")
+
         if card.capabilities:
             caps = ", ".join([cap.replace("_", " ").title()
                              for cap in card.capabilities])
             typer.echo(f"{indent}  Capabilities: {caps}")
+
+        if card.resources:
+            resources = ", ".join([res.replace("_", " ").title()
+                                   for res in card.resources])
+            typer.echo(f"{indent}  Resources: {resources}")
 
         if card.context_window:
             typer.echo(f"{indent}  Context: {card.context_window:,} tokens")

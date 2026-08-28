@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, and Claude Code.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist).
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), and Claude Code (local CLI)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -75,6 +75,15 @@ pip install deep-research-client[cyberian]
 # For Claude Code - just install the `claude` CLI and have it authenticated.
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+
+# For Biomni (biomedical co-scientist), first provision an upstream Biomni
+# conda environment: https://github.com/snap-stanford/Biomni/tree/main/biomni_env
+# Then, inside that environment, install the client and its core Python runtime:
+pip install deep-research-client[biomni]
+# Biomni runs a local agent that executes code against a ~11GB data lake and
+# drives its own LLM (set e.g. ANTHROPIC_API_KEY). The extra does not provision
+# Biomni's external R, CLI, or bioinformatics toolchain.
+# Run only in a trusted/sandboxed environment; set DISABLE_BIOMNI_PROVIDER=true to opt out.
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -894,14 +903,25 @@ deep-research-client models --cost very_high  # Most expensive/comprehensive
 # Filter by capability
 deep-research-client models --capability web_search
 deep-research-client models --capability academic_search
-deep-research-client models --capability scientific_literature
+deep-research-client models --capability code_interpretation
+
+# Filter by the data sources a provider wraps
+deep-research-client models --resource pubmed
+
+# Filter by where a provider sits on the retrieval -> co-scientist spectrum
+deep-research-client models --archetype co_scientist
 
 # Show detailed information including pricing, use cases, and limitations
 deep-research-client models --detailed
 
-# Combine filters
+# Combine filters: several flags ask for their intersection
 deep-research-client models --provider perplexity --cost low --detailed
+deep-research-client models --archetype co_scientist --resource pubmed
 ```
+
+Passing an unrecognised term lists the whole vocabulary. See
+[Capabilities, Resources & Archetypes](docs/reference/capabilities.md) for what
+each value means.
 
 ### Model Aliases
 
@@ -975,7 +995,7 @@ from deep_research_client.model_cards import (
     find_models_by_capability,
     resolve_model_alias,
     CostLevel,
-    ModelCapability
+    ResearchCapability
 )
 
 # Get all models for a provider
@@ -996,7 +1016,7 @@ print(f"Limitations: {card.limitations}")
 cheap_models = find_models_by_cost(CostLevel.LOW)
 # Returns: {'perplexity': ['sonar'], 'consensus': ['Consensus Academic Search']}
 
-web_search_models = find_models_by_capability(ModelCapability.WEB_SEARCH)
+web_search_models = find_models_by_capability(ResearchCapability.web_search)
 # Returns: {'openai': ['o3-deep-research-2025-06-26', ...], 'perplexity': [...]}
 
 # Resolve aliases to full model names

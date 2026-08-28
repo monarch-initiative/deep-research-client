@@ -268,12 +268,15 @@ class ProviderNotConfiguredError(ProviderError):
 
 
 class ProviderNotInstalledError(ProviderNotConfiguredError):
-    """A provider backed by a local command-line tool has no tool to run.
+    """A locally-backed provider has nothing to run: no binary, no package.
 
-    No credential fixes this one, which is why it is not an auth failure.
+    Covers both shapes of local dependency -- a command-line tool that is not
+    on PATH (``claude``, ``agentapi``) and an optional Python package that was
+    never installed (``biomni``). No credential fixes either, which is why
+    this is not an auth failure.
     """
 
-    remedy = "the required command-line tool is not installed or not on PATH"
+    remedy = "the required local tool or package is not installed"
 
 
 class ProviderRateLimitError(ProviderError):

@@ -336,6 +336,7 @@ deep-research-client providers [OPTIONS]
 |--------|-------------|
 | `--show-params` | Show available parameters for each provider |
 | `--provider TEXT` | Show details for specific provider only |
+| `--check` | Probe the configured providers for live reachability. With nothing configured, lists what every provider needs instead |
 
 #### Examples
 
@@ -365,7 +366,7 @@ deep-research-client models [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--provider TEXT` | Filter by provider |
-| `--cost TEXT` | Filter by cost: low, medium, high, very_high |
+| `--cost TEXT` | Filter by cost level |
 | `--capability TEXT` | Filter by what a model can do |
 | `--resource TEXT` | Filter by the data resource a model wraps |
 | `--archetype TEXT` | Filter by provider archetype |

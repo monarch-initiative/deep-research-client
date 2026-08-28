@@ -4,6 +4,8 @@ This is the command people run *because* something is already broken, so it
 has to survive its own probes failing and still report on everything else.
 """
 
+import functools
+
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -62,11 +64,34 @@ class _StubClient:
     these assertions would pin wording production can no longer produce -- as
     they did for cyberian, which reports its missing `agentapi` binary rather
     than a package it already has.
+
+    That borrowing is why any test reaching the derived "Other unavailable
+    providers" section must use `bare_machine`. Production reads membership and
+    explanation from one client, so the two cannot disagree; this double reads
+    membership from its own registry and wording from the real environment, so
+    on an unpinned machine a provider the registry lacks and the environment
+    has prints "'claude_code' is available" under a heading saying it is not.
     """
 
     def __init__(self, providers: list[_StubProvider]):
         """Wrap the providers in a registry."""
         self.registry = _StubRegistry(providers)
+
+    def get_available_providers(self) -> list[str]:
+        """Name what the registry holds, as the real client's method does."""
+        return [p.name for p in self.registry.get_available_providers()]
+
+    @functools.cached_property
+    def _real(self):
+        """A real client, built once per double rather than once per call.
+
+        Not shared across tests: it reads the environment at construction, and
+        each test pins its own, which is the whole point of `bare_machine`.
+        """
+        from deep_research_client.client import DeepResearchClient
+        from deep_research_client.models import CacheConfig
+
+        return DeepResearchClient(cache_config=CacheConfig(enabled=False))
 
     def unregistered_reason(self, provider: str) -> str:
         """Answer exactly as the real client does.
@@ -77,12 +102,7 @@ class _StubClient:
         Returns:
             The real client's explanation
         """
-        from deep_research_client.client import DeepResearchClient
-        from deep_research_client.models import CacheConfig
-
-        return DeepResearchClient(
-            cache_config=CacheConfig(enabled=False)
-        ).unregistered_reason(provider)
+        return self._real.unregistered_reason(provider)
 
 
 def _ok(name: str) -> _StubProvider:
@@ -147,7 +167,46 @@ def test_named_provider_is_the_only_one_probed(capsys):
     assert "b:" not in out
 
 
-def test_no_configured_providers_is_an_error(capsys):
+@pytest.fixture
+def bare_machine(monkeypatch):
+    """Pin PATH and credentials so the explanations below do not depend on the box.
+
+    The CLI now asks the client, and the client asks the provider, so a runner
+    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
+    exported -- gets a different, equally correct sentence. A provider that is
+    actually usable is told so rather than told what it is missing, which is the
+    whole point of the client's availability guard. Fixing the environment is
+    what makes these assertions about wording rather than about the machine.
+
+    The variables are read out of the CLI's own hint table rather than listed
+    here, so a provider added to that table cannot leave a stale exception.
+    """
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    for provider_name in _settable_credential_hints():
+        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
+        monkeypatch.delenv(requirement.split("=")[0], raising=False)
+    # Three gates the table cannot supply: the deprecated alias the client still
+    # accepts for falcon, the mock that `_settable_credential_hints` filters out
+    # by name, and biomni, which is gated on an import rather than a variable --
+    # so `uv sync --extra biomni` would otherwise register it.
+    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
+    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
+    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
+
+    # Assert the state rather than trust the list: a fourth gate should fail
+    # here, naming what stayed available, not downstream as a missing heading.
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.models import CacheConfig
+
+    still_up = DeepResearchClient(
+        cache_config=CacheConfig(enabled=False)
+    ).get_available_providers()
+    assert not still_up, f"bare_machine left {still_up} registered"
+
+
+def test_no_configured_providers_is_an_error(capsys, bare_machine):
     """Probing nothing is not the same as everything being fine."""
     with pytest.raises(typer.Exit) as excinfo:
         _check_provider_health(_StubClient([]), None)
@@ -178,30 +237,6 @@ def test_the_check_flag_is_wired_to_the_command(monkeypatch):
     assert "Available providers:" not in result.stdout
 
 
-@pytest.fixture
-def bare_machine(monkeypatch):
-    """Pin PATH and credentials so the explanations below do not depend on the box.
-
-    The CLI now asks the client, and the client asks the provider, so a runner
-    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
-    exported -- gets a different, equally correct sentence. A provider that is
-    actually usable is told so rather than told what it is missing, which is the
-    whole point of the client's availability guard. Fixing the environment is
-    what makes these assertions about wording rather than about the machine.
-
-    The variables are read out of the CLI's own hint table rather than listed
-    here, so a provider added to that table cannot leave a stale exception.
-    """
-    import shutil
-
-    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
-    for provider_name in _settable_credential_hints():
-        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        monkeypatch.delenv(requirement.split("=")[0], raising=False)
-    # Not in the table: the deprecated alias the client still accepts for falcon.
-    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
-
-
 def test_a_missing_key_is_not_reported_as_a_typo(capsys, bare_machine):
     """Providers register only once their key is set, so absent != misspelled.
 
@@ -219,7 +254,7 @@ def test_a_missing_key_is_not_reported_as_a_typo(capsys, bare_machine):
     assert "Unknown provider" not in out
 
 
-def test_a_genuine_typo_is_still_called_a_typo(capsys):
+def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     """A name we do not recognise at all keeps the blunt message.
 
     Two assertions for two properties, because neither covers the other. The
@@ -381,9 +416,13 @@ def _sections_by_provider(output: str) -> dict[str, list[str]]:
     Returns:
         Provider name to the headings under which it appeared
     """
+    # Only settable hints are ever printed as credential lines. Mapping the rest
+    # would invent keys from their prose -- claude_code's "the `claude` CLI on
+    # PATH" registers "the" -- and attribute any future line starting "- the" to
+    # a provider that is not in that section at all.
     owner_of = {
-        requirement.split("=")[0]: name
-        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
+        PROVIDER_CREDENTIAL_HINTS[name][0].split("=")[0]: name
+        for name in _settable_credential_hints()
     }
     seen: dict[str, list[str]] = {}
     heading = None
@@ -421,6 +460,9 @@ def test_every_provider_lands_in_exactly_one_section(bare_machine, command):
 
     result = CliRunner().invoke(cli_module.app, command)
 
+    # `providers` exits 0 and `--check` exits 1, so the exit code says nothing;
+    # without this a crash inside the command reads as a missing heading.
+    assert result.exception is None or isinstance(result.exception, SystemExit)
     sections = _sections_by_provider(result.stdout)
     for name in PROVIDER_CLASS_PATHS:
         assert sections.get(name), f"{name} is named under no heading of {command}"

@@ -358,9 +358,9 @@ def test_cli_does_not_claim_a_missing_api_key_for_an_optional_package():
 def test_the_two_provider_report_paths_agree():
     """`providers --provider X` and `providers --check` describe one provider.
 
-    Both paths are invoked: asserting only against `_why_unconfigured` -- the
-    helper the implementation calls -- would keep passing if one path stopped
-    using it, which is the drift this is here to catch.
+    Both paths are invoked rather than the shared helper they call: asserting
+    against `client.unregistered_reason` directly would keep passing if one
+    path stopped using it, which is the drift this is here to catch.
     """
     if BIOMNI_INSTALLED:
         pytest.skip("biomni installed; the unavailable branch is not reachable")

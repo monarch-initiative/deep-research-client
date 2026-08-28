@@ -288,9 +288,7 @@ def _echo_no_providers_message() -> None:
     _echo_credential_hints(_settable_credential_hints())
 
 
-def _echo_other_unavailable_hints(
-    available: list[str], client: DeepResearchClient
-) -> None:
+def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
     """List every unavailable provider the other two sections do not cover.
 
     Derived from PROVIDER_CLASS_PATHS rather than a fourth table, and by the
@@ -299,15 +297,21 @@ def _echo_other_unavailable_hints(
     variable nor a stub was in no section at all: biomni and cyberian always,
     and claude_code and mock whenever nothing else was configured.
 
+    Membership and explanation both come from the client. Taking the first from
+    a caller-supplied list was one source too many: `unregistered_reason` now
+    answers "'x' is available" for a usable provider, so a caller whose list
+    disagreed produced not a wrong reason but a line contradicting the heading
+    directly above it.
+
     The heading is deliberately neutral. "needing an optional install" was
     wrong for cyberian, which ships as a base dependency and fails on a missing
     `agentapi` binary, and would be wrong again for a provider held back only
     by an opt-out variable.
 
     Args:
-        available: Provider names the client managed to register.
-        client: Client to ask for each provider's own explanation.
+        client: Client to ask what is available and why the rest is not.
     """
+    available = set(client.get_available_providers())
     settable = set(_settable_credential_hints())
     other = [
         name
@@ -404,13 +408,17 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # and stdout respectively, so redirecting kept the list and lost
             # the line explaining what it was for.
             typer.echo("No providers are configured, so there is nothing to probe.")
+            # A heading of its own: the sentence above is about probing, and the
+            # two sections below have headings, so an unlabelled list between
+            # them reads as part of that sentence rather than as the answer.
+            typer.echo("\nSet one of these to get started:")
             # The same three sections `providers` uses, for the same reason:
             # iterating the raw credential table here advertised mock as an
             # answer, rendered claude_code's binary through a formatter built
             # for variables, and left biomni and cyberian in no section at all
             # -- in the command a reader runs precisely because nothing works.
             _echo_credential_hints(_settable_credential_hints())
-            _echo_other_unavailable_hints([], client)
+            _echo_other_unavailable_hints(client)
             _echo_stub_hints()
             raise typer.Exit(1)
 
@@ -1699,7 +1707,7 @@ def providers(
 
     # Common to both arms: what differs above is only what is said about
     # credentials.
-    _echo_other_unavailable_hints(available, client)
+    _echo_other_unavailable_hints(client)
     _echo_stub_hints()
 
     if not show_params and not provider:

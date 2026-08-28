@@ -5,6 +5,7 @@ has to survive its own probes failing and still report on everything else.
 """
 
 import functools
+from typing import TYPE_CHECKING
 
 import pytest
 import typer
@@ -16,6 +17,9 @@ from deep_research_client.cli import (
     _settable_credential_hints,
 )
 from deep_research_client.models import ProviderHealth
+
+if TYPE_CHECKING:
+    from deep_research_client.client import DeepResearchClient
 
 
 class _StubProvider:
@@ -82,7 +86,7 @@ class _StubClient:
         return [p.name for p in self.registry.get_available_providers()]
 
     @functools.cached_property
-    def _real(self):
+    def _real(self) -> "DeepResearchClient":
         """A real client, built once per double rather than once per call.
 
         Not shared across tests: it reads the environment at construction, and
@@ -197,6 +201,9 @@ def bare_machine(monkeypatch):
 
     # Assert the state rather than trust the list: a fourth gate should fail
     # here, naming what stayed available, not downstream as a missing heading.
+    # Only a variable or a PATH probe can be closed from here, so a future
+    # provider registered on a bare import with no opt-out will fail this --
+    # correctly, and the fix is to give that provider an opt-out variable.
     from deep_research_client.client import DeepResearchClient
     from deep_research_client.models import CacheConfig
 
@@ -212,8 +219,11 @@ def test_no_configured_providers_is_an_error(capsys, bare_machine):
         _check_provider_health(_StubClient([]), None)
 
     assert excinfo.value.exit_code == 1
-    # The user is told what to set rather than just that nothing happened.
-    assert "OPENAI_API_KEY" in capsys.readouterr().out
+    # The user is told what to set rather than just that nothing happened --
+    # and told to set it. "Nothing to probe" explains the failure, not the fix.
+    out = capsys.readouterr().out
+    assert "OPENAI_API_KEY" in out
+    assert out.index("Set one of these to get started:") < out.index("OPENAI_API_KEY")
 
 
 def test_the_check_flag_is_wired_to_the_command(monkeypatch):
@@ -396,7 +406,10 @@ _SECTION_HEADINGS = (
     "Available providers:",
     "Unavailable providers requiring credentials:",
     "No research providers available. Please set API keys:",
-    "No providers are configured, so there is nothing to probe.",
+    # `--check`'s own credential heading. Not the "nothing to probe" sentence
+    # above it: that sentence introduces the section but is not the heading the
+    # lines hang from, and with both listed it would own no lines at all.
+    "Set one of these to get started:",
     "Other unavailable providers:",
     "Stub providers (not yet callable):",
 )
@@ -445,8 +458,12 @@ def _sections_by_provider(output: str) -> dict[str, list[str]]:
     return seen
 
 
-@pytest.mark.parametrize("command", [["providers"], ["providers", "--check"]])
-def test_every_provider_lands_in_exactly_one_section(bare_machine, command):
+@pytest.mark.parametrize(
+    "command,expected_code", [(["providers"], 0), (["providers", "--check"], 1)]
+)
+def test_every_provider_lands_in_exactly_one_section(
+    bare_machine, command, expected_code
+):
     """A reader who has never heard of a provider must still learn it exists.
 
     Both commands, because `providers --check` is the one a reader runs
@@ -460,9 +477,10 @@ def test_every_provider_lands_in_exactly_one_section(bare_machine, command):
 
     result = CliRunner().invoke(cli_module.app, command)
 
-    # `providers` exits 0 and `--check` exits 1, so the exit code says nothing;
-    # without this a crash inside the command reads as a missing heading.
-    assert result.exception is None or isinstance(result.exception, SystemExit)
+    # Pins the crash and the contract at once: without it a TypeError inside the
+    # command reads as a missing heading, and a command that silently started
+    # exiting differently would go unnoticed.
+    assert result.exit_code == expected_code, result.output
     sections = _sections_by_provider(result.stdout)
     for name in PROVIDER_CLASS_PATHS:
         assert sections.get(name), f"{name} is named under no heading of {command}"

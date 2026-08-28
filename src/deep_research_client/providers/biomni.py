@@ -229,7 +229,7 @@ class BiomniProvider(ResearchProvider):
         """
         if isinstance(result, str):
             return result
-        if isinstance(result, tuple) or isinstance(result, list):
+        if isinstance(result, (tuple, list)):
             if len(result) == 2 and isinstance(result[1], str):
                 return result[1]
             parts = [p for p in result if isinstance(p, str)]

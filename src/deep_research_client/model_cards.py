@@ -18,18 +18,36 @@ from .datamodel import (
     ResearchResource,
 )
 
-# Backwards-compatible alias. ``ResearchCapability`` is the canonical name; older
-# code and imports referring to ``ModelCapability`` continue to work.
-ModelCapability = ResearchCapability
 
-# The generated enum uses lower_case member names (e.g. ``web_search``), whereas
-# the historical ``ModelCapability`` enum used UPPER_CASE names (``WEB_SEARCH``).
-# Register UPPER_CASE attribute aliases pointing at the same members so existing
-# attribute-style access (``ModelCapability.WEB_SEARCH``) keeps working. The
-# string values were already identical, so value-based access was never affected.
-for _capability in ResearchCapability:
-    setattr(ResearchCapability, _capability.name.upper(), _capability)
-del _capability
+class ModelCapability(str, Enum):
+    """Compatibility enum preserving the original public member names.
+
+    ``ResearchCapability`` is the canonical, schema-generated vocabulary. This
+    separate enum is intentional: attaching uppercase attributes to the
+    generated enum makes ``ModelCapability.WEB_SEARCH`` appear to work, but it
+    does not preserve standard Enum behavior such as
+    ``ModelCapability["WEB_SEARCH"]``, ``__members__``, or the member's ``name``.
+    The lowercase aliases keep value-style code introduced during migration
+    working while the uppercase members retain the pre-existing API exactly.
+    """
+
+    WEB_SEARCH = ResearchCapability.web_search.value
+    ACADEMIC_SEARCH = ResearchCapability.academic_search.value
+    SCIENTIFIC_LITERATURE = ResearchCapability.scientific_literature.value
+    CITATION_TRACKING = ResearchCapability.citation_tracking.value
+    REAL_TIME_DATA = ResearchCapability.real_time_data.value
+    CODE_INTERPRETATION = ResearchCapability.code_interpretation.value
+    VISUAL_ANALYSIS = ResearchCapability.visual_analysis.value
+    MULTI_LANGUAGE = ResearchCapability.multi_language.value
+
+    web_search = WEB_SEARCH
+    academic_search = ACADEMIC_SEARCH
+    scientific_literature = SCIENTIFIC_LITERATURE
+    citation_tracking = CITATION_TRACKING
+    real_time_data = REAL_TIME_DATA
+    code_interpretation = CODE_INTERPRETATION
+    visual_analysis = VISUAL_ANALYSIS
+    multi_language = MULTI_LANGUAGE
 
 
 class CostLevel(str, Enum):
@@ -184,7 +202,9 @@ class ProviderModelCards(BaseModel):
             [card for card in self.models.values() if card.time_estimate == time_estimate]
         )
 
-    def get_models_with_capability(self, capability: ResearchCapability) -> List[ModelCard]:
+    def get_models_with_capability(
+        self, capability: ResearchCapability | ModelCapability
+    ) -> List[ModelCard]:
         """Get models that have a specific capability."""
         return self._unique_cards(
             [card for card in self.models.values() if capability in card.capabilities]
@@ -760,7 +780,9 @@ def find_models_by_cost(cost_level: CostLevel) -> Dict[str, List[ModelCard]]:
     return result
 
 
-def find_models_by_capability(capability: ResearchCapability) -> Dict[str, List[ModelCard]]:
+def find_models_by_capability(
+    capability: ResearchCapability | ModelCapability,
+) -> Dict[str, List[ModelCard]]:
     """Find models across all providers by capability."""
     result = {}
     for provider, cards in PROVIDER_MODEL_CARDS.items():
@@ -925,7 +947,7 @@ def create_biomni_model_cards() -> ProviderModelCards:
             "Wet-lab / dry-lab protocol drafting",
         ],
         limitations=[
-            "Requires the optional `biomni` package (pip install deep-research-client[biomni])",
+            "Requires an upstream Biomni environment plus the `biomni` extra",
             "Downloads a large (~11GB) data lake on first run",
             "Executes generated code locally; run in a trusted/sandboxed environment",
             "Needs an LLM API key (e.g. ANTHROPIC_API_KEY) for the underlying model",

@@ -444,9 +444,9 @@ class ClaudeCodeParams(BaseProviderParams):
 class BiomniParams(BaseProviderParams):
     """Parameters specific to the Biomni biomedical co-scientist provider.
 
-    Biomni runs locally via the optional ``biomni`` package: it constructs a
-    ``biomni.agent.A1`` agent that drives an underlying LLM and executes
-    generated code against a large biomedical data lake.
+    Biomni runs locally in its upstream software environment: this wrapper
+    constructs a ``biomni.agent.A1`` agent that drives an underlying LLM and
+    executes generated code against a large biomedical data lake.
 
     Note the two distinct model concepts: the harmonized ``model`` field selects
     the *research model card* (``biomni-a1``), while ``llm`` selects the
@@ -467,24 +467,26 @@ class BiomniParams(BaseProviderParams):
         description=(
             "LLM provider Biomni should use ('Anthropic', 'OpenAI', 'Gemini', "
             "'AzureOpenAI', 'Bedrock', 'Ollama', ...). Defaults to Biomni's "
-            "inference from the llm name when unset."
+            "inference from the llm name when unset. Non-default backends may "
+            "require their corresponding LangChain adapter."
         )
     )
     path: Optional[str] = Field(
         default=None,
         description=(
-            "Directory for Biomni's data lake (auto-downloaded, ~11GB on first "
-            "run). Defaults to the BIOMNI_DATA_PATH env var, else './biomni_data'."
+            "Biomni workspace root. A1 creates its biomni_data directory beneath "
+            "it and auto-downloads the ~11GB lake on first run. Defaults to the "
+            "BIOMNI_DATA_PATH env var, else './biomni_data'."
         )
     )
     timeout: Optional[int] = Field(
         default=None,
         ge=1,
         description=(
-            "Per-run timeout in seconds passed to the Biomni agent (A1's "
-            "timeout_seconds). When set, takes precedence over "
-            "ProviderConfig.timeout; otherwise falls back to it and then to the "
-            "provider's default."
+            "Timeout in seconds for each generated code execution (A1's "
+            "timeout_seconds), not a whole-run deadline. When set, takes precedence "
+            "over ProviderConfig.timeout; otherwise falls back to it and then to "
+            "the provider's default."
         )
     )
     use_tool_retriever: bool = Field(

@@ -8,10 +8,11 @@ literature and writes a report, Biomni is a *co-scientist*: it forms and tests
 hypotheses, runs code against biomedical data, and can design experiments. A
 conventional literature-synthesis run is essentially a subset of what it does.
 
-This provider wraps the local ``biomni`` Python package (``biomni.agent.A1``),
-an optional dependency installed via ``pip install deep-research-client[biomni]``.
-Because Biomni executes generated code locally and downloads a large (~11GB)
-data lake, run it only in a trusted/sandboxed environment.
+This provider wraps the local ``biomni`` Python package (``biomni.agent.A1``).
+The ``biomni`` extra supplies its core Python runtime, but Biomni's scientific
+toolbox still requires one of the upstream conda environments. Because Biomni
+executes generated code locally and downloads a large (~11GB) data lake, run it
+only in a trusted/sandboxed environment.
 """
 
 import asyncio
@@ -30,9 +31,54 @@ from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
 
-# Biomni agent runs are long: multi-step planning plus local code execution.
+# Biomni-generated analyses can be long-running. A1 applies this value to each
+# generated code execution; it is not a deadline for the whole agent run.
 BIOMNI_DEFAULT_TIMEOUT = 3600
 DEFAULT_DATA_PATH = "./biomni_data"
+
+# Biomni 0.0.8's wheel declares only pydantic/langchain/python-dotenv, while
+# A1 imports pandas and langchain-openai eagerly and its default Claude path
+# imports langchain-anthropic during construction. Keep the availability gate
+# aligned with the dependencies supplied by our optional extra: checking only
+# for ``biomni`` registers a provider that cannot import, and a failed automatic
+# fallback then surfaces as an unclassified ValueError.
+BIOMNI_EAGER_RUNTIME_MODULES = (
+    "biomni",
+    "pandas",
+    "langchain_openai",
+)
+BIOMNI_SOURCE_MODULES = {
+    "Anthropic": "langchain_anthropic",
+    "Ollama": "langchain_ollama",
+    "Bedrock": "langchain_aws",
+}
+
+
+def missing_biomni_runtime_modules(source: Optional[str] = None) -> list[str]:
+    """Return core Python modules required by the default Biomni A1 path.
+
+    ``langchain_openai`` is eager even for Anthropic because Biomni imports its
+    tool retriever at module load. A source-specific adapter is added where the
+    selected backend needs one. ``None`` means Biomni's default, Anthropic.
+
+    This deliberately covers agent construction, not every optional tool in
+    Biomni's external conda environment.
+
+    Args:
+        source: Biomni LLM source, or None for its default Anthropic path.
+
+    Returns:
+        Import-module names that are not installed
+    """
+    modules = list(BIOMNI_EAGER_RUNTIME_MODULES)
+    source_module = BIOMNI_SOURCE_MODULES.get(source or "Anthropic")
+    if source_module:
+        modules.append(source_module)
+    return [
+        module
+        for module in modules
+        if importlib.util.find_spec(module) is None
+    ]
 
 
 class BiomniProvider(ResearchProvider):
@@ -81,23 +127,32 @@ class BiomniProvider(ResearchProvider):
         if not self.config.enabled:
             return super().unavailable_reason()
 
-        if importlib.util.find_spec("biomni") is None:
+        missing = missing_biomni_runtime_modules(self.params.source)
+        if "biomni" in missing:
             return (
                 "the biomni package is not installed "
-                "(pip install deep-research-client[biomni])"
+                "(install the upstream Biomni environment, then "
+                "pip install deep-research-client[biomni])"
+            )
+        if missing:
+            return (
+                "the Biomni Python runtime is incomplete; missing "
+                f"{', '.join(missing)} (reinstall deep-research-client[biomni] "
+                "inside the upstream Biomni environment)"
             )
 
         return super().unavailable_reason()
 
     def is_available(self) -> bool:
-        """Check whether the optional ``biomni`` package is importable."""
+        """Check whether the core Python runtime for default A1 is importable."""
         if not self.config.enabled:
             return False
-        if importlib.util.find_spec("biomni") is None:
+        missing = missing_biomni_runtime_modules(self.params.source)
+        if missing:
             # Debug, not warning: availability is polled by provider-listing
             # paths and on every run, and unavailable_reason() already carries
             # the user-facing wording for the one place that needs it.
-            logger.debug("biomni not installed (pip install deep-research-client[biomni])")
+            logger.debug("Biomni runtime incomplete; missing: %s", ", ".join(missing))
             return False
         return True
 
@@ -124,6 +179,16 @@ class BiomniProvider(ResearchProvider):
 
         try:
             raw = await asyncio.to_thread(self._run_agent, query)
+        except ModuleNotFoundError as e:
+            # The core imports are checked by is_available(), but Biomni's
+            # generated code and scientific tools can reach deeper optional
+            # modules from its external environment. Preserve this as a typed,
+            # provider-specific configuration failure so --fallback can move on.
+            missing = e.name or str(e)
+            raise ProviderNotInstalledError(
+                self.name,
+                f"the Biomni runtime is missing Python module '{missing}'",
+            ) from e
         except Exception as e:  # noqa: BLE001 - surface a clean provider error
             logger.error("Biomni agent run failed: %s", e)
             logger.debug("Error details:", exc_info=True)

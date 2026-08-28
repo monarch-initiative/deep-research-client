@@ -2,7 +2,6 @@
 
 import asyncio
 import importlib
-import importlib.util
 import logging
 import os
 import time
@@ -49,7 +48,8 @@ REGISTRATION_GATES: dict[str, str] = {
         "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
     ),
     "biomni": (
-        "requires the optional biomni package, with DISABLE_BIOMNI_PROVIDER unset"
+        "requires an upstream Biomni environment and deep-research-client[biomni], "
+        "with DISABLE_BIOMNI_PROVIDER unset"
     ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }
@@ -168,15 +168,20 @@ class DeepResearchClient:
         except ImportError:
             pass  # Cyberian not installed, skip
 
-        # Biomni provider - check if the optional biomni package is installed.
-        # Biomni configures its own underlying LLM (via ANTHROPIC_API_KEY etc.),
-        # so no provider API key is required at this layer.
+        # Biomni provider - require the complete core Python runtime, rather
+        # than only the biomni package spec: biomni 0.0.8 under-declares A1's
+        # eager imports. Biomni configures its own underlying LLM (via
+        # ANTHROPIC_API_KEY etc.), so no provider API key is required here.
         # Set DISABLE_BIOMNI_PROVIDER=true to opt out of auto-detection.
+        from .providers.biomni import (
+            BIOMNI_DEFAULT_TIMEOUT,
+            missing_biomni_runtime_modules,
+        )
+
         if (
             os.getenv("DISABLE_BIOMNI_PROVIDER", "").lower() not in ("true", "1", "yes")
-            and importlib.util.find_spec("biomni") is not None
+            and not missing_biomni_runtime_modules()
         ):
-            from .providers.biomni import BIOMNI_DEFAULT_TIMEOUT
             biomni_config = ProviderConfig(
                 name="biomni",
                 api_key=None,  # Not required; biomni authenticates its own LLM

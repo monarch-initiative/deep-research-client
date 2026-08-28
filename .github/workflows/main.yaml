@@ -53,3 +53,41 @@ jobs:
 
       - name: Run test suite
         run: just test
+
+  biomni-extra:
+    name: Biomni extra (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+      fail-fast: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6.4.3
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Deliberately omit the dev group. It contains pandas through validation
+      # tooling and would hide an under-declared end-user Biomni extra.
+      - name: Install clean Biomni extra
+        run: uv sync --no-dev --extra biomni
+
+      - name: Verify real A1 import, signature, and construction
+        run: |
+          uv run --no-dev --extra biomni --with pytest --with pytest-asyncio \
+            pytest -q \
+            tests/test_biomni_provider.py::test_build_agent_kwargs_accepted_by_a1_signature \
+            tests/test_biomni_provider.py::test_build_agent_constructs_with_clean_extra

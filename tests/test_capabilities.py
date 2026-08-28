@@ -19,9 +19,9 @@ from deep_research_client.model_cards import (
 )
 
 
-def test_model_capability_is_research_capability_alias():
-    """The legacy name stays importable and points at the canonical enum."""
-    assert ModelCapability is ResearchCapability
+def test_model_capability_is_a_distinct_compatibility_enum():
+    """The old Enum API is preserved without mutating the generated vocabulary."""
+    assert ModelCapability is not ResearchCapability
 
 
 @pytest.mark.parametrize(
@@ -40,6 +40,7 @@ def test_model_capability_is_research_capability_alias():
 def test_legacy_capability_values_preserved(value):
     """All historical ModelCapability string values still resolve by value."""
     assert ResearchCapability(value).value == value
+    assert ModelCapability(value).value == value
 
 
 @pytest.mark.parametrize(
@@ -146,9 +147,24 @@ def test_cyberian_lists_one_card_but_still_resolves_deep_research():
 
 
 def test_model_capability_uppercase_aliases_preserved():
-    """Legacy UPPER_CASE attribute access still resolves to the same members."""
-    assert ModelCapability.WEB_SEARCH is ResearchCapability.web_search
-    assert ModelCapability.CODE_INTERPRETATION is ResearchCapability.code_interpretation
+    """The legacy enum keeps attribute, lookup, membership, and name behavior."""
+    assert ModelCapability.WEB_SEARCH.name == "WEB_SEARCH"
+    assert ModelCapability["WEB_SEARCH"] is ModelCapability.WEB_SEARCH
+    assert ModelCapability.__members__["CODE_INTERPRETATION"].name == (
+        "CODE_INTERPRETATION"
+    )
+    assert ModelCapability.WEB_SEARCH.value == ResearchCapability.web_search.value
+    # Lowercase migration aliases remain available, but the historical member
+    # name stays canonical.
+    assert ModelCapability.web_search is ModelCapability.WEB_SEARCH
+
+
+def test_legacy_model_capability_still_filters_canonical_cards():
+    """Compatibility members remain valid inputs to the public finder."""
+    legacy = find_models_by_capability(ModelCapability.WEB_SEARCH)
+    canonical = find_models_by_capability(ResearchCapability.web_search)
+
+    assert legacy == canonical
 
 
 def test_find_by_resource_and_capability():

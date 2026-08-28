@@ -33,10 +33,16 @@ dependencies = [
 cyberian = [
     "cyberian>=0.2.2",
 ]
-# biomni is a heavy optional dependency (local biomedical agent + ~11GB data
-# lake), so it is not part of the base install.
+# Biomni is a heavy optional provider (local biomedical agent + a large external
+# software environment and ~11GB data lake), so it is not part of the base
+# install. Biomni 0.0.8 under-declares the Python packages needed even to import
+# A1 and construct its default Anthropic-backed agent; keep those runtime
+# dependencies explicit here until upstream declares them.
 biomni = [
     "biomni>=0.0.8",
+    "pandas>=2.0",
+    "langchain-openai>=0.3.28",
+    "langchain-anthropic>=0.3.18",
 ]
 validation = [
     "linkml-reference-validator>=0.2.1",

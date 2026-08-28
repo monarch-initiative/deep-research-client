@@ -43,10 +43,13 @@ retriever  ⊂  synthesizer  ⊂  agentic_researcher  ⊂  co_scientist
 `ResearchCapability` — the functional capabilities a provider exposes. The
 historical `ModelCapability` set (`web_search`, `academic_search`,
 `scientific_literature`, `citation_tracking`, `real_time_data`,
-`code_interpretation`, `visual_analysis`, `multi_language`) is retained: both
-`ModelCapability` and its `UPPER_CASE` member names (e.g.
-`ModelCapability.WEB_SEARCH`) still resolve to the same members. The remaining
-values below were added to describe co-scientist behavior.
+`code_interpretation`, `visual_analysis`, `multi_language`) is retained as a
+compatibility enum. Its original `UPPER_CASE` members and standard enum lookup
+(for example, `ModelCapability.WEB_SEARCH` and
+`ModelCapability["WEB_SEARCH"]`) keep their historical behavior and string
+values. New code should use the schema-generated lowercase members such as
+`ResearchCapability.web_search`. The remaining values below were added to
+describe co-scientist behavior.
 
 | Capability | Meaning |
 |------------|---------|

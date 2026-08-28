@@ -1,13 +1,13 @@
 """Tests for the Biomni provider.
 
-These unit tests deliberately run *without* the optional ``biomni`` package
-installed: the provider imports ``biomni`` lazily, so its scaffolding (params,
-model card, availability, output parsing) is testable on its own. The actual
-agent run is exercised by the integration test at the bottom, which is skipped
-unless ``biomni`` is importable.
+The ordinary suite runs without the optional ``biomni`` package, so provider
+scaffolding (params, model card, availability, output parsing) stays testable on
+the base install. A dedicated clean-extra CI job also imports and constructs the
+real agent without downloading its data lake. The actual LLM-backed run remains
+an integration test.
 """
 
-import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -20,9 +20,13 @@ from deep_research_client.model_cards import (
     create_biomni_model_cards,
 )
 from deep_research_client.provider_params import BiomniParams, create_provider_params
-from deep_research_client.providers.biomni import BIOMNI_DEFAULT_TIMEOUT, BiomniProvider
+from deep_research_client.providers.biomni import (
+    BIOMNI_DEFAULT_TIMEOUT,
+    BiomniProvider,
+    missing_biomni_runtime_modules,
+)
 
-BIOMNI_INSTALLED = importlib.util.find_spec("biomni") is not None
+BIOMNI_RUNTIME_AVAILABLE = not missing_biomni_runtime_modules()
 
 
 def make_provider(**params) -> BiomniProvider:
@@ -68,9 +72,9 @@ def test_params_reject_unknown_field():
         BiomniParams(not_a_real_field=True)
 
 
-def test_is_available_tracks_package_presence():
+def test_is_available_tracks_core_runtime_presence():
     provider = make_provider()
-    assert provider.is_available() is BIOMNI_INSTALLED
+    assert provider.is_available() is BIOMNI_RUNTIME_AVAILABLE
 
 
 def test_disabled_config_is_unavailable():
@@ -80,21 +84,24 @@ def test_disabled_config_is_unavailable():
 
 @pytest.mark.asyncio
 async def test_research_requires_available_provider():
-    if BIOMNI_INSTALLED:
-        pytest.skip("biomni installed; availability guard not exercised")
+    if BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("Biomni runtime available; availability guard not exercised")
     # ProviderNotInstalledError, not a bare ValueError: no credential fixes a
     # missing local package, and callers branch on the type to say so.
-    with pytest.raises(ProviderNotInstalledError, match="biomni package is not installed"):
+    with pytest.raises(ProviderNotInstalledError, match="Biomni|biomni"):
         await make_provider().research("some biomedical question")
 
 
 def test_unavailable_reason_names_the_package_not_a_key():
     """Biomni has no credential of its own, so the base wording would misdirect."""
-    if BIOMNI_INSTALLED:
-        pytest.skip("biomni installed; the missing-package branch is not reachable")
+    if BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("Biomni runtime available; the unavailable branch is not reachable")
     reason = make_provider().unavailable_reason()
 
-    assert "biomni package is not installed" in reason
+    assert (
+        "biomni package is not installed" in reason
+        or "Biomni Python runtime is incomplete" in reason
+    )
     assert "deep-research-client[biomni]" in reason
     assert "API key" not in reason
 
@@ -217,8 +224,8 @@ def test_biomni_model_card_shape():
 def test_agent_kwargs_timeout_precedence(params_timeout, config_timeout, expected):
     """A1's parameter is `timeout_seconds`, and params outrank the config.
 
-    Covered here rather than in the signature test below, which cannot run in
-    CI: the biomni extra is never installed there.
+    Covered here as well as in the clean-extra CI job so the precedence rule is
+    still exercised by the ordinary base-install suite.
     """
     config = ProviderConfig(name="biomni", api_key=None, enabled=True, timeout=config_timeout)
     provider = BiomniProvider(config, BiomniParams(timeout=params_timeout))
@@ -309,17 +316,42 @@ def test_build_agent_kwargs_accepted_by_a1_signature():
 
     Guards against silent signature drift (e.g. `timeout` vs `timeout_seconds`)
     without mocking or constructing the agent (which would download the data
-    lake). Skipped when the optional package is not installed -- which is always
-    in CI, so the precedence tests above carry the coverage that can run there.
+    lake by default). Skipped in the ordinary base-install job and exercised by
+    the dedicated clean-extra CI job.
     """
     import inspect
 
-    pytest.importorskip("biomni")
+    if not BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("requires the complete Biomni extra")
     from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
 
     accepted = set(inspect.signature(A1.__init__).parameters)
     missing = _every_possible_agent_kwarg() - accepted
     assert not missing, f"A1.__init__ does not accept: {sorted(missing)}"
+
+
+def test_build_agent_constructs_with_clean_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The documented extra can construct the real default A1 without a download.
+
+    This is intentionally not mocked. Biomni 0.0.8 under-declares pandas and
+    its LangChain adapters, so an import-only signature test catches only the
+    first missing package. Constructing A1 reaches the default Anthropic path;
+    ``skip_data_lake`` and a temporary path keep the smoke test local and small.
+    """
+    if not BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("requires the complete Biomni extra")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    provider = make_provider(
+        path=str(tmp_path),
+        skip_data_lake=True,
+        use_tool_retriever=False,
+    )
+
+    agent = provider._build_agent()
+
+    assert agent.__class__.__name__ == "A1"
 
 
 @pytest.mark.integration
@@ -342,8 +374,8 @@ def test_cli_does_not_claim_a_missing_api_key_for_an_optional_package():
     every non-stub as credential-blocked, disagreeing with what
     `providers --check` said about the same provider.
     """
-    if BIOMNI_INSTALLED:
-        pytest.skip("biomni installed; the unavailable branch is not reachable")
+    if BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("Biomni runtime available; the unavailable branch is not reachable")
     from typer.testing import CliRunner
 
     from deep_research_client.cli import app
@@ -362,8 +394,8 @@ def test_the_two_provider_report_paths_agree():
     against `client.unregistered_reason` directly would keep passing if one
     path stopped using it, which is the drift this is here to catch.
     """
-    if BIOMNI_INSTALLED:
-        pytest.skip("biomni installed; the unavailable branch is not reachable")
+    if BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("Biomni runtime available; the unavailable branch is not reachable")
     from typer.testing import CliRunner
 
     from deep_research_client.cli import app
@@ -371,7 +403,7 @@ def test_the_two_provider_report_paths_agree():
     detail = CliRunner().invoke(app, ["providers", "--provider", "biomni"])
     checked = CliRunner().invoke(app, ["providers", "--check", "--provider", "biomni"])
 
-    explanation = "the biomni package is not installed"
+    explanation = make_provider().unavailable_reason()
     assert explanation in detail.stdout, detail.stdout
     assert explanation in checked.stdout, checked.stdout
 
@@ -382,8 +414,8 @@ def test_an_unavailable_biomni_is_listed_rather_than_omitted():
     A reader who had never heard of biomni could not learn from this command
     that it exists or what would enable it.
     """
-    if BIOMNI_INSTALLED:
-        pytest.skip("biomni installed; it appears under available providers")
+    if BIOMNI_RUNTIME_AVAILABLE:
+        pytest.skip("Biomni runtime available; it appears under available providers")
     from typer.testing import CliRunner
 
     from deep_research_client.cli import app

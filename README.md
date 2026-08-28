@@ -76,10 +76,13 @@ pip install deep-research-client[cyberian]
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
 
-# For Biomni (biomedical co-scientist) - requires biomni installation
+# For Biomni (biomedical co-scientist), first provision an upstream Biomni
+# conda environment: https://github.com/snap-stanford/Biomni/tree/main/biomni_env
+# Then, inside that environment, install the client and its core Python runtime:
 pip install deep-research-client[biomni]
 # Biomni runs a local agent that executes code against a ~11GB data lake and
-# drives its own LLM (set e.g. ANTHROPIC_API_KEY). Auto-detected when installed.
+# drives its own LLM (set e.g. ANTHROPIC_API_KEY). The extra does not provision
+# Biomni's external R, CLI, or bioinformatics toolchain.
 # Run only in a trusted/sandboxed environment; set DISABLE_BIOMNI_PROVIDER=true to opt out.
 ```
 

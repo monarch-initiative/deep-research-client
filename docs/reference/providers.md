@@ -14,7 +14,7 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
-| Biomni | (local `biomni` package) | Biomedical co-scientist, runs code | Very slow |
+| Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 
 See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
@@ -511,11 +511,17 @@ CRISPR screen, annotating variants, analysing omics data, and so on. It is a
 conventional deep-research run is a subset (see
 [Capabilities, Resources & Archetypes](capabilities.md)).
 
-This provider wraps the local `biomni` Python package (`biomni.agent.A1`), an
-optional dependency. Biomni configures and authenticates its own underlying LLM
-(Claude by default), so no separate provider API key is required by this client.
+This provider wraps the local `biomni` Python package (`biomni.agent.A1`).
+Biomni configures and authenticates its own underlying LLM (Claude by default),
+so no separate provider API key is required by this client.
 
 ### Setup
+
+The PyPI package is **not** Biomni's complete software environment. Follow
+Biomni's [environment setup](https://github.com/snap-stanford/Biomni/tree/main/biomni_env)
+first: upstream offers a basic agent environment, a reduced environment of
+about 13GB, and a full E1 setup that it documents as taking more than 10 hours
+and at least 30GB. Then, inside that activated environment, install this client:
 
 ```bash
 pip install deep-research-client[biomni]
@@ -527,7 +533,14 @@ export ANTHROPIC_API_KEY="your-key"
 export BIOMNI_DATA_PATH="/data/biomni"
 ```
 
-The provider is auto-detected whenever the `biomni` package is importable. Set
+The extra fills gaps in Biomni 0.0.8's package metadata needed for the default
+agent (`pandas`, `langchain-openai`, and `langchain-anthropic`). It does **not**
+install Biomni's R packages, command-line programs, or biomedical Python
+toolbox; those come from the upstream environment. Anthropic and
+OpenAI-compatible sources work with the extra. Other backends may need their
+own adapter, such as `langchain-ollama` or `langchain-aws`.
+
+The provider is auto-detected when this core Python runtime is present. Set
 `DISABLE_BIOMNI_PROVIDER=true` to opt out of auto-detection.
 
 **Important**: Biomni executes generated code locally and downloads a large data
@@ -551,8 +564,8 @@ from deep_research_client.provider_params import BiomniParams
 params = BiomniParams(
     llm="claude-sonnet-4-20250514",  # underlying LLM (default: Biomni's own)
     source="Anthropic",              # LLM provider: Anthropic, OpenAI, Gemini, ...
-    path="/data/biomni",             # data lake dir (default: env or ./biomni_data)
-    timeout=3600,                    # per-run timeout in seconds
+    path="/data/biomni",             # workspace root (default: env or ./biomni_data)
+    timeout=3600,                    # timeout for each generated code execution
     use_tool_retriever=True,         # retrieve most relevant tools per task
     skip_data_lake=False,            # True skips the ~11GB data lake download
 )
@@ -570,8 +583,8 @@ params = BiomniParams(
   extracted from the final answer with the same patterns reference validation
   uses
 - **Timeout**: `timeout` is handed to the Biomni agent as its own
-  `timeout_seconds`; this client does not impose a ceiling of its own, so a run
-  that hangs below that level hangs
+  `timeout_seconds`, which limits each generated code execution. It is not a
+  whole-run deadline; this client does not impose a separate ceiling.
 
 ### When to Use
 
@@ -582,7 +595,7 @@ params = BiomniParams(
 
 ### Limitations
 
-- Requires the optional `biomni` package
+- Requires an upstream Biomni environment plus this package's `biomni` extra
 - Downloads a large (~11GB) data lake on first run
 - Executes generated code locally — use a trusted/sandboxed environment
 - Needs an LLM API key (e.g. `ANTHROPIC_API_KEY`) for the underlying model

@@ -441,20 +441,22 @@ def test_a_disabled_claude_code_is_not_told_to_install_the_cli(monkeypatch):
 def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
     """The same two-gate confusion as claude_code, for the other local provider.
 
-    With the package importable and DISABLE_BIOMNI_PROVIDER set, the provider
-    considers itself available, so its own unavailable_reason() would tell the
-    reader to `pip install` something they already have.
+    With the core runtime importable and DISABLE_BIOMNI_PROVIDER set, the
+    provider considers itself available, so its own unavailable_reason() would
+    tell the reader to install something they already have.
     """
     import importlib.util
 
-    # Patched rather than skipped: CI never installs the biomni extra, so a
-    # skip here would mean this never runs where the counts come from.
+    # Patched rather than skipped: ordinary CI never installs the biomni extra,
+    # so a skip here would mean this never runs in the base-install job.
     real_find_spec = importlib.util.find_spec
     monkeypatch.setattr(
         importlib.util,
         "find_spec",
         lambda name, *args, **kwargs: (
-            object() if name == "biomni" else real_find_spec(name, *args, **kwargs)
+            object()
+            if name in {"biomni", "pandas", "langchain_openai", "langchain_anthropic"}
+            else real_find_spec(name, *args, **kwargs)
         ),
     )
     monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")

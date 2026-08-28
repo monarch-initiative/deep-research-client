@@ -66,7 +66,7 @@ class UnclassifiableFailure(StandInProvider):
         raise RuntimeError("connection reset by peer")
 
 
-# The CLI's _setup_logging calls setLevel on the *package* logger, which is
+# The CLI's setup_logging calls setLevel on the *package* logger, which is
 # process-global and was never restored -- so a CLI test anywhere in the suite
 # left every later test running under whatever level it chose. That is why the
 # INFO assertions here passed run alone and failed in the full suite.
@@ -90,15 +90,25 @@ def _restore_package_log_level():
     though it only covers tests that run after these -- see _CLIENT_LOGGER for
     the half that protects against pollution arriving from elsewhere.
 
-    The level only. _setup_logging also calls basicConfig(force=True), which
-    removes and closes every root handler, and that is deliberately out of
-    scope here: restoring closed handlers is not something a fixture can do
-    honestly. So this narrows the leak rather than closing it.
+    Two levels, because setup_logging pins two: setLevel on the package
+    logger, and basicConfig(level=..., force=True), which sets the root
+    logger's as well. Only one test here passes -v; before it existed every
+    CLI test ran at the default, so root was reassigned the value it already
+    held and the second half never showed. Demonstrated with two tests in a
+    file of their own -- in this suite the next CLI test happens to reset root
+    on its way past, which masks it rather than making it harmless.
+
+    Handlers are deliberately out of scope: basicConfig(force=True) also
+    removes and *closes* every root handler, and restoring closed handlers is
+    not something a fixture can do honestly. So this narrows the leak rather
+    than closing it.
     """
     package_logger = logging.getLogger(_PACKAGE_LOGGER)
-    original = package_logger.level
+    root_logger = logging.getLogger()
+    levels = (package_logger.level, root_logger.level)
     yield
-    package_logger.setLevel(original)
+    package_logger.setLevel(levels[0])
+    root_logger.setLevel(levels[1])
 
 
 def _params(**kwargs) -> MockParams:
@@ -1328,6 +1338,10 @@ def test_cli_v_surfaces_the_inert_fallback_diagnostic(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 1
+    # The prefix too, not just the message: the docs quote a literal console
+    # line, and the level-and-format half of it is what a reader diffs
+    # against their terminal.
+    assert "INFO - Fallback was requested" in result.output
     assert "candidate: no other provider is available." in result.output
     assert not output.exists()
 

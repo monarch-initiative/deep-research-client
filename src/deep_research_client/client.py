@@ -7,11 +7,18 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Optional
+from collections.abc import Sequence
+from typing import Any, Optional, Union
 
 from .cache import CacheManager
-from .exceptions import ProviderNotConfiguredError
-from .models import ResearchResult, ProviderConfig, CacheConfig, QueryMetadata
+from .exceptions import ProviderError, ProviderNotConfiguredError, is_fallback_worthy
+from .models import (
+    ResearchResult,
+    ProviderAttempt,
+    ProviderConfig,
+    CacheConfig,
+    QueryMetadata,
+)
 from .providers import ProviderRegistry, ResearchProvider
 from .provider_params import BaseProviderParams, create_provider_params
 
@@ -348,27 +355,319 @@ class DeepResearchClient:
         # Get provider class and create instance
         return self._create_provider(provider_name, config, params)
 
+    @staticmethod
     def _get_cache_provider_params(
-        self,
-        research_provider: 'ResearchProvider',
+        provider_name: str,
         provider_params: Optional[dict] = None,
     ) -> Optional[dict]:
-        """Build effective cache parameters, including provider-specific cache busting."""
+        """Build effective cache parameters, including provider-specific cache busting.
+
+        Takes a name rather than a provider, because a cache key needs nothing
+        an instance has: that is what lets a cached report be served for a
+        provider this run cannot construct.
+
+        Args:
+            provider_name: Name of the provider whose cache entry is wanted.
+            provider_params: Provider-specific parameters for this run.
+
+        Returns:
+            Parameters to key the cache entry by, or None when there are none.
+        """
         effective_params = dict(provider_params or {})
 
         # Asta response parsing and paper metadata changed after initial release;
         # keep stale cache entries from shadowing current live results.
-        if research_provider.name == "asta":
+        if provider_name == "asta":
             effective_params["_cache_version"] = "snippet-v5"
-        elif research_provider.name in {"falcon", "openscientist"}:
+        elif provider_name in {"falcon", "openscientist"}:
             effective_params["_cache_version"] = "artifacts-v1"
         # The Claude Code prompt scaffolding (inline-report directive) and run
         # provenance capture changed how results are produced; bump to keep
         # stale cache entries from shadowing current live results.
-        elif research_provider.name == "claude_code":
+        elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
 
         return effective_params or None
+
+    def _fallback_candidates(
+        self,
+        provider: Optional[str],
+        fallback: Optional[Union[bool, str, Sequence[str]]],
+    ) -> list[str]:
+        """Work out which providers to try, in order.
+
+        Args:
+            provider: Provider the caller named, if any.
+            fallback: False or None for no fallback, True to fall back to
+                whatever else is available, or an ordered list of provider
+                names. A single name may be given as a bare string.
+
+        Logs at INFO when a fallback was requested but only one candidate
+        survives, since the run is then about to behave as though no fallback
+        had been asked for. Planning and saying so live together because the
+        reason -- which filter or which absent name -- is known only here.
+
+        Returns:
+            Provider names to try, most-preferred first, without duplicates.
+            With True, the automatic ones follow registration order.
+
+        Raises:
+            ValueError: If a named fallback provider does not exist, or there
+                is nothing at all to try.
+        """
+        if isinstance(fallback, str):
+            # A Sequence[str] accepts a str, and list("openai") would quietly
+            # become six one-letter providers. The singular form is the obvious
+            # thing to reach for next to a list, so honour it.
+            extra = [fallback]
+        elif fallback is None or isinstance(fallback, bool):
+            # None arrives the same way the bare string does -- a wrapper
+            # passing config.get("fallback") for an absent key -- and means
+            # the same thing as False. Falling through would reach list(None).
+            extra = (
+                [
+                    candidate.name
+                    for candidate in self.registry.get_available_providers()
+                    # A provider that invents its reports is not a stand-in for
+                    # one that does the work. Name it and it is honoured.
+                    if candidate.produces_real_reports
+                ]
+                if fallback
+                else []
+            )
+        else:
+            # An explicit list is an instruction, so names are kept even when
+            # unavailable: each one then reports why it could not be used,
+            # rather than vanishing from the trail without explanation.
+            extra = list(fallback)
+
+        # Names are checked before any provider is called. A typo found
+        # mid-run would abort after the first provider had already been paid
+        # for, never reach the good candidate behind it, and replace the
+        # failure that started the fallback with a bare "not found".
+        unknown = [name for name in extra if not self.knows_provider(name)]
+        if unknown:
+            raise ValueError(
+                f"Provider '{unknown[0]}' not found"
+                if len(unknown) == 1
+                else f"Providers not found: {', '.join(unknown)}"
+            )
+
+        if provider:
+            ordered = [provider]
+        else:
+            first_available = self.registry.get_first_available()
+            ordered = [first_available.name] if first_available else []
+
+        for name in extra:
+            if name not in ordered:
+                ordered.append(name)
+
+        if not ordered:
+            raise ValueError("No research providers available")
+
+        # A fallback was asked for and there is nobody to fall back to. The
+        # run is about to behave exactly as it would with no flag at all, and
+        # without this nothing distinguishes that from "the fallback ran and
+        # also failed" -- the trail is empty either way at position 0.
+        #
+        # Both routes are easy to hit: the automatic ordering drops providers
+        # that do not produce real reports, and a named fallback that repeats
+        # the primary deduplicates away. The reason is the invisible part, so
+        # say which one it was.
+        if fallback and len(ordered) == 1:
+            # `is True`, not truthiness: a list is truthy too, and the
+            # produces_real_reports filter above runs only on the automatic
+            # route. An explicitly named provider that invents its reports is
+            # honoured, so on the list route a mock sitting in the registry
+            # was not excluded for fabricating -- it simply was not named.
+            # Blaming the filter there would tell an operator their own
+            # --fallback-provider mock would be dropped, which is the reverse
+            # of what happens.
+            excluded = (
+                [
+                    candidate.name
+                    for candidate in self.registry.get_available_providers()
+                    if not candidate.produces_real_reports
+                    and candidate.name != ordered[0]
+                ]
+                if fallback is True
+                else []
+            )
+            # Three reasons, not two. "named or available" as one string
+            # asserts on the list route that nobody else is here, when the
+            # truth is usually that nobody else was listed -- and listing one
+            # is the fix the operator needs pointing at.
+            if excluded:
+                reason = (
+                    "the other available provider(s) do not produce real "
+                    f"reports ({', '.join(excluded)})"
+                )
+            elif fallback is True:
+                reason = "no other provider is available"
+            else:
+                reason = "no other provider was named"
+            logger.info(
+                "Fallback was requested, but %s is the only candidate: %s. "
+                "The run will behave as though no fallback was asked for",
+                ordered[0],
+                reason,
+            )
+        return ordered
+
+    def _prepare_provider(
+        self,
+        provider_name: str,
+        model: Optional[str],
+        provider_params: Optional[dict],
+    ) -> ResearchProvider:
+        """Resolve one candidate into a provider instance ready to be called.
+
+        Args:
+            provider_name: Name of the provider to prepare.
+            model: Model override, if the caller gave one.
+            provider_params: Provider-specific parameters, if any.
+
+        Returns:
+            A provider instance configured for this run.
+
+        Raises:
+            ProviderNotConfiguredError: If the provider is known but not set up.
+            ValueError: If the name is not a provider at all.
+        """
+        base_provider = self.registry.get_provider(provider_name)
+        if not base_provider:
+            # Providers register only once their credential is present, so
+            # a known name that is absent means "not set up", not "no such
+            # thing". Saying "not found" sends the caller hunting a typo.
+            if self.knows_provider(provider_name):
+                raise ProviderNotConfiguredError(
+                    provider_name, self._unregistered_reason(provider_name)
+                )
+            raise ValueError(f"Provider '{provider_name}' not found")
+        if not base_provider.is_available():
+            raise ProviderNotConfiguredError(
+                provider_name, base_provider.unavailable_reason()
+            )
+
+        # Create new instance with custom parameters if needed
+        if provider_params or model:
+            return self._create_provider_with_params(
+                provider_name, model, provider_params or {}
+            )
+        return base_provider
+
+    @staticmethod
+    def _warn_falling_back(
+        failed_provider: str,
+        next_provider: str,
+        exc: BaseException,
+        model: Optional[str],
+        provider_params: Optional[dict],
+        overridden_provider: str,
+    ) -> None:
+        """Say which provider is taking over, and what is being dropped to do it.
+
+        Args:
+            failed_provider: The provider that could not do the work.
+            next_provider: The provider about to be tried.
+            exc: The failure that ended the previous attempt.
+            model: Model override the caller asked for, if any.
+            provider_params: Provider-specific parameters the caller asked for.
+            overridden_provider: The one candidate the overrides were applied
+                to. Not the same as ``failed_provider`` past the first hop,
+                where the provider that just failed had no overrides either --
+                and a message about provenance must not assert otherwise.
+        """
+        logger.warning(
+            "Provider %s cannot do this run: %s. Falling back to %s",
+            failed_provider, exc, next_provider,
+        )
+        dropped = [
+            label
+            for label, value in (("--model", model), ("--param", provider_params))
+            if value
+        ]
+        if dropped:
+            logger.warning(
+                "%s runs on its own defaults: %s applied to %s, not to it",
+                next_provider, " and ".join(dropped), overridden_provider,
+            )
+
+    @staticmethod
+    def _attach_trail(
+        exc: BaseException, failed: list[ProviderAttempt], candidate: str
+    ) -> None:
+        """Record every provider tried on the failure that ends the run.
+
+        With no result there is no ``provider_attempts`` to read, which is
+        exactly the case a caller most wants it. This puts the trail on the
+        exception instead -- including the candidate whose failure is being
+        raised, so the list is the whole run and not everything before it.
+
+        A failure we did not classify has nowhere to carry it -- a provider
+        that cannot recognise its own SDK error re-raises it bare, and a plain
+        exception has no field for this. That is the run where the fallback
+        machinery worked hardest, so the trail is logged rather than lost.
+
+        The log names the candidate that ended the run rather than claiming
+        every one failed: an unclassified failure is not fallback-worthy, so
+        it ends the run wherever it happens, and candidates behind it are
+        left untried.
+
+        Args:
+            exc: The failure about to be re-raised.
+            failed: Attempts that failed earlier, in order.
+            candidate: The provider whose failure ends the run.
+        """
+        if not failed:
+            return
+        trail = (*failed, ProviderAttempt.from_exception(candidate, exc))
+        if isinstance(exc, ProviderError):
+            exc.provider_attempts = trail
+            return
+        logger.warning(
+            "Provider %s failed with %s, which cannot carry the trail. "
+            "The run ends here; any candidate after it was not tried. "
+            "Providers tried:\n%s",
+            candidate,
+            type(exc).__name__,
+            ProviderAttempt.render_trail(trail),
+        )
+
+    @staticmethod
+    def _record_provenance(
+        result: ResearchResult,
+        requested: Optional[str],
+        failed: list[ProviderAttempt],
+        used: str,
+    ) -> None:
+        """Stamp a result with who was asked, who was tried, and who answered.
+
+        Called after the result has been cached, never before: these fields
+        describe *this* run, and replaying them out of a cache file would
+        credit a later run with a fallback that never happened.
+
+        Announcing the fallback is part of stamping it rather than a separate
+        step at each return, so a path that returns a result cannot forget to
+        mention that someone else produced it -- which the cache-hit path did.
+
+        Args:
+            result: The result to stamp.
+            requested: Provider the caller named, if any.
+            failed: Attempts that failed, in the order they were tried.
+            used: Provider that produced the result.
+        """
+        result.requested_provider = requested
+        result.provider_attempts = [
+            *failed,
+            ProviderAttempt(provider=used, succeeded=True),
+        ]
+        if result.fell_back:
+            logger.warning(
+                "Report produced by %s, not the provider first tried (%s)",
+                used, failed[0].provider,
+            )
 
     def research(
         self,
@@ -377,7 +676,8 @@ class DeepResearchClient:
         template_info: Optional[dict] = None,
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        fallback: Optional[Union[bool, str, Sequence[str]]] = False,
     ) -> ResearchResult:
         """Perform research on the given query.
 
@@ -388,6 +688,12 @@ class DeepResearchClient:
             model: Model to use for the provider (overrides provider default)
             provider_params: Provider-specific parameters
             metadata: Publication-style metadata (title, abstract, keywords, author, contributors)
+            fallback: Opt in to trying another provider when this one cannot do
+                the work. False (the default) or None never switches. True
+                falls back to whatever else is available, in registration
+                order, excluding providers that do not do real research. A
+                list -- or a bare string, for one -- names them explicitly, in
+                preference order, and replaces the automatic ordering.
 
         Returns:
             ResearchResult with markdown content and citations
@@ -398,7 +704,17 @@ class DeepResearchClient:
             ValueError: If no providers are available, or the name is not a
                 provider at all
         """
-        return asyncio.run(self.aresearch(query, provider, template_info, model, provider_params, metadata))
+        return asyncio.run(
+            self.aresearch(
+                query,
+                provider,
+                template_info,
+                model,
+                provider_params,
+                metadata,
+                fallback,
+            )
+        )
 
     async def aresearch(
         self,
@@ -407,105 +723,247 @@ class DeepResearchClient:
         template_info: Optional[dict] = None,
         model: Optional[str] = None,
         provider_params: Optional[dict] = None,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        fallback: Optional[Union[bool, str, Sequence[str]]] = False,
     ) -> ResearchResult:
-        """Async version of research method."""
+        """Async version of research method.
+
+        Falling back is opt-in and never silent: whoever produced the report is
+        recorded on it, along with everyone who was tried first and why they
+        could not. Only failures that mean "this provider cannot do the work"
+        are followed -- a throttle or a 5xx says to wait, not to switch, so
+        those propagate as they always did.
+
+        Nothing is cached or returned until a provider actually succeeds, so a
+        run that ends without one raises rather than producing a partial
+        result -- whether it exhausted the candidates or stopped at a failure
+        that did not justify trying the next.
+        """
         start_time = datetime.now()
         start_timestamp = time.time()
 
-        # Get provider
-        if provider:
-            base_provider = self.registry.get_provider(provider)
-            if not base_provider:
-                # Providers register only once their credential is present, so
-                # a known name that is absent means "not set up", not "no such
-                # thing". Saying "not found" sends the caller hunting a typo.
-                if provider in PROVIDER_CLASS_PATHS:
-                    raise ProviderNotConfiguredError(
-                        provider, self._unregistered_reason(provider)
-                    )
-                raise ValueError(f"Provider '{provider}' not found")
-            if not base_provider.is_available():
-                raise ProviderNotConfiguredError(provider, base_provider.unavailable_reason())
+        candidates = self._fallback_candidates(provider, fallback)
+        failed: list[ProviderAttempt] = []
 
-            # Create new instance with custom parameters if needed
-            if provider_params or model:
-                research_provider = self._create_provider_with_params(provider, model, provider_params or {})
-            else:
-                research_provider = base_provider
-        else:
-            base_provider = self.registry.get_first_available()
-            if not base_provider:
-                raise ValueError("No research providers available")
+        async def serve_cached(
+            candidate: str,
+            cached_model: Optional[str],
+            cache_params: Optional[dict],
+            unreachable: Optional[BaseException] = None,
+        ) -> Optional[ResearchResult]:
+            """Return this candidate's cached report, stamped for this run.
 
-            provider_name = base_provider.name
-            # Create new instance with custom parameters if needed
-            if provider_params or model:
-                research_provider = self._create_provider_with_params(provider_name, model, provider_params or {})
-            else:
-                research_provider = base_provider
+            Closes over what does not vary across candidates, so the two places
+            that may serve a cached result cannot drift on how they stamp one --
+            the same reason the fallback warning lives inside _record_provenance
+            rather than at each return.
 
-        # Check cache first
-        cache_provider_params = self._get_cache_provider_params(research_provider, provider_params)
-        cached_result = await self.cache.get(query, research_provider.name, model, cache_provider_params)
-        if cached_result:
-            # Update timing for cached results
-            end_time = datetime.now()
-            cached_result.start_time = start_time
-            cached_result.end_time = end_time
-            cached_result.duration_seconds = time.time() - start_timestamp
-            return cached_result
+            Args:
+                candidate: Provider whose cache entry is wanted.
+                cached_model: Model to key the entry by, if any.
+                cache_params: Provider parameters to key the entry by.
+                unreachable: The failure that stopped this provider running, when
+                    the entry is being served in place of a live call. Announced
+                    before the result is stamped, so the reason reaches the log
+                    ahead of the outcome it caused.
 
-        # Perform research
-        result = await research_provider.research(query)
-
-        # Add timing and metadata
-        end_time = datetime.now()
-        result.start_time = start_time
-        result.end_time = end_time
-        result.duration_seconds = time.time() - start_timestamp
-
-        # Add template information if provided
-        if template_info:
-            result.template_file = template_info.get('template_file')
-            result.template_variables = template_info.get('template_variables')
-
-        # Add publication-style metadata if provided
-        if metadata:
-            if 'title' in metadata:
-                result.title = metadata['title']
-            if 'abstract' in metadata:
-                result.abstract = metadata['abstract']
-            if 'keywords' in metadata:
-                result.keywords = metadata['keywords']
-            if 'author' in metadata or 'contributors' in metadata:
-                result.query_metadata = QueryMetadata(
-                    author=metadata.get('author'),
-                    contributors=metadata.get('contributors', [])
+            Returns:
+                The stamped result, or None when nothing is cached.
+            """
+            cached = await self.cache.get(query, candidate, cached_model, cache_params)
+            if cached is None:
+                return None
+            if unreachable is not None:
+                # Say it even though the run succeeds: the next uncached query
+                # will not, and nothing else records why. No attempt is
+                # appended, because the cached report really was produced by
+                # this provider -- so this line is the only thing standing
+                # between a revoked credential and silence.
+                logger.warning(
+                    "Provider %s cannot do this run: %s. "
+                    "Serving the report it produced for this query earlier",
+                    candidate, unreachable,
                 )
+            cached.start_time = start_time
+            cached.end_time = datetime.now()
+            cached.duration_seconds = time.time() - start_timestamp
+            self._record_provenance(cached, provider, failed, candidate)
+            return cached
 
-        # Add provider configuration. Prefer a model the provider already recorded
-        # on the result (e.g. the actual model id reported by the run) over the
-        # provider's configured/default model.
-        if result.model is None:
-            result.model = getattr(research_provider, 'model', None)
-        result.provider_config = {
-            'timeout': research_provider.config.timeout,
-            'max_retries': research_provider.config.max_retries,
-        }
+        for position, candidate in enumerate(candidates):
+            # The last candidate has nowhere to fall back to, so its failure is
+            # the run's failure and propagates untouched -- same type, same
+            # traceback a caller would have seen with no fallback at all.
+            last = position == len(candidates) - 1
 
-        # Add provider-specific parameters if they exist
-        params = getattr(research_provider, "params", None)
-        if isinstance(params, BaseProviderParams):
-            # Convert Pydantic model to dict, excluding None values and model field
-            params_dict = params.model_dump(exclude_none=True, exclude={'model'})
-            if params_dict:
-                result.provider_config['parameters'] = params_dict
+            # A model name and provider parameters were chosen for the provider
+            # the caller named; they mean nothing to a different one, and an
+            # unknown parameter is a hard schema error. So they apply to the
+            # first candidate only, and a fallback runs on its own defaults --
+            # said out loud below, because it is a change to what was asked.
+            first = position == 0
+            effective_model = model if first else None
+            effective_params = provider_params if first else None
 
-        # Cache the result
-        await self.cache.set(query, research_provider.name, result, model, cache_provider_params)
+            cache_provider_params = self._get_cache_provider_params(
+                candidate, effective_params
+            )
 
-        return result
+            try:
+                research_provider = self._prepare_provider(
+                    candidate, effective_model, effective_params
+                )
+            except Exception as exc:
+                if last or not is_fallback_worthy(exc):
+                    # Carry the trail out on the exception, then re-raise bare:
+                    # same object, same type, same traceback, and __cause__
+                    # left to whoever set it.
+                    self._attach_trail(exc, failed, candidate)
+                    raise
+                # Reading a report off disk needs no credential, so a
+                # provider we can no longer reach can still serve one it
+                # produced earlier, rather than the next candidate being
+                # called for a report we already hold.
+                #
+                # The predicate is "another candidate remains", not "someone
+                # would otherwise be billed" -- the two come apart, since a
+                # remaining candidate may be a permanently unavailable stub.
+                # It is deliberately the narrower one: on the last candidate
+                # the run fails exactly as it did before any of this, which is
+                # what keeps the default, no-fallback path byte-identical.
+                served = await serve_cached(
+                    candidate, effective_model, cache_provider_params, exc
+                )
+                if served is not None:
+                    return served
+                failed.append(ProviderAttempt.from_exception(candidate, exc))
+                self._warn_falling_back(
+                    candidate, candidates[position + 1], exc, model,
+                    provider_params, candidates[0],
+                )
+                continue
+
+            # The ordinary read, for a provider we were able to prepare.
+            served = await serve_cached(
+                candidate, effective_model, cache_provider_params
+            )
+            if served is not None:
+                return served
+
+            # Perform research
+            try:
+                result = await research_provider.research(query)
+            except Exception as exc:
+                if last or not is_fallback_worthy(exc):
+                    # Carry the trail out on the exception, then re-raise bare:
+                    # same object, same type, same traceback, and __cause__
+                    # left to whoever set it.
+                    self._attach_trail(exc, failed, candidate)
+                    raise
+                failed.append(ProviderAttempt.from_exception(candidate, exc))
+                self._warn_falling_back(
+                    candidate, candidates[position + 1], exc, model,
+                    provider_params, candidates[0],
+                )
+                continue
+
+            # Add timing and metadata
+            end_time = datetime.now()
+            result.start_time = start_time
+            result.end_time = end_time
+            result.duration_seconds = time.time() - start_timestamp
+
+            # Add template information if provided
+            if template_info:
+                result.template_file = template_info.get('template_file')
+                result.template_variables = template_info.get('template_variables')
+
+            # Add publication-style metadata if provided
+            if metadata:
+                if 'title' in metadata:
+                    result.title = metadata['title']
+                if 'abstract' in metadata:
+                    result.abstract = metadata['abstract']
+                if 'keywords' in metadata:
+                    result.keywords = metadata['keywords']
+                if 'author' in metadata or 'contributors' in metadata:
+                    result.query_metadata = QueryMetadata(
+                        author=metadata.get('author'),
+                        contributors=metadata.get('contributors', [])
+                    )
+
+            # Add provider configuration. Prefer a model the provider already recorded
+            # on the result (e.g. the actual model id reported by the run) over the
+            # provider's configured/default model.
+            if result.model is None:
+                result.model = getattr(research_provider, 'model', None)
+            result.provider_config = {
+                'timeout': research_provider.config.timeout,
+                'max_retries': research_provider.config.max_retries,
+            }
+
+            # Add provider-specific parameters if they exist
+            params = getattr(research_provider, "params", None)
+            if isinstance(params, BaseProviderParams):
+                # Convert Pydantic model to dict, excluding None values and model field
+                params_dict = params.model_dump(exclude_none=True, exclude={'model'})
+                if params_dict:
+                    result.provider_config['parameters'] = params_dict
+
+            # Cache the result
+            await self.cache.set(
+                query, candidate, result, effective_model, cache_provider_params
+            )
+
+            # After caching, so that which providers this run tried never
+            # becomes part of what a later run reads back.
+            self._record_provenance(result, provider, failed, candidate)
+            return result
+
+        # Unreachable: _fallback_candidates never returns an empty list, and the
+        # last candidate re-raises rather than falling out of the loop.
+        raise ValueError("No research providers available")
+
+    def knows_provider(self, name: str) -> bool:
+        """Report whether a name is a provider at all, configured or not.
+
+        The distinction this draws is the one that decides which error a caller
+        gets: a known provider with no credential is *not configured* and can
+        be fallen back from, while an unrecognised name is a typo and the
+        remedy is a list of the names that exist.
+
+        Every site that has to tell those apart asks this -- the fallback list,
+        the CLI's pre-check, and the resolver that picks between the two error
+        types. Spelling it out instead is how it came to be missing from one of
+        them.
+
+        Configuration is a different question, and deliberately not this one:
+        ``falcon`` is a provider whether or not a key is set for it, while a
+        transposed letter is not.
+
+        >>> client = DeepResearchClient(
+        ...     cache_config=CacheConfig(enabled=False),
+        ...     provider_configs={"mock": ProviderConfig(name="mock")},
+        ... )
+        >>> client.knows_provider("falcon"), client.knows_provider("falcn")
+        (True, False)
+
+        The registry is consulted as well as the known names, so a provider put
+        there directly under a name no environment variable produces still
+        counts:
+
+        >>> from deep_research_client.providers.mock import MockProvider
+        >>> client.registry.register(MockProvider(ProviderConfig(name="spare")))
+        >>> client.knows_provider("spare")
+        True
+
+        Args:
+            name: Provider name to check.
+
+        Returns:
+            True when the name is one this client could resolve.
+        """
+        return name in PROVIDER_CLASS_PATHS or self.registry.get_provider(name) is not None
 
     def get_available_providers(self) -> list[str]:
         """Get list of available provider names."""

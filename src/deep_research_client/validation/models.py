@@ -29,11 +29,11 @@ runtime even though the annotation says otherwise, so compare against members
 rather than reaching for attributes on them.
 """
 
-import re
 from typing import Any, Dict, List
 
 from .datamodel import ReferenceCheck, ReferenceStatus, SupportingTextCheck, TopicalRelevance
 from .datamodel import ReferenceValidationReport as GeneratedReferenceValidationReport
+from .sections import VALIDATION_SECTION_HEADING, strip_validation_section
 
 __all__ = [
     "ABSTRACT_ONLY_CONTENT_TYPES",
@@ -47,8 +47,6 @@ __all__ = [
     "strip_validation_section",
 ]
 
-VALIDATION_SECTION_HEADING = "## Reference Validation"
-
 # Content types that mean only a summary was searched. A quote failing against
 # one of these is much weaker evidence than a quote failing against retrieved
 # full text: four of the six quote failures in a live CHILD syndrome report were
@@ -60,65 +58,6 @@ ABSTRACT_ONLY_CONTENT_TYPES = frozenset({"abstract_only", "abstract", "unavailab
 # evidence of an outage - it is as likely to be a short bibliography in which
 # the citations really are wrong.
 OUTAGE_HINT_MIN_REFERENCES = 3
-
-_H2_HEADING_RE = re.compile(r"^##[ \t]+\S.*$", re.MULTILINE)
-
-
-def strip_validation_section(markdown: str) -> str:
-    """Remove a previously written validation section from a report.
-
-    Validating a report that already carries a section would otherwise re-extract
-    the identifiers that section lists, re-fetching flagged references and
-    inflating the counts, so a second run must start from the original text.
-
-    Only a *trailing* section is removed: a generated section is always appended
-    last and contains no further level-two headings, so it is safe to strip
-    exactly when the final ``##`` heading in the document is the validation
-    heading. A report that discusses reference validation in its body and then
-    continues with another section keeps everything, which matters because the
-    caller writes this result back over the file.
-
-    The one case it cannot see through is a validation heading inside a fenced
-    code block that happens to be the last ``##`` in the file. Recognising that
-    would mean parsing markdown rather than scanning it.
-
-    Args:
-        markdown: Report text, possibly ending in a validation section.
-
-    Returns:
-        The report without its trailing validation section, with trailing blank
-        lines normalised to a single newline.
-
-    Examples:
-        >>> strip_validation_section("# Report\\n\\nBody text.\\n")
-        '# Report\\n\\nBody text.\\n'
-        >>> strip_validation_section(
-        ...     "# Report\\n\\nBody text.\\n\\n## Reference Validation\\n\\nSomething.\\n"
-        ... )
-        '# Report\\n\\nBody text.\\n'
-        >>> strip_validation_section("## Reference Validation\\n\\nOnly a section.\\n")
-        ''
-
-        A validation heading that is not the last section is left alone, along
-        with everything after it:
-
-        >>> strip_validation_section(
-        ...     "# Report\\n\\n## Reference Validation\\n\\nWe discuss it.\\n"
-        ...     "\\n## Conclusions\\n\\nImportant text.\\n"
-        ... )
-        '# Report\\n\\n## Reference Validation\\n\\nWe discuss it.\\n\\n## Conclusions\\n\\nImportant text.\\n'
-    """
-    text = markdown
-    while True:
-        headings = _H2_HEADING_RE.findall(text)
-        if not headings or headings[-1].strip() != VALIDATION_SECTION_HEADING:
-            break
-        # Repeat, so a file left with stacked sections by an older run is cleaned
-        # up rather than losing only the last of them.
-        last_start = text.rindex(headings[-1])
-        text = text[:last_start]
-    return text.rstrip() + "\n" if text.strip() else ""
-
 
 class ReferenceValidationReport(GeneratedReferenceValidationReport):
     """Aggregate result of validating every reference in a report.
@@ -146,11 +85,11 @@ class ReferenceValidationReport(GeneratedReferenceValidationReport):
     def checked_references(self) -> List[ReferenceCheck]:
         """The per-reference results, normalised to a list.
 
-        The generated slot is ``Optional[list]``, because LinkML has no way to
-        give a multivalued slot a default without also making it mandatory.
-        Leaving the annotation as generated keeps the inherited serializer
-        working (it turns empty lists into nulls under ``exclude_none``), so the
-        normalisation happens here instead.
+        The generated slot is ``Optional[list]`` defaulting to ``None``, because
+        LinkML has no way to give a multivalued slot a default without also
+        making it mandatory. Leaving the annotation as generated keeps an
+        unfilled report out of the JSON under ``exclude_none``, so the
+        normalisation to a list happens here instead.
 
         Examples:
             >>> ReferenceValidationReport().checked_references

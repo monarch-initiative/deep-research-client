@@ -5,12 +5,52 @@ from datetime import datetime
 from typing import List, Optional
 
 from . import ResearchProvider
+from ..exceptions import (
+    ProviderAuthError,
+    ProviderBillingError,
+    ProviderError,
+    ProviderNotConfiguredError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
+    ProviderTransientError,
+)
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import MockParams
 
 
+#: The failure each ``error_type`` stands for: the class, the status code a
+#: real provider would have carried it on, and any extra the constructor takes.
+#: Keyed by the same literals MockParams accepts, so the two cannot drift apart
+#: silently.
+#:
+#: The quota entry carries a reset time on purpose. ProviderQuotaError is the
+#: one error that folds provider-supplied text into its own remedy, so without
+#: it the mock cannot reproduce the case the report's redaction exists for --
+#: the comma keeps everything after the time, and none of it reaches the file.
+_SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = {
+    "auth": (ProviderAuthError, 401, {}),
+    "billing": (ProviderBillingError, 402, {}),
+    # No status code, matching the real thing: a spent allowance is detected
+    # from the CLI's own wording, so ProviderQuotaError is built without one.
+    # 429 would also read as a contradiction of the documented rule that a 429
+    # means wait rather than switch -- that is ProviderRateLimitError's status.
+    "quota": (ProviderQuotaError, None, {"resets_at": "3pm, pool quota_pool_7f21"}),
+    "rate_limit": (ProviderRateLimitError, 429, {}),
+    "transient": (ProviderTransientError, 503, {}),
+    # Reproduces the error *type* rather than the path: a real
+    # ProviderNotConfiguredError is raised while resolving a provider, before
+    # any research call, so nothing outside this table raises one from here.
+    # Simulating the type is still what a fallback test needs.
+    "not_configured": (ProviderNotConfiguredError, None, {}),
+}
+
+
 class MockProvider(ResearchProvider):
     """Mock provider that returns fake responses for testing."""
+
+    #: The reports are invented, so this provider is never fallen back to
+    #: automatically. ``--fallback-provider mock`` still reaches it.
+    produces_real_reports = False
 
     def __init__(self, config: ProviderConfig, params: Optional[MockParams] = None):
         """Initialize Mock provider.
@@ -40,12 +80,26 @@ class MockProvider(ResearchProvider):
             ResearchResult with mock content and citations
 
         Raises:
+            ProviderError: If error_type names a failure to simulate; the
+                subclass matches the name, so a caller can exercise fallback
+                (auth/billing/quota/not_configured) or its refusal to fall back
+                (rate_limit/transient) without a real outage.
             ValueError: If include_error parameter is True
         """
         # Simulate API delay
         await asyncio.sleep(self.params.response_delay)
 
-        # Simulate error if requested
+        # Simulate error if requested. The typed failure is checked first: it
+        # says more than the generic one, so where a caller asked for both,
+        # answering with the vaguer error would be throwing information away.
+        if self.params.error_type:
+            error_class, status_code, extra = _SIMULATED_ERRORS[self.params.error_type]
+            raise error_class(
+                self.name,
+                f"Mock error: simulated {self.params.error_type} failure",
+                status_code,
+                **extra,
+            )
         if self.params.include_error:
             raise ValueError("Mock error: This is a simulated API error for testing")
 

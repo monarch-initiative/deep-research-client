@@ -1,0 +1,356 @@
+# Validate Ontology Terms
+
+Deep research providers cite ontology terms with the same confidence they cite papers, and
+with the same reliability. A report will attach `HP:9999999` to a phenotype that has no
+such identifier - and, worse, will attach a *real* identifier to the wrong thing.
+
+That second failure is why this check exists. `NCIT:C16814` is a genuine NCIT term. It
+resolves. It has a label, a definition and a URL. Every check that asks "does this term
+exist?" passes it. It means **Malaysia**, and a report that writes it beside the words
+"Echocardiography Test" is wrong in a way nothing but a label lookup will show.
+
+`deep-research-client` integrates
+[linkml-term-validator](https://pypi.org/project/linkml-term-validator/) so a report's
+terms can be checked as soon as it is produced.
+
+Three things are checked:
+
+1. **Existence.** Every CURIE in the report is resolved through
+   [OAK](https://incatools.github.io/ontology-access-kit/). Identifiers that do not resolve
+   in an ontology that resolved other terms from the same prefix are flagged as suspect.
+2. **Label agreement.** The label the report writes beside a CURIE is compared with that
+   term's own label. This is the check that catches `NCIT:C16814`.
+3. **Obsolescence.** Terms that resolve but have been deprecated are reported separately,
+   with their replacement where the ontology states one. Citing an obsolete term is not a
+   fabrication; it does mean the report names something the ontology has retired.
+
+## Install
+
+Term validation pulls in OAK and its ontology tooling, which most users do not need, so it
+is an optional extra:
+
+```bash
+pip install "deep_research_client[terms]"
+```
+
+Or, in a uv project:
+
+```bash
+uv add "deep_research_client[terms]"
+```
+
+## Validate a report you already have
+
+```bash
+deep-research-client validate-terms report.md
+```
+
+```markdown
+## Term Validation
+
+Checked with `linkml-term-validator` 0.4.5, through the `ols:` adapter.
+
+| Outcome | Count |
+| --- | --- |
+| Terms checked | 10 |
+| Resolved | 7 |
+| Unresolved (possible confabulation) | 1 |
+| Obsolete | 1 |
+| Unverifiable | 1 |
+| Terms whose name was checked | 7 |
+| Terms named correctly | 2 |
+| Terms named as a **different** term | 3 |
+| Terms whose name is worth a second look | 2 |
+
+### Terms the report names something else
+
+These identifiers resolve, so nothing about them looks wrong, and the ontology calls them
+something unrelated to what the report calls them. That usually means the identifier is not
+the one the sentence needs:
+
+- `NCIT:C16814` (1 mention) - the report calls it "Echocardiography Test"; NCIT calls it **Malaysia**
+- `NCIT:C38048` (1 mention) - the report calls it "Ophthalmologic examination"; NCIT calls it **Vasovagal**
+- `GO:0008022` (1 mention) - the report calls it "Obsolete example"; GO calls it **obsolete protein C-terminus binding**
+
+### Unresolved terms
+
+These identifiers do not exist in an ontology that resolved other terms from the same
+prefix, so they were most likely invented:
+
+- `HP:9999999` (1 mention), reported as "Invented phenotype" - HP does not contain this term
+
+### Obsolete terms
+
+These terms are real but deprecated. Citing one is not a fabrication; it does mean the
+report is naming something the ontology has retired:
+
+- `GO:0008022` (obsolete protein C-terminus binding) (1 mention) - replaced by `GO:0005515`
+
+### Terms whose name is worth a second look
+
+The report's name for these is recognisably related to the term's own name without being one
+of them. A loose paraphrase reads the same way as a citation of the wrong sibling term - and
+so does a *related* synonym, which the ontology records precisely because it names something
+adjacent rather than the same thing - so these are listed rather than judged:
+
+- `HP:0002616` (1 mention) - the report calls it "Aortic root dilation"; HP calls it **Aortic root aneurysm**, and lists "Aortic root dilatation" among its other names
+- `GO:0008543` (1 mention) - the report calls it "FGF receptor signalling"; GO calls it **fibroblast growth factor receptor signaling pathway**, and lists "FGF receptor signalling pathway" among its other names
+
+### Prefixes with no resolver
+
+Terms carrying these prefixes were not checked either way, because no configured ontology
+covers them. An unrecognised prefix may name an ontology this run could not reach as easily
+as one that does not exist, so nothing here is evidence of fabrication: `FAKEONT`.
+```
+
+Use `--in-place` to write that section into the report itself, or `--json` to get the same
+result as structured data. `--in-place` replaces any section a previous run left behind, so
+it is safe to re-run over a whole corpus, and it leaves a `## Reference Validation` section
+where it found one — running the two commands over the same file in either order keeps both.
+
+## Validate as part of the research run
+
+```bash
+deep-research-client research "Marfan syndrome surveillance" \
+  --output marfan.md \
+  --validate-terms
+```
+
+The saved report gains both a `## Term Validation` section and a frontmatter summary:
+
+```yaml
+term_validation:
+  total_terms: 10
+  verified: 7
+  not_found: 1
+  obsolete: 1
+  unverifiable: 1
+  confabulation_rate: 0.111
+  labels_checked: 7
+  labels_matching: 2
+  labels_mismatched: 3
+  mislabelled_terms:
+  - term_id: NCIT:C16814
+    reported_labels:
+    - Echocardiography Test
+    ontology_label: Malaysia
+  - term_id: NCIT:C38048
+    reported_labels:
+    - Ophthalmologic examination
+    ontology_label: Vasovagal
+  - term_id: GO:0008022
+    reported_labels:
+    - Obsolete example
+    ontology_label: obsolete protein C-terminus binding
+  labels_variant: 2
+  unresolved_terms:
+  - HP:9999999
+  obsolete_terms:
+  - term_id: GO:0008022
+    ontology_label: obsolete protein C-terminus binding
+    replaced_by: GO:0005515
+  unresolvable_prefixes:
+  - FAKEONT
+  needs_review: true
+  adapter: 'ols:'
+  validator_version: 0.4.5
+```
+
+`--validate-terms` and `--validate-references` compose: passing both appends both sections
+and writes both summaries.
+
+The `labels_*` counts are per term, not per name: a report calling one identifier three
+things contributes one to each.
+
+`confabulation_rate` counts identifier resolution and nothing else. A report can resolve
+every CURIE it cites, score `0.0`, and still call half of them by the names of other terms.
+So `labels_mismatched`, `mislabelled_terms` and `needs_review` are written out whenever
+they apply, rather than left to be worked out. If `needs_review` is absent, nothing needed
+reviewing.
+
+`mislabelled_terms` and `obsolete_terms` carry the names rather than bare CURIEs, because
+the CURIE alone is not the finding. `mislabelled_terms: [NCIT:C16814]` tells you something
+is wrong and leaves you to go and look up what; the pair of names is the thing you needed to
+know. `reported_labels` stays a list even when there is one, since a report that calls one
+identifier two things has not decided what it cites. `replaced_by` is written out only when
+the ontology states one.
+
+`needs_review` is deliberately wider than the thing that fails a build. An obsolete term or
+a variant label sets it, but does not make `--fail-on-unresolved` exit non-zero: both are
+go-and-looks, not failures.
+
+## What the outcomes mean
+
+### Term status
+
+| Status | Meaning |
+|--------|---------|
+| `VERIFIED` | The CURIE resolves to a current term. |
+| `NOT_FOUND` | The CURIE did not resolve, in an ontology that resolved other terms from the same prefix. Likely invented. |
+| `OBSOLETE` | The CURIE resolves, but the term has been deprecated. |
+| `UNVERIFIABLE` | No resolver covered this prefix, or it was skipped. Nothing was learned either way, so this is never evidence of fabrication. |
+
+The line between `NOT_FOUND` and `UNVERIFIABLE` is drawn from what the run actually learned.
+A prefix counts as resolvable if it is an OBO-library prefix, if it is configured in an
+`oak_config.yaml`, or if some other term carrying it resolved during this run. A failure
+under such a prefix is reported as a failure. A failure under any other prefix is reported
+as unverifiable, because an unrecognised prefix may name an ontology this run could not
+reach as easily as one that does not exist.
+
+When *every* resolvable term fails at once, the report says so and hedges: that is far more
+often an unreachable ontology service than a report in which every identifier is invented.
+
+### Label agreement
+
+| Agreement | Meaning |
+|-----------|---------|
+| `MATCH` | The report's label is one of the names the term carries — its own label or an **exact synonym** — up to case, punctuation, word order and plurals. `seizures` matches `Seizure`; so does `Marfan's syndrome` against `Marfan syndrome`. |
+| `VARIANT` | Recognisably related without being one of them. `Long QT syndrome` against `Long QT syndrome 1`, a British spelling, or a broad/narrow/related synonym. Listed, not judged. |
+| `MISMATCH` | Almost nothing in common with any name the term carries. The report is calling the identifier something the ontology does not. |
+| `NOT_ASSESSED` | The report wrote no label beside the CURIE, the term did not resolve, or `--no-check-labels` was passed. |
+
+### Synonyms
+
+A term is not only its label. `HP:0001250` is labelled `Seizure`, and the ontology also
+records `Seizures` as an exact synonym and `Epilepsy` as a related one. A report using any
+of those has not invented anything, so all of them are consulted — which is what stops the
+most common false `MISMATCH`.
+
+Scope is kept, because a synonym is not always another way of saying the same thing:
+
+- an **exact** synonym is another name for the same thing, so matching one is a `MATCH`;
+- a **related**, **broad** or **narrow** synonym names something adjacent, so matching one
+  is a `VARIANT` — worth reading, not worth failing a build over.
+
+When a name is recognised as a synonym rather than the label, the report says which. On a
+`MISMATCH` no synonym is named — the check consulted them and none was accepted, so a
+flagged term that has synonyms is one whose synonyms did not help, not one where they
+were skipped:
+
+```markdown
+- `HP:0001166` (1 mention) - the report calls it "Long fingers"; HP calls it
+  **Arachnodactyly**, and lists "Long slender fingers" among its other names
+```
+
+Synonyms come from OAK, the same way [OntoGPT](https://github.com/monarch-initiative/ontogpt)
+reads them: `entity_alias_map` on a local adapter such as `sqlite:obo:`, which is keyed by
+predicate so scope survives. The default `ols:` adapter does not implement that call, so
+synonyms are read from the OLS term payload instead — which the obsolescence check has
+already fetched and cached, so this costs no extra request either way. Its `obo_synonym`
+entries carry a scope each; anything appearing only in its unscoped list is treated as
+merely related, since calling it exact would be a claim the payload never made.
+
+This means a verdict can depend on the adapter, though not uniformly. OLS scopes some
+ontologies' synonyms and not others: `HP:0001250` comes back with "Seizures" marked as an
+exact synonym, while every synonym `GO:0008543` carries arrives with no scope at all. Where
+the scope is missing, a report using one of those names *verbatim* reads as a `VARIANT`
+under `ols:` and as a `MATCH` under `sqlite:obo:`, which has the scope locally.
+
+The difference is always in that direction: an unscoped name can only be under-credited,
+never over-credited, so the default adapter errs toward asking for a second look rather than
+toward silence.
+
+In `--offline` mode no adapter is built at all, so no synonyms are available and comparison
+falls back to the label alone.
+
+The threshold between `VARIANT` and `MISMATCH` was set against real pairs rather than
+guessed. `NCIT:C16814` written as "Echocardiography Test" against its actual label
+"Malaysia" scores 0.21; the closest genuine near-miss in the same sample, "Type 2 diabetes"
+against "type 2 diabetes mellitus", scores 0.77. The threshold sits at 0.5, with margin on
+both sides.
+
+## Where labels are read from
+
+Deciding which nearby words are a label and which are prose is the hard part, and getting
+it wrong produces a confident accusation about a term that was cited correctly. So labels
+are only read out of positions where a label is the only thing the text can reasonably be:
+
+| Written as | Read as |
+|------------|---------|
+| `\| Seizure \| HP:0001250 \|` | the label column of a table |
+| `\| HP:0001250 \| Seizure \|` | the same, identifier first |
+| `HP:0001250 (Seizure)` | a bracket immediately after the CURIE |
+| `HP:0001250: Seizure`, `HP:0001250 - Seizure` | a separator immediately after the CURIE |
+| `**Seizure** (HP:0001250)`, `"Seizure" (HP:0001250)` | an emphasised or quoted run before it |
+| `- Seizure (HP:0001250)` | a list item that names the term |
+
+A term mentioned in flowing prose - "patients with aortic root dilation (HP:0002616) were
+followed" - gets **no** reported label, and so no label check. It is still resolved and
+still checked for existence. That undercounts rather than invents, which is the right way
+round: reading "patients with aortic root dilation" as a label would flag a term that was
+cited perfectly well.
+
+A name that is neither the label nor close to any synonym still shows a `MISMATCH`, which
+is the intended behaviour — that is how `NCIT:C16814` is caught. Read the section rather
+than just counting it: an ontology's synonym list is not exhaustive, so an unusual but
+correct paraphrase can still land there.
+
+## When the ontology service is unreachable
+
+A lookup that fails is not the same as a term that does not exist, and the two are kept
+apart. A definitive 404 is an answer: the term is absent. A connectivity failure, a 5xx, a
+408 or a 429 is not, and raises rather than returning nothing — so a rate-limited run exits
+with code `3` and says the service was unreachable, instead of quietly reporting real terms
+as fabricated.
+
+That is why there is no rate-limit delay option here, unlike
+[reference validation](validate-references.md). Running into a limit costs you a re-run, not
+a confidently wrong report.
+
+## Fail a pipeline on bad terms
+
+Both commands accept `--fail-on-unresolved`, which exits with code `2` when any term fails
+to resolve or is named as a different term. Obsolete terms, variant labels and unverifiable
+prefixes do not trip it:
+
+```bash
+deep-research-client validate-terms report.md --fail-on-unresolved
+```
+
+## How long it takes
+
+Measured against a 20-term list on an ordinary broadband connection, through the default
+`ols:` adapter. Numbers will move with network conditions and upstream load.
+
+| Run | Time | Per term |
+|-----|-----:|---------:|
+| Cold cache | 33.6s | 1.7s |
+| Warm cache | 16.0s | 0.8s |
+
+A warm cache halves the cost rather than eliminating it, because only labels are cached to
+disk. Obsolescence is asked per term on every run, and over OLS that is a round trip. For a
+report's worth of terms this is a small addition to a research call that already takes
+minutes; for a corpus it is the thing to plan around.
+
+For bulk work, `--adapter sqlite:obo:` downloads each ontology once and answers locally
+afterwards, which turns both checks into local lookups - obsolescence included, since a
+whole-ontology scan is cheap against a local database and is done once per prefix. The
+first run pays for the downloads, which are large.
+
+## Options
+
+Every option below exists on both commands. On `research` they take a `--term-` prefix -
+`--term-adapter`, `--term-skip-prefix` and so on - so that they cannot be confused with the
+research options they sit beside.
+
+| Option | What it is for |
+|--------|----------------|
+| `--adapter` | The OAK adapter terms are resolved through. Defaults to `ols:`, which is right for a report's worth of terms. `sqlite:obo:` is right for a corpus. |
+| `--oak-config` | An `oak_config.yaml` mapping prefixes to adapters, for ontologies the default adapter does not serve. When given it is authoritative: a prefix absent from it gets no adapter at all. |
+| `--cache-dir` | Where resolved labels are cached between runs. Defaults to `./terms_cache`. Point several runs at one directory. |
+| `--offline` | Resolve only from the label cache, never reaching the network. Every uncached term comes back unverifiable. Useful in CI, where a network failure would otherwise look like a fabricated term. |
+| `--skip-prefix` | Report a prefix as unverifiable instead of resolving it. Repeatable. |
+| `--max-terms` | Stop after this many terms. The report says it was truncated. |
+| `--no-check-labels` | Resolve terms but do not compare labels. Costs nothing to leave on, since the label has already been fetched to check that the term resolves. |
+
+## What this does not check
+
+That a term is *the right term for the sentence*. A report can name `HP:0001250` "Seizure",
+pass every check here, and still be citing seizures in a paragraph about cardiac
+arrhythmia. Label agreement tells you the report knows what the identifier means; it does
+not tell you the identifier belongs there.
+
+## See also
+
+- [Validate References](validate-references.md) - the same treatment for PMIDs, DOIs and
+  accessions.

@@ -15,6 +15,8 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 📝 **Library + CLI**: Use as a Python library or command-line tool
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
 - ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
+- 🏷️ **Ontology Term Validation**: Resolve every cited CURIE and check it against the label the report gave it, catching the real term that means something else entirely
+- 🔁 **Opt-in Provider Fallback**: Let another provider take over when one is out of credits or unconfigured, with the provider that actually produced the report recorded on it
 - 🏗️ **Extensible**: Easy to add new research providers
 
 ## Installation
@@ -31,6 +33,9 @@ uv add deep-research-client
 
 # With reference validation (checks cited identifiers actually exist)
 pip install "deep-research-client[validation]"
+
+# With ontology term validation (checks cited CURIEs are the terms they are named as)
+pip install "deep-research-client[terms]"
 
 # For development
 git clone <repo-url>
@@ -133,6 +138,10 @@ deep-research-client clear-cache  # Remove all cache
 # Check that cited identifiers exist and quotes are real (needs the `validation` extra)
 deep-research-client research "Statins and myopathy" --output report.md --validate-references
 deep-research-client validate-references report.md --fail-on-unresolved
+
+# Check that cited ontology terms are the terms the report names them as (needs the `terms` extra)
+deep-research-client research "Marfan syndrome surveillance" --output report.md --validate-terms
+deep-research-client validate-terms report.md --fail-on-unresolved
 ```
 
 You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
@@ -157,6 +166,68 @@ print(report.to_markdown())               # renderable summary section
 ```
 
 On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
+
+### Ontology Term Validation
+
+An ontology identifier that does not exist is the easy case. The hard case is the one that does: `NCIT:C16814` is a real NCIT term, so every check that asks whether a term exists passes it, and it means **Malaysia**. A report that writes it beside "Echocardiography Test" is wrong in a way only a label lookup will show.
+
+With the `terms` extra installed, every CURIE in a report is resolved through OAK, compared with the label the report wrote beside it, and checked for obsolescence:
+
+```python
+from deep_research_client import DeepResearchClient, TermValidator
+
+result = DeepResearchClient().research("Marfan syndrome surveillance")
+report = TermValidator().validate_result(result)
+
+print(report.confabulation_rate)     # fraction of CURIEs that do not resolve
+print(report.confabulated_terms)     # identifiers no ontology contains
+print(report.mislabelled_terms)      # identifiers the report names as a different term
+print(report.obsolete_terms)         # real terms the ontology has since retired
+print(report.to_markdown())          # renderable summary section
+```
+
+Labels are only read from positions where a label is the only thing the text can be - a table cell, an emphasised run, a bracket or separator right after the CURIE - so a term mentioned in prose is checked for existence but not for naming. That undercounts rather than invents. Comparison runs against every name a term carries, synonyms included, so a report calling `HP:0001166` "Long fingers" rather than "Arachnodactyly" is not accused of anything. See the [Validate Ontology Terms guide](docs/how-to/validate-terms.md) for the full rules, outcomes and [timings](docs/how-to/validate-terms.md#how-long-it-takes).
+
+### Provider Fallback
+
+A run can fail for reasons no retry fixes - an account out of credits, a spent plan allowance, a rejected key. `--fallback` lets another configured provider take the work instead:
+
+```bash
+deep-research-client research "Statins and myopathy" --provider falcon --fallback --output report.md
+
+# Or name the order yourself
+deep-research-client research "CRISPR delivery" \
+  --provider falcon --fallback-provider openai --fallback-provider perplexity
+```
+
+It is off by default on purpose. A report records the provider that produced it, and downstream curation reads that field, so a silent switch would make those records wrong. When a fallback does happen, the report says so:
+
+```yaml
+provider: openai
+fell_back: true
+requested_provider: falcon
+provider_attempts:
+- provider: falcon
+  succeeded: false
+  error_type: ProviderBillingError
+  status_code: 402
+  remedy: the account is out of credits
+  retryable: false
+- provider: openai
+  succeeded: true
+```
+
+`remedy` is our reading of the failure, not the provider's own error text: that text can quote whatever a provider puts in a response body — including, for a rejected key, the key — and these reports get committed, so the raw version stays on the result object and in the logs. A report produced without a fallback gains none of these keys. Cache entries carry them empty, and are written before the provenance is stamped, so a cached answer can never be replayed as a fallback that never happened. Only failures meaning *this provider cannot do the work* are followed. A 429 or a 5xx says to wait and retry the same provider, not to switch, and an unrecognised failure is not evidence that anyone else would do better. From Python:
+
+```python
+result = client.research("Statins and myopathy", provider="falcon", fallback=True)
+result.provider            # who actually produced it
+result.requested_provider  # who was asked
+result.fell_back           # whether a switch happened
+result.provider_attempts   # each provider tried, and why it failed
+```
+
+See the [Choose a Provider guide](docs/how-to/choose-provider.md#fall-back-to-another-provider) for the full rules.
 
 ### Python Library Usage
 

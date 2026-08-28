@@ -276,9 +276,15 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     command run proves the message survives the real wiring -- a `caplog`
     assertion would not, since the Typer callback runs
     `logging.basicConfig(force=True)` and drops the handler it relies on. The
-    `capsys` run proves the message is on *stdout*: this click pins
-    `mix_stderr=True`, so `result.stdout` is really both streams merged and
-    would pass just as happily with the message back on stderr.
+    `capsys` run covers the helper called directly, without the command around
+    it.
+
+    `result.stdout` is the stream assertion. The pinned click (8.5.0) has no
+    `mix_stderr`: `result.stdout` is stdout alone and `result.output` is the
+    merged stream, so asserting on `.stdout` here does pin the stream, and a
+    message moved to stderr would fail it. Reach for `.output` only when the
+    text under test is a `logger.error`, as the sibling branch of this same
+    command is.
     """
     from typer.testing import CliRunner
 

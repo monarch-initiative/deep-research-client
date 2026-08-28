@@ -288,7 +288,9 @@ def _echo_no_providers_message() -> None:
     _echo_credential_hints(_settable_credential_hints())
 
 
-def _echo_other_unavailable_hints(available: list[str], client: object) -> None:
+def _echo_other_unavailable_hints(
+    available: list[str], client: DeepResearchClient
+) -> None:
     """List every unavailable provider the other two sections do not cover.
 
     Derived from PROVIDER_CLASS_PATHS rather than a fourth table, and by the
@@ -319,7 +321,12 @@ def _echo_other_unavailable_hints(available: list[str], client: object) -> None:
 
     typer.echo("\nOther unavailable providers:")
     for name in other:
-        typer.echo(f"  - {name}: {_why_unconfigured(name, client)}")
+        typer.echo(f"  - {name}: {client.unregistered_reason(name)}")
+
+
+#: A credential hint that names an environment variable, rather than something
+#: else the provider needs (a binary on PATH, an installed package).
+_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
 
 
 def _settable_credential_hints() -> list[str]:
@@ -355,59 +362,6 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
-#: A credential hint that names an environment variable, rather than something
-#: else the provider needs (a binary on PATH, an installed package).
-_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
-
-
-def _why_unconfigured(provider: str, client: Optional[object] = None) -> str:
-    """Say what would make an unregistered provider usable.
-
-    A provider is registered only once whatever it needs is present, so by the
-    time we are here the reason is knowable but the provider object is not.
-    Reporting "NOT CONFIGURED" without the next step would be the same empty
-    answer this command exists to replace.
-
-    When a real client is supplied its `unregistered_reason` answers, and it
-    knows two things these tables cannot: that registration is also gated on an
-    environment variable, so a CLI already on PATH must not be reported as
-    missing from PATH, and that a provider can explain itself -- cyberian names
-    the `agentapi` binary rather than a package it already has.
-
-    That answer is machine-dependent, and deliberately so: it describes the box
-    the reader is on. What was rejected was reimplementing the probe *here*,
-    which would have been a second answer to the same question, drifting from
-    the client's. The tables below stay deterministic and serve callers with no
-    client; tests that want fixed wording pin the environment instead.
-
-    Args:
-        provider: Canonical provider name.
-        client: Client to ask, when one is available.
-
-    Returns:
-        Human-readable explanation of what is missing
-    """
-    ask = getattr(client, "unregistered_reason", None)
-    if callable(ask):
-        return str(ask(provider))
-    if provider in PROVIDER_CREDENTIAL_HINTS:
-        requirement, label = PROVIDER_CREDENTIAL_HINTS[provider]
-        # Not every entry is a variable to export -- claude_code needs a binary
-        # on PATH -- and "set the `claude` CLI on PATH" reads as nonsense.
-        if _ENV_VAR_HINT.match(requirement):
-            return f"set {requirement} for {label}"
-        return f"{label} requires {requirement}"
-    if provider in PROVIDER_STUB_HINTS:
-        return PROVIDER_STUB_HINTS[provider]
-    # Nothing to export: these register only when an optional package imports.
-    # The extra is named after the provider, which holds for every name that
-    # can reach this branch today.
-    return (
-        f"registered only when its optional package is installed "
-        f"(try `pip install deep-research-client[{provider}]`)"
-    )
-
-
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
     """Probe providers for live reachability and print the results.
 
@@ -434,7 +388,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                     provider=provider,
                     configured=False,
                     reachable=False,
-                    detail=_why_unconfigured(provider, client),
+                    detail=client.unregistered_reason(provider),
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
@@ -450,7 +404,14 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # and stdout respectively, so redirecting kept the list and lost
             # the line explaining what it was for.
             typer.echo("No providers are configured, so there is nothing to probe.")
-            _echo_credential_hints(list(PROVIDER_CREDENTIAL_HINTS))
+            # The same three sections `providers` uses, for the same reason:
+            # iterating the raw credential table here advertised mock as an
+            # answer, rendered claude_code's binary through a formatter built
+            # for variables, and left biomni and cyberian in no section at all
+            # -- in the command a reader runs precisely because nothing works.
+            _echo_credential_hints(_settable_credential_hints())
+            _echo_other_unavailable_hints([], client)
+            _echo_stub_hints()
             raise typer.Exit(1)
 
     async def _probe() -> list[ProviderHealth | BaseException]:
@@ -1682,7 +1643,7 @@ def providers(
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
             label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
-            typer.echo(f"{label}: {_why_unconfigured(provider, client)}")
+            typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters
         params_class = PROVIDER_PARAMS_REGISTRY[provider]

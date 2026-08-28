@@ -8,7 +8,11 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from deep_research_client.cli import _check_provider_health
+from deep_research_client.cli import (
+    PROVIDER_CREDENTIAL_HINTS,
+    _check_provider_health,
+    _settable_credential_hints,
+)
 from deep_research_client.models import ProviderHealth
 
 
@@ -174,7 +178,31 @@ def test_the_check_flag_is_wired_to_the_command(monkeypatch):
     assert "Available providers:" not in result.stdout
 
 
-def test_a_missing_key_is_not_reported_as_a_typo(capsys):
+@pytest.fixture
+def bare_machine(monkeypatch):
+    """Pin PATH and credentials so the explanations below do not depend on the box.
+
+    The CLI now asks the client, and the client asks the provider, so a runner
+    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
+    exported -- gets a different, equally correct sentence. A provider that is
+    actually usable is told so rather than told what it is missing, which is the
+    whole point of the client's availability guard. Fixing the environment is
+    what makes these assertions about wording rather than about the machine.
+
+    The variables are read out of the CLI's own hint table rather than listed
+    here, so a provider added to that table cannot leave a stale exception.
+    """
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    for provider_name in _settable_credential_hints():
+        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
+        monkeypatch.delenv(requirement.split("=")[0], raising=False)
+    # Not in the table: the deprecated alias the client still accepts for falcon.
+    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
+
+
+def test_a_missing_key_is_not_reported_as_a_typo(capsys, bare_machine):
     """Providers register only once their key is set, so absent != misspelled.
 
     Saying "unknown provider" would send the reader hunting for a spelling
@@ -216,7 +244,7 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys):
     assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
 
 
-def test_an_unconfigured_provider_says_what_would_fix_it(capsys, no_local_binaries):
+def test_an_unconfigured_provider_says_what_would_fix_it(capsys, bare_machine):
     """"NOT CONFIGURED" with no next step is the empty answer this replaces.
 
     cyberian needs an optional package rather than a credential, so there is no
@@ -232,20 +260,6 @@ def test_an_unconfigured_provider_says_what_would_fix_it(capsys, no_local_binari
     assert "agentapi" in out, "a provider with no env var still needs a next step"
 
 
-@pytest.fixture
-def no_local_binaries(monkeypatch):
-    """Pin PATH so the explanations below do not depend on the machine.
-
-    The CLI now asks the client, and the client asks the provider, so a runner
-    that happens to have `claude` or `agentapi` installed gets a different --
-    equally correct -- sentence. Fixing the environment is what makes these
-    assertions about wording rather than about the box they run on.
-    """
-    import shutil
-
-    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
-
-
 @pytest.mark.parametrize(
     "provider,expected",
     [
@@ -255,7 +269,7 @@ def no_local_binaries(monkeypatch):
     ],
 )
 def test_every_unconfigured_answer_carries_its_own_next_step(
-    capsys, no_local_binaries, provider, expected
+    capsys, bare_machine, provider, expected
 ):
     """A key, a binary and a package are three different fixes; say which.
 
@@ -326,14 +340,91 @@ def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
 
 
 def test_the_cli_calls_a_method_the_client_actually_has():
-    """The CLI asks by name, so a rename would degrade it to the tables silently.
+    """The name is the contract between the CLI, the client and the double.
 
-    Duck-typed rather than isinstance-checked so a test double can stand in --
-    which is exactly why the name needs pinning somewhere.
+    mypy covers the CLI's own three call sites now that the parameter is typed.
+    It does not cover `_StubClient`, which is duck-typed and injected at
+    runtime; a rename would leave the double implementing a method nothing
+    calls, and these tests exercising a branch users do not take.
     """
     from deep_research_client.client import DeepResearchClient
 
     assert callable(getattr(DeepResearchClient, "unregistered_reason", None)), (
-        "cli._why_unconfigured looks up 'unregistered_reason' on the client; "
-        "renaming it here would silently fall back to the CLI's own tables"
+        "the CLI and _StubClient both name 'unregistered_reason'; renaming it "
+        "here would silently decouple the double from the client it stands in for"
     )
+
+
+#: Every heading either command prints. A provider named under none of these is
+#: invisible; named under two, it is being explained twice, differently.
+_SECTION_HEADINGS = (
+    "Available providers:",
+    "Unavailable providers requiring credentials:",
+    "No research providers available. Please set API keys:",
+    "No providers are configured, so there is nothing to probe.",
+    "Other unavailable providers:",
+    "Stub providers (not yet callable):",
+)
+
+
+def _sections_by_provider(output: str) -> dict[str, list[str]]:
+    """Map each provider the output names to the headings it appears under.
+
+    The three list shapes are read back rather than recomputed, so this
+    measures what a reader sees instead of restating what the code decided.
+    Credential lines name a variable rather than a provider, so they are
+    mapped back through the same table that printed them.
+
+    Args:
+        output: Captured stdout of a `providers` invocation.
+
+    Returns:
+        Provider name to the headings under which it appeared
+    """
+    owner_of = {
+        requirement.split("=")[0]: name
+        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
+    }
+    seen: dict[str, list[str]] = {}
+    heading = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped in _SECTION_HEADINGS:
+            heading = stripped
+            continue
+        if heading is None or not line.startswith("  ") or not stripped:
+            continue
+        if stripped.startswith("- "):
+            body = stripped[2:]
+            # "ENV_VAR for Label" from the credential lists, or "name: reason"
+            # from the derived and stub lists.
+            name = owner_of.get(body.split(" ")[0]) or body.split(":")[0].strip()
+        else:
+            name = stripped
+        if name:
+            seen.setdefault(name, []).append(heading)
+    return seen
+
+
+@pytest.mark.parametrize("command", [["providers"], ["providers", "--check"]])
+def test_every_provider_lands_in_exactly_one_section(bare_machine, command):
+    """A reader who has never heard of a provider must still learn it exists.
+
+    Both commands, because `providers --check` is the one a reader runs
+    *because* nothing works, and it used to iterate the raw credential table:
+    biomni and cyberian appeared in no section at all, mock was offered as an
+    answer to "set API keys", and claude_code's binary was rendered through a
+    formatter built for variables.
+    """
+    import deep_research_client.cli as cli_module
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    result = CliRunner().invoke(cli_module.app, command)
+
+    sections = _sections_by_provider(result.stdout)
+    for name in PROVIDER_CLASS_PATHS:
+        assert sections.get(name), f"{name} is named under no heading of {command}"
+        assert len(sections[name]) == 1, (
+            f"{name} is explained under {sections[name]} -- twice, and so "
+            f"possibly with two different answers"
+        )

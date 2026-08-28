@@ -9,6 +9,7 @@ raises, so the client is exercised through its ordinary code path.
 
 import json
 import logging
+import pathlib
 
 import pytest
 from typer.testing import CliRunner
@@ -1506,3 +1507,45 @@ def test_cli_rejects_nothing_when_fallback_is_absent(tmp_path, monkeypatch):
     assert result.exit_code == 0
     content = output.read_text()
     assert "fell_back" not in content
+
+
+def test_the_documented_fallback_order_names_every_eligible_provider():
+    """The how-to prints a fixed candidate list; nothing stopped it going stale.
+
+    It did. `biomni` joined the registration sequence and the list kept the
+    eight names it had, so a reader was told the automatic route ends at
+    `claude_code` when it no longer does.
+
+    Membership is pinned rather than order. The doc's sequence is the order
+    `_setup_providers_from_env` registers in, which is deliberately *not*
+    `PROVIDER_CLASS_PATHS` order -- cyberian and openscientist are swapped
+    between the two -- so asserting against the dict would pin the wrong
+    sequence while claiming to pin the right one. Membership is the half that
+    can be derived honestly, and is the half that actually drifted.
+    """
+    import importlib
+    import re
+
+    from deep_research_client.cli import PROVIDER_STUB_HINTS
+    from deep_research_client.client import PROVIDER_CLASS_PATHS
+
+    doc = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "docs" / "how-to" / "choose-provider.md"
+    ).read_text()
+    listed = re.search(r"^    (openai,.*)$", doc, re.MULTILINE)
+    assert listed, "the how-to no longer prints an indented candidate list"
+    documented = {name.strip() for name in listed.group(1).split(",")}
+
+    eligible = set()
+    for name, (module_name, class_name) in PROVIDER_CLASS_PATHS.items():
+        provider_class = getattr(importlib.import_module(module_name), class_name)
+        # `_plan_providers` filters the automatic route by produces_real_reports,
+        # and a stub can never be available to reach it in the first place.
+        if provider_class.produces_real_reports and name not in PROVIDER_STUB_HINTS:
+            eligible.add(name)
+
+    assert documented == eligible, (
+        "docs/how-to/choose-provider.md lists the automatic --fallback "
+        "candidates; add or remove names there when the registry changes"
+    )

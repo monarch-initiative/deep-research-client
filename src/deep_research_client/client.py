@@ -235,18 +235,30 @@ class DeepResearchClient:
             self.registry.register(self._create_provider(name, config))
 
     def unregistered_reason(self, provider_name: str) -> str:
-        """Explain why a known provider is not in this client's registry.
+        """Explain why a known provider cannot do work for this client.
 
         Public because the CLI is now a first-class caller: it renders this in
         `providers` and `providers --check` rather than keeping a second
         opinion of its own.
 
+        A provider that *can* work is answered here rather than below, because
+        the explanation below is built from a throwaway instance carrying no
+        credentials -- so for a registered, key-bearing provider it would
+        confidently report the key as missing. Callers in this package guard
+        the call already; a public method must not depend on their doing so.
+
+        The gate is availability rather than registration: deeper_med is
+        registered unconditionally and still needs its own explanation.
+
         Args:
             provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
 
         Returns:
-            Human-readable explanation of what is missing
+            Human-readable explanation of what is missing, or a statement that
+            the provider is in fact usable
         """
+        if provider_name in self.get_available_providers():
+            return f"'{provider_name}' is available"
         return self._unregistered_reason(provider_name)
 
     def _unregistered_reason(self, provider_name: str) -> str:

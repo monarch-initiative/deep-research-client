@@ -349,3 +349,32 @@ async def test_research_with_environment_providers():
         assert result is not None
         assert result.markdown
         assert result.provider in providers
+
+
+def test_a_usable_provider_is_not_told_what_it_is_missing(monkeypatch):
+    """`unregistered_reason` is public, so it must not need a caller-side guard.
+
+    It answers by building a throwaway instance carrying no credentials, which
+    for a registered, key-bearing provider reported the key as missing --
+    confidently and wrongly. Every caller in this package happens to check
+    availability first; the second caller would not have known to.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-not-a-real-key")
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    assert "openai" in client.get_available_providers()
+    assert client.unregistered_reason("openai") == "'openai' is available"
+
+
+def test_a_registered_stub_still_says_why_it_cannot_run():
+    """The guard is availability, not registration, and the difference matters.
+
+    deeper_med is registered unconditionally and is never available, so a guard
+    keyed on the registry would have replaced its arXiv pointer -- the whole
+    reason it is registered at all -- with "is registered".
+    """
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
+
+    assert client.registry.get_provider("deeper_med") is not None
+    assert "deeper_med" not in client.get_available_providers()
+    assert "arxiv.org" in client.unregistered_reason("deeper_med").lower()

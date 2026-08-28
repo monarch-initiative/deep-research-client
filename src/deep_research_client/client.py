@@ -48,8 +48,8 @@ REGISTRATION_GATES: dict[str, str] = {
         "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
     ),
     "biomni": (
-        "requires an upstream Biomni environment and deep-research-client[biomni], "
-        "with DISABLE_BIOMNI_PROVIDER unset"
+        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
+        "environment with deep-research-client[biomni]"
     ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }

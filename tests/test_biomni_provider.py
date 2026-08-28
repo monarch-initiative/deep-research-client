@@ -7,6 +7,7 @@ real agent without downloading its data lake. The actual LLM-backed run remains
 an integration test.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from deep_research_client.provider_params import BiomniParams, create_provider_p
 from deep_research_client.providers.biomni import (
     BIOMNI_DEFAULT_TIMEOUT,
     BiomniProvider,
+    biomni_runtime_unavailable_reason,
     missing_biomni_runtime_modules,
 )
 
@@ -32,6 +34,17 @@ BIOMNI_RUNTIME_AVAILABLE = not missing_biomni_runtime_modules()
 def make_provider(**params) -> BiomniProvider:
     config = ProviderConfig(name="biomni", api_key=None, enabled=True)
     return BiomniProvider(config, BiomniParams(**params))
+
+
+def require_biomni_runtime() -> None:
+    """Skip on a base install, but fail closed in the clean-extra CI job."""
+    missing = missing_biomni_runtime_modules()
+    if not missing:
+        return
+    reason = f"complete Biomni runtime required; missing: {', '.join(missing)}"
+    if os.getenv("REQUIRE_BIOMNI_RUNTIME") == "1":
+        pytest.fail(reason)
+    pytest.skip(reason)
 
 
 def test_default_model_is_card_identity():
@@ -88,7 +101,9 @@ async def test_research_requires_available_provider():
         pytest.skip("Biomni runtime available; availability guard not exercised")
     # ProviderNotInstalledError, not a bare ValueError: no credential fixes a
     # missing local package, and callers branch on the type to say so.
-    with pytest.raises(ProviderNotInstalledError, match="Biomni|biomni"):
+    with pytest.raises(
+        ProviderNotInstalledError, match=r"deep-research-client\[biomni\]"
+    ):
         await make_provider().research("some biomedical question")
 
 
@@ -111,6 +126,33 @@ def test_unavailable_reason_reports_a_disabled_provider_as_disabled():
     provider = BiomniProvider(ProviderConfig(name="biomni", enabled=False))
 
     assert provider.unavailable_reason() == "Provider 'biomni' is disabled"
+
+
+@pytest.mark.parametrize(
+    "source,module,package",
+    [
+        ("Ollama", "langchain_ollama", "langchain-ollama"),
+        ("Bedrock", "langchain_aws", "langchain-aws"),
+    ],
+)
+def test_external_backend_remedy_names_its_separate_adapter(
+    source: str, module: str, package: str
+) -> None:
+    """Reinstalling the Biomni extra cannot supply opt-in backend adapters."""
+    reason = biomni_runtime_unavailable_reason(source, [module])
+
+    assert f"pip install {package}" in reason
+    assert "reinstall deep-research-client[biomni]" not in reason
+
+
+def test_fresh_ollama_install_names_both_required_install_steps() -> None:
+    """A missing core must not hide the separately packaged source adapter."""
+    reason = biomni_runtime_unavailable_reason(
+        "Ollama", ["biomni", "langchain_ollama"]
+    )
+
+    assert "deep-research-client[biomni]" in reason
+    assert "pip install langchain-ollama" in reason
 
 
 @pytest.mark.asyncio
@@ -321,8 +363,7 @@ def test_build_agent_kwargs_accepted_by_a1_signature():
     """
     import inspect
 
-    if not BIOMNI_RUNTIME_AVAILABLE:
-        pytest.skip("requires the complete Biomni extra")
+    require_biomni_runtime()
     from biomni.agent import A1  # type: ignore[import-not-found, import-untyped]
 
     accepted = set(inspect.signature(A1.__init__).parameters)
@@ -340,8 +381,7 @@ def test_build_agent_constructs_with_clean_extra(
     first missing package. Constructing A1 reaches the default Anthropic path;
     ``skip_data_lake`` and a temporary path keep the smoke test local and small.
     """
-    if not BIOMNI_RUNTIME_AVAILABLE:
-        pytest.skip("requires the complete Biomni extra")
+    require_biomni_runtime()
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     provider = make_provider(
         path=str(tmp_path),
@@ -404,6 +444,7 @@ def test_the_two_provider_report_paths_agree():
     checked = CliRunner().invoke(app, ["providers", "--check", "--provider", "biomni"])
 
     explanation = make_provider().unavailable_reason()
+    assert "deep-research-client[biomni]" in explanation
     assert explanation in detail.stdout, detail.stdout
     assert explanation in checked.stdout, checked.stdout
 

@@ -20,7 +20,7 @@ from datetime import datetime
 import importlib.util
 import logging
 import os
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 from . import ResearchProvider
 from ..exceptions import ProviderNotInstalledError, classify_exception
@@ -52,6 +52,15 @@ BIOMNI_SOURCE_MODULES = {
     "Ollama": "langchain_ollama",
     "Bedrock": "langchain_aws",
 }
+# These adapters are intentionally not in the Biomni extra: they are needed
+# only when a caller selects the corresponding non-default backend. Keys above
+# match Biomni's case-sensitive SourceType. OpenAI, AzureOpenAI, Gemini, Groq,
+# and Custom all use langchain_openai, which A1 imports eagerly and the extra
+# already supplies.
+BIOMNI_EXTERNAL_SOURCE_PACKAGES = {
+    "langchain_ollama": "langchain-ollama",
+    "langchain_aws": "langchain-aws",
+}
 
 
 def missing_biomni_runtime_modules(source: Optional[str] = None) -> list[str]:
@@ -79,6 +88,67 @@ def missing_biomni_runtime_modules(source: Optional[str] = None) -> list[str]:
         for module in modules
         if importlib.util.find_spec(module) is None
     ]
+
+
+def biomni_runtime_unavailable_reason(
+    source: Optional[str], missing: Sequence[str]
+) -> str:
+    """Explain how to supply missing Biomni runtime modules.
+
+    The default Anthropic adapter is part of ``deep-research-client[biomni]``;
+    Ollama and Bedrock adapters are deliberately separate installs. Keeping
+    that distinction here prevents the provider from recommending a reinstall
+    that cannot supply the selected backend.
+
+    Args:
+        source: Biomni LLM source, or None for its default Anthropic path.
+        missing: Import-module names that could not be found.
+
+    Returns:
+        Human-readable diagnosis and installation remedy.
+
+    >>> biomni_runtime_unavailable_reason("Ollama", ["langchain_ollama"])
+    "the Biomni Ollama backend requires Python module 'langchain_ollama' (install it with `pip install langchain-ollama` inside the upstream Biomni environment)"
+    """
+    missing_modules = list(dict.fromkeys(missing))
+    external_modules = [
+        module
+        for module in missing_modules
+        if module in BIOMNI_EXTERNAL_SOURCE_PACKAGES
+    ]
+    extra_modules = [
+        module
+        for module in missing_modules
+        if module not in BIOMNI_EXTERNAL_SOURCE_PACKAGES
+    ]
+    reasons: list[str] = []
+    if "biomni" in extra_modules:
+        reasons.append(
+            "the biomni package is not installed "
+            "(install the upstream Biomni environment, then "
+            "pip install deep-research-client[biomni])"
+        )
+    elif extra_modules:
+        reasons.append(
+            "the Biomni Python runtime is incomplete; missing "
+            f"{', '.join(extra_modules)} (reinstall deep-research-client[biomni] "
+            "inside the upstream Biomni environment)"
+        )
+    backend = source or "selected"
+    reasons.extend(
+        f"the Biomni {backend} backend requires Python module '{module}' "
+        f"(install it with `pip install {BIOMNI_EXTERNAL_SOURCE_PACKAGES[module]}` "
+        "inside the upstream Biomni environment)"
+        for module in external_modules
+    )
+    if reasons:
+        return "; ".join(reasons)
+
+    modules = ", ".join(missing_modules) or "an unknown module"
+    return (
+        f"the Biomni runtime is missing {modules} "
+        "(install it inside the upstream Biomni environment)"
+    )
 
 
 class BiomniProvider(ResearchProvider):
@@ -115,7 +185,7 @@ class BiomniProvider(ResearchProvider):
         return create_biomni_model_cards()
 
     def unavailable_reason(self) -> str:
-        """Name the optional package, since no credential is what is missing.
+        """Name the missing runtime package, since no credential fixes it.
 
         Biomni needs no API key of its own -- it drives whatever LLM it is
         configured with -- so the base class's "no API key configured" would
@@ -128,18 +198,8 @@ class BiomniProvider(ResearchProvider):
             return super().unavailable_reason()
 
         missing = missing_biomni_runtime_modules(self.params.source)
-        if "biomni" in missing:
-            return (
-                "the biomni package is not installed "
-                "(install the upstream Biomni environment, then "
-                "pip install deep-research-client[biomni])"
-            )
         if missing:
-            return (
-                "the Biomni Python runtime is incomplete; missing "
-                f"{', '.join(missing)} (reinstall deep-research-client[biomni] "
-                "inside the upstream Biomni environment)"
-            )
+            return biomni_runtime_unavailable_reason(self.params.source, missing)
 
         return super().unavailable_reason()
 
@@ -187,7 +247,7 @@ class BiomniProvider(ResearchProvider):
             missing = e.name or str(e)
             raise ProviderNotInstalledError(
                 self.name,
-                f"the Biomni runtime is missing Python module '{missing}'",
+                biomni_runtime_unavailable_reason(self.params.source, [missing]),
             ) from e
         except Exception as e:  # noqa: BLE001 - surface a clean provider error
             logger.error("Biomni agent run failed: %s", e)

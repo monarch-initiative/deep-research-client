@@ -20,6 +20,10 @@ from deep_research_client.exceptions import (
     extract_status_code,
 )
 from deep_research_client.models import CacheConfig, ProviderConfig, ProviderHealth
+from deep_research_client.providers.biomni import (
+    BIOMNI_EAGER_RUNTIME_MODULES,
+    BIOMNI_SOURCE_MODULES,
+)
 from deep_research_client.providers.consensus import ConsensusProvider
 
 
@@ -450,12 +454,16 @@ def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
     # Patched rather than skipped: ordinary CI never installs the biomni extra,
     # so a skip here would mean this never runs in the base-install job.
     real_find_spec = importlib.util.find_spec
+    biomni_default_modules = {
+        *BIOMNI_EAGER_RUNTIME_MODULES,
+        BIOMNI_SOURCE_MODULES["Anthropic"],
+    }
     monkeypatch.setattr(
         importlib.util,
         "find_spec",
         lambda name, *args, **kwargs: (
             object()
-            if name in {"biomni", "pandas", "langchain_openai", "langchain_anthropic"}
+            if name in biomni_default_modules
             else real_find_spec(name, *args, **kwargs)
         ),
     )
@@ -467,6 +475,9 @@ def test_a_disabled_biomni_is_not_told_to_install_the_package(monkeypatch):
 
     message = str(excinfo.value)
     assert "DISABLE_BIOMNI_PROVIDER" in message
+    assert message.index("DISABLE_BIOMNI_PROVIDER") < message.index(
+        "deep-research-client[biomni]"
+    )
     assert "not installed" not in message, "the package is importable; do not say otherwise"
 
 

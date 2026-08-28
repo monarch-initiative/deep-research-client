@@ -86,8 +86,12 @@ jobs:
         run: uv sync --no-dev --extra biomni
 
       - name: Verify real A1 import, signature, and construction
+        env:
+          # Base jobs skip these tests; this job exists to prove the extra is
+          # complete, so a missing runtime must fail rather than skip.
+          REQUIRE_BIOMNI_RUNTIME: "1"
         run: |
           uv run --no-dev --extra biomni --with pytest --with pytest-asyncio \
-            pytest -q \
+            pytest -q -rs \
             tests/test_biomni_provider.py::test_build_agent_kwargs_accepted_by_a1_signature \
             tests/test_biomni_provider.py::test_build_agent_constructs_with_clean_extra

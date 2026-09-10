@@ -1116,10 +1116,12 @@ tasks:
     distractors: [G375C, R248C, K650E]
 ```
 
-A task with distractors is scored as multiple choice (accuracy, coverage and
-precision, following LAB-Bench); one without is scored as a report, against a
-rubric of reference claims, spot checks and expected topics. Several scorers
-need no LLM judge at all.
+A run materialises results rather than scoring them: every response is written
+to disk beside the prompt that produced it, so how they get graded is a decision
+you can make and revise later without paying any provider again. Report scoring
+against a rubric is available today via `eval score` and uses an LLM judge; a
+provisional regex-based grader for multiple choice sits behind `--grade` and is
+not the intended design.
 
 `eval run` sweeps the matrix of tasks against *arms* — a provider, optionally a
 model, optionally provider parameters. Results land in a predictable tree (one

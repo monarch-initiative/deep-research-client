@@ -160,20 +160,35 @@ def test_prompt_saved_is_what_the_provider_was_sent(tmp_path, mock_client):
     assert "Answer: X" in prompt
 
 
-def test_mcq_run_grades_during_the_run(tmp_path, mock_client):
-    """Grading multiple choice is free, so it happens without a second pass."""
+def test_mcq_run_grades_only_when_asked(tmp_path, mock_client):
+    """A run materialises results; grading is opt-in.
+
+    The current grader reads answers out of prose with regular expressions and
+    has produced plausible-but-wrong numbers before, so it must never run by
+    accident. Materialising the outputs is what a run is for; how they are
+    scored can be decided later without paying for the outputs again.
+    """
     eval_set = EvalSet(name="mcq", tasks=[EvalTask(
         id="m1", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
         answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine"]),
     )])
-    manifest = asyncio.run(run_matrix(
+    ungraded = asyncio.run(run_matrix(
         eval_set, [ArmSpec(id="a1", provider="mock")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "plain"), client=mock_client,
     ))
+    assert ungraded.cells[0].disposition is None
+    assert not (tmp_path / "plain" / "scores.tsv").exists()
+    assert not (tmp_path / "plain" / "m1" / "a1" / "answer.json").exists()
+    # The response itself is still on disk, so it can be scored later.
+    assert (tmp_path / "plain" / "m1" / "a1" / "output.md").exists()
 
-    assert manifest.cells[0].disposition is not None
-    assert (tmp_path / "run" / "m1" / "a1" / "answer.json").exists()
-    assert (tmp_path / "run" / "scores.tsv").exists()
+    graded = asyncio.run(run_matrix(
+        eval_set, [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=tmp_path / "graded", grade=True), client=mock_client,
+    ))
+    assert graded.cells[0].disposition is not None
+    assert (tmp_path / "graded" / "m1" / "a1" / "answer.json").exists()
+    assert (tmp_path / "graded" / "scores.tsv").exists()
 
 
 def test_a_failing_arm_does_not_lose_the_others(tmp_path, mock_client, report_eval_set):
@@ -353,7 +368,7 @@ def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):
 
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("always-a", "first")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
     ))
 
     score = score_by_arm(eval_set, manifest.cells)["always-a"]
@@ -372,7 +387,7 @@ def test_always_last_arm_abstains_on_every_question(tmp_path, mock_client):
 
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("decliner", "last")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
     ))
 
     score = score_by_arm(eval_set, manifest.cells)["decliner"]
@@ -395,7 +410,7 @@ def test_an_echoing_arm_scores_the_same_as_a_terse_one(tmp_path, mock_client):
 
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("terse", "first"), _mock_arm("echoing", "echo")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
     ))
 
     scores = score_by_arm(eval_set, manifest.cells)
@@ -411,7 +426,7 @@ def test_silent_arm_is_extraction_failure_not_abstention(tmp_path, mock_client):
 
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("silent", "none")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
     ))
 
     score = score_by_arm(eval_set, manifest.cells)["silent"]
@@ -425,7 +440,7 @@ def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
     eval_set = _mcq_eval_set()
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("always-a", "first")],
-        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
     ))
 
     score = score_by_arm(eval_set, manifest.cells)["always-a"]

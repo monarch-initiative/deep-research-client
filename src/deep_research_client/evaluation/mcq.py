@@ -1,25 +1,50 @@
-"""Scoring for multiple-choice tasks.
+"""Provisional scoring for multiple-choice tasks.
 
-Three things happen here, and the middle one is where the measurement error
-lives.
+STATUS: a stopgap, not the intended design. Reading a provider's answer out of
+its prose with regular expressions is brittle, and demonstrably so - three
+separate defects showed up within a day of first use, each of which produced
+plausible-looking numbers rather than an obvious failure:
+
+- a restated option list read as the provider choosing the last option, which is
+  the abstention whenever one is offered;
+- a bare quantity such as "6%" appearing anywhere in a report read as choosing
+  that option, inventing an answer never given;
+- a verdict written "**Answer: D**" read as no answer at all, which would have
+  discarded every correct answer from any provider that bolds its conclusion.
+
+Each was found by running the thing, not by reading it, and each would have been
+invisible in the resulting table. That is the argument against this approach
+rather than a list of fixed bugs: the next such defect is equally likely to look
+like a score.
+
+The intended replacement is an LLM judge, as the report scorers already use
+(``score_fact``, ``score_claim_recall`` and ``score_race`` in ``scorers.py`` all
+call one). Deciding which option a report settled on is a reading-comprehension
+task, and asking a model - ideally with structured output, so the answer comes
+back as a field rather than as prose to be re-parsed - is both more robust and
+more honest about its own uncertainty than a regular expression can be.
+
+Until then this module stays off the default path: ``eval run`` materialises
+results without grading unless asked. What is here is well tested against the
+failures found so far, and is fine for a quick look; it should not be the basis
+of a published number.
+
+Three things happen here.
 
 *Presentation* turns a task's ideal answer and distractors into lettered
 options. The order is shuffled, but deterministically from the task id, so that
 every provider sees the same question in the same order and a rerun reproduces
-it. An unshuffled list would put the correct answer first every time.
+it. This part is sound and an LLM judge would keep it unchanged.
 
-*Extraction* recovers which option a provider chose. This is the hard part: a
-deep research tool returns a cited report, not a letter, so the answer has to be
-read back out of prose. Failures here are counted separately as
-``EXTRACTION_FAILED`` and never folded into wrong answers, because they are a
-defect of this harness rather than of the provider - and one that can only be
-driven down if it is visible.
+*Extraction* recovers which option a provider chose. This is the brittle part
+described above. Failures are counted separately as ``EXTRACTION_FAILED`` and
+never folded into wrong answers, because they are a defect of this harness
+rather than of the provider.
 
 *Scoring* follows LAB-Bench (Laurent et al. 2024): accuracy over all questions,
 coverage as the fraction attempted, and precision over attempted questions
-alone. Keeping precision and accuracy apart is the whole point of offering an
-abstention option: a model that declines when it does not know should not be
-scored as if it had guessed wrong.
+alone. This part is arithmetic over dispositions and is independent of how the
+dispositions were obtained, so it survives the replacement of the extractor.
 """
 
 import random

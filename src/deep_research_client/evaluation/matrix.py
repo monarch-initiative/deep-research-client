@@ -6,10 +6,16 @@ costs you that arm's remaining cells and nothing else. Cells are written to disk
 as they complete rather than at the end, which means an interrupted run is
 resumable and a long one can be inspected while it is still going.
 
-Multiple-choice cells are graded on the spot, because grading them is free -
-match the chosen option, no LLM judge and no API call. Report cells are only
-saved here; scoring them costs money and belongs in a separate pass the user
-starts deliberately.
+What a run produces is the record: for every cell, exactly what the provider was
+sent and exactly what it returned, on disk, addressable. Scoring is deliberately
+not part of that. A run is worth keeping whether or not anyone has yet decided
+how to grade it, and a grading method that changes should never require paying
+for the outputs again.
+
+Provisional grading of multiple-choice cells is available behind ``grade``, off
+by default. It reads the chosen option out of the response with regular
+expressions, which is a stopgap and not the intended design - see
+``evaluation/mcq.py``.
 
 The output layout is fixed and predictable:
 
@@ -229,6 +235,10 @@ class MatrixConfig:
     output_dir: Path
     concurrency: int = 4
     resume: bool = True
+    #: Grade multiple-choice cells during the run. Off by default: a run's job
+    #: is to materialise results, and the current grader is a provisional
+    #: regex-based one whose numbers should not be produced by accident.
+    grade: bool = False
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
 
@@ -263,6 +273,7 @@ async def _run_cell(
     task: EvalTask,
     arm: ArmSpec,
     layout: RunLayout,
+    grade: bool = False,
 ) -> CellResult:
     """Run one task under one arm and write its files.
 
@@ -292,7 +303,7 @@ async def _run_cell(
             duration_seconds=(datetime.now(timezone.utc) - started).total_seconds(),
             error=f"{type(exc).__name__}: {exc}",
         )
-        if task.answer_type == AnswerType.MULTIPLE_CHOICE:
+        if grade and task.answer_type == AnswerType.MULTIPLE_CHOICE:
             cell.disposition = ScoreDisposition.PROVIDER_ERROR
         (cell_dir / "cell.json").write_text(cell.model_dump_json(indent=2, exclude_none=True))
         return cell
@@ -311,9 +322,9 @@ async def _run_cell(
         model_used=result.model,
     )
 
-    # Multiple choice grades for free, so grade now; reports cost an LLM judge
-    # and are scored in a separate, deliberate pass.
-    if task.answer_type == AnswerType.MULTIPLE_CHOICE:
+    # Grading is opt-in: materialising the result is the run's job, and the
+    # provisional grader should never produce numbers nobody asked for.
+    if grade and task.answer_type == AnswerType.MULTIPLE_CHOICE:
         answer = mcq.grade(task.id, arm.id, result.markdown or "", choices)
         cell.disposition = answer.disposition
         cell.chosen_letter = answer.chosen_letter
@@ -438,7 +449,7 @@ async def run_matrix(
                 logger.info("Cell %s/%s already complete; skipping", task.id, arm.id)
                 return done
         async with semaphore:
-            return await _run_cell(client, task, arm, layout)
+            return await _run_cell(client, task, arm, layout, grade=config.grade)
 
     pending = [one(task, arm) for task in tasks for arm in arms]
     logger.info(
@@ -475,8 +486,9 @@ async def run_matrix(
     layout.manifest_path.write_text(manifest.model_dump_json(indent=2, exclude_none=True))
     write_results_tsv(layout, cells)
 
-    scores = score_by_arm(eval_set, cells)
-    if scores:
-        write_scores_tsv(layout, scores)
+    if config.grade:
+        scores = score_by_arm(eval_set, cells)
+        if scores:
+            write_scores_tsv(layout, scores)
 
     return manifest

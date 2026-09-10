@@ -698,10 +698,14 @@ predictable directory tree.
 | `--task-id TEXT` | Run only these task ids (repeatable) |
 | `--concurrency`, `-j INTEGER` | Cells to run at a time (default: 4) |
 | `--no-resume` | Re-run cells an earlier run already completed |
+| `--grade` | Also score multiple-choice answers with the provisional regex extractor |
 | `--dry-run` | Show the matrix and one prompt without calling any provider |
 
-Multiple-choice tasks are graded during the run, which costs nothing. Report
-tasks are saved but not scored; score them afterwards with `eval score`.
+A run materialises results and does not score them: every response lands on disk
+beside the prompt that produced it, so grading can be decided and redone later
+without re-running any provider. `--grade` opts into a provisional regex-based
+multiple-choice grader, which is fine for a quick look but is not the intended
+design — see [Evaluate Providers](../how-to/evaluate-providers.md).
 
 Output layout:
 

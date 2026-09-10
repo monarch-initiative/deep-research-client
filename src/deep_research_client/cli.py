@@ -2817,6 +2817,8 @@ def eval_run(
         "--concurrency", "-j", min=1, help="Cells to run at a time")] = 4,
     no_resume: Annotated[bool, typer.Option(
         "--no-resume", help="Re-run cells that an earlier run already completed")] = False,
+    grade: Annotated[bool, typer.Option(
+        "--grade", help="Also grade multiple-choice answers with the provisional regex extractor (off by default; see the note it prints)")] = False,
     dry_run: Annotated[bool, typer.Option(
         "--dry-run", help="Show the matrix and the prompt for one cell, without calling any provider")] = False,
 ):
@@ -2827,9 +2829,14 @@ def eval_run(
     are written as they finish, so a run can be inspected while it is going and
     resumed if it is interrupted.
 
-    Multiple-choice tasks are graded during the run, which is free. Report tasks
-    are only saved; score them afterwards with `eval score`, which costs LLM
-    judge calls.
+    A run materialises results: for every cell, exactly what the provider was
+    sent and exactly what it returned. Scoring is a separate concern, so that a
+    run stays useful when the grading method changes and never has to be paid
+    for twice.
+
+    `--grade` additionally scores multiple-choice answers with a provisional
+    regex extractor. It is off by default and should not be the basis of a
+    published number; see the note it prints.
 
     \b
     Examples:
@@ -2929,6 +2936,7 @@ def eval_run(
             output_dir=run_dir,
             concurrency=concurrency,
             resume=not no_resume,
+            grade=grade,
             on_cell=on_cell,
         ),
     ))
@@ -2941,7 +2949,7 @@ def eval_run(
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
 
-    scores = score_by_arm(eval_set, cells)
+    scores = score_by_arm(eval_set, cells) if grade else {}
     if scores:
         typer.echo("\nMultiple-choice scores:\n")
         typer.echo(f"  {'arm':<20} {'acc':>7} {'cov':>7} {'prec':>7}   {'n':>5}")
@@ -2959,11 +2967,24 @@ def eval_run(
         if eval_set.is_partial:
             typer.echo(f"\n  {eval_set.partial_reason}")
 
+    if grade and scores:
+        typer.echo(
+            "\n  These come from a provisional regex extractor, not an LLM judge. "
+            "It has produced plausible-looking but wrong numbers before; treat them "
+            "as a quick look, not as a result."
+        )
+
+    if not grade:
+        typer.echo(
+            "\nResults materialised, not scored. Every response is on disk with the "
+            "prompt that produced it, so scoring can be decided and redone later "
+            "without re-running any provider."
+        )
+
     has_reports = any(t.answer_type == AnswerType.REPORT for t in tasks)
     if has_reports:
         typer.echo(
-            "\nReport tasks were saved but not scored (scoring them needs an LLM "
-            "judge). Score one with:\n"
+            "\nTo score a report against its rubric with an LLM judge:\n"
             f"  deep-research-client eval score {run_dir}/<task_id>/<arm_id>/output.md \\\n"
             f"    --source {source} --adapter {adapter} --task-id <task_id>"
         )

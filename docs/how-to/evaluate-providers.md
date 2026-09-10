@@ -192,13 +192,47 @@ error never becomes permanent.
 A failing arm does not take the run down with it. If one provider is out of
 quota you lose that arm's cells and keep everything else.
 
-### Test the harness before paying for it
+### Grading is deliberately not part of a run
+
+A run materialises results and stops there. Every response is on disk beside the
+prompt that produced it, so how they get scored is a decision you can make — and
+change — later, without paying any provider a second time.
+
+`--grade` will additionally score multiple-choice answers, but read the next
+section before trusting what it prints.
+
+### The multiple-choice grader is provisional
+
+It reads a provider's answer out of its prose with regular expressions. That is
+a stopgap, not the design. Three defects surfaced within a day of first use, and
+what makes them worth recording is that none of them looked like a failure:
+
+| What happened | What the table showed |
+|---|---|
+| A restated option list read as choosing the last option | Every arm abstaining on nearly everything |
+| A bare quantity (`6%`) appearing anywhere read as choosing that option | An answer the provider never gave |
+| `**Answer: D**` read as no answer at all | Every correct answer discarded, for any provider that bolds its verdict |
+
+Each was found by running the thing rather than reading it, and each produced a
+plausible table. The next defect of this kind is equally likely to look like a
+score rather than a bug — which is the argument against the approach, not a list
+of things now fixed.
+
+**The intended replacement is an LLM judge**, which is what the report scorers
+already use. Deciding which option a report settled on is reading comprehension,
+and a model asked for a structured answer can both do it more reliably and say
+when it is unsure. Until that lands, `--grade` is fine for a quick look and
+should not be the basis of a published number.
+
+Presentation and aggregation are unaffected by this and will survive the change:
+option order is deterministic per task, and accuracy/coverage/precision are
+arithmetic over dispositions regardless of how the dispositions were obtained.
+
+### Checking the plumbing for free
 
 The mock provider can answer multiple-choice questions by position, which makes
-the whole pipeline verifiable at zero cost. It has no idea which option is
-correct, and that is exactly why this works: because option order is
-deterministic for a given task, the score each policy deserves can be worked out
-in advance and checked against what the harness reports.
+the run machinery verifiable at zero cost — it has no idea which option is
+correct, so the score each policy deserves is computable in advance:
 
 ```yaml
 # mock-arms.yaml
@@ -219,7 +253,7 @@ arms:
 
 ```bash
 ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
-  --adapter lab-bench --arms mock-arms.yaml --limit 40
+  --adapter lab-bench --arms mock-arms.yaml --limit 40 --grade
 ```
 
 ```
@@ -230,44 +264,11 @@ ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
   silent                 0.000   0.000   0.000    0/40
 ```
 
-Four things worth reading off that table:
-
-- **`always-a` is your chance baseline.** On these 40 LitQA2 questions, picking
-  by position scores 0.325 — the options-per-question vary, so this is not
-  1-in-4. Any real provider has to beat this to have shown anything at all.
-- **`echoing` scores identically to `always-a`.** It must: they choose the same
-  option, one of them just quotes the question first. A gap between those two
-  rows means the extractor is being fooled by restated options.
-- **`decliner` has zero coverage, not zero accuracy alone.** Abstentions are not
-  wrong answers.
-- **`silent` has zero coverage too.** A provider that never answers must record
-  extraction failures, never a fabricated choice.
-
-Run this against a new benchmark before spending anything on it. If these four
-rows do not come out as above, the harness is misreading that benchmark's
-answers, and every real number you then collect would be wrong in the same way.
-
-### Reading the scores
-
-Multiple-choice tasks are graded during the run, because grading them costs
-nothing. Report tasks are saved but not scored — that needs an LLM judge, so it
-is a separate deliberate pass with `eval score`.
-
-```
-  arm                      acc     cov    prec       n
-  edison                 0.550   0.900   0.611   11/20
-  agent-web              0.400   1.000   0.400    8/20
-  agent-noweb            0.150   0.950   0.158    3/20
-```
-
-Never read accuracy without coverage beside it. A low accuracy because the
-provider answered wrongly and a low accuracy because it declined to answer are
-different results, and only coverage separates them.
-
-Watch `extraction_failures` in `scores.tsv` too. That column counts responses
-no answer could be recovered from — a limitation of this harness, not a result
-about the provider. It is reported separately precisely so it can be driven down
-rather than quietly deflating someone's score.
+`always-a` gives a chance baseline — 0.325 on these questions, since the number
+of options varies. `echoing` must score identically to `always-a`; a gap means
+the extractor is being fooled by restated options. `decliner` and `silent` must
+both show zero coverage, for different reasons: declining is not answering, and
+neither is saying nothing.
 
 ## Score a saved report
 
@@ -323,6 +324,11 @@ classes with `just gen-datamodel-eval` after any change.
 
 ## What is not here yet
 
-Report-shaped tasks are still scored one at a time: `eval run` saves the reports
-but `eval score` takes a single file. A batch scoring pass over a whole run
-directory is the obvious next step.
+Scoring is the open piece, by choice. The runner materialises results; how to
+grade them is deferred.
+
+When it is picked up, the direction is LLM-as-judge throughout, replacing the
+provisional regex extractor described above. Report scoring already works that
+way (`score_fact`, `score_claim_recall`, `score_race`), so the pattern to follow
+is in the codebase. Batch scoring over a whole run directory — rather than one
+report at a time — is the other missing piece.

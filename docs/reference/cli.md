@@ -639,6 +639,95 @@ Removes all files from `~/.deep_research_cache/`.
 
 ---
 
+### eval
+
+Evaluate research tools against benchmark eval sets. A benchmark is read by an
+*adapter*; see [Evaluate Providers](../how-to/evaluate-providers.md) for the
+full workflow.
+
+#### Subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `eval adapters` | List the benchmark formats this client can read |
+| `eval fetch` | Download a benchmark dataset into the local cache |
+| `eval load` | Load an eval set and show what it contains |
+| `eval score` | Score a saved report against one task from an eval set |
+
+#### eval adapters
+
+Lists every registered adapter with its description, marking those that download
+data.
+
+#### eval fetch
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SUBSET` | LAB-Bench subset(s), comma-separated, or `all` (default: `LitQA2`) |
+| `--cache-dir PATH` | Cache directory (default: `~/.deep_research_cache`) |
+| `--revision TEXT` | Dataset revision to pin; resolved from HuggingFace when omitted |
+| `--refresh` | Re-download even if a cached copy exists |
+
+Benchmark data is cached rather than committed: LAB-Bench ships a contamination
+canary, is CC-BY-SA-4.0 where this project is BSD-3-Clause, and is large. The
+revision downloaded is recorded so a score can name the data behind it.
+
+#### eval load
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | Source for the adapter: a file, a directory, or a dataset subset |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--output`, `-o PATH` | Write the eval set as JSON instead of summarising it |
+| `--limit INTEGER` | Show only the first N tasks in the summary (default: 10) |
+
+#### eval score
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `REPORT` | Markdown file with the report to score |
+| `--source TEXT` | Eval set source (required) |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--task-id TEXT` | Task to score against; required when the set has more than one |
+| `--provider TEXT` | Name of the provider that generated the report |
+| `--no-fact` | Skip FACT (citation support) scoring |
+| `--no-recall` | Skip claim recall scoring |
+| `--no-race` | Skip RACE (report quality) scoring |
+| `--no-intrinsic` | Skip intrinsic (LLM-free) scoring |
+| `--output`, `-o PATH` | Output file for results (JSON) |
+| `--llm-base-url TEXT` | Base URL for the LLM judge API |
+| `--llm-api-key-env TEXT` | Env var for the LLM judge API key (default: `OPENAI_API_KEY`) |
+| `--llm-model TEXT` | Model for the LLM judge (default: `gpt-4o-mini`) |
+
+FACT, claim recall and RACE need an LLM judge; the intrinsic scores do not.
+
+#### Examples
+
+```bash
+# See what benchmark formats are available
+deep-research-client eval adapters
+
+# Check your own questions parse before spending money on providers
+deep-research-client eval load questions.yaml
+deep-research-client eval load questions.tsv --adapter tsv
+
+# Download and inspect a published benchmark
+deep-research-client eval fetch LitQA2
+deep-research-client eval load LitQA2 --adapter lab-bench
+
+# Load curated Monarch ground truth
+deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+
+# Score a saved report
+deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+
+# Intrinsic scores only: no LLM judge, no API spend
+deep-research-client eval score report.md --source questions.yaml \
+  --no-fact --no-recall --no-race
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Provider | Description |

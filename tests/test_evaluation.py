@@ -11,38 +11,35 @@ Tests cover:
 from pathlib import Path
 import pytest
 
-from deep_research_client.evaluation.models import (
+from deep_research_client.evaluation.datamodel import (
+    AnswerType,
     EvalTask,
     EvidenceItem,
-    FACTScore,
-    GroundTruthClaim,
-    GroundTruthEntity,
     OntologyTerm,
+    ReferenceClaim,
+)
+from deep_research_client.evaluation.models import (
+    FACTScore,
     RACEDimension,
     RACEScore,
-    TaskType,
 )
-from deep_research_client.evaluation.loaders import (
+from deep_research_client.evaluation.adapters.monarch import (
+    GroundTruthEntity,
     _parse_evidence,
     _parse_ontology_term,
+    generate_tasks,
     load_dismech_entity,
     load_gene_review_entity,
 )
-from deep_research_client.evaluation.tasks import (
+from deep_research_client.evaluation.adapters.monarch import (
     generate_disease_tasks,
     generate_gene_tasks,
-    generate_tasks,
 )
 from deep_research_client.evaluation.scorers import (
     extract_citations_from_markdown,
     extract_claims_with_citations,
 )
-from deep_research_client.evaluation.runner import (
-    EvalConfig,
-    generate_all_tasks,
-    load_entities,
-    parse_dr_output,
-)
+from deep_research_client.evaluation.runner import parse_dr_output
 
 
 # ---------------------------------------------------------------------------
@@ -58,20 +55,20 @@ def sample_disease_entity():
         name="Achondroplasia",
         source_repo="dismech",
         claims=[
-            GroundTruthClaim(
+            ReferenceClaim(
                 category="pathophysiology",
                 name="FGFR3 gain-of-function",
                 description="FGFR3 G380R causes constitutive receptor activation",
                 ontology_terms=[OntologyTerm(id="GO:0008543", label="FGFR signaling")],
                 evidence=[EvidenceItem(reference="PMID:7913883", snippet="point mutations in FGFR3")],
             ),
-            GroundTruthClaim(
+            ReferenceClaim(
                 category="phenotype",
                 name="Short stature",
                 description="Disproportionate short stature with rhizomelic limb shortening",
                 ontology_terms=[OntologyTerm(id="HP:0008873", label="Disproportionate short-limb short stature")],
             ),
-            GroundTruthClaim(
+            ReferenceClaim(
                 category="treatment",
                 name="Vosoritide",
                 description="C-type natriuretic peptide analog antagonizing FGFR3",
@@ -89,7 +86,7 @@ def sample_gene_entity():
         name="BRCA1",
         source_repo="ai-gene-review",
         claims=[
-            GroundTruthClaim(
+            ReferenceClaim(
                 category="gene_function",
                 name="E3 ubiquitin ligase (ACCEPT)",
                 description="BRCA1-BARD1 heterodimer functions as RING-type E3 ubiquitin ligase",
@@ -131,12 +128,14 @@ class TestModels:
 
     def test_eval_task_creation(self, sample_disease_entity):
         task = EvalTask(
-            task_id="test",
-            task_type=TaskType.DISEASE_MECHANISM,
-            query="What causes achondroplasia?",
-            ground_truth_entity_id=sample_disease_entity.entity_id,
+            id="test",
+            prompt="What causes achondroplasia?",
+            answer_type=AnswerType.REPORT,
+            task_type="disease_mechanism",
+            subject_id=sample_disease_entity.entity_id,
         )
-        assert task.task_type == TaskType.DISEASE_MECHANISM
+        assert task.task_type == "disease_mechanism"
+        assert task.answer_type == AnswerType.REPORT
 
 
 # ---------------------------------------------------------------------------
@@ -209,15 +208,13 @@ class TestTaskGeneration:
         tasks = generate_disease_tasks(sample_disease_entity)
         assert len(tasks) == 3  # mechanism, treatment, phenotype
         types = {t.task_type for t in tasks}
-        assert TaskType.DISEASE_MECHANISM in types
-        assert TaskType.TREATMENT_RATIONALE in types
-        assert TaskType.PHENOTYPE_EXPLANATION in types
+        assert types == {"disease_mechanism", "treatment_rationale", "phenotype_explanation"}
 
     def test_gene_tasks(self, sample_gene_entity):
         tasks = generate_gene_tasks(sample_gene_entity)
         assert len(tasks) == 1
-        assert tasks[0].task_type == TaskType.GENE_FUNCTION
-        assert "BRCA1" in tasks[0].query
+        assert tasks[0].task_type == "gene_function"
+        assert "BRCA1" in tasks[0].prompt
 
     def test_generate_tasks_dispatches(self, sample_disease_entity, sample_gene_entity):
         disease_tasks = generate_tasks(sample_disease_entity)
@@ -229,12 +226,12 @@ class TestTaskGeneration:
         entity = GroundTruthEntity(
             entity_id="X", entity_type="disease", name="X", source_repo="dismech",
             claims=[
-                GroundTruthClaim(category="pathophysiology", name="m1", description="desc"),
+                ReferenceClaim(category="pathophysiology", name="m1", description="desc"),
             ],
         )
         tasks = generate_disease_tasks(entity)
         assert len(tasks) == 1
-        assert tasks[0].task_type == TaskType.DISEASE_MECHANISM
+        assert tasks[0].task_type == "disease_mechanism"
 
 
 # ---------------------------------------------------------------------------
@@ -288,10 +285,10 @@ class TestCitationExtraction:
 class TestRunner:
     def test_parse_dr_output(self, sample_disease_entity):
         task = EvalTask(
-            task_id="test",
-            task_type=TaskType.DISEASE_MECHANISM,
-            query="test query",
-            ground_truth_entity_id="X",
+            id="test",
+            prompt="test query",
+            answer_type=AnswerType.REPORT,
+            task_type="disease_mechanism",
         )
         markdown = "FGFR3 G380R mutation (PMID:7913883) causes achondroplasia."
         dr = parse_dr_output(task, markdown, "falcon")
@@ -300,16 +297,6 @@ class TestRunner:
         assert len(dr.extracted_citations) == 1
         assert dr.extracted_citations[0].normalized_id == "PMID:7913883"
 
-    @pytest.mark.integration
-    def test_load_entities_from_file(self):
-        path = Path("/tmp/dismech/kb/disorders/Achondroplasia.yaml")
-        if not path.exists():
-            pytest.skip("dismech data not available")
-        config = EvalConfig(entity_files=[path])
-        entities = load_entities(config)
-        assert len(entities) == 1
-        assert entities[0].name == "Achondroplasia"
-
     def test_generate_all_tasks(self, sample_disease_entity, sample_gene_entity):
-        tasks = generate_all_tasks([sample_disease_entity, sample_gene_entity])
+        tasks = generate_tasks(sample_disease_entity) + generate_tasks(sample_gene_entity)
         assert len(tasks) == 4  # 3 disease + 1 gene

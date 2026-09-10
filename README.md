@@ -1072,6 +1072,55 @@ deep-research-client research "simple question" --provider perplexity --model so
 
 When Edison or OpenScientist produces diagrams, charts, figures, or other useful output artifacts, saved reports include an `Artifacts` section. The standard `research` command materializes recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
 
+## Evaluation
+
+The `eval` commands run research tools against a set of questions and score the
+results. Benchmarks are data, not code: an *adapter* turns some source into an
+eval set, and each task declares the shape of answer it expects, so the scorers
+apply to any subject matter.
+
+```bash
+# List the benchmark formats this client can read
+deep-research-client eval adapters
+
+# Your own questions, as YAML or TSV
+deep-research-client eval load questions.yaml
+deep-research-client eval load questions.tsv --adapter tsv
+
+# A published benchmark: LAB-Bench (Laurent et al. 2024, arXiv:2407.10362)
+deep-research-client eval fetch LitQA2
+deep-research-client eval load LitQA2 --adapter lab-bench
+
+# Curated Monarch ground truth
+deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+
+# Score a saved report
+deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+```
+
+The plainest eval set is just a list of questions:
+
+```yaml
+name: coscientist-v1
+tasks:
+  - id: fgfr3_mech
+    prompt: What are the pathophysiological mechanisms of achondroplasia?
+
+  - id: fgfr3_residue
+    prompt: Which FGFR3 residue is most commonly mutated in achondroplasia?
+    ideal: G380R
+    distractors: [G375C, R248C, K650E]
+```
+
+A task with distractors is scored as multiple choice (accuracy, coverage and
+precision, following LAB-Bench); one without is scored as a report, against a
+rubric of reference claims, spot checks and expected topics. Several scorers
+need no LLM judge at all.
+
+Benchmark data is downloaded rather than bundled, and the dataset revision is
+recorded with the eval set so a score can name the data behind it. See
+[docs/how-to/evaluate-providers.md](docs/how-to/evaluate-providers.md).
+
 ## Development
 
 ### Essential Commands
@@ -1119,6 +1168,7 @@ class NewProvider(ResearchProvider):
   * [models.py](src/deep_research_client/models.py) - Pydantic models
   * [cache.py](src/deep_research_client/cache.py) - caching implementation
   * [providers/](src/deep_research_client/providers/) - research providers
+  * [evaluation/](src/deep_research_client/evaluation/) - benchmark adapters and scorers
 * [tests/](tests/) - test suite
 
 ## Potential Future Providers

@@ -29,19 +29,18 @@ from .models import (
     ClaimMatch,
     ClaimRecallScore,
     DROutput,
-    EvalTask,
     ExtractedCitation,
     ExtractedClaim,
     FACTScore,
     FactualSpotCheck,
     FactualSpotCheckScore,
-    GroundTruthClaim,
     IntrinsicScore,
     RACEDimension,
     RACEScore,
     TopicCoverage,
     TopicCoverageScore,
 )
+from .datamodel import EvalTask, ReferenceClaim, Rubric
 from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
@@ -306,7 +305,7 @@ async def score_fact(
 
 async def score_claim_recall(
     dr_output: DROutput,
-    ground_truth_claims: list[GroundTruthClaim],
+    ground_truth_claims: list[ReferenceClaim],
     llm_client: Any,
     model: str = "gpt-4o-mini",
 ) -> ClaimRecallScore:
@@ -441,8 +440,8 @@ async def score_race(
 
     # Build ground truth summary for the judge
     gt_summary_parts = []
-    for claim in task.ground_truth_claims[:20]:
-        terms_str = ", ".join(f"{t.id} ({t.label})" for t in claim.ontology_terms[:3])
+    for claim in _reference_claims(task)[:20]:
+        terms_str = ", ".join(f"{t.id} ({t.label})" for t in (claim.ontology_terms or [])[:3])
         gt_summary_parts.append(
             f"- [{claim.category}] {claim.name}: {claim.description[:150]}"
             + (f" (Terms: {terms_str})" if terms_str else "")
@@ -453,7 +452,7 @@ async def score_race(
     for dim_name, dim_description in _RACE_DIMENSIONS:
         prompt = (
             "You are an expert scientific evaluator assessing a deep research report.\n\n"
-            f"TASK QUERY: {task.query}\n\n"
+            f"TASK QUERY: {task.prompt}\n\n"
             f"KNOWN GROUND TRUTH (key claims that should be covered):\n{gt_summary}\n\n"
             f"RESEARCH REPORT:\n{report_text}\n\n"
             f"EVALUATION DIMENSION: {dim_name}\n"
@@ -758,128 +757,87 @@ async def score_citation_alignment(
 
 
 # ---------------------------------------------------------------------------
-# Factual spot-check definitions
+# Rubric-driven intrinsic scorers
 # ---------------------------------------------------------------------------
 
-# Each spot check is: (fact_name, pattern_to_find_in_text, expected_value_pattern)
-# These are checked by regex against the DR output text.
+# Spot-check patterns and topic keyword lists used to live here as Python
+# constants - including a dict of facts about exactly two named genes. That made
+# these scorers useless for any third subject and impossible to extend without
+# editing this module. They are supplied by the eval set now, as
+# ``EvalTask.rubric``; the bundled Monarch rubrics are in ``evaluation/rubrics``.
 
-_GENE_SPOT_CHECKS: dict[str, list[tuple[str, str, str]]] = {
-    "BRCA1": [
-        ("chromosome", r"chromosome\s+(17[qp]?\d*\.?\d*)", "17"),
-        ("protein_length", r"(\d{3,4})\s*amino\s*acid", "1863"),
-        ("gene_symbol", r"\bBRCA1\b", "BRCA1"),
-        ("partner_protein", r"\bBARD1\b", "BARD1"),
-        ("repair_pathway", r"\bhomologous\s+recombination\b", "homologous recombination"),
-        ("ring_domain", r"\bRING\s*(finger)?\s*domain\b", "RING domain"),
-        ("brct_domain", r"\bBRCT\b", "BRCT"),
-        ("e3_ligase", r"\bE3\s*ubiquitin\s*ligase\b", "E3 ubiquitin ligase"),
-        ("rad51_interaction", r"\bRAD51\b", "RAD51"),
-        ("cancer_type", r"\b(breast|ovarian)\s+cancer\b", "breast/ovarian cancer"),
-        ("parp_inhibitor", r"\bPARP\s*inhibitor", "PARP inhibitor"),
-    ],
-    "TP53": [
-        ("chromosome", r"chromosome\s+(17[qp]?\d*\.?\d*)", "17"),
-        ("gene_symbol", r"\bTP53\b", "TP53"),
-        ("protein_name", r"\bp53\b", "p53"),
-        ("tumor_suppressor", r"\btumor\s+suppressor\b", "tumor suppressor"),
-        ("apoptosis", r"\bapoptosis\b", "apoptosis"),
-        ("cell_cycle", r"\bcell\s+cycle\b", "cell cycle"),
-    ],
-}
 
-# Generic checks that apply to any gene
-_GENERIC_GENE_SPOT_CHECKS: list[tuple[str, str | None, str | None]] = [
-    ("has_gene_symbol", None, None),  # Special: just checks gene name is mentioned
-    ("has_protein_function", r"\b(catalytic|binding|signaling|kinase|ligase|transferase|receptor)\b", "any enzymatic/binding term"),
-    ("has_cellular_location", r"\b(nucleus|cytoplasm|membrane|mitochondria|endoplasmic|golgi)\b", "any subcellular location"),
-    ("has_pathway_context", r"\b(pathway|signaling|cascade|network)\b", "any pathway term"),
-    ("has_disease_association", r"\b(disease|disorder|syndrome|cancer|mutation|pathogenic)\b", "any disease term"),
-]
+def _rubric_of(task: EvalTask) -> Rubric:
+    """Return a task's rubric, or an empty one when it has none."""
+    return task.rubric or Rubric()
 
-# Expected topics for different report types
-_GENE_FUNCTION_TOPICS: list[tuple[str, list[str]]] = [
-    ("molecular_function", ["catalytic", "binding", "enzyme", "kinase", "ligase", "transferase", "receptor", "transporter"]),
-    ("biological_process", ["signaling", "repair", "replication", "transcription", "translation", "apoptosis", "cell cycle", "differentiation", "proliferation"]),
-    ("protein_structure", ["domain", "motif", "fold", "terminus", "residue", "helix", "sheet", "conformation"]),
-    ("protein_interactions", ["interact", "complex", "partner", "binding partner", "hetero", "homo", "recruit", "associate"]),
-    ("subcellular_localization", ["nucleus", "cytoplasm", "membrane", "foci", "compartment", "localization", "nuclear", "cytoplasmic"]),
-    ("regulation", ["phosphorylation", "ubiquitin", "acetylation", "methylation", "regulation", "post-translational", "modification"]),
-    ("disease_relevance", ["cancer", "disease", "pathogenic", "mutation", "variant", "clinical", "therapeutic", "hereditary"]),
-    ("model_organisms", ["mouse", "yeast", "drosophila", "zebrafish", "model organism", "knockout", "homolog"]),
-]
 
-_DISEASE_MECHANISM_TOPICS: list[tuple[str, list[str]]] = [
-    ("genetic_basis", ["gene", "mutation", "variant", "allele", "inheritance", "autosomal", "dominant", "recessive"]),
-    ("molecular_mechanism", ["protein", "pathway", "signaling", "receptor", "enzyme", "binding"]),
-    ("cellular_effects", ["cell", "proliferation", "apoptosis", "differentiation", "migration"]),
-    ("clinical_features", ["phenotype", "symptom", "presentation", "diagnosis", "severity"]),
-    ("treatment", ["therapy", "treatment", "drug", "inhibitor", "intervention", "clinical trial"]),
-    ("epidemiology", ["prevalence", "incidence", "population", "risk", "frequency"]),
-]
+def _reference_claims(task: EvalTask) -> list[ReferenceClaim]:
+    """Return the reference claims a task expects a report to cover."""
+    return _rubric_of(task).reference_claims or []
 
 
 def score_factual_spot_checks(
     dr_output: DROutput,
-    gene_symbol: str | None = None,
+    task: EvalTask,
 ) -> FactualSpotCheckScore:
-    """Run factual spot-checks against the DR output.
+    r"""Verify a task's spot checks against the report text.
 
-    Verifies specific, objectively correct facts (chromosome location,
-    protein domains, key interaction partners) by regex matching.
-    No LLM or API calls needed.
+    Each check is a regular expression from the task's rubric. A check with an
+    ``expected`` value and a capturing group is an accuracy check: the captured
+    text must match. A check without one only asks whether the pattern appears
+    at all, which measures coverage rather than correctness - so presence and
+    accuracy are reported as separate rates.
 
     Args:
         dr_output: Parsed DR output.
-        gene_symbol: Gene symbol to use gene-specific checks. Falls back to generic.
+        task: The evaluation task, supplying the checks via its rubric.
 
     Returns:
         FactualSpotCheckScore with per-check details.
+
+    >>> from .datamodel import AnswerType, EvalTask, Rubric, SpotCheck
+    >>> from .models import DROutput
+    >>> task = EvalTask(id="t", prompt="p", answer_type=AnswerType.REPORT,
+    ...                 rubric=Rubric(spot_checks=[
+    ...                     SpotCheck(name="length", pattern=r"(\d+)\s*amino acid", expected="1863"),
+    ...                     SpotCheck(name="mentions_ring", pattern=r"RING domain"),
+    ...                 ]))
+    >>> out = DROutput(task_id="t", provider="mock",
+    ...                raw_markdown="A 1863 amino acid protein with a RING domain.")
+    >>> score = score_factual_spot_checks(out, task)
+    >>> score.present_count, score.correct_count
+    (2, 2)
+    >>> wrong = DROutput(task_id="t", provider="mock", raw_markdown="A 999 amino acid protein.")
+    >>> s2 = score_factual_spot_checks(wrong, task)
+    >>> s2.present_count, s2.correct_count
+    (1, 0)
     """
     text = dr_output.raw_markdown
     checks: list[FactualSpotCheck] = []
 
-    # Use gene-specific checks if available
-    specific_checks = _GENE_SPOT_CHECKS.get(gene_symbol or "", [])
-    for fact_name, pattern, expected in specific_checks:
-        match = re.search(pattern, text, re.IGNORECASE)
-        present = match is not None
-        found_value = match.group(0) if match else None
+    for spec in _rubric_of(task).spot_checks or []:
+        match = re.search(spec.pattern, text, re.IGNORECASE)
 
-        # For some checks we just care about presence, not exact value
-        correct = present  # conservative: if present, assume correct for keyword checks
-        if fact_name == "protein_length" and match:
-            # Specific numeric check
-            correct = match.group(1) == expected
+        if match is None:
+            present, found, correct = False, None, False
+        else:
+            present, found = True, match.group(0)
+            if spec.expected is None:
+                # Presence-only check: appearing is the whole test.
+                correct = True
+            elif match.groups():
+                correct = match.group(1).strip().lower() == spec.expected.strip().lower()
+            else:
+                correct = True
 
         checks.append(FactualSpotCheck(
-            fact_name=fact_name,
-            expected=expected,
-            found_in_report=found_value,
+            fact_name=spec.name,
+            expected=spec.expected or "",
+            found_in_report=found,
             correct=correct,
             present=present,
         ))
-
-    # Generic checks for any gene
-    for gen_name, gen_pattern, gen_expected in _GENERIC_GENE_SPOT_CHECKS:
-        if gen_name == "has_gene_symbol" and gene_symbol:
-            present = gene_symbol.upper() in text.upper()
-            checks.append(FactualSpotCheck(
-                fact_name=gen_name,
-                expected=gene_symbol,
-                found_in_report=gene_symbol if present else None,
-                correct=present,
-                present=present,
-            ))
-        elif gen_pattern:
-            match = re.search(gen_pattern, text, re.IGNORECASE)
-            checks.append(FactualSpotCheck(
-                fact_name=gen_name,
-                expected=gen_expected or "",
-                found_in_report=match.group(0) if match else None,
-                correct=match is not None,
-                present=match is not None,
-            ))
 
     present_count = sum(1 for c in checks if c.present)
     correct_count = sum(1 for c in checks if c.correct)
@@ -899,58 +857,56 @@ def score_topic_coverage(
     dr_output: DROutput,
     task: EvalTask,
 ) -> TopicCoverageScore:
-    """Check whether the report covers expected topics for the task type.
+    """Check whether the report addresses the topics the task's rubric expects.
 
-    Uses keyword matching against predefined topic lists. No LLM needed.
-    Different topic lists are used for gene function vs disease mechanism tasks.
+    Keyword matching, so no LLM judge and no API calls. Any one keyword counts,
+    which means this measures whether the report went somewhere at all rather
+    than how well it covered it.
 
     Args:
         dr_output: Parsed DR output.
-        task: The evaluation task (determines which topic list to use).
+        task: The evaluation task, supplying the topics via its rubric.
 
     Returns:
         TopicCoverageScore with per-topic details.
+
+    >>> from .datamodel import AnswerType, EvalTask, ExpectedTopic, Rubric
+    >>> from .models import DROutput
+    >>> task = EvalTask(id="t", prompt="p", answer_type=AnswerType.REPORT,
+    ...                 rubric=Rubric(expected_topics=[
+    ...                     ExpectedTopic(name="repair", keywords=["homologous recombination"]),
+    ...                     ExpectedTopic(name="epidemiology", keywords=["prevalence"]),
+    ...                 ]))
+    >>> out = DROutput(task_id="t", provider="mock",
+    ...                raw_markdown="BRCA1 acts in homologous recombination repair.")
+    >>> score = score_topic_coverage(out, task)
+    >>> score.covered_count, score.total_topics, score.coverage_rate
+    (1, 2, 0.5)
     """
-    from .models import TaskType
-
     text_lower = dr_output.raw_markdown.lower()
-
-    # Select topic list based on task type
-    if task.task_type in (TaskType.GENE_FUNCTION, TaskType.GENE_DISEASE_LINK):
-        topic_defs = _GENE_FUNCTION_TOPICS
-    else:
-        topic_defs = _DISEASE_MECHANISM_TOPICS
-
     topics: list[TopicCoverage] = []
-    for topic_name, keywords in topic_defs:
-        found_keywords = [kw for kw in keywords if kw.lower() in text_lower]
-        covered = len(found_keywords) >= 1
 
-        # Find a snippet as evidence
+    for spec in _rubric_of(task).expected_topics or []:
+        found = [kw for kw in spec.keywords if kw.lower() in text_lower]
         snippet = None
-        if found_keywords:
-            # Find the first occurrence in text
-            kw = found_keywords[0]
-            idx = text_lower.find(kw.lower())
-            if idx >= 0:
-                start = max(0, idx - 40)
-                end = min(len(dr_output.raw_markdown), idx + len(kw) + 60)
-                snippet = dr_output.raw_markdown[start:end].strip()
+        if found:
+            index = text_lower.find(found[0].lower())
+            snippet = dr_output.raw_markdown[max(0, index - 60): index + 120].strip()
 
         topics.append(TopicCoverage(
-            topic=topic_name,
-            covered=covered,
+            topic=spec.name,
+            covered=bool(found),
             evidence_snippet=snippet,
-            keywords_found=found_keywords,
+            keywords_found=found,
         ))
 
-    covered_count = sum(1 for t in topics if t.covered)
+    covered = sum(1 for t in topics if t.covered)
     total = len(topics)
 
     return TopicCoverageScore(
         total_topics=total,
-        covered_count=covered_count,
-        coverage_rate=covered_count / total if total > 0 else 0.0,
+        covered_count=covered,
+        coverage_rate=covered / total if total > 0 else 0.0,
         topics=topics,
     )
 
@@ -958,7 +914,6 @@ def score_topic_coverage(
 async def score_intrinsic(
     dr_output: DROutput,
     task: EvalTask,
-    gene_symbol: str | None = None,
     pubmed_client: httpx.AsyncClient | None = None,
     run_verifiability: bool = True,
     run_alignment: bool = True,
@@ -973,7 +928,6 @@ async def score_intrinsic(
     Args:
         dr_output: Parsed DR output.
         task: The evaluation task.
-        gene_symbol: Gene symbol for gene-specific spot checks.
         pubmed_client: Optional httpx client for PubMed/CrossRef.
         run_verifiability: Check if citations resolve to real papers.
         run_alignment: Check if paper titles align with claims.
@@ -996,9 +950,7 @@ async def score_intrinsic(
         )
 
     if run_spot_checks:
-        result.factual_spot_checks = score_factual_spot_checks(
-            dr_output, gene_symbol
-        )
+        result.factual_spot_checks = score_factual_spot_checks(dr_output, task)
 
     if run_topic_coverage:
         result.topic_coverage = score_topic_coverage(dr_output, task)

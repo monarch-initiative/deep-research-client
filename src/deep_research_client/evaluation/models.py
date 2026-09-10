@@ -1,159 +1,27 @@
-"""Pydantic models for the evaluation framework.
+"""Pydantic models for scoring results.
 
-Covers ground truth representation, DR output parsing, and scoring results.
-Ground truth is loaded from dismech (disease mechanisms) and ai-gene-review
-(gene function annotations) repositories.
+The eval sets themselves - tasks, reference answers, rubrics - are defined by
+the LinkML schema in ``evaluation.yaml`` and generated into ``datamodel.py``.
+What lives here is the other half: results, which are computed rather than
+authored, and so are hand-written Pydantic rather than schema-generated.
 
-Scoring follows two complementary frameworks:
+Scoring follows several complementary frameworks:
+- MCQ: accuracy, coverage and precision for multiple-choice benchmarks
 - FACT: citation verification (does the cited paper support the claim?)
 - RACE: report quality (comprehensiveness, accuracy, organization, terminology)
-- Claim recall: does the DR output cover the known ground truth claims?
+- Claim recall: does the report cover the reference claims?
 """
 
-from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from .datamodel import ScoreDisposition
 
-# ---------------------------------------------------------------------------
-# Ground truth models
-# ---------------------------------------------------------------------------
-
-
-class EvidenceItem(BaseModel):
-    """A single piece of evidence backing a ground truth claim.
-
-    >>> e = EvidenceItem(reference="PMID:8078586", snippet="autosomal dominant trait")
-    >>> e.reference
-    'PMID:8078586'
-    """
-
-    reference: str = Field(..., description="PMID, DOI, or other reference identifier")
-    snippet: Optional[str] = Field(default=None, description="Verbatim quote from the source")
-    supports: Optional[str] = Field(default=None, description="SUPPORT, REFUTE, or PARTIAL")
-    explanation: Optional[str] = Field(default=None, description="Why this evidence is relevant")
-
-
-class OntologyTerm(BaseModel):
-    """An ontology term (GO, HP, MONDO, CL, UBERON, etc.).
-
-    >>> t = OntologyTerm(id="GO:0008543", label="fibroblast growth factor receptor signaling pathway")
-    >>> t.id
-    'GO:0008543'
-    """
-
-    id: str = Field(..., description="Ontology CURIE, e.g. GO:0008543")
-    label: str = Field(..., description="Human-readable label")
-
-
-class GroundTruthClaim(BaseModel):
-    """A single verifiable claim from the ground truth knowledge base.
-
-    Claims form a flat list per entity (gene or disease).  Each claim has
-    a category (e.g. pathophysiology, phenotype, treatment), a text description,
-    optional ontology terms, and supporting evidence with references.
-
-    >>> c = GroundTruthClaim(
-    ...     category="pathophysiology",
-    ...     name="FGFR3 gain-of-function",
-    ...     description="FGFR3 G380R causes constitutive receptor activation",
-    ...     evidence=[EvidenceItem(reference="PMID:7913883", snippet="point mutations in FGFR3")],
-    ... )
-    >>> c.category
-    'pathophysiology'
-    """
-
-    category: str = Field(..., description="Claim category: pathophysiology, phenotype, treatment, genetic_factor, gene_function")
-    name: str = Field(..., description="Short name for the claim")
-    description: str = Field(..., description="Full text of the claim")
-    ontology_terms: list[OntologyTerm] = Field(default_factory=list, description="Associated ontology terms")
-    evidence: list[EvidenceItem] = Field(default_factory=list, description="Supporting evidence with references")
-    subclaims: list["GroundTruthClaim"] = Field(default_factory=list, description="Nested sub-claims")
-
-
-class GroundTruthEntity(BaseModel):
-    """Ground truth for a single entity (disease or gene).
-
-    >>> entity = GroundTruthEntity(
-    ...     entity_id="MONDO:0007037",
-    ...     entity_type="disease",
-    ...     name="Achondroplasia",
-    ...     source_repo="dismech",
-    ...     claims=[],
-    ... )
-    >>> entity.name
-    'Achondroplasia'
-    """
-
-    entity_id: str = Field(..., description="Primary identifier (MONDO, HGNC, UniProt)")
-    entity_type: str = Field(..., description="'disease' or 'gene'")
-    name: str = Field(..., description="Human-readable name")
-    description: Optional[str] = Field(default=None, description="Summary description")
-    source_repo: str = Field(..., description="Source repository: 'dismech' or 'ai-gene-review'")
-    source_file: Optional[str] = Field(default=None, description="Path to source YAML file")
-    claims: list[GroundTruthClaim] = Field(default_factory=list, description="All ground truth claims")
-
-    @property
-    def all_references(self) -> set[str]:
-        """Collect all unique reference IDs across all claims.
-
-        >>> entity = GroundTruthEntity(
-        ...     entity_id="X", entity_type="disease", name="X", source_repo="dismech",
-        ...     claims=[GroundTruthClaim(
-        ...         category="pathophysiology", name="m1", description="desc",
-        ...         evidence=[EvidenceItem(reference="PMID:123"), EvidenceItem(reference="PMID:456")],
-        ...     )],
-        ... )
-        >>> sorted(entity.all_references)
-        ['PMID:123', 'PMID:456']
-        """
-        refs: set[str] = set()
-        for claim in self.claims:
-            for ev in claim.evidence:
-                refs.add(ev.reference)
-            for sub in claim.subclaims:
-                for ev in sub.evidence:
-                    refs.add(ev.reference)
-        return refs
-
-
-# ---------------------------------------------------------------------------
-# Evaluation task models
-# ---------------------------------------------------------------------------
-
-
-class TaskType(str, Enum):
-    """Types of deep research evaluation tasks."""
-
-    DISEASE_MECHANISM = "disease_mechanism"
-    GENE_FUNCTION = "gene_function"
-    GENE_DISEASE_LINK = "gene_disease_link"
-    TREATMENT_RATIONALE = "treatment_rationale"
-    PHENOTYPE_EXPLANATION = "phenotype_explanation"
-
-
-class EvalTask(BaseModel):
-    """A single evaluation task to send to a deep research tool.
-
-    >>> task = EvalTask(
-    ...     task_id="achondroplasia_mechanism",
-    ...     task_type=TaskType.DISEASE_MECHANISM,
-    ...     query="What are the pathophysiological mechanisms of Achondroplasia?",
-    ...     ground_truth_entity_id="MONDO:0007037",
-    ... )
-    >>> task.task_type
-    <TaskType.DISEASE_MECHANISM: 'disease_mechanism'>
-    """
-
-    task_id: str = Field(..., description="Unique task identifier")
-    task_type: TaskType = Field(..., description="Category of the evaluation task")
-    query: str = Field(..., description="The research question to send to the DR tool")
-    ground_truth_entity_id: str = Field(..., description="ID of the ground truth entity")
-    ground_truth_claims: list[GroundTruthClaim] = Field(
-        default_factory=list, description="Subset of ground truth claims relevant to this task"
-    )
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Extra metadata")
+# Note: the schema-generated classes in datamodel.py are configured with
+# ``use_enum_values``, so an enum slot read back off one of those is a plain
+# string, while the same enum on a model here stays an enum member. Compare
+# enum-valued fields with ``==`` rather than ``is`` so both forms behave.
 
 
 # ---------------------------------------------------------------------------
@@ -504,3 +372,59 @@ class EvalResult(BaseModel):
     intrinsic_score: Optional[IntrinsicScore] = None
     duration_seconds: Optional[float] = None
     error: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Multiple-choice scoring models
+# ---------------------------------------------------------------------------
+
+
+class MCQAnswer(BaseModel):
+    """One provider's graded answer to one multiple-choice task.
+
+    ``correct`` is only meaningful when ``disposition`` is SCORED. An abstention
+    is not a wrong answer, and neither a provider failure nor an extraction
+    failure says anything about whether the provider knew the answer, so all
+    three leave ``correct`` false while being counted separately.
+
+    >>> a = MCQAnswer(task_id="t1", provider="falcon", chosen_letter="B",
+    ...               disposition="SCORED", correct=True)
+    >>> a.correct
+    True
+    """
+
+    task_id: str = Field(..., description="ID of the evaluation task")
+    provider: str = Field(..., description="Provider or arm that produced the answer")
+    chosen_letter: Optional[str] = Field(default=None, description="Option letter the provider chose")
+    chosen_text: Optional[str] = Field(default=None, description="Text of the chosen option")
+    disposition: ScoreDisposition = Field(..., description="What became of this task-provider pair")
+    correct: bool = Field(default=False, description="Whether the chosen option was the ideal answer")
+    error: Optional[str] = Field(default=None, description="Provider error, when the call failed")
+
+
+class MCQScore(BaseModel):
+    """Aggregate multiple-choice score, following LAB-Bench's metric definitions.
+
+    Accuracy is over all questions, coverage is the fraction attempted, and
+    precision is over attempted questions only. Reporting accuracy without
+    coverage hides whether a low score means wrong answers or declined ones.
+
+    >>> s = MCQScore(total=10, attempted=8, correct=6, accuracy=0.6,
+    ...              coverage=0.8, precision=0.75)
+    >>> s.precision
+    0.75
+    """
+
+    total: int = Field(..., description="Questions in the eval set")
+    attempted: int = Field(..., description="Questions the provider chose an option for")
+    correct: int = Field(..., description="Questions answered correctly")
+    abstained: int = Field(default=0, description="Questions the provider declined")
+    extraction_failures: int = Field(
+        default=0,
+        description="Responses no option could be recovered from; a harness defect, not a provider one",
+    )
+    provider_errors: int = Field(default=0, description="Calls that failed outright")
+    accuracy: float = Field(..., description="correct / total")
+    coverage: float = Field(..., description="attempted / total")
+    precision: float = Field(..., description="correct / attempted")
+    answers: list[MCQAnswer] = Field(default_factory=list, description="Per-task graded answers")

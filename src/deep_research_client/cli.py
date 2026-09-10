@@ -2660,204 +2660,258 @@ def browse_files(
 # Evaluation commands
 # ---------------------------------------------------------------------------
 
-eval_app = typer.Typer(help="Evaluate deep research tools against curated ground truth")
+eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
 
 
-@eval_app.command("load-ground-truth")
-def eval_load_ground_truth(
-    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
-    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
-    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
-    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
-    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities to load")] = None,
-):
-    """Load and display ground truth entities from dismech and/or ai-gene-review.
+def _adapter_help() -> str:
+    """Render the registered adapter names for CLI help text."""
+    from .evaluation.adapters import available_adapters
+    return ", ".join(available_adapters())
+
+
+@eval_app.command("adapters")
+def eval_adapters():
+    """List the benchmark formats this client can read.
 
     \b
     Examples:
-        deep-research-client eval load-ground-truth --dismech-dir /path/to/dismech/kb/disorders
-        deep-research-client eval load-ground-truth --entity-file /path/to/Achondroplasia.yaml
-        deep-research-client eval load-ground-truth --gene-review-dir /path/to/genes/human --max 5
+        deep-research-client eval adapters
     """
-    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
+    from .evaluation.adapters import available_adapters, get_adapter
 
-    config = EvalConfig(
-        dismech_dir=dismech_dir,
-        gene_review_dir=gene_review_dir,
-        entity_files=list(entity_file or []),
-        entity_names=list(entity_name or []),
-        max_entities=max_entities,
-    )
-    entities = load_entities(config)
-    if not entities:
-        typer.echo("No entities loaded. Check your paths.")
-        raise typer.Exit(1)
-
-    tasks = generate_all_tasks(entities)
-
-    typer.echo(f"\nLoaded {len(entities)} entities, generated {len(tasks)} evaluation tasks:\n")
-    for entity in entities:
-        typer.echo(f"  {entity.entity_type.upper()}: {entity.name} ({entity.entity_id})")
-        typer.echo(f"    Claims: {len(entity.claims)}, References: {len(entity.all_references)}")
-        entity_tasks = [t for t in tasks if t.ground_truth_entity_id == entity.entity_id]
-        for t in entity_tasks:
-            typer.echo(f"    Task: {t.task_type.value} -> {t.query[:80]}...")
+    typer.echo("Available eval-set adapters:\n")
+    for name in available_adapters():
+        adapter = get_adapter(name)
+        network = " (downloads data)" if adapter.requires_network else ""
+        typer.echo(f"  {name:<16} {adapter.description}{network}")
     typer.echo()
 
 
-@eval_app.command("generate-tasks")
-def eval_generate_tasks(
-    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
-    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
-    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
-    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
-    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities")] = None,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for tasks (JSON)")] = None,
+@eval_app.command("fetch")
+def eval_fetch(
+    subset: Annotated[str, typer.Argument(
+        help="LAB-Bench subset(s), comma-separated, or 'all' for every text-only subset")] = "LitQA2",
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Cache directory (default: ~/.deep_research_cache)")] = None,
+    revision: Annotated[Optional[str], typer.Option(
+        "--revision", help="Dataset revision to pin; resolved from HuggingFace when omitted")] = None,
+    refresh: Annotated[bool, typer.Option(
+        "--refresh", help="Re-download even if a cached copy exists")] = False,
 ):
-    """Generate evaluation tasks as JSON for use in scoring pipelines.
+    """Download a benchmark dataset into the local cache.
+
+    The data is cached rather than committed to this repository: LAB-Bench ships
+    a contamination canary, is CC-BY-SA-4.0 where this project is BSD-3-Clause,
+    and is large. The revision downloaded is recorded so a score can name the
+    exact data behind it.
 
     \b
     Examples:
-        deep-research-client eval generate-tasks --entity-file Achondroplasia.yaml -o tasks.json
+        deep-research-client eval fetch LitQA2
+        deep-research-client eval fetch LitQA2,SuppQA --refresh
+        deep-research-client eval fetch all
+    """
+    from .evaluation.adapters.lab_bench import SUBSETS, fetch_subset, text_only_subsets
+
+    names = text_only_subsets() if subset.lower() == "all" else [
+        s.strip() for s in subset.split(",") if s.strip()
+    ]
+
+    unknown = [n for n in names if n not in SUBSETS]
+    if unknown:
+        typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
+        typer.echo(f"Available: {', '.join(SUBSETS)}")
+        raise typer.Exit(1)
+
+    for name in names:
+        rows, resolved = fetch_subset(
+            name, cache_dir=cache_dir, revision=revision, refresh=refresh
+        )
+        typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
+
+
+@eval_app.command("load")
+def eval_load(
+    source: Annotated[str, typer.Argument(
+        help="Source for the adapter: a file, a directory, or a dataset subset name")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o", help="Write the eval set as JSON instead of summarising it")] = None,
+    limit: Annotated[Optional[int], typer.Option(
+        "--limit", help="Show only the first N tasks in the summary")] = 10,
+):
+    """Load an eval set and show what it contains.
+
+    Use this to check that a benchmark parses, and that its tasks carry the
+    answer shape and reference material you expect, before spending money
+    running providers against it.
+
+    \b
+    Examples:
+        deep-research-client eval load questions.yaml
+        deep-research-client eval load questions.tsv --adapter tsv
+        deep-research-client eval load LitQA2 --adapter lab-bench
+        deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+        deep-research-client eval load LitQA2 --adapter lab-bench -o litqa2.json
     """
     import json as json_mod
-    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
+    from .evaluation.runner import load_eval_set
 
-    config = EvalConfig(
-        dismech_dir=dismech_dir,
-        gene_review_dir=gene_review_dir,
-        entity_files=list(entity_file or []),
-        entity_names=list(entity_name or []),
-        max_entities=max_entities,
-    )
-    entities = load_entities(config)
-    tasks = generate_all_tasks(entities)
-
-    tasks_json = [t.model_dump(mode="json") for t in tasks]
+    eval_set = load_eval_set(adapter, source)
+    tasks = eval_set.tasks or []
 
     if output:
-        output.write_text(json_mod.dumps(tasks_json, indent=2))
+        output.write_text(json_mod.dumps(eval_set.model_dump(mode="json"), indent=2))
         typer.echo(f"Wrote {len(tasks)} tasks to {output}")
-    else:
-        typer.echo(json_mod.dumps(tasks_json, indent=2))
+        return
+
+    typer.echo(f"\nEval set: {eval_set.name}")
+    if eval_set.description:
+        typer.echo(f"  {eval_set.description}")
+    typer.echo(f"  Tasks:    {len(tasks)}")
+    if eval_set.source_revision:
+        typer.echo(f"  Revision: {eval_set.source_revision}")
+    if eval_set.license:
+        typer.echo(f"  License:  {eval_set.license}")
+
+    by_type: dict[str, int] = {}
+    for task in tasks:
+        by_type[task.answer_type] = by_type.get(task.answer_type, 0) + 1
+    typer.echo(f"  Shapes:   {', '.join(f'{k}={v}' for k, v in sorted(by_type.items()))}")
+
+    if eval_set.is_partial:
+        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
+
+    typer.echo()
+    for task in tasks[:limit]:
+        typer.echo(f"  [{task.answer_type}] {task.id}")
+        typer.echo(f"      {task.prompt[:100]}...")
+        if task.answer_spec and task.answer_spec.distractors:
+            typer.echo(f"      {len(task.answer_spec.distractors) + 1} options")
+        if task.rubric and task.rubric.reference_claims:
+            typer.echo(f"      {len(task.rubric.reference_claims)} reference claims")
+    if limit is not None and len(tasks) > limit:
+        typer.echo(f"  ... and {len(tasks) - limit} more")
+    typer.echo()
 
 
 @eval_app.command("score")
 def eval_score(
-    report: Annotated[Path, typer.Argument(help="Markdown file with DR output to score")],
-    entity_file: Annotated[Path, typer.Option("--entity-file", help="Ground truth YAML file")],
-    provider_name: Annotated[str, typer.Option("--provider", help="Name of the DR provider that generated the report")] = "unknown",
-    task_type: Annotated[Optional[str], typer.Option("--task-type", help="Task type filter (disease_mechanism, gene_function, etc.)")] = None,
+    report: Annotated[Path, typer.Argument(help="Markdown file with the report to score")],
+    source: Annotated[str, typer.Option(
+        "--source", help="Eval set source (file, directory, or dataset subset)")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    task_id: Annotated[Optional[str], typer.Option(
+        "--task-id", help="Score against this task; required when the set has more than one")] = None,
+    provider_name: Annotated[str, typer.Option(
+        "--provider", help="Name of the provider that generated the report")] = "unknown",
     no_fact: Annotated[bool, typer.Option("--no-fact", help="Skip FACT scoring")] = False,
     no_recall: Annotated[bool, typer.Option("--no-recall", help="Skip claim recall scoring")] = False,
     no_race: Annotated[bool, typer.Option("--no-race", help="Skip RACE scoring")] = False,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for results (JSON)")] = None,
-    llm_base_url: Annotated[Optional[str], typer.Option("--llm-base-url", help="Base URL for LLM judge API")] = None,
-    llm_api_key_env: Annotated[str, typer.Option("--llm-api-key-env", help="Env var for LLM judge API key")] = "OPENAI_API_KEY",
-    llm_model: Annotated[str, typer.Option("--llm-model", help="Model for LLM judge")] = "gpt-4o-mini",
+    no_intrinsic: Annotated[bool, typer.Option("--no-intrinsic", help="Skip intrinsic scoring")] = False,
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o", help="Output file for results (JSON)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL for LLM judge API")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var for LLM judge API key")] = "OPENAI_API_KEY",
+    llm_model: Annotated[str, typer.Option(
+        "--llm-model", help="Model for LLM judge")] = "gpt-4o-mini",
 ):
-    """Score a deep research report against ground truth.
+    """Score a saved report against one task from an eval set.
 
     \b
     Examples:
-        deep-research-client eval score report.md --entity-file Achondroplasia.yaml --provider falcon
-        deep-research-client eval score report.md --entity-file BRCA1-ai-review.yaml --no-race
+        deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+        deep-research-client eval score report.md --source Achondroplasia.yaml --adapter dismech --provider falcon
+        deep-research-client eval score report.md --source questions.yaml --no-fact --no-race
     """
     import asyncio
     import json as json_mod
     from openai import AsyncOpenAI
-    from .evaluation.runner import (
-        EvalConfig, load_entities, generate_all_tasks, parse_dr_output, score_output,
-    )
-    from .evaluation.models import TaskType
+    from .evaluation.datamodel import AnswerType
+    from .evaluation.runner import EvalConfig, load_eval_set, parse_dr_output, score_output
 
-    # Load ground truth and generate tasks
+    eval_set = load_eval_set(adapter, source)
+    tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
+    if not tasks:
+        typer.echo("No report-shaped tasks in this eval set. Multiple-choice sets are "
+                   "scored by running them, not by scoring a saved report.")
+        raise typer.Exit(1)
+
+    if task_id:
+        tasks = [t for t in tasks if t.id == task_id]
+        if not tasks:
+            typer.echo(f"No task with id {task_id!r} in {eval_set.name}.")
+            raise typer.Exit(1)
+    elif len(tasks) > 1:
+        typer.echo(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
+        for t in tasks[:20]:
+            typer.echo(f"  {t.id}")
+        raise typer.Exit(1)
+
+    task = tasks[0]
+    markdown_text = report.read_text()
+
+    api_key = os.environ.get(llm_api_key_env, "")
+    if not api_key and not (no_fact and no_recall and no_race):
+        typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail; "
+                   f"pass --no-fact --no-recall --no-race for intrinsic scores only.")
+    llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
+
     config = EvalConfig(
-        entity_files=[entity_file],
         run_fact=not no_fact,
         run_claim_recall=not no_recall,
         run_race=not no_race,
+        run_intrinsic=not no_intrinsic,
+        llm_model=llm_model,
     )
-    entities = load_entities(config)
-    if not entities:
-        typer.echo("No entities loaded from the ground truth file.")
-        raise typer.Exit(1)
 
-    tasks = generate_all_tasks(entities)
-    if task_type:
-        try:
-            tt = TaskType(task_type)
-            tasks = [t for t in tasks if t.task_type == tt]
-        except ValueError:
-            typer.echo(f"Unknown task type: {task_type}. Valid: {[t.value for t in TaskType]}")
-            raise typer.Exit(1)
+    dr_output = parse_dr_output(task, markdown_text, provider_name)
+    result = asyncio.run(score_output(dr_output, task, llm_client, config))
 
-    if not tasks:
-        typer.echo("No evaluation tasks generated for the given entity/task-type.")
-        raise typer.Exit(1)
+    typer.echo(f"\n{'='*60}")
+    typer.echo(f"Task: {result.task_id} | Provider: {result.provider}")
+    if result.fact_score:
+        typer.echo(f"  FACT: accuracy={result.fact_score.citation_accuracy:.2f}, "
+                   f"effective_citations={result.fact_score.effective_citations}/"
+                   f"{result.fact_score.total_citations}")
+    if result.claim_recall_score:
+        typer.echo(f"  Claim Recall: {result.claim_recall_score.claim_recall:.2f} "
+                   f"({result.claim_recall_score.matched_claims}/"
+                   f"{result.claim_recall_score.total_ground_truth_claims})")
+    if result.race_score:
+        typer.echo(f"  RACE: overall={result.race_score.overall_score:.2f}")
+        for d in result.race_score.dimensions:
+            typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
+    if result.intrinsic_score:
+        isc = result.intrinsic_score
+        if isc.citation_verifiability:
+            cv = isc.citation_verifiability
+            typer.echo(f"  Citation Verifiability: {cv.verified_exist}/{cv.total_citations} "
+                       f"({cv.verifiability:.2f})")
+            if cv.median_year:
+                typer.echo(f"    Median citation year: {cv.median_year}")
+        if isc.citation_alignment:
+            ca = isc.citation_alignment
+            typer.echo(f"  Citation-Claim Alignment: {ca.aligned_count}/{ca.total_checked} "
+                       f"({ca.alignment_rate:.2f})")
+        if isc.factual_spot_checks:
+            sc = isc.factual_spot_checks
+            typer.echo(f"  Factual Spot Checks: {sc.correct_count}/{sc.total_checks} correct, "
+                       f"{sc.present_count}/{sc.total_checks} present")
+        if isc.topic_coverage:
+            tc = isc.topic_coverage
+            typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
+                       f"({tc.coverage_rate:.2f})")
+    if result.error:
+        typer.echo(f"  Errors: {result.error}")
 
-    # Read the report
-    markdown_text = report.read_text()
-
-    # Set up LLM judge client
-    api_key = os.environ.get(llm_api_key_env, "")
-    if not api_key:
-        typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail.")
-    llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
-    config.llm_model = llm_model
-
-    async def _run():
-        results = []
-        for eval_task in tasks:
-            dr_output = parse_dr_output(eval_task, markdown_text, provider_name)
-            result = await score_output(dr_output, eval_task, llm_client, config)
-            results.append(result)
-        return results
-
-    results = asyncio.run(_run())
-
-    # Display results
-    for r in results:
-        typer.echo(f"\n{'='*60}")
-        typer.echo(f"Task: {r.task_id} | Provider: {r.provider}")
-        if r.fact_score:
-            typer.echo(f"  FACT: accuracy={r.fact_score.citation_accuracy:.2f}, "
-                       f"effective_citations={r.fact_score.effective_citations}/{r.fact_score.total_citations}")
-        if r.claim_recall_score:
-            typer.echo(f"  Claim Recall: {r.claim_recall_score.claim_recall:.2f} "
-                       f"({r.claim_recall_score.matched_claims}/{r.claim_recall_score.total_ground_truth_claims})")
-        if r.race_score:
-            typer.echo(f"  RACE: overall={r.race_score.overall_score:.2f}")
-            for d in r.race_score.dimensions:
-                typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
-        if r.intrinsic_score:
-            isc = r.intrinsic_score
-            if isc.citation_verifiability:
-                cv = isc.citation_verifiability
-                typer.echo(f"  Citation Verifiability: {cv.verified_exist}/{cv.total_citations} "
-                           f"({cv.verifiability:.2f})")
-                if cv.median_year:
-                    typer.echo(f"    Median citation year: {cv.median_year}")
-            if isc.citation_alignment:
-                ca = isc.citation_alignment
-                typer.echo(f"  Citation-Claim Alignment: {ca.aligned_count}/{ca.total_checked} "
-                           f"({ca.alignment_rate:.2f})")
-            if isc.factual_spot_checks:
-                sc = isc.factual_spot_checks
-                typer.echo(f"  Factual Spot Checks: {sc.correct_count}/{sc.total_checks} correct, "
-                           f"{sc.present_count}/{sc.total_checks} present")
-            if isc.topic_coverage:
-                tc = isc.topic_coverage
-                typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
-                           f"({tc.coverage_rate:.2f})")
-        if r.error:
-            typer.echo(f"  Errors: {r.error}")
-
-    # Save JSON output
     if output:
-        results_json = [r.model_dump(mode="json") for r in results]
-        output.write_text(json_mod.dumps(results_json, indent=2))
+        output.write_text(json_mod.dumps(result.model_dump(mode="json"), indent=2))
         typer.echo(f"\nResults written to {output}")
 
 

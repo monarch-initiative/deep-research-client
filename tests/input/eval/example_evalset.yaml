@@ -1,0 +1,15 @@
+name: coscientist-demo
+description: A small mixed-shape eval set, used to demonstrate the generic model
+tasks:
+  - id: fgfr3_mech
+    prompt: What are the pathophysiological mechanisms of achondroplasia?
+    tags: [biomedical, mechanism]
+  - id: fgfr3_residue
+    prompt: Which FGFR3 residue is most commonly mutated in achondroplasia?
+    ideal: G380R
+    distractors: [G375C, R248C, K650E]
+    abstention_option: Insufficient information to answer this question.
+  - id: capital_of_france
+    prompt: What is the capital of France?
+    ideal: Paris
+    difficulty: trivial

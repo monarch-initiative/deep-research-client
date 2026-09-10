@@ -28,9 +28,6 @@ from ..provider_params import MockParams
 #: one error that folds provider-supplied text into its own remedy, so without
 #: it the mock cannot reproduce the case the report's redaction exists for --
 #: the comma keeps everything after the time, and none of it reaches the file.
-#: Lettered option lines in a multiple-choice prompt, e.g. ``C. Thymine``.
-_MCQ_OPTION = re.compile(r"^([A-Z])\.\s+(.+?)\s*$", re.MULTILINE)
-
 _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = {
     "auth": (ProviderAuthError, 401, {}),
     "billing": (ProviderBillingError, 402, {}),
@@ -47,6 +44,10 @@ _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = 
     # Simulating the type is still what a fallback test needs.
     "not_configured": (ProviderNotConfiguredError, None, {}),
 }
+
+
+#: Lettered option lines in a multiple-choice prompt, e.g. ``C. Thymine``.
+_MCQ_OPTION = re.compile(r"^([A-Z])\.\s+(.+?)\s*$", re.MULTILINE)
 
 
 class MockProvider(ResearchProvider):

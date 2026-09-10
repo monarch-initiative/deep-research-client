@@ -543,3 +543,56 @@ def test_a_verdict_followed_by_references_is_still_found():
         "2. Author, B. (2023). Another paper. doi:10.3/4\n"
     )
     assert mcq.grade("refs", "p", response, choices).correct
+
+
+@pytest.mark.parametrize("tail,description", [
+    ("References\n\nB. Jones et al., 2019. A paper.", "author initial in a reference list"),
+    ("C. elegans was not part of this study.", "species abbreviation in prose"),
+    ("1. Paper one\n\nA. Author, 2020, Journal.", "numbered reference list"),
+])
+def test_a_letter_starting_a_line_is_not_an_answer(tail, description):
+    """Author initials and species abbreviations look exactly like choices.
+
+    "^[A-Z][.)] " matches "B. Jones et al." and "C. elegans", and reference
+    lists sit at the end of a report where the last match wins. A provider that
+    omitted its verdict was being scored on a citation.
+    """
+    task = EvalTask(
+        id="refs", prompt="Which organism?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Saccharomyces cerevisiae",
+            distractors=["Drosophila melanogaster", "Arabidopsis thaliana"],
+        ),
+    )
+    choices = mcq.present_choices(task)
+    answer = mcq.grade("refs", "p", f"The analysis is inconclusive.\n\n{tail}\n", choices)
+    assert answer.disposition == ScoreDisposition.EXTRACTION_FAILED, description
+
+
+def test_a_labelled_line_repeating_the_option_text_is_an_answer():
+    """The counterpart: "A. Saccharomyces cerevisiae" is a choice, not a citation."""
+    task = EvalTask(
+        id="labelled", prompt="Which organism?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Saccharomyces cerevisiae",
+            distractors=["Drosophila melanogaster", "Arabidopsis thaliana"],
+        ),
+    )
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+    answer = mcq.grade(
+        "labelled", "p", f"After review:\n\n{ideal.letter}. {ideal.text}\n", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct
+
+
+def test_lab_bench_refuses_a_revision_it_cannot_serve():
+    """A requested revision must not be used to relabel current data.
+
+    The datasets-server rows endpoint always serves the current revision, so
+    filing a download under a requested sha would stamp current data with an old
+    one — the false provenance the pin exists to prevent.
+    """
+    from deep_research_client.evaluation.adapters.lab_bench import _cache_root
+
+    assert _cache_root(None).name == "lab-bench"

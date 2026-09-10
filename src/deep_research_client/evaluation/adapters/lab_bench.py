@@ -180,8 +180,9 @@ def fetch_subset(
     Args:
         subset: Subset name, e.g. ``LitQA2``.
         cache_dir: Cache root; defaults to the client's cache directory.
-        revision: Dataset revision to record. Resolved from HuggingFace when
-            not given.
+        revision: Revision the caller expects. The current revision is always
+            resolved and used; this is checked against it, and a mismatch is an
+            error rather than a silent relabelling.
         refresh: Re-download even when a cached copy for this revision exists.
 
     Returns:
@@ -198,27 +199,46 @@ def fetch_subset(
         )
 
     with httpx.Client(timeout=120.0) as client:
-        resolved = revision or resolve_revision(client)
+        # Always resolve, even when a revision was requested. The datasets-server
+        # rows endpoint serves whatever is current and takes no revision
+        # parameter, so honouring a requested revision by simply filing the
+        # download under that name would stamp current data with an old sha -
+        # exactly the false provenance the pin exists to prevent.
+        resolved = resolve_revision(client)
+        if revision and revision != resolved:
+            raise ValueError(
+                f"LAB-Bench is at revision {resolved}, but {revision} was requested. "
+                f"The dataset API only serves the current revision, so the requested "
+                f"one cannot be downloaded; a previously cached copy of it may still "
+                f"be on disk under that revision."
+            )
+
         path = _cache_root(cache_dir) / resolved / f"{subset}.json"
+        from_cache = path.exists() and not refresh
 
-        if path.exists() and not refresh:
+        if from_cache:
             logger.info("Using cached LAB-Bench %s at revision %s", subset, resolved[:8])
-            return json.loads(path.read_text()), resolved
+            rows = json.loads(path.read_text())
+        else:
+            logger.info("Downloading LAB-Bench %s at revision %s", subset, resolved[:8])
+            rows = _fetch_rows(subset, client)
 
-        logger.info("Downloading LAB-Bench %s at revision %s", subset, resolved[:8])
-        rows = _fetch_rows(subset, client)
-
+    # Checked on both paths: a cached file can be short too, from a download that
+    # was interrupted mid-write, and a silently short benchmark changes every
+    # score computed from it.
     expected, _ = SUBSETS[subset]
     if len(rows) != expected:
+        source = "cached copy of" if from_cache else "download of"
         raise ValueError(
-            f"LAB-Bench {subset}: downloaded {len(rows)} rows but expected {expected}. "
-            f"Upstream data has changed at revision {resolved}; update SUBSETS after "
-            f"confirming the new counts, so that scores are never compared across "
-            f"silently different data."
+            f"LAB-Bench {subset}: {source} revision {resolved} has {len(rows)} rows "
+            f"but {expected} were expected. Either upstream changed - update SUBSETS "
+            f"after confirming the new counts - or the cache is truncated, in which "
+            f"case re-fetch with refresh=True."
         )
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rows, indent=2))
+    if not from_cache:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows, indent=2))
     return rows, resolved
 
 
@@ -309,13 +329,25 @@ class LabBenchAdapter(EvalSetAdapter):
 
         abstention = options.get("abstention_option", DEFAULT_ABSTENTION_OPTION)
 
+        # Resolved once rather than per subset: "all" would otherwise make six
+        # identical API calls, and a revision that changed between them would
+        # silently mix two datasets into one eval set.
+        requested_revision: str | None = options.get("revision")
+        with httpx.Client(timeout=30.0) as client:
+            pinned: str = resolve_revision(client)
+        if requested_revision and requested_revision != pinned:
+            raise ValueError(
+                f"LAB-Bench is at revision {pinned}, but {requested_revision} "
+                f"was requested."
+            )
+
         tasks: list[EvalTask] = []
         revisions: set[str] = set()
         for subset in subsets:
             rows, revision = fetch_subset(
                 subset,
                 cache_dir=options.get("cache_dir"),
-                revision=options.get("revision"),
+                revision=pinned,
                 refresh=bool(options.get("refresh", False)),
             )
             revisions.add(revision)

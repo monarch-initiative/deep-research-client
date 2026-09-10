@@ -7,6 +7,7 @@ exercised end to end without reaching a network.
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -99,15 +100,46 @@ def test_load_arms_requires_a_provider(tmp_path):
         load_arms(path)
 
 
-@pytest.mark.parametrize("raw,expected", [
+@pytest.mark.parametrize("raw,stem", [
     ("LitQA2__e3b5/a4af", "LitQA2__e3b5_a4af"),
     ("MONDO:0007037", "MONDO_0007037"),
     ("../escape", "escape"),
     ("///", "unnamed"),
+    ("..", "unnamed"),
 ])
-def test_safe_segment_keeps_ids_inside_the_run_directory(raw, expected):
-    """Task ids come from benchmark data and become path segments."""
-    assert safe_segment(raw) == expected
+def test_safe_segment_keeps_ids_inside_the_run_directory(raw, stem):
+    """Task ids come from benchmark data and become path segments.
+
+    A rewritten id keeps a readable stem but must not be usable to climb out of
+    the run directory or to name a file outside it.
+    """
+    segment = safe_segment(raw)
+    assert segment.startswith(stem)
+    assert "/" not in segment and "\\" not in segment
+    assert not segment.startswith(".")
+    assert Path("/run", segment).resolve().parent == Path("/run")
+
+
+def test_safe_segment_leaves_an_already_safe_id_alone():
+    """No suffix on ids that need no rewriting, so paths stay readable."""
+    assert safe_segment("LitQA2__abc-123") == "LitQA2__abc-123"
+    assert safe_segment("plain_id") == "plain_id"
+
+
+@pytest.mark.parametrize("first,second", [
+    ("MONDO:0007037", "MONDO_0007037"),
+    ("a/b", "a_b"),
+    ("..", "unnamed"),
+])
+def test_distinct_ids_never_share_a_directory(first, second):
+    """Sanitising is lossy, so it must not merge two tasks into one cell.
+
+    Uniqueness is checked on the raw id, but the directory name is the
+    sanitized one. Without disambiguation the second task would overwrite the
+    first's output and, on resume, report the first's result as its own.
+    """
+    assert first != second
+    assert safe_segment(first) != safe_segment(second)
 
 
 # ---------------------------------------------------------------------------
@@ -452,3 +484,101 @@ def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
     assert int(values["correct"]) == score.correct
     assert float(values["accuracy"]) == pytest.approx(score.accuracy, abs=1e-4)
     assert float(values["coverage"]) == pytest.approx(score.coverage, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Resume semantics
+# ---------------------------------------------------------------------------
+
+
+def test_grading_a_run_that_was_materialised_earlier(tmp_path, mock_client):
+    """The documented workflow: materialise now, decide grading later.
+
+    Resuming with grading on must score the responses already on disk rather
+    than reuse their ungraded cells. Without this the whole separation is
+    hollow — the run says it can be scored later, and later produces silence.
+    """
+    eval_set = _mcq_eval_set(6)
+    arm = _mock_arm("always-a", "first")
+    run_dir = tmp_path / "run"
+
+    first = asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+    assert all(c.disposition is None for c in first.cells)
+    assert not (run_dir / "scores.tsv").exists()
+
+    second = asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
+    ))
+    assert all(c.disposition is not None for c in second.cells)
+
+    score = score_by_arm(eval_set, second.cells)["always-a"]
+    assert score.total == len(eval_set.tasks)
+    assert score.correct == _expected_correct_for_first(eval_set)
+    assert (run_dir / "scores.tsv").exists()
+
+
+def test_grading_a_resumed_run_does_not_call_the_provider_again(tmp_path, mock_client):
+    """Scoring later must not cost the provider calls again."""
+    eval_set = _mcq_eval_set(3)
+    arm = _mock_arm("always-a", "first")
+    run_dir = tmp_path / "run"
+
+    asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+    marker = "SENTINEL RESPONSE\n\nAnswer: A"
+    (run_dir / "q0" / "always-a" / "output.md").write_text(marker)
+
+    asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
+    ))
+    # Untouched: graded from disk, not re-fetched.
+    assert (run_dir / "q0" / "always-a" / "output.md").read_text() == marker
+
+
+def test_resume_reruns_a_cell_whose_question_changed(tmp_path, mock_client):
+    """Editing the eval set must not leave stale answers in a new manifest.
+
+    A new distractor reshuffles the options, so the stored answer was given to a
+    different question than the one this run records.
+    """
+    run_dir = tmp_path / "run"
+    task = EvalTask(
+        id="m1", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine"]),
+    )
+    asyncio.run(run_matrix(
+        EvalSet(name="v1", tasks=[task]), [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+    (run_dir / "m1" / "a1" / "output.md").write_text("STALE")
+
+    edited = EvalTask(
+        id="m1", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    asyncio.run(run_matrix(
+        EvalSet(name="v2", tasks=[edited]), [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+    assert (run_dir / "m1" / "a1" / "output.md").read_text() != "STALE"
+    assert "Cytosine" in (run_dir / "m1" / "a1" / "prompt.md").read_text()
+
+
+def test_summary_files_exist_before_the_run_finishes(tmp_path, mock_client):
+    """An interrupted run must still leave a readable results.tsv and manifest."""
+    seen: list[Path] = []
+    eval_set = _mcq_eval_set(4)
+
+    def on_cell(_cell):
+        seen.append(tmp_path / "run" / "results.tsv")
+        assert (tmp_path / "run" / "results.tsv").exists()
+        assert (tmp_path / "run" / "manifest.json").exists()
+
+    asyncio.run(run_matrix(
+        eval_set, [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=tmp_path / "run", on_cell=on_cell), client=mock_client,
+    ))
+    assert len(seen) == len(eval_set.tasks)

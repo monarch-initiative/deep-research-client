@@ -63,9 +63,16 @@ _LETTERS = string.ascii_uppercase
 #: a bare "C" somewhere in prose is far weaker evidence.
 _LETTER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?:final\s+)?answer\s*(?:is)?\s*[:\-]?\s*\(?([A-Z])\)?[.\s)]*$", re.IGNORECASE | re.MULTILINE),
-    re.compile(r"^\s*\(?([A-Z])\)?[.):]\s", re.MULTILINE),
     re.compile(r"^\s*\(?([A-Z])\)?\s*$", re.MULTILINE),
 )
+
+#: A line that opens with a letter marker, capturing the letter and the rest of
+#: the line: "C. Thymine". Matched separately from the patterns above because
+#: the remainder has to be checked - a bare "^[A-Z][.)] " matches an author
+#: initial in a reference list ("B. Jones et al., 2019") and a species
+#: abbreviation in prose ("C. elegans was not studied"), both of which are
+#: common in the tail of a research report and neither of which is an answer.
+_LABELLED_LINE = re.compile(r"^\s*\(?([A-Z])\)?[.):]\s+(.*?)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -337,6 +344,14 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
         letter = matches[-1].upper()
         if letter in by_letter:
             return by_letter[letter]
+
+    # A labelled line counts only when what follows the letter is that option's
+    # own text. "C. Arabidopsis thaliana" is a choice; "C. elegans was not
+    # studied" and "B. Jones et al., 2019" are not.
+    for letter, remainder in reversed(_LABELLED_LINE.findall(tail)):
+        choice = by_letter.get(letter.upper())
+        if choice is not None and _normalize(remainder) == _normalize(choice.text):
+            return choice
 
     normalized_response = _normalize(tail)
     text_matches = [

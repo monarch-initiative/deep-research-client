@@ -2858,6 +2858,7 @@ def eval_run(
             --output-dir runs/2026-09-10T14-22Z
     """
     import asyncio
+    from collections import Counter
     from datetime import datetime, timezone
     from .evaluation.datamodel import AnswerType, CellStatus
     from .evaluation.matrix import (
@@ -2875,7 +2876,7 @@ def eval_run(
     for flag in arm or []:
         arms.append(parse_arm_flag(flag))
 
-    duplicate_ids = {a.id for a in arms if [x.id for x in arms].count(a.id) > 1}
+    duplicate_ids = {arm_id for arm_id, n in Counter(a.id for a in arms).items() if n > 1}
     if duplicate_ids:
         typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)

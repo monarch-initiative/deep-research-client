@@ -18,22 +18,20 @@ from deep_research_client.evaluation.datamodel import (
     OntologyTerm,
     ReferenceClaim,
 )
-from deep_research_client.evaluation.models import (
-    FACTScore,
-    RACEDimension,
-    RACEScore,
-)
 from deep_research_client.evaluation.adapters.monarch import (
     GroundTruthEntity,
     _parse_evidence,
     _parse_ontology_term,
+    generate_disease_tasks,
+    generate_gene_tasks,
     generate_tasks,
     load_dismech_entity,
     load_gene_review_entity,
 )
-from deep_research_client.evaluation.adapters.monarch import (
-    generate_disease_tasks,
-    generate_gene_tasks,
+from deep_research_client.evaluation.models import (
+    FACTScore,
+    RACEDimension,
+    RACEScore,
 )
 from deep_research_client.evaluation.scorers import (
     extract_citations_from_markdown,

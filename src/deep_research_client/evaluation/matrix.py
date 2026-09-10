@@ -31,6 +31,7 @@ The output layout is fixed and predictable:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -78,21 +79,36 @@ def safe_segment(value: str) -> str:
     characters leaves ``..`` intact, and a task id of ``..`` would then write a
     run's output into the run directory's parent.
 
-    >>> safe_segment("LitQA2__e3b5/a4af")
-    'LitQA2__e3b5_a4af'
-    >>> safe_segment("MONDO:0007037")
-    'MONDO_0007037'
-    >>> safe_segment("../escape")
-    'escape'
-    >>> safe_segment("..")
-    'unnamed'
-    >>> safe_segment("///")
-    'unnamed'
+    An id that needs no rewriting is used as-is; one that does gets a digest of
+    the original appended, so a rewrite can never collide with another id.
+
+    >>> safe_segment("LitQA2__e3b5/a4af").startswith("LitQA2__e3b5_a4af-")
+    True
+    >>> safe_segment("plain_id")
+    'plain_id'
+    >>> safe_segment("MONDO:0007037") != safe_segment("MONDO_0007037")
+    True
+    >>> safe_segment("MONDO:0007037").startswith("MONDO_0007037-")
+    True
+    >>> safe_segment("..").startswith("unnamed-")
+    True
+    >>> safe_segment("../escape").startswith("escape-")
+    True
     """
     cleaned = _UNSAFE.sub("_", value).strip("_")
     while cleaned.startswith("."):
         cleaned = cleaned.lstrip(".").strip("_")
-    return cleaned or "unnamed"
+    if not cleaned:
+        cleaned = "unnamed"
+    if cleaned == value:
+        return cleaned
+    # Sanitising is lossy, so two distinct ids can arrive at one directory -
+    # "MONDO:0007037" and "MONDO_0007037" both become "MONDO_0007037", and the
+    # second cell would overwrite the first's output and, on resume, report the
+    # first's result as its own. A digest of the original keeps rewritten ids
+    # apart from each other and from any id that needed no rewriting.
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+    return f"{cleaned}-{digest}"
 
 
 def load_arms(path: str | Path) -> list[ArmSpec]:
@@ -255,17 +271,63 @@ def _prompt_for(task: EvalTask) -> tuple[str, list[mcq.Choice]]:
     return task.prompt, []
 
 
-def _completed_cell(layout: RunLayout, task: EvalTask, arm: ArmSpec) -> CellResult | None:
-    """Return a previously completed cell, if this run directory has one.
+def _completed_cell(
+    layout: RunLayout,
+    task: EvalTask,
+    arm: ArmSpec,
+    prompt: str,
+    choices: list[mcq.Choice],
+    grade: bool,
+) -> CellResult | None:
+    """Return a reusable previously completed cell, if this run directory has one.
 
     Resumption is by cell, not by run: a matrix that died three arms in should
     cost only the cells that never finished.
+
+    A stored cell is reused only when the question it was asked still matches
+    the one this run would ask. Editing the eval set changes the prompt - and
+    adding a distractor reshuffles the options - so without that check a resumed
+    run would mix answers to the old question into a manifest that records the
+    new eval set.
+
+    When grading is on and a cell was materialised without it, the cell is
+    graded from the saved response rather than re-run. That is the whole point
+    of separating the two: deciding to score a run later must not cost the
+    provider calls again.
     """
-    path = layout.cell_dir(task.id, arm.id) / "cell.json"
+    cell_dir = layout.cell_dir(task.id, arm.id)
+    path = cell_dir / "cell.json"
     if not path.exists():
         return None
+
     cell = CellResult(**json.loads(path.read_text()))
-    return cell if cell.status == CellStatus.COMPLETED else None
+    if cell.status != CellStatus.COMPLETED:
+        return None
+
+    stored_prompt = cell_dir / "prompt.md"
+    if not stored_prompt.exists() or stored_prompt.read_text() != prompt:
+        logger.info(
+            "Cell %s/%s was asked a different question; re-running", task.id, arm.id
+        )
+        return None
+
+    needs_grade = (
+        grade
+        and task.answer_type == AnswerType.MULTIPLE_CHOICE
+        and cell.disposition is None
+    )
+    if needs_grade:
+        output = cell_dir / "output.md"
+        if output.exists():
+            answer = mcq.grade(task.id, arm.id, output.read_text(), choices)
+            cell.disposition = answer.disposition
+            cell.chosen_letter = answer.chosen_letter
+            cell.correct = answer.correct
+            (cell_dir / "answer.json").write_text(answer.model_dump_json(indent=2))
+            path.write_text(cell.model_dump_json(indent=2, exclude_none=True))
+            logger.info("Graded stored response for %s/%s", task.id, arm.id)
+
+    return cell
 
 
 async def _run_cell(
@@ -412,6 +474,29 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
     layout.scores_path.write_text("\n".join(lines) + "\n")
 
 
+def _manifest(
+    eval_set: EvalSet,
+    arms: Sequence[ArmSpec],
+    layout: RunLayout,
+    config: "MatrixConfig",
+    cells: Sequence[CellResult],
+) -> RunManifest:
+    """Build the run manifest from the cells finished so far."""
+    return RunManifest(
+        run_id=layout.root.name,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        eval_set_name=eval_set.name,
+        eval_set_source=eval_set.source,
+        eval_set_revision=eval_set.source_revision,
+        is_partial=bool(eval_set.is_partial),
+        partial_reason=eval_set.partial_reason,
+        client_version=__version__,
+        concurrency=config.concurrency,
+        arms=list(arms),
+        cells=list(cells),
+    )
+
+
 async def run_matrix(
     eval_set: EvalSet,
     arms: Sequence[ArmSpec],
@@ -444,12 +529,20 @@ async def run_matrix(
 
     async def one(task: EvalTask, arm: ArmSpec) -> CellResult:
         if config.resume:
-            done = _completed_cell(layout, task, arm)
+            prompt, choices = _prompt_for(task)
+            done = _completed_cell(layout, task, arm, prompt, choices, config.grade)
             if done is not None:
                 logger.info("Cell %s/%s already complete; skipping", task.id, arm.id)
                 return done
         async with semaphore:
             return await _run_cell(client, task, arm, layout, grade=config.grade)
+
+    # Stable order in the written outputs, independent of completion order.
+    order = {(task.id, arm.id): i
+             for i, (task, arm) in enumerate((t, a) for t in tasks for a in arms)}
+
+    def _ordered(done: list[CellResult]) -> list[CellResult]:
+        return sorted(done, key=lambda c: order.get((c.task_id, c.arm_id), 0))
 
     pending = [one(task, arm) for task in tasks for arm in arms]
     logger.info(
@@ -457,37 +550,36 @@ async def run_matrix(
         len(tasks), len(arms), len(pending), config.concurrency,
     )
 
+    def snapshot() -> None:
+        """Rewrite the summary files from the cells finished so far.
+
+        Written as the run goes rather than only at the end, so an interrupted
+        run still leaves a readable results.tsv and manifest, and a long one can
+        genuinely be inspected while it is running. Both are small beside the
+        provider outputs already written per cell.
+        """
+        ordered = _ordered(cells)
+        write_results_tsv(layout, ordered)
+        layout.manifest_path.write_text(
+            _manifest(eval_set, arms, layout, config, ordered)
+            .model_dump_json(indent=2, exclude_none=True)
+        )
+
     for coro in asyncio.as_completed(pending):
         cell = await coro
         cells.append(cell)
+        snapshot()
         if config.on_cell:
             config.on_cell(cell)
 
-    # Stable order in the written outputs, independent of completion order.
-    order = {(t.id, a.id): i for i, (t, a) in enumerate(
-        [(t, a) for t in tasks for a in arms]
-    )}
-    cells.sort(key=lambda c: order.get((c.task_id, c.arm_id), 0))
-
-    manifest = RunManifest(
-        run_id=layout.root.name,
-        created_at=datetime.now(timezone.utc).isoformat(),
-        eval_set_name=eval_set.name,
-        eval_set_source=eval_set.source,
-        eval_set_revision=eval_set.source_revision,
-        is_partial=bool(eval_set.is_partial),
-        partial_reason=eval_set.partial_reason,
-        client_version=__version__,
-        concurrency=config.concurrency,
-        arms=list(arms),
-        cells=cells,
-    )
+    ordered = _ordered(cells)
+    manifest = _manifest(eval_set, arms, layout, config, ordered)
 
     layout.manifest_path.write_text(manifest.model_dump_json(indent=2, exclude_none=True))
-    write_results_tsv(layout, cells)
+    write_results_tsv(layout, ordered)
 
     if config.grade:
-        scores = score_by_arm(eval_set, cells)
+        scores = score_by_arm(eval_set, ordered)
         if scores:
             write_scores_tsv(layout, scores)
 

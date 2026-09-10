@@ -2759,7 +2759,14 @@ def eval_load(
     import json as json_mod
     from .evaluation.runner import load_eval_set
 
-    eval_set = load_eval_set(adapter, source)
+    # A malformed eval set is this command's expected output, not a crash: its
+    # whole job is to find one before providers are paid for. Its neighbours in
+    # this group report bad input the same way.
+    try:
+        eval_set = load_eval_set(adapter, source)
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(f"Could not load the eval set: {exc}")
+        raise typer.Exit(1) from exc
     tasks = eval_set.tasks or []
 
     if output:

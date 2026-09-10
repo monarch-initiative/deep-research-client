@@ -57,8 +57,11 @@ def test_eval_load_rejects_a_degenerate_task_before_anything_is_spent(tmp_path):
                   "tasks:\n  - id: q\n    prompt: Which?\n"
                   "    answer_type: MULTIPLE_CHOICE\n    ideal: only\n")
     result = runner.invoke(app, ["eval", "load", str(path)])
-    assert result.exit_code != 0
-    assert "distinct option" in str(result.exception)
+    assert result.exit_code == 1
+    # Reported, not raised: a malformed eval set is this command's expected
+    # output, and its neighbours report bad input the same way.
+    assert "distinct option" in result.stdout
+    assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
 # ---------------------------------------------------------------------------

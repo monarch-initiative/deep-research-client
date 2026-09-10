@@ -115,8 +115,28 @@ def _comparable(text: str) -> str:
     True
     >>> _comparable("CD8- / IGNF+") == _comparable("CD8-/IGNF -")
     False
+
+    The asymmetry with ``_normalize`` is deliberate, not an oversight: on the
+    very questions this keeps apart, the downstream text fallback still sees two
+    matches and declines to resolve. Being unable to recover an answer from
+    prose is the safe failure; refusing a valid question is not.
     """
     return " ".join(text.split()).casefold()
+
+
+def usable_distractors(spec: AnswerSpec) -> list[str]:
+    """The distractors that will actually be presented as options.
+
+    Blank entries are dropped here rather than in one place and not the other:
+    the shape that gets validated has to be the shape that gets asked, or the
+    load-time guard is checking a question nobody sees. A blank option renders
+    as a bare letter, cannot be chosen, and is skipped by every defence in this
+    module while still occupying a slot in the prompt.
+
+    >>> usable_distractors(AnswerSpec(ideal="A", distractors=["B", "", "  ", "C"]))
+    ['B', 'C']
+    """
+    return [d for d in (spec.distractors or []) if d and d.strip()]
 
 
 def degenerate_reason(spec: AnswerSpec) -> str | None:
@@ -125,16 +145,23 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     Two shapes are refused, and only two - both because they produce a number
     rather than an error:
 
+    - No ideal answer at all. The correct option renders blank, no provider can
+      choose it, and every arm is marked wrong - accuracy 0.000 across the
+      matrix, which is the same defect as accuracy 1.000 and just as quiet.
     - Fewer than two distinct options. One option and a right answer is not a
       question: every arm answers it correctly.
     - The ideal answer repeated among the distractors. Two lettered options then
       read identically with only one flagged correct, so a provider that knows
       the answer is marked wrong half the time, at random.
 
-    Distractors that duplicate *each other* are not refused. They are untidy but
-    harmless - both are wrong however the model answers - and real benchmarks
+    Distractors that duplicate *each other* are not refused. Both are wrong
+    however the model answers, so no accuracy changes, and real benchmarks
     contain them: two LitQA2 questions do, and rejecting those would make a
-    published benchmark unloadable over a defect that changes no score.
+    published benchmark unloadable over a defect that costs nothing. It is not
+    quite free - a response that names the duplicated option in prose rather
+    than by letter matches two choices, so the exactly-one rule declines and the
+    cell becomes an extraction failure, moving coverage without moving accuracy.
+    That fails in the safe direction, which is why it is tolerated.
 
     >>> degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["Guanine"])) is None
     True
@@ -144,11 +171,19 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
     >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["thymine "])))
     repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
+    >>> print(degenerate_reason(AnswerSpec(ideal="  ", distractors=["Guanine", "Cytosine"])))
+    has no ideal answer, so its correct option would render blank and every arm would be marked wrong
     """
-    ideal = _comparable(spec.ideal) if spec.ideal else ""
-    distractors = [_comparable(d) for d in (spec.distractors or []) if d and d.strip()]
+    if not (spec.ideal or "").strip():
+        return (
+            "has no ideal answer, so its correct option would render blank and "
+            "every arm would be marked wrong"
+        )
 
-    if ideal and ideal in distractors:
+    ideal = _comparable(spec.ideal)
+    distractors = [_comparable(d) for d in usable_distractors(spec)]
+
+    if ideal in distractors:
         return (
             "repeats its ideal answer among the distractors, so two options read "
             "identically and only one counts as correct"
@@ -199,9 +234,6 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
         raise ValueError(f"Task {task.id!r} has no answer_spec to present")
 
     spec = task.answer_spec
-    options = [(spec.ideal, True)] + [(d, False) for d in (spec.distractors or [])]
-    random.Random(seed or task.id).shuffle(options)
-
     reason = degenerate_reason(spec)
     if reason is not None:
         # One option and a right answer is not a question: every arm answers it
@@ -213,6 +245,9 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
         raise ValueError(
             f"Task {task.id!r} is multiple choice but {reason}."
         )
+
+    options = [(spec.ideal, True)] + [(d, False) for d in usable_distractors(spec)]
+    random.Random(seed or task.id).shuffle(options)
 
     # Appended after the guard: declining is not one of the things being chosen
     # between, so "one right answer, or say you don't know" is still not a

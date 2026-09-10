@@ -103,8 +103,9 @@ def check_task_shapes(tasks: list[EvalTask], source: str) -> None:
         source: What was loaded, for the error message.
 
     Raises:
-        ValueError: If a multiple-choice task offers fewer than two distinct
-            options besides any abstention.
+        ValueError: If a task has an empty prompt, or a multiple-choice task
+            cannot pose an answerable question - see
+            ``mcq.degenerate_reason``.
 
     >>> from ..datamodel import AnswerSpec
     >>> ok = EvalTask(id="a", prompt="p", answer_type="MULTIPLE_CHOICE",
@@ -117,9 +118,16 @@ def check_task_shapes(tasks: list[EvalTask], source: str) -> None:
         ...
     ValueError: somewhere: task 'b' is multiple choice but offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
     """
+    # Imported here rather than at module scope: mcq imports the datamodel, and
+    # hoisting this would make adapters and mcq import each other.
     from ..mcq import degenerate_reason
 
     for task in tasks:
+        if not task.prompt.strip():
+            raise ValueError(
+                f"{source}: task {task.id!r} has an empty prompt; it would be "
+                f"sent to every arm as a blank question"
+            )
         if task.answer_type != AnswerType.MULTIPLE_CHOICE:
             continue
         if task.answer_spec is None:

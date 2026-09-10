@@ -906,3 +906,54 @@ def test_a_superseded_verdict_does_not_resurface():
     assert mcq.grade("superseded", "p", report, choices).disposition == (
         ScoreDisposition.EXTRACTION_FAILED
     )
+
+
+def test_a_task_with_no_ideal_answer_is_refused():
+    """Accuracy 0.000 for every arm is the same defect as accuracy 1.000.
+
+    A blank ideal renders as a lettered option with no text, flagged correct.
+    No provider can choose it, so every arm is marked wrong and nothing reports
+    that the question was unanswerable.
+    """
+    for ideal in ("", "   "):
+        spec = AnswerSpec(ideal=ideal, distractors=["Guanine", "Cytosine"])
+        assert "no ideal answer" in (mcq.degenerate_reason(spec) or "")
+
+
+def test_a_benchmark_row_missing_its_answer_field_is_refused():
+    """The realistic way in: an upstream rename of `ideal`.
+
+    `_task_from_row` defaults it to "", and the row-count guard counts rows
+    without looking inside them — so the whole subset would load, run, cost
+    money and score zero.
+    """
+    from deep_research_client.evaluation.adapters.base import check_task_shapes
+    from deep_research_client.evaluation.adapters.lab_bench import _task_from_row
+
+    row = {"id": "abc", "question": "Which antibiotic?", "answer": "ampicillin",
+           "distractors": ["gentamicin", "meropenem"]}
+    task = _task_from_row(row, "LitQA2", None)
+    with pytest.raises(ValueError, match="no ideal answer"):
+        check_task_shapes([task], "LitQA2")
+
+
+def test_a_task_with_an_empty_prompt_is_refused():
+    """Worse than a bad answer: a blank question sent to every arm."""
+    from deep_research_client.evaluation.adapters.base import check_task_shapes
+
+    task = EvalTask(id="blank", prompt="   ", answer_type=AnswerType.REPORT)
+    with pytest.raises(ValueError, match="empty prompt"):
+        check_task_shapes([task], "somewhere")
+
+
+def test_the_validator_and_the_renderer_see_the_same_options():
+    """A guard that checks a different question than the one asked guards nothing."""
+    spec = AnswerSpec(ideal="Thymine", distractors=["Guanine", "", "   "])
+    task = EvalTask(
+        id="blanks", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=spec,
+    )
+    presented = mcq.present_choices(task)
+    assert len(presented) == 2
+    assert {c.text for c in presented} == {"Thymine", "Guanine"}
+    assert mcq.degenerate_reason(spec) is None

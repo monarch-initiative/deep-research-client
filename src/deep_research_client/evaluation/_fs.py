@@ -5,16 +5,26 @@ import stat
 import tempfile
 from pathlib import Path
 
-#: Cached process umask.
-#:
-#: There is no way to read the umask without setting it, so learning it opens a
-#: window in which the process umask is 0. Doing that once at import is very
-#: different from doing it on every write: this module is called several times
-#: per cell from a runner built for concurrency, and any *thread* creating a
-#: file inside one of those windows - a provider SDK falling back to a thread, an
-#: HTTP library's disk cache - would get it created world-writable.
-_UMASK = os.umask(0)
-os.umask(_UMASK)
+def _default_mode(directory: Path) -> int:
+    """The mode an ordinary file creation would produce in ``directory``.
+
+    Determined by creating one and looking at it, rather than by reading the
+    umask - the only way to read a umask is to set it, which opens a window in
+    which any thread creating a file gets it world-writable. This module is
+    called several times per cell from a runner built for concurrency, so that
+    window is not hypothetical, and probing avoids it entirely rather than
+    merely making it rarer.
+    """
+    fd, probe = tempfile.mkstemp(dir=str(directory), prefix=".mode-probe.")
+    os.close(fd)
+    try:
+        # mkstemp deliberately creates 0600, so re-create the probe the ordinary
+        # way to see what the umask actually allows.
+        os.unlink(probe)
+        os.close(os.open(probe, os.O_CREAT | os.O_WRONLY, 0o666))
+        return stat.S_IMODE(os.stat(probe).st_mode)
+    finally:
+        Path(probe).unlink(missing_ok=True)
 
 
 def atomic_write(path: Path, text: str) -> None:
@@ -41,13 +51,13 @@ def atomic_write(path: Path, text: str) -> None:
     existing destination's mode matters for the same reason: a cache someone
     deliberately opened up to a group should not close again on the next refresh.
 
-    Note this reads a cached umask, so a program that calls ``os.umask`` after
-    importing this module will not see the change reflected here.
+    The default is probed rather than derived from the umask, so this never
+    changes process-global state - see :func:`_default_mode`.
     """
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
     except FileNotFoundError:
-        mode = 0o666 & ~_UMASK
+        mode = _default_mode(path.parent)
 
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
     try:

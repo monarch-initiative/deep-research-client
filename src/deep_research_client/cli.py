@@ -2950,7 +2950,14 @@ def eval_run(
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
 
+    mcq_count = sum(1 for t in tasks if t.answer_type == AnswerType.MULTIPLE_CHOICE)
     scores = score_by_arm(eval_set, cells) if grade else {}
+    if grade and not scores:
+        typer.echo(
+            f"\nNothing to grade: --grade scores multiple-choice answers, and this "
+            f"selection has {mcq_count} multiple-choice task(s). The responses are "
+            f"materialised either way."
+        )
     if scores:
         typer.echo("\nMultiple-choice scores:\n")
         typer.echo(f"  {'arm':<20} {'acc':>7} {'cov':>7} {'prec':>7}   {'n':>5}")
@@ -2980,6 +2987,16 @@ def eval_run(
             "\nResults materialised, not scored. Every response is on disk with the "
             "prompt that produced it, so scoring can be decided and redone later "
             "without re-running any provider."
+        )
+
+    unscoreable = sum(1 for t in tasks if t.answer_type == AnswerType.SHORT_ANSWER)
+    if unscoreable:
+        typer.echo(
+            f"\nNOTE: {unscoreable} task(s) are SHORT_ANSWER, which nothing in this "
+            f"client scores yet - not by running them and not with `eval score`. "
+            f"Their responses are saved like any other. A task with an ideal answer "
+            f"and no distractors infers this shape; add distractors to make it "
+            f"multiple choice, or drop the ideal answer to make it a report task."
         )
 
     has_reports = any(t.answer_type == AnswerType.REPORT for t in tasks)
@@ -3035,8 +3052,15 @@ def eval_score(
     eval_set = load_eval_set(adapter, source)
     tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
     if not tasks:
-        typer.echo("No report-shaped tasks in this eval set. Multiple-choice sets are "
-                   "scored by running them, not by scoring a saved report.")
+        present = sorted({t.answer_type for t in (eval_set.tasks or [])})
+        typer.echo(
+            f"No report-shaped tasks in {eval_set.name}; it holds "
+            f"{', '.join(present) or 'nothing'}."
+        )
+        if AnswerType.MULTIPLE_CHOICE in present:
+            typer.echo("  Multiple-choice sets are graded by `eval run --grade`, not here.")
+        if AnswerType.SHORT_ANSWER in present:
+            typer.echo("  Short-answer sets are not scored by this client at all yet.")
         raise typer.Exit(1)
 
     if task_id:

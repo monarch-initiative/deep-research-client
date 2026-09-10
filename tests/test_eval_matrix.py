@@ -619,3 +619,23 @@ def test_cell_files_are_written_atomically(tmp_path, mock_client, report_eval_se
     assert leftovers == [], f"temporary files left behind: {leftovers}"
     for cell_json in run_dir.rglob("cell.json"):
         json.loads(cell_json.read_text())
+
+
+def test_written_files_are_readable_by_others(tmp_path, mock_client, report_eval_set):
+    """Atomic writes must not silently make everything owner-only.
+
+    mkstemp creates 0600 and os.replace keeps that mode, so without restoring
+    the umask default a shared benchmark cache stops being readable by anyone
+    but whoever fetched it first.
+    """
+    import stat
+
+    run_dir = tmp_path / "run"
+    asyncio.run(run_matrix(
+        report_eval_set, [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+
+    for written in (run_dir / "results.tsv", run_dir / "manifest.json"):
+        mode = stat.S_IMODE(written.stat().st_mode)
+        assert mode & stat.S_IRGRP, f"{written.name} is not group-readable ({oct(mode)})"

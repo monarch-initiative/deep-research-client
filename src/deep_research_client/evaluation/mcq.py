@@ -1,21 +1,28 @@
 """Provisional scoring for multiple-choice tasks.
 
 STATUS: a stopgap, not the intended design. Reading a provider's answer out of
-its prose with regular expressions is brittle, and demonstrably so - three
-separate defects showed up within a day of first use, each of which produced
-plausible-looking numbers rather than an obvious failure:
+its prose with regular expressions is brittle, and demonstrably so - six
+separate defects surfaced within a day of first use, every one of which produced
+a plausible-looking number rather than an obvious failure:
 
 - a restated option list read as the provider choosing the last option, which is
   the abstention whenever one is offered;
 - a bare quantity such as "6%" appearing anywhere in a report read as choosing
   that option, inventing an answer never given;
 - a verdict written "**Answer: D**" read as no answer at all, which would have
-  discarded every correct answer from any provider that bolds its conclusion.
+  discarded every correct answer from any provider that bolds its conclusion;
+- an author initial in a reference list ("B. Jones et al., 2019") or a species
+  abbreviation in prose ("C. elegans was not studied") read as a choice;
+- a report giving each option its own heading, and choosing none of them, read
+  as choosing whichever it discussed last;
+- the same walkthrough with emphasised headings ("**A**", "### A"), which the
+  emphasis strip turns into bare letters, read as the last option again.
 
-Each was found by running the thing, not by reading it, and each would have been
-invisible in the resulting table. That is the argument against this approach
-rather than a list of fixed bugs: the next such defect is equally likely to look
-like a score.
+The first three were found by running it and the last three by reading it, which
+makes the argument stronger rather than weaker: each fix was correct and each
+left another way in, because deciding what a report concluded is not a pattern
+matching problem. This is the case for replacing the extractor with a judge, not
+a list of bugs since fixed - a seventh is as likely to look like a score.
 
 The intended replacement is an LLM judge, as the report scorers already use
 (``score_fact``, ``score_claim_recall`` and ``score_race`` in ``scorers.py`` all
@@ -58,9 +65,6 @@ from .models import MCQAnswer, MCQScore
 #: Letters assigned to options, in order.
 _LETTERS = string.ascii_uppercase
 
-#: Patterns tried, in order, to recover a letter from a provider's response.
-#: Ordered most explicit first: a report that states "Answer: C" means it, while
-#: a bare "C" somewhere in prose is far weaker evidence.
 #: An explicit verdict: "Answer: D", "the final answer is B". Saying so is
 #: unambiguous, so the last one in the document wins - a report may weigh the
 #: options aloud before committing.
@@ -136,6 +140,22 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
     options = [(spec.ideal, True)] + [(d, False) for d in (spec.distractors or [])]
     random.Random(seed or task.id).shuffle(options)
 
+    if len(options) < 2:
+        # One option and a right answer is not a question: every arm answers it
+        # correctly and the run reports perfect accuracy for having asked
+        # nothing. Reachable from an authored eval set that declares
+        # multiple_choice and forgets the distractors, and from a benchmark row
+        # whose distractors field is empty or renamed - neither of which
+        # anything downstream would notice.
+        raise ValueError(
+            f"Task {task.id!r} is multiple choice but offers "
+            f"{len(options)} option(s) besides any abstention; at least two are "
+            f"needed for the answer to mean anything."
+        )
+
+    # Appended after the guard: declining is not one of the things being chosen
+    # between, so "one right answer, or say you don't know" is still not a
+    # question.
     if spec.abstention_option:
         options.append((spec.abstention_option, False))
 
@@ -347,11 +367,15 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     # a line, which "**Answer: D**" never reaches.
     tail = _strip_emphasis(tail)
 
-    # An explicit verdict is unambiguous, so the last one wins.
-    for match in reversed(_EXPLICIT_ANSWER.findall(tail)):
-        choice = by_letter.get(match.upper())
-        if choice is not None:
-            return choice
+    # An explicit verdict is unambiguous, so the last one wins - and it wins
+    # outright. Reaching past a final "Answer: F" on a four-option question to
+    # an earlier, superseded letter would report a choice the report had already
+    # withdrawn; a verdict naming an option that was never offered is a failure
+    # to extract, which is what the rest of this module does with an answer it
+    # cannot trust.
+    explicit = _EXPLICIT_ANSWER.findall(tail)
+    if explicit:
+        return by_letter.get(explicit[-1].upper())
 
     # A bare letter is not, so it resolves only when exactly one is marked.
     bare = {

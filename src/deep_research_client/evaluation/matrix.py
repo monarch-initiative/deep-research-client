@@ -562,7 +562,6 @@ async def run_matrix(
     last_manifest = 0.0
 
     def snapshot() -> None:
-        nonlocal last_manifest
         """Rewrite the summary files from the cells finished so far.
 
         Written as the run goes rather than only at the end, so an interrupted
@@ -570,6 +569,7 @@ async def run_matrix(
         genuinely be inspected while it is running. Both are small beside the
         provider outputs already written per cell.
         """
+        nonlocal last_manifest
         ordered = _ordered(cells)
         write_results_tsv(layout, ordered)
         # The manifest grows with the run, so re-serialising it after every cell

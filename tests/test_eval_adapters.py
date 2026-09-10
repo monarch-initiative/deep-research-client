@@ -756,11 +756,9 @@ def test_a_single_emphasised_letter_is_still_a_verdict():
     assert answer.correct
 
 
-def test_offline_fallback_needs_every_subset_under_one_revision(tmp_path):
-    """A cache assembled across two revisions must not satisfy a multi-subset load."""
+def _split_cache(tmp_path):
+    """A cache holding two subsets under different revisions."""
     import json as json_mod
-
-    from deep_research_client.evaluation.adapters.lab_bench import newest_cached_revision
 
     root = tmp_path / "eval_datasets" / "lab-bench"
     (root / "rev1").mkdir(parents=True)
@@ -768,6 +766,99 @@ def test_offline_fallback_needs_every_subset_under_one_revision(tmp_path):
     (root / "rev1" / "LitQA2.json").write_text(json_mod.dumps([]))
     (root / "rev2" / "SuppQA.json").write_text(json_mod.dumps([]))
 
+
+def test_newest_cached_revision_needs_every_subset_under_one_revision(tmp_path):
+    """The helper itself."""
+    from deep_research_client.evaluation.adapters.lab_bench import newest_cached_revision
+
+    _split_cache(tmp_path)
     assert newest_cached_revision("LitQA2", tmp_path) == "rev1"
     assert newest_cached_revision("SuppQA", tmp_path) == "rev2"
     assert newest_cached_revision(["LitQA2", "SuppQA"], tmp_path) is None
+
+
+def test_the_offline_fallback_itself_requires_one_revision(monkeypatch, tmp_path):
+    """Testing the helper leaves the caller free to pass only the first subset.
+
+    That was the actual finding, and asserting on the helper would stay green if
+    it came back. This goes through the fallback.
+    """
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    _split_cache(tmp_path)
+
+    def unreachable(client=None):
+        raise httpx.ConnectError("no network")
+
+    monkeypatch.setattr(lab_bench, "resolve_revision", unreachable)
+
+    # One subset is fully cached, so the fallback can serve it.
+    assert lab_bench._resolve_or_fall_back(None, ["LitQA2"], tmp_path) == "rev1"
+
+    # Both together are not under any single revision, so it must not pretend.
+    with pytest.raises(httpx.ConnectError):
+        lab_bench._resolve_or_fall_back(None, ["LitQA2", "SuppQA"], tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Degenerate task shapes
+# ---------------------------------------------------------------------------
+
+
+def test_a_multiple_choice_task_needs_more_than_one_option():
+    """One option and a right answer is not a question.
+
+    Every arm answers it correctly, and the run reports perfect accuracy for
+    having asked nothing — a number with no question behind it.
+    """
+    task = EvalTask(
+        id="solo", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=[]),
+    )
+    with pytest.raises(ValueError, match="at least two"):
+        mcq.present_choices(task)
+
+
+def test_an_abstention_does_not_count_towards_the_two_options():
+    """Otherwise "one right answer, or decline" would pass as a question."""
+    task = EvalTask(
+        id="solo_abstain", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Thymine", distractors=[],
+            abstention_option="Insufficient information to answer this question.",
+        ),
+    )
+    with pytest.raises(ValueError, match="at least two"):
+        mcq.present_choices(task)
+
+
+def test_an_authored_set_declaring_multiple_choice_without_distractors_is_caught(tmp_path):
+    """The realistic way in: a spreadsheet conversion that forgets the distractors."""
+    path = tmp_path / "degenerate.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: q1\n"
+        "    prompt: Which base pairs with adenine?\n"
+        "    answer_type: MULTIPLE_CHOICE\n"
+        "    ideal: Thymine\n"
+    )
+    eval_set = get_adapter("yaml").load(path)
+    with pytest.raises(ValueError, match="at least two"):
+        mcq.present_choices(eval_set.tasks[0])
+
+
+def test_a_superseded_verdict_does_not_resurface():
+    """A final verdict naming an option that was never offered is a failure.
+
+    Reaching past it to an earlier letter would report a choice the report had
+    already withdrawn.
+    """
+    task = EvalTask(
+        id="superseded", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    choices = mcq.present_choices(task)
+    report = "At first I thought Answer: A\n\nOn reflection, Answer: F"
+    assert mcq.grade("superseded", "p", report, choices).disposition == (
+        ScoreDisposition.EXTRACTION_FAILED
+    )

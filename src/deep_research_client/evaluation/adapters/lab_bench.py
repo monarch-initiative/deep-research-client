@@ -27,8 +27,8 @@ it is a contamination marker, not question content.
 
 import json
 import logging
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import httpx

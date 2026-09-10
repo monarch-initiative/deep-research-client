@@ -24,7 +24,24 @@ def atomic_write(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
+        # mkstemp creates 0600 and os.replace keeps the temp file's mode, so
+        # without this every file written here would be owner-only - including
+        # the benchmark cache, whose whole point is to be shared between runs
+        # and, on a cluster, between users. Restore what an ordinary write would
+        # have produced under the caller's umask.
+        os.chmod(tmp, 0o666 & ~_umask())
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def _umask() -> int:
+    """Read the process umask without leaving it changed.
+
+    There is no way to read it directly, so it has to be set to learn its value
+    and then restored.
+    """
+    current = os.umask(0)
+    os.umask(current)
+    return current

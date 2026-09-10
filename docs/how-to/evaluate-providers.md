@@ -42,6 +42,18 @@ A task with neither an ideal answer nor distractors is a report task, scored
 against a rubric. You do not have to say which — it is inferred — but you can
 state `answer_type` explicitly to override.
 
+There is a third shape, and it is worth knowing about before you write an eval
+set: a task with an ideal answer and **no** distractors infers `SHORT_ANSWER`,
+and nothing in this client scores that yet — not `eval run`, not `eval score`.
+Such tasks run and their responses are saved like any other; they simply cannot
+be graded. `eval run` says so at the end of a run rather than leaving it to be
+discovered. Add distractors to make it multiple choice, or drop the ideal answer
+to make it a report task.
+
+Declaring `answer_type: MULTIPLE_CHOICE` without distractors is refused outright:
+one option and a right answer is not a question, and every arm would score 1.000
+on it.
+
 TSV works too, for questions that came out of a spreadsheet:
 
 ```

@@ -652,6 +652,7 @@ full workflow.
 | `eval adapters` | List the benchmark formats this client can read |
 | `eval fetch` | Download a benchmark dataset into the local cache |
 | `eval load` | Load an eval set and show what it contains |
+| `eval run` | Run every task in an eval set against every arm |
 | `eval score` | Score a saved report against one task from an eval set |
 
 #### eval adapters
@@ -680,6 +681,45 @@ revision downloaded is recorded so a score can name the data behind it.
 | `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
 | `--output`, `-o PATH` | Write the eval set as JSON instead of summarising it |
 | `--limit INTEGER` | Show only the first N tasks in the summary (default: 10) |
+
+#### eval run
+
+Runs every task in an eval set against every arm, writing results into a
+predictable directory tree.
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | Eval set source: a file, a directory, or a dataset subset name |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--arm TEXT` | Arm as `provider`, `provider:model`, or `id=provider:model` (repeatable) |
+| `--arms PATH` | YAML file defining arms, for arms that need provider params |
+| `--output-dir`, `-o PATH` | Run directory (default: `runs/<timestamp>`) |
+| `--limit INTEGER` | Run only the first N tasks |
+| `--task-id TEXT` | Run only these task ids (repeatable) |
+| `--concurrency`, `-j INTEGER` | Cells to run at a time (default: 4) |
+| `--no-resume` | Re-run cells an earlier run already completed |
+| `--dry-run` | Show the matrix and one prompt without calling any provider |
+
+Multiple-choice tasks are graded during the run, which costs nothing. Report
+tasks are saved but not scored; score them afterwards with `eval score`.
+
+Output layout:
+
+```
+<run_dir>/
+  manifest.json        arms, dataset revision, every cell
+  results.tsv          one row per cell
+  scores.tsv           per-arm aggregates, for multiple-choice runs
+  <task_id>/<arm_id>/
+    prompt.md          exactly what the provider was sent
+    output.md          exactly what it returned
+    cell.json          the cell record
+    answer.json        the graded answer, for multiple-choice tasks
+```
+
+Cells are written as they finish, so a run is resumable: point `--output-dir` at
+an existing run and completed cells are skipped. Failed cells are always
+retried. A provider failure fails its own cell and no others.
 
 #### eval score
 
@@ -717,6 +757,13 @@ deep-research-client eval load LitQA2 --adapter lab-bench
 
 # Load curated Monarch ground truth
 deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+
+# Price a matrix run before committing to it
+deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml --limit 20 --dry-run
+
+# Run a benchmark across several arms
+deep-research-client eval run LitQA2 --adapter lab-bench \\
+  --arm edison=falcon --arm baseline=claude_code --limit 20
 
 # Score a saved report
 deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech

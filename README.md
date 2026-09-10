@@ -1094,6 +1094,10 @@ deep-research-client eval load LitQA2 --adapter lab-bench
 # Curated Monarch ground truth
 deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
 
+# Run every question against every arm
+deep-research-client eval run LitQA2 --adapter lab-bench \
+  --arm edison=falcon --arm baseline=claude_code --limit 20
+
 # Score a saved report
 deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
 ```
@@ -1116,6 +1120,13 @@ A task with distractors is scored as multiple choice (accuracy, coverage and
 precision, following LAB-Bench); one without is scored as a report, against a
 rubric of reference claims, spot checks and expected topics. Several scorers
 need no LLM judge at all.
+
+`eval run` sweeps the matrix of tasks against *arms* — a provider, optionally a
+model, optionally provider parameters. Results land in a predictable tree (one
+directory per task, one per arm beneath it, holding exactly what was sent and
+what came back) with a manifest recording the arms and dataset revision. Cells
+are written as they finish, so a run is resumable and one provider running out
+of quota costs only its own cells.
 
 Benchmark data is downloaded rather than bundled, and the dataset revision is
 recorded with the eval set so a score can name the data behind it. See

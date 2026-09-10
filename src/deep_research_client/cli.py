@@ -2797,6 +2797,181 @@ def eval_load(
     typer.echo()
 
 
+@eval_app.command("run")
+def eval_run(
+    source: Annotated[str, typer.Argument(
+        help="Eval set source: a file, a directory, or a dataset subset name")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    arm: Annotated[Optional[List[str]], typer.Option(
+        "--arm", help="Arm to run, as 'provider', 'provider:model', or 'id=provider:model' (repeatable)")] = None,
+    arms_file: Annotated[Optional[Path], typer.Option(
+        "--arms", help="YAML file defining arms, for arms that need provider params")] = None,
+    output_dir: Annotated[Optional[Path], typer.Option(
+        "--output-dir", "-o", help="Run directory (default: runs/<timestamp>)")] = None,
+    limit: Annotated[Optional[int], typer.Option(
+        "--limit", help="Run only the first N tasks; use this to price a run before committing")] = None,
+    task_id: Annotated[Optional[List[str]], typer.Option(
+        "--task-id", help="Run only these task ids (repeatable)")] = None,
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", "-j", min=1, help="Cells to run at a time")] = 4,
+    no_resume: Annotated[bool, typer.Option(
+        "--no-resume", help="Re-run cells that an earlier run already completed")] = False,
+    dry_run: Annotated[bool, typer.Option(
+        "--dry-run", help="Show the matrix and the prompt for one cell, without calling any provider")] = False,
+):
+    """Run every task in an eval set against every arm.
+
+    Results go into a predictable directory tree: one directory per task, one
+    per arm beneath it, holding exactly what was sent and what came back. Cells
+    are written as they finish, so a run can be inspected while it is going and
+    resumed if it is interrupted.
+
+    Multiple-choice tasks are graded during the run, which is free. Report tasks
+    are only saved; score them afterwards with `eval score`, which costs LLM
+    judge calls.
+
+    \b
+    Examples:
+        # Price it first: two tasks, one arm, no provider calls
+        deep-research-client eval run questions.yaml --arm falcon --limit 2 --dry-run
+
+        # A single arm over your own questions
+        deep-research-client eval run questions.yaml --arm falcon
+
+        # Compare a deep research tool against a plain-agent baseline
+        deep-research-client eval run LitQA2 --adapter lab-bench \\
+            --arm edison=falcon --arm baseline=claude_code --limit 20
+
+        # Arms that need provider parameters
+        deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml
+
+        # Resume an interrupted run
+        deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml \\
+            --output-dir runs/2026-09-10T14-22Z
+    """
+    import asyncio
+    from datetime import datetime, timezone
+    from .evaluation.datamodel import AnswerType, CellStatus
+    from .evaluation.matrix import (
+        MatrixConfig, load_arms, parse_arm_flag, run_matrix, score_by_arm,
+    )
+    from .evaluation.runner import load_eval_set
+
+    if not arm and not arms_file:
+        typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
+        raise typer.Exit(1)
+
+    arms: list = []
+    if arms_file:
+        arms.extend(load_arms(arms_file))
+    for flag in arm or []:
+        arms.append(parse_arm_flag(flag))
+
+    duplicate_ids = {a.id for a in arms if [x.id for x in arms].count(a.id) > 1}
+    if duplicate_ids:
+        typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
+        raise typer.Exit(1)
+
+    eval_set = load_eval_set(adapter, source)
+    tasks = eval_set.tasks or []
+    if task_id:
+        wanted = set(task_id)
+        tasks = [t for t in tasks if t.id in wanted]
+        missing = wanted - {t.id for t in tasks}
+        if missing:
+            typer.echo(f"No task with id(s): {', '.join(sorted(missing))}")
+            raise typer.Exit(1)
+    if limit is not None:
+        tasks = tasks[:limit]
+    if not tasks:
+        typer.echo("No tasks selected.")
+        raise typer.Exit(1)
+    eval_set.tasks = tasks
+
+    typer.echo(f"\nEval set: {eval_set.name}")
+    typer.echo(f"  Tasks: {len(tasks)}  x  Arms: {len(arms)}  =  {len(tasks) * len(arms)} cells")
+    for a in arms:
+        model = f":{a.model}" if a.model else ""
+        note = f"  ({a.description})" if a.description else ""
+        typer.echo(f"    {a.id:<20} {a.provider}{model}{note}")
+    if eval_set.is_partial:
+        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
+
+    if dry_run:
+        from .evaluation.matrix import _prompt_for
+        prompt, _ = _prompt_for(tasks[0])
+        typer.echo(f"\n--- prompt that would be sent for {tasks[0].id} ---")
+        typer.echo(prompt)
+        typer.echo("--- end ---\n")
+        typer.echo("Dry run: no providers were called.")
+        return
+
+    run_dir = output_dir or Path("runs") / datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+
+    completed = {"n": 0}
+    total = len(tasks) * len(arms)
+
+    def on_cell(cell) -> None:
+        completed["n"] += 1
+        mark = "ok " if cell.status == CellStatus.COMPLETED else "FAIL"
+        extra = ""
+        if cell.correct is True:
+            extra = " correct"
+        elif cell.disposition:
+            extra = f" {cell.disposition}"
+        typer.echo(f"  [{completed['n']}/{total}] {mark} {cell.task_id} / {cell.arm_id}{extra}")
+
+    typer.echo(f"\nWriting to {run_dir}\n")
+    manifest = asyncio.run(run_matrix(
+        eval_set, arms,
+        MatrixConfig(
+            output_dir=run_dir,
+            concurrency=concurrency,
+            resume=not no_resume,
+            on_cell=on_cell,
+        ),
+    ))
+
+    cells = manifest.cells or []
+    failed = [c for c in cells if c.status == CellStatus.FAILED]
+    typer.echo(f"\n{len(cells) - len(failed)}/{len(cells)} cells completed")
+    if failed:
+        typer.echo(f"{len(failed)} failed:")
+        for cell in failed[:10]:
+            typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
+
+    scores = score_by_arm(eval_set, cells)
+    if scores:
+        typer.echo("\nMultiple-choice scores:\n")
+        typer.echo(f"  {'arm':<20} {'acc':>7} {'cov':>7} {'prec':>7}   {'n':>5}")
+        for arm_id, score in sorted(scores.items()):
+            typer.echo(
+                f"  {arm_id:<20} {score.accuracy:>7.3f} {score.coverage:>7.3f} "
+                f"{score.precision:>7.3f}   {score.correct:>2}/{score.total}"
+            )
+        if any(s.extraction_failures for s in scores.values()):
+            typer.echo(
+                "\n  Some responses had no recoverable answer. Those count against "
+                "coverage but are a harness limitation, not a provider result; see "
+                "the extraction_failures column in scores.tsv."
+            )
+        if eval_set.is_partial:
+            typer.echo(f"\n  {eval_set.partial_reason}")
+
+    has_reports = any(t.answer_type == AnswerType.REPORT for t in tasks)
+    if has_reports:
+        typer.echo(
+            "\nReport tasks were saved but not scored (scoring them needs an LLM "
+            "judge). Score one with:\n"
+            f"  deep-research-client eval score {run_dir}/<task_id>/<arm_id>/output.md \\\n"
+            f"    --source {source} --adapter {adapter} --task-id <task_id>"
+        )
+
+    typer.echo(f"\nManifest: {run_dir}/manifest.json")
+    typer.echo(f"Results:  {run_dir}/results.tsv")
+
+
 @eval_app.command("score")
 def eval_score(
     report: Annotated[Path, typer.Argument(help="Markdown file with the report to score")],

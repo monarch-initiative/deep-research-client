@@ -390,3 +390,71 @@ def test_datamodel_matches_linkml_schema() -> None:
         "datamodel.py does not match evaluation.yaml. Either the schema changed "
         "or linkml was upgraded; run `just gen-datamodel-eval` and review the diff."
     )
+
+
+# ---------------------------------------------------------------------------
+# Echoed-prompt handling
+#
+# Deep research tools routinely restate the question and every option before
+# answering. That restatement looks exactly like a series of answers, so it has
+# to be removed before extraction - otherwise the last option listed wins, which
+# is the abstention whenever one is offered.
+# ---------------------------------------------------------------------------
+
+
+def _abstaining_task() -> EvalTask:
+    return EvalTask(
+        id="echo",
+        prompt="Which base pairs with adenine?",
+        answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Thymine",
+            distractors=["Guanine", "Cytosine", "Uracil"],
+            abstention_option="Insufficient information to answer this question.",
+        ),
+    )
+
+
+def test_echoed_option_list_is_not_read_as_an_abstention():
+    """The regression: a restated option list scored as choosing the last option."""
+    task = _abstaining_task()
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+
+    echoed = "The user asked:\n\n" + "\n".join(f"{c.letter}. {c.text}" for c in choices)
+    response = f"{echoed}\n\nAfter reviewing the literature.\n\nAnswer: {ideal.letter}"
+
+    answer = mcq.grade("echo", "p", response, choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct
+
+
+def test_echoed_option_list_without_an_answer_is_an_extraction_failure():
+    """Quoting the options is not answering, and must not count as abstaining."""
+    task = _abstaining_task()
+    choices = mcq.present_choices(task)
+    echoed = "You asked:\n\n" + "\n".join(f"{c.letter}. {c.text}" for c in choices)
+
+    answer = mcq.grade("echo", "p", echoed + "\n\nThis is a report with no verdict.", choices)
+    assert answer.disposition == ScoreDisposition.EXTRACTION_FAILED
+
+
+def test_naming_a_single_option_still_counts_as_choosing_it():
+    """Only a run of two or more restated options is a quotation, not a choice."""
+    task = _abstaining_task()
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+
+    answer = mcq.grade("echo", "p", f"{ideal.letter}. {ideal.text}", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct
+
+
+def test_echoed_instruction_line_is_ignored():
+    """The prompt's own 'Answer: X' instruction must not be read as an answer."""
+    task = _abstaining_task()
+    choices = mcq.present_choices(task)
+    prompt_echo = mcq.format_prompt(task, choices)
+
+    answer = mcq.grade("echo", "p", prompt_echo + "\n\nI cannot determine this.", choices)
+    assert answer.disposition == ScoreDisposition.EXTRACTION_FAILED

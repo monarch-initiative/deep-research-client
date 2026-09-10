@@ -135,12 +135,80 @@ def format_prompt(task: EvalTask, choices: list[Choice]) -> str:
     """
     lines = [task.prompt, ""]
     lines.extend(f"{c.letter}. {c.text}" for c in choices)
-    lines.extend([
-        "",
-        'End your response with a line of the form "Answer: X", where X is the letter',
-        "of the single best option.",
-    ])
+    lines.extend(["", *_INSTRUCTION_LINES])
     return "\n".join(lines)
+
+
+#: The instruction appended to every multiple-choice prompt. Held as a constant
+#: because a provider that quotes the prompt back quotes this too, and the quoted
+#: copy contains the very "Answer: X" shape the extractor looks for.
+_INSTRUCTION_LINES = (
+    'End your response with a line of the form "Answer: X", where X is the letter',
+    "of the single best option.",
+)
+
+#: Leading list markers to ignore when deciding whether a line restates an option.
+_LIST_MARKER = re.compile(r"^\s*(?:[-*+]\s*)?(?:\(?([A-Za-z])\)?[.):]\s*)?")
+
+
+def _strip_echoed_prompt(response: str, choices: list["Choice"]) -> str:
+    """Remove a restatement of the question's own options from a response.
+
+    Deep research tools routinely open by quoting the question and listing every
+    option before answering. Left in place that block is indistinguishable from
+    an answer: each option line looks exactly like a provider stating its choice,
+    and taking the last such line silently returns whichever option was listed
+    last - the abstention, whenever one is offered. Coverage collapses and every
+    arm looks identically indecisive.
+
+    Only a *run* of consecutive lines restating two or more distinct options in
+    presentation order is removed. A provider naming one option, even as
+    "C. Thymine", is choosing, not quoting, and survives.
+
+    >>> from .datamodel import AnswerSpec, AnswerType
+    >>> task = EvalTask(id="t1", prompt="Which?", answer_type=AnswerType.MULTIPLE_CHOICE,
+    ...                 answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine"],
+    ...                                        abstention_option="Not enough information."))
+    >>> choices = present_choices(task)
+    >>> echoed = "You asked:\\nA. Thymine\\nB. Guanine\\nC. Not enough information.\\n\\nAnswer: A"
+    >>> "Guanine" in _strip_echoed_prompt(echoed, choices)
+    False
+    >>> _strip_echoed_prompt("I pick B. Guanine here.", choices)
+    'I pick B. Guanine here.'
+    """
+    by_text = {_normalize(c.text): c.letter for c in choices if c.text.strip()}
+    if len(by_text) < 2:
+        return response
+
+    lines = response.split("\n")
+    matched: list[str | None] = []
+    for line in lines:
+        stripped = _LIST_MARKER.sub("", line).strip()
+        matched.append(by_text.get(_normalize(stripped)))
+
+    drop: set[int] = set()
+    start = 0
+    while start < len(lines):
+        if matched[start] is None:
+            start += 1
+            continue
+        end = start
+        seen = []
+        while end < len(lines) and (matched[end] is not None or not lines[end].strip()):
+            if matched[end] is not None:
+                seen.append(matched[end])
+            end += 1
+        # Two or more distinct options in a row is a restatement of the list,
+        # not a choice among them.
+        if len(set(seen)) >= 2:
+            drop.update(range(start, end))
+        start = max(end, start + 1)
+
+    kept = [
+        line for i, line in enumerate(lines)
+        if i not in drop and line.strip() not in _INSTRUCTION_LINES
+    ]
+    return "\n".join(kept)
 
 
 def _normalize(text: str) -> str:
@@ -181,7 +249,9 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
         return None
 
     by_letter = {c.letter: c for c in choices}
-    tail = response.strip()
+    tail = _strip_echoed_prompt(response, choices).strip()
+    if not tail:
+        return None
 
     for pattern in _LETTER_PATTERNS:
         matches = pattern.findall(tail)

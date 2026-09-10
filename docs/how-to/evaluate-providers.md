@@ -123,6 +123,97 @@ deep-research-client eval load /path/to/ai-gene-review/genes/human --adapter ai-
 
 Both accept a single YAML file or a directory.
 
+## Run the matrix
+
+`eval run` sends every task to every arm. An *arm* is one configuration under
+test — a provider, optionally a model, optionally provider parameters. It is
+called an arm rather than a provider because the same provider usually appears
+more than once in a useful comparison:
+
+```yaml
+# arms.yaml
+arms:
+  - id: edison
+    provider: falcon
+
+  - id: agent-web
+    provider: claude_code
+    description: Plain agent with web search, as a control
+
+  - id: agent-noweb
+    provider: claude_code
+    description: Closed-book control, to probe contamination
+    params:
+      allowed_tools: []
+```
+
+Price the run before committing to it — `--dry-run` shows the grid and the exact
+prompt one cell would receive, without calling anything:
+
+```bash
+deep-research-client eval run LitQA2 --adapter lab-bench \
+  --arms arms.yaml --limit 20 --dry-run
+```
+
+Then run it:
+
+```bash
+deep-research-client eval run LitQA2 --adapter lab-bench \
+  --arms arms.yaml --limit 20 --concurrency 4
+```
+
+Simple arms need no file: `--arm falcon --arm openai:o3-deep-research --arm
+baseline=claude_code`.
+
+### What a run writes
+
+```
+runs/2026-09-10T14-22Z/
+  manifest.json        the run: arms, dataset revision, every cell
+  results.tsv          one row per cell
+  scores.tsv           per-arm aggregates, for multiple-choice runs
+  <task_id>/
+    <arm_id>/
+      prompt.md        exactly what the provider was sent
+      output.md        exactly what it returned
+      cell.json        the cell record
+      answer.json      the graded answer, for multiple-choice tasks
+```
+
+`prompt.md` matters more than it looks: for a multiple-choice task the prompt
+carries the lettered options in the order that provider actually saw, and
+without it a score cannot be audited.
+
+Cells are written as they finish, so a run can be inspected while it is going
+and resumed if it is interrupted — point `--output-dir` at the same directory
+and completed cells are skipped. Failed cells are always retried, so a transient
+error never becomes permanent.
+
+A failing arm does not take the run down with it. If one provider is out of
+quota you lose that arm's cells and keep everything else.
+
+### Reading the scores
+
+Multiple-choice tasks are graded during the run, because grading them costs
+nothing. Report tasks are saved but not scored — that needs an LLM judge, so it
+is a separate deliberate pass with `eval score`.
+
+```
+  arm                      acc     cov    prec       n
+  edison                 0.550   0.900   0.611   11/20
+  agent-web              0.400   1.000   0.400    8/20
+  agent-noweb            0.150   0.950   0.158    3/20
+```
+
+Never read accuracy without coverage beside it. A low accuracy because the
+provider answered wrongly and a low accuracy because it declined to answer are
+different results, and only coverage separates them.
+
+Watch `extraction_failures` in `scores.tsv` too. That column counts responses
+no answer could be recovered from — a limitation of this harness, not a result
+about the provider. It is reported separately precisely so it can be driven down
+rather than quietly deflating someone's score.
+
 ## Score a saved report
 
 For report-shaped tasks, score a markdown file you already have:
@@ -177,13 +268,6 @@ classes with `just gen-datamodel-eval` after any change.
 
 ## What is not here yet
 
-There is no command that runs a whole matrix of questions across several
-providers and writes the results into a predictable directory tree. Today you
-loop over `deep-research-client research` yourself and score the outputs
-afterwards.
-
-The groundwork is in place: benchmarks are data, tasks declare their answer
-shape, and eval sets carry the provenance a published score needs. What a matrix
-runner still needs is its own vocabulary in the schema — the provider/model/param
-combinations to sweep, and a per-cell record of what each produced — plus the
-executor and output layout on top.
+Report-shaped tasks are still scored one at a time: `eval run` saves the reports
+but `eval score` takes a single file. A batch scoring pass over a whole run
+directory is the obvious next step.

@@ -666,7 +666,7 @@ data.
 |-----------------|-------------|
 | `SUBSET` | LAB-Bench subset(s), comma-separated, or `all` (default: `LitQA2`) |
 | `--cache-dir PATH` | Cache directory (default: `~/.deep_research_cache`) |
-| `--revision TEXT` | Dataset revision to pin; resolved from HuggingFace when omitted |
+| `--revision TEXT` | Fail unless the dataset's current revision is this one (asserts; the API serves only the current revision) |
 | `--refresh` | Re-download even if a cached copy exists |
 
 Benchmark data is cached rather than committed: LAB-Bench ships a contamination

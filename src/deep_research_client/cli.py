@@ -2695,7 +2695,7 @@ def eval_fetch(
     cache_dir: Annotated[Optional[Path], typer.Option(
         "--cache-dir", help="Cache directory (default: ~/.deep_research_cache)")] = None,
     revision: Annotated[Optional[str], typer.Option(
-        "--revision", help="Dataset revision to pin; resolved from HuggingFace when omitted")] = None,
+        "--revision", help="Fail unless the dataset's current revision is this one. The dataset API only serves the current revision, so this asserts rather than selects")] = None,
     refresh: Annotated[bool, typer.Option(
         "--refresh", help="Re-download even if a cached copy exists")] = False,
 ):

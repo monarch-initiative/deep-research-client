@@ -9,6 +9,7 @@ HuggingFace being up. Tests that need the real thing are marked ``integration``.
 
 from pathlib import Path
 
+import httpx
 import pytest
 
 from deep_research_client.evaluation import mcq
@@ -586,13 +587,99 @@ def test_a_labelled_line_repeating_the_option_text_is_an_answer():
     assert answer.correct
 
 
-def test_lab_bench_refuses_a_revision_it_cannot_serve():
+def test_lab_bench_refuses_a_revision_it_cannot_serve(monkeypatch):
     """A requested revision must not be used to relabel current data.
 
     The datasets-server rows endpoint always serves the current revision, so
     filing a download under a requested sha would stamp current data with an old
     one — the false provenance the pin exists to prevent.
     """
-    from deep_research_client.evaluation.adapters.lab_bench import _cache_root
+    from deep_research_client.evaluation.adapters import lab_bench
 
-    assert _cache_root(None).name == "lab-bench"
+    monkeypatch.setattr(lab_bench, "resolve_revision", lambda client=None: "currentsha")
+    with pytest.raises(ValueError, match="but oldsha was requested"):
+        lab_bench.fetch_subset("LitQA2", revision="oldsha")
+
+
+def test_lab_bench_uses_a_cached_revision_when_it_cannot_reach_the_api(monkeypatch, tmp_path):
+    """An outage must not turn a complete local copy into a failed run."""
+    import json as json_mod
+
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    cached = tmp_path / "eval_datasets" / "lab-bench" / "cachedsha"
+    cached.mkdir(parents=True)
+    rows = [
+        {"id": str(i), "question": "Q?", "ideal": "A", "distractors": ["B"]}
+        for i in range(lab_bench.SUBSETS["LitQA2"][0])
+    ]
+    (cached / "LitQA2.json").write_text(json_mod.dumps(rows))
+
+    def unreachable(client=None):
+        raise httpx.ConnectError("no network")
+
+    monkeypatch.setattr(lab_bench, "resolve_revision", unreachable)
+    got, revision = lab_bench.fetch_subset("LitQA2", cache_dir=tmp_path)
+    assert revision == "cachedsha"
+    assert len(got) == len(rows)
+
+
+def test_lab_bench_reports_a_truncated_cache(monkeypatch, tmp_path):
+    """A short cached file must be caught, not silently shrink the benchmark."""
+    import json as json_mod
+
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    cached = tmp_path / "eval_datasets" / "lab-bench" / "somesha"
+    cached.mkdir(parents=True)
+    (cached / "LitQA2.json").write_text(json_mod.dumps([{"id": "1"}]))
+
+    monkeypatch.setattr(lab_bench, "resolve_revision", lambda client=None: "somesha")
+    with pytest.raises(ValueError, match="cached copy of"):
+        lab_bench.fetch_subset("LitQA2", cache_dir=tmp_path)
+
+
+def test_every_adapter_rejects_duplicate_task_ids():
+    """Ids become directory names, so this must hold for every benchmark."""
+    from deep_research_client.evaluation.adapters.base import check_unique_ids
+
+    task = EvalTask(id="dupe", prompt="p", answer_type=AnswerType.REPORT)
+    with pytest.raises(ValueError, match="duplicate task ids: dupe"):
+        check_unique_ids([task, task], "somewhere")
+
+
+def test_a_report_discussing_each_option_states_no_answer():
+    """Walking through the options is not choosing one.
+
+    Requiring a labelled line to repeat the option's own text stops author
+    initials being read as answers, but a report that gives each option its own
+    heading restates several of them — and those headings need not be
+    consecutive, so the echo strip leaves them. Taking the last would return
+    whichever option was discussed last.
+    """
+    task = EvalTask(
+        id="walkthrough", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    choices = mcq.present_choices(task)
+    report = "\n\n".join(
+        f"{c.letter}. {c.text}\n\nA paragraph about {c.text} reaching no conclusion."
+        for c in choices
+    )
+    assert mcq.grade("walkthrough", "p", report, choices).disposition == (
+        ScoreDisposition.EXTRACTION_FAILED
+    )
+
+
+def test_a_walkthrough_that_ends_in_a_verdict_is_read():
+    """The counterpart: an explicit verdict after the walkthrough still counts."""
+    task = EvalTask(
+        id="walkthrough2", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+    report = "\n\n".join(f"{c.letter}. {c.text}\n\nSome discussion." for c in choices)
+    answer = mcq.grade("walkthrough2", "p", f"{report}\n\nAnswer: {ideal.letter}", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct

@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ..datamodel import EvalSet
+from ..datamodel import EvalSet, EvalTask
 
 
 class EvalSetAdapter(ABC):
@@ -48,3 +48,39 @@ class EvalSetAdapter(ABC):
             source allows.
         """
         raise NotImplementedError
+
+
+def check_unique_ids(tasks: list[EvalTask], source: str) -> None:
+    """Raise if two tasks share an id.
+
+    Task ids become directory names in run output, so a duplicate means one
+    task's results overwrite another's and, on a resumed run, the second reports
+    the first's answer as its own. Every adapter is subject to this, not just the
+    ones that read user-authored files: an adapter that derives ids from a
+    filename or a fallback field can collide just as easily as a hand-written
+    eval set can.
+
+    Args:
+        tasks: The tasks an adapter produced.
+        source: What was loaded, for the error message.
+
+    Raises:
+        ValueError: If any id appears more than once.
+
+    >>> check_unique_ids([EvalTask(id="a", prompt="p", answer_type="REPORT")], "x")
+    >>> check_unique_ids([
+    ...     EvalTask(id="a", prompt="p", answer_type="REPORT"),
+    ...     EvalTask(id="a", prompt="q", answer_type="REPORT"),
+    ... ], "x")
+    Traceback (most recent call last):
+        ...
+    ValueError: x: duplicate task ids: a
+    """
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for task in tasks:
+        if task.id in seen and task.id not in duplicates:
+            duplicates.append(task.id)
+        seen.add(task.id)
+    if duplicates:
+        raise ValueError(f"{source}: duplicate task ids: {', '.join(duplicates)}")

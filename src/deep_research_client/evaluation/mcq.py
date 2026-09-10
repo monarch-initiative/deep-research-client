@@ -348,10 +348,22 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     # A labelled line counts only when what follows the letter is that option's
     # own text. "C. Arabidopsis thaliana" is a choice; "C. elegans was not
     # studied" and "B. Jones et al., 2019" are not.
-    for letter, remainder in reversed(_LABELLED_LINE.findall(tail)):
-        choice = by_letter.get(letter.upper())
-        if choice is not None and _normalize(remainder) == _normalize(choice.text):
-            return choice
+    #
+    # And only when exactly one option is labelled that way. A report that walks
+    # through the options under their own headings restates several of them
+    # without ever choosing, and those headings are not always consecutive, so
+    # `_strip_echoed_prompt` leaves them in place. Taking the last would return
+    # whichever option the report happened to discuss last - the same mistake in
+    # a different guise. This mirrors the exactly-one rule used for text matches
+    # below.
+    labelled = {
+        letter.upper()
+        for letter, remainder in _LABELLED_LINE.findall(tail)
+        if (choice := by_letter.get(letter.upper())) is not None
+        and _normalize(remainder) == _normalize(choice.text)
+    }
+    if len(labelled) == 1:
+        return by_letter[labelled.pop()]
 
     normalized_response = _normalize(tail)
     text_matches = [

@@ -27,13 +27,15 @@ it is a contamination marker, not question content.
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
-from .base import EvalSetAdapter
+from .base import EvalSetAdapter, check_unique_ids
 
 logger = logging.getLogger(__name__)
 
@@ -169,20 +171,86 @@ def _fetch_rows(subset: str, client: httpx.Client) -> list[dict[str, Any]]:
     return rows
 
 
+def newest_cached_revision(subset: str, cache_dir: str | Path | None = None) -> str | None:
+    """Return the most recently written cached revision holding ``subset``.
+
+    Used when the revision cannot be resolved - an outage should not turn a
+    complete local copy of a benchmark into a failed run.
+
+    Args:
+        subset: Subset name.
+        cache_dir: Cache root.
+
+    Returns:
+        The revision, or None when nothing is cached for this subset.
+    """
+    root = _cache_root(cache_dir)
+    if not root.is_dir():
+        return None
+    candidates = [d for d in root.iterdir() if (d / f"{subset}.json").exists()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda d: (d / f"{subset}.json").stat().st_mtime).name
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically.
+
+    A truncating write that is interrupted leaves a short file, which is exactly
+    the corruption the row-count check downstream has to detect. Writing to a
+    sibling and renaming means a reader sees either the old file or the new one.
+    """
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _resolve_or_fall_back(
+    client: httpx.Client, subset: str, cache_dir: str | Path | None
+) -> str:
+    """Resolve the current revision, falling back to a cached one when offline.
+
+    An outage should not turn a complete local copy of a benchmark into a failed
+    run. The fallback is loud, because the provenance then describes what is on
+    disk rather than what is current.
+    """
+    try:
+        return resolve_revision(client)
+    except httpx.HTTPError as exc:
+        cached = newest_cached_revision(subset, cache_dir)
+        if cached is None:
+            raise
+        logger.warning(
+            "Could not reach HuggingFace to resolve the LAB-Bench revision (%s); "
+            "using the cached revision %s. Provenance describes the cached copy, "
+            "not necessarily the current dataset.",
+            exc, cached[:8],
+        )
+        return cached
+
+
 def fetch_subset(
     subset: str,
     cache_dir: str | Path | None = None,
     revision: str | None = None,
     refresh: bool = False,
+    resolved_revision: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Download one LAB-Bench subset, caching it on disk by revision.
 
     Args:
         subset: Subset name, e.g. ``LitQA2``.
         cache_dir: Cache root; defaults to the client's cache directory.
-        revision: Revision the caller expects. The current revision is always
-            resolved and used; this is checked against it, and a mismatch is an
-            error rather than a silent relabelling.
+        revision: Revision the caller expects. The current revision is resolved
+            and used; this is checked against it, and a mismatch is an error
+            rather than a silent relabelling.
+        resolved_revision: An already-resolved revision, to avoid re-resolving
+            once per subset when several are loaded together.
         refresh: Re-download even when a cached copy for this revision exists.
 
     Returns:
@@ -199,12 +267,12 @@ def fetch_subset(
         )
 
     with httpx.Client(timeout=120.0) as client:
-        # Always resolve, even when a revision was requested. The datasets-server
-        # rows endpoint serves whatever is current and takes no revision
-        # parameter, so honouring a requested revision by simply filing the
-        # download under that name would stamp current data with an old sha -
-        # exactly the false provenance the pin exists to prevent.
-        resolved = resolve_revision(client)
+        # Resolve unless the caller already did. The datasets-server rows
+        # endpoint serves whatever is current and takes no revision parameter,
+        # so honouring a requested revision by simply filing the download under
+        # that name would stamp current data with an old sha - exactly the false
+        # provenance the pin exists to prevent. Hence: resolve, then assert.
+        resolved = resolved_revision or _resolve_or_fall_back(client, subset, cache_dir)
         if revision and revision != resolved:
             raise ValueError(
                 f"LAB-Bench is at revision {resolved}, but {revision} was requested. "
@@ -238,7 +306,7 @@ def fetch_subset(
 
     if not from_cache:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(rows, indent=2))
+        _atomic_write(path, json.dumps(rows, indent=2))
     return rows, resolved
 
 
@@ -334,7 +402,7 @@ class LabBenchAdapter(EvalSetAdapter):
         # silently mix two datasets into one eval set.
         requested_revision: str | None = options.get("revision")
         with httpx.Client(timeout=30.0) as client:
-            pinned: str = resolve_revision(client)
+            pinned: str = _resolve_or_fall_back(client, subsets[0], options.get("cache_dir"))
         if requested_revision and requested_revision != pinned:
             raise ValueError(
                 f"LAB-Bench is at revision {pinned}, but {requested_revision} "
@@ -347,12 +415,13 @@ class LabBenchAdapter(EvalSetAdapter):
             rows, revision = fetch_subset(
                 subset,
                 cache_dir=options.get("cache_dir"),
-                revision=pinned,
+                resolved_revision=pinned,
                 refresh=bool(options.get("refresh", False)),
             )
             revisions.add(revision)
             tasks.extend(_task_from_row(row, subset, abstention) for row in rows)
 
+        check_unique_ids(tasks, f"LAB-Bench {', '.join(subsets)}")
         return EvalSet(
             name=f"lab-bench-{'-'.join(s.lower() for s in subsets)}",
             description=(

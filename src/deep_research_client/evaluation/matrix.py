@@ -34,7 +34,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
+import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +72,25 @@ _RESULT_COLUMNS = (
     "correct", "chosen_letter", "duration_seconds", "citation_count",
     "output_path", "error",
 )
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically.
+
+    The summary files are rewritten after every cell so that an interrupted run
+    still leaves readable ones - which a truncating in-place write would defeat,
+    since the interruption could land mid-write and leave a half-written TSV or
+    an unparseable manifest. Writing to a sibling and renaming means a reader
+    always sees a complete file, old or new.
+    """
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def safe_segment(value: str) -> str:
@@ -318,14 +340,21 @@ def _completed_cell(
     )
     if needs_grade:
         output = cell_dir / "output.md"
-        if output.exists():
-            answer = mcq.grade(task.id, arm.id, output.read_text(), choices)
-            cell.disposition = answer.disposition
-            cell.chosen_letter = answer.chosen_letter
-            cell.correct = answer.correct
-            (cell_dir / "answer.json").write_text(answer.model_dump_json(indent=2))
-            path.write_text(cell.model_dump_json(indent=2, exclude_none=True))
-            logger.info("Graded stored response for %s/%s", task.id, arm.id)
+        if not output.exists():
+            # Nothing to grade from, and returning the cell ungraded would drop
+            # it from the aggregate without saying so, quietly shrinking the
+            # denominator. Re-run it instead.
+            logger.warning(
+                "Cell %s/%s has no saved response to grade; re-running", task.id, arm.id
+            )
+            return None
+        answer = mcq.grade(task.id, arm.id, output.read_text(), choices)
+        cell.disposition = answer.disposition
+        cell.chosen_letter = answer.chosen_letter
+        cell.correct = answer.correct
+        atomic_write(cell_dir / "answer.json", answer.model_dump_json(indent=2))
+        atomic_write(path, cell.model_dump_json(indent=2, exclude_none=True))
+        logger.info("Graded stored response for %s/%s", task.id, arm.id)
 
     return cell
 
@@ -417,7 +446,7 @@ def write_results_tsv(layout: RunLayout, cells: Sequence[CellResult]) -> None:
             "error": " ".join((cell.error or "").split()),
         }
         lines.append("\t".join(row[c] for c in _RESULT_COLUMNS))
-    layout.results_path.write_text("\n".join(lines) + "\n")
+    atomic_write(layout.results_path, "\n".join(lines) + "\n")
 
 
 def score_by_arm(eval_set: EvalSet, cells: Sequence[CellResult]) -> dict[str, MCQScore]:
@@ -471,7 +500,7 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
             f"{score.accuracy:.4f}", f"{score.coverage:.4f}", f"{score.precision:.4f}",
             str(score.abstained), str(score.extraction_failures), str(score.provider_errors),
         ]))
-    layout.scores_path.write_text("\n".join(lines) + "\n")
+    atomic_write(layout.scores_path, "\n".join(lines) + "\n")
 
 
 def _manifest(
@@ -550,6 +579,8 @@ async def run_matrix(
         len(tasks), len(arms), len(pending), config.concurrency,
     )
 
+    last_manifest = [0.0]
+
     def snapshot() -> None:
         """Rewrite the summary files from the cells finished so far.
 
@@ -560,10 +591,18 @@ async def run_matrix(
         """
         ordered = _ordered(cells)
         write_results_tsv(layout, ordered)
-        layout.manifest_path.write_text(
-            _manifest(eval_set, arms, layout, config, ordered)
-            .model_dump_json(indent=2, exclude_none=True)
-        )
+        # The manifest grows with the run, so re-serialising it after every cell
+        # is quadratic in bytes written. Once a second is frequent enough for a
+        # file whose purpose is to survive an interruption, and the final write
+        # after the loop is unconditional.
+        now = time.monotonic()
+        if now - last_manifest[0] >= 1.0:
+            last_manifest[0] = now
+            atomic_write(
+                layout.manifest_path,
+                _manifest(eval_set, arms, layout, config, ordered)
+                .model_dump_json(indent=2, exclude_none=True),
+            )
 
     for coro in asyncio.as_completed(pending):
         cell = await coro
@@ -575,7 +614,7 @@ async def run_matrix(
     ordered = _ordered(cells)
     manifest = _manifest(eval_set, arms, layout, config, ordered)
 
-    layout.manifest_path.write_text(manifest.model_dump_json(indent=2, exclude_none=True))
+    atomic_write(layout.manifest_path, manifest.model_dump_json(indent=2, exclude_none=True))
     write_results_tsv(layout, ordered)
 
     if config.grade:

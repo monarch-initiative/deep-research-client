@@ -16,7 +16,7 @@ from typing import Any
 import yaml
 
 from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
-from .base import EvalSetAdapter
+from .base import EvalSetAdapter, check_unique_ids
 
 #: Column/key names accepted for the question text, in precedence order. Real
 #: eval sets arrive spelled all three ways and rejecting two of them would be
@@ -147,31 +147,6 @@ def _task_from_row(
     )
 
 
-def _check_unique_ids(tasks: list[EvalTask]) -> None:
-    """Raise if two tasks share an id.
-
-    Task ids become directory names in run output, so a duplicate would have one
-    task silently overwrite another's results.
-
-    >>> _check_unique_ids([EvalTask(id="a", prompt="p", answer_type="REPORT")])
-    >>> _check_unique_ids([
-    ...     EvalTask(id="a", prompt="p", answer_type="REPORT"),
-    ...     EvalTask(id="a", prompt="q", answer_type="REPORT"),
-    ... ])
-    Traceback (most recent call last):
-        ...
-    ValueError: duplicate task ids: a
-    """
-    seen: set[str] = set()
-    duplicates: list[str] = []
-    for task in tasks:
-        if task.id in seen and task.id not in duplicates:
-            duplicates.append(task.id)
-        seen.add(task.id)
-    if duplicates:
-        raise ValueError(f"duplicate task ids: {', '.join(duplicates)}")
-
-
 class YamlAdapter(EvalSetAdapter):
     """Reads an eval set from a YAML file.
 
@@ -220,7 +195,7 @@ class YamlAdapter(EvalSetAdapter):
             raise ValueError(f"{path}: no tasks found")
 
         tasks = [_task_from_row(row, i, separator) for i, row in enumerate(rows)]
-        _check_unique_ids(tasks)
+        check_unique_ids(tasks, str(path))
 
         return EvalSet(
             name=data.get("name") or path.stem,
@@ -273,6 +248,6 @@ class TsvAdapter(EvalSetAdapter):
             raise ValueError(f"{path}: no rows found")
 
         tasks = [_task_from_row(row, i, separator) for i, row in enumerate(rows)]
-        _check_unique_ids(tasks)
+        check_unique_ids(tasks, str(path))
 
         return EvalSet(name=path.stem, source=str(path), tasks=tasks)

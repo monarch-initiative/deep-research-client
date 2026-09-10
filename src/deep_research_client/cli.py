@@ -4,6 +4,7 @@ import base64
 import binascii
 from dataclasses import dataclass
 import asyncio
+import json
 import logging
 import os
 import re
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .transcript_stats import TranscriptStats
     from .validation import (
         ReferenceValidationReport,
         ReferenceValidator,
@@ -1594,6 +1596,90 @@ def edison_trajectory(
         logger.error(f"Error: {e}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+
+@app.command(name="transcript-stats")
+def transcript_stats_command(
+    paths: Annotated[List[Path], typer.Argument(
+        help="Transcript JSON files, or directories searched for *transcript*.json")],
+    output_format: Annotated[str, typer.Option(
+        "--format", help="Output format: markdown, json, or text")] = "markdown",
+    output: Annotated[Optional[Path], typer.Option(
+        help="Write to this file instead of stdout")] = None,
+):
+    """Summarize what an agent did, from its saved transcripts.
+
+    Mines agent transcripts for the shape of a run: which tools were called
+    and how often, which skills fired, what failed, which shell programs and
+    web searches were used, and which declared tools were never touched.
+
+    Transcripts are preserved by providers that support artifact selection;
+    for OpenScientist they need `--param artifact_keep_runtime=true`, since
+    they are dropped by default.
+    """
+    from .transcript_stats import summarize_paths
+
+    try:
+        stats = summarize_paths(paths)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
+        logger.error(f"Could not read transcripts: {e}")
+        raise typer.Exit(1)
+
+    if not stats.entries:
+        logger.warning("No transcript entries found in the given paths")
+
+    if output_format == "json":
+        content = stats.model_dump_json(indent=2)
+    elif output_format == "text":
+        content = _format_transcript_stats_text(stats)
+    elif output_format == "markdown":
+        content = stats.render_markdown()
+    else:
+        logger.error(f"Unknown format: {output_format}. Use markdown, json, or text.")
+        raise typer.Exit(1)
+
+    if output:
+        output.write_text(content, encoding="utf-8")
+        logger.info(f"Transcript summary saved to: {output}")
+    else:
+        typer.echo(content)
+
+
+def _format_transcript_stats_text(stats: "TranscriptStats") -> str:
+    """Render a transcript summary as compact terminal text."""
+    lines = [
+        f"transcripts   {len(stats.sources)}",
+        f"entries       {stats.entries}",
+        f"tool calls    {stats.tool_calls} ({len(stats.tools)} distinct, "
+        f"{stats.failed_tool_calls} failed)",
+    ]
+    if stats.tools:
+        width = max(len(tool.name) for tool in stats.tools)
+        lines.append("")
+        lines.append("tools:")
+        lines.extend(
+            f"  {tool.name:<{width}}  {tool.calls:>4}"
+            + (f"  ({tool.failures} failed)" if tool.failures else "")
+            for tool in stats.tools
+        )
+    if stats.skill_counts:
+        lines.append("")
+        lines.append("skills:")
+        lines.extend(f"  {skill}  {count}" for skill, count in stats.skill_counts.items())
+    if stats.shell_commands:
+        lines.append("")
+        lines.append(
+            "shell:  "
+            + ", ".join(f"{p} ({c})" for p, c in stats.shell_commands.items())
+        )
+    if stats.web_searches:
+        lines.append("")
+        lines.append(f"web searches:  {len(stats.web_searches)}")
+    unused = stats.unused_available_tools
+    if unused:
+        lines.append("")
+        lines.append(f"declared but unused ({len(unused)}):  " + ", ".join(unused))
+    return "\n".join(lines)
 
 
 @app.command()

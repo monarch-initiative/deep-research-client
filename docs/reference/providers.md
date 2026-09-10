@@ -775,6 +775,55 @@ deep-research "..." --provider openscientist \
 Note that transcripts can be large and, being a record of everything the agent
 did, are worth reading before they are committed anywhere public.
 
+## Transcript statistics
+
+Once transcripts are preserved they can be mined for the shape of a run rather
+than read line by line:
+
+```bash
+deep-research-client transcript-stats path/to/provenance/
+deep-research-client transcript-stats run_artifacts/ --format text
+deep-research-client transcript-stats run_artifacts/ --format json --output stats.json
+```
+
+A directory is searched recursively for `*transcript*.json`; a named file is
+read whatever it is called. Several transcripts merge into one summary, which
+is what you want for a job that writes one per iteration plus one for report
+generation.
+
+What it reports:
+
+- **Tools** — distinct tools called, call counts, failures per tool, MCP server,
+  and summed durations where the transcript records them.
+- **Skills** — every named skill invoked, with counts.
+- **Shell, searches, files** — programs run (wrappers and leading environment
+  assignments skipped, so `sudo FOO=1 apt-get …` reports `apt-get`), distinct
+  web-search queries, and paths touched by change kind.
+- **Models, subagents, tasks, token usage** — merged across entry types.
+- **Available but unused** — tools the session declared at init and never
+  called. The gap is usually more informative than either list alone.
+- **Unclassified entries** — entries the *producer* could not classify, and
+  entry types this summarizer has no handling for, counted separately. Both are
+  drift signals; neither is silently dropped.
+
+In Python:
+
+```python
+from deep_research_client.transcript_stats import summarize_artifacts
+
+stats = summarize_artifacts(result.artifacts)   # non-transcripts ignored
+print(stats.distinct_tools, stats.skills_used)
+print(stats.render_markdown())
+```
+
+Tool names are normalized across agent backends: one backend emits
+`mcp__github__search_issues` while another emits `github.search_issues` with a
+separate `namespace` field, and both aggregate to `search_issues`. A dotted
+prefix is stripped only when it matches the server the entry itself reports, so
+a tool whose name genuinely contains a dot is left alone.
+
+The summarizer reads decoded JSON and needs no agent SDK installed.
+
 ## Adding Custom Providers
 
 Create a new provider in `src/deep_research_client/providers/`:

@@ -27,14 +27,14 @@ it is a contamination marker, not question content.
 
 import json
 import logging
-import os
-import tempfile
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
 
 from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
+from .._fs import atomic_write
 from .base import EvalSetAdapter, check_unique_ids
 
 logger = logging.getLogger(__name__)
@@ -171,47 +171,47 @@ def _fetch_rows(subset: str, client: httpx.Client) -> list[dict[str, Any]]:
     return rows
 
 
-def newest_cached_revision(subset: str, cache_dir: str | Path | None = None) -> str | None:
-    """Return the most recently written cached revision holding ``subset``.
+def newest_cached_revision(
+    subsets: str | Sequence[str], cache_dir: str | Path | None = None
+) -> str | None:
+    """Return the newest cached revision holding *every* named subset.
 
     Used when the revision cannot be resolved - an outage should not turn a
     complete local copy of a benchmark into a failed run.
 
+    All the requested subsets have to be present under the same revision. A
+    cache assembled across two revisions would otherwise satisfy the first
+    subset and then send the rest to a network that is not there, reporting a
+    download failure rather than the real problem.
+
     Args:
-        subset: Subset name.
+        subsets: Subset name, or the names that must all be present.
         cache_dir: Cache root.
 
     Returns:
-        The revision, or None when nothing is cached for this subset.
+        The revision, or None when no single cached revision covers them all.
     """
+    wanted = [subsets] if isinstance(subsets, str) else list(subsets)
     root = _cache_root(cache_dir)
-    if not root.is_dir():
+    if not root.is_dir() or not wanted:
         return None
-    candidates = [d for d in root.iterdir() if (d / f"{subset}.json").exists()]
+
+    candidates = [
+        d for d in root.iterdir()
+        if all((d / f"{s}.json").exists() for s in wanted)
+    ]
     if not candidates:
         return None
-    return max(candidates, key=lambda d: (d / f"{subset}.json").stat().st_mtime).name
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    """Write ``text`` to ``path`` atomically.
-
-    A truncating write that is interrupted leaves a short file, which is exactly
-    the corruption the row-count check downstream has to detect. Writing to a
-    sibling and renaming means a reader sees either the old file or the new one.
-    """
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "w") as handle:
-            handle.write(text)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    return max(
+        candidates,
+        key=lambda d: max((d / f"{s}.json").stat().st_mtime for s in wanted),
+    ).name
 
 
 def _resolve_or_fall_back(
-    client: httpx.Client, subset: str, cache_dir: str | Path | None
+    client: httpx.Client,
+    subsets: str | Sequence[str],
+    cache_dir: str | Path | None,
 ) -> str:
     """Resolve the current revision, falling back to a cached one when offline.
 
@@ -222,7 +222,7 @@ def _resolve_or_fall_back(
     try:
         return resolve_revision(client)
     except httpx.HTTPError as exc:
-        cached = newest_cached_revision(subset, cache_dir)
+        cached = newest_cached_revision(subsets, cache_dir)
         if cached is None:
             raise
         logger.warning(
@@ -306,7 +306,7 @@ def fetch_subset(
 
     if not from_cache:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(path, json.dumps(rows, indent=2))
+        atomic_write(path, json.dumps(rows, indent=2))
     return rows, resolved
 
 
@@ -402,7 +402,7 @@ class LabBenchAdapter(EvalSetAdapter):
         # silently mix two datasets into one eval set.
         requested_revision: str | None = options.get("revision")
         with httpx.Client(timeout=30.0) as client:
-            pinned: str = _resolve_or_fall_back(client, subsets[0], options.get("cache_dir"))
+            pinned: str = _resolve_or_fall_back(client, subsets, options.get("cache_dir"))
         if requested_revision and requested_revision != pinned:
             raise ValueError(
                 f"LAB-Bench is at revision {pinned}, but {requested_revision} "

@@ -582,3 +582,40 @@ def test_summary_files_exist_before_the_run_finishes(tmp_path, mock_client):
         MatrixConfig(output_dir=tmp_path / "run", on_cell=on_cell), client=mock_client,
     ))
     assert len(seen) == len(eval_set.tasks)
+
+
+def test_a_resumed_cell_with_no_saved_response_is_rerun(tmp_path, mock_client):
+    """Returning it ungraded would drop it from the aggregate silently."""
+    eval_set = _mcq_eval_set(2)
+    arm = _mock_arm("always-a", "first")
+    run_dir = tmp_path / "run"
+
+    asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+    (run_dir / "q0" / "always-a" / "output.md").unlink()
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [arm], MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
+    ))
+    assert all(c.disposition is not None for c in manifest.cells)
+    assert (run_dir / "q0" / "always-a" / "output.md").exists()
+    assert score_by_arm(eval_set, manifest.cells)["always-a"].total == 2
+
+
+def test_cell_files_are_written_atomically(tmp_path, mock_client, report_eval_set):
+    """A half-written cell.json raises on resume and takes the whole run down.
+
+    Atomic writes leave no partial files behind, so no stray temporaries and
+    every artefact parses.
+    """
+    run_dir = tmp_path / "run"
+    asyncio.run(run_matrix(
+        report_eval_set, [ArmSpec(id="a1", provider="mock")],
+        MatrixConfig(output_dir=run_dir), client=mock_client,
+    ))
+
+    leftovers = [p for p in run_dir.rglob(".*") if p.is_file()]
+    assert leftovers == [], f"temporary files left behind: {leftovers}"
+    for cell_json in run_dir.rglob("cell.json"):
+        json.loads(cell_json.read_text())

@@ -34,9 +34,7 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import re
-import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -48,6 +46,7 @@ import yaml
 from .. import __version__
 from ..client import DeepResearchClient
 from . import mcq
+from ._fs import atomic_write
 from .datamodel import (
     AnswerType,
     ArmSpec,
@@ -72,25 +71,6 @@ _RESULT_COLUMNS = (
     "correct", "chosen_letter", "duration_seconds", "citation_count",
     "output_path", "error",
 )
-
-
-def atomic_write(path: Path, text: str) -> None:
-    """Write ``text`` to ``path`` atomically.
-
-    The summary files are rewritten after every cell so that an interrupted run
-    still leaves readable ones - which a truncating in-place write would defeat,
-    since the interruption could land mid-write and leave a half-written TSV or
-    an unparseable manifest. Writing to a sibling and renaming means a reader
-    always sees a complete file, old or new.
-    """
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "w") as handle:
-            handle.write(text)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
 
 
 def safe_segment(value: str) -> str:
@@ -375,7 +355,7 @@ async def _run_cell(
     cell_dir.mkdir(parents=True, exist_ok=True)
 
     prompt, choices = _prompt_for(task)
-    (cell_dir / "prompt.md").write_text(prompt)
+    atomic_write(cell_dir / "prompt.md", prompt)
 
     started = datetime.now(timezone.utc)
     try:
@@ -396,11 +376,11 @@ async def _run_cell(
         )
         if grade and task.answer_type == AnswerType.MULTIPLE_CHOICE:
             cell.disposition = ScoreDisposition.PROVIDER_ERROR
-        (cell_dir / "cell.json").write_text(cell.model_dump_json(indent=2, exclude_none=True))
+        atomic_write(cell_dir / "cell.json", cell.model_dump_json(indent=2, exclude_none=True))
         return cell
 
     output_path = cell_dir / "output.md"
-    output_path.write_text(result.markdown or "")
+    atomic_write(output_path, result.markdown or "")
 
     cell = CellResult(
         task_id=task.id,
@@ -420,9 +400,9 @@ async def _run_cell(
         cell.disposition = answer.disposition
         cell.chosen_letter = answer.chosen_letter
         cell.correct = answer.correct
-        (cell_dir / "answer.json").write_text(answer.model_dump_json(indent=2))
+        atomic_write(cell_dir / "answer.json", answer.model_dump_json(indent=2))
 
-    (cell_dir / "cell.json").write_text(cell.model_dump_json(indent=2, exclude_none=True))
+    atomic_write(cell_dir / "cell.json", cell.model_dump_json(indent=2, exclude_none=True))
     return cell
 
 
@@ -579,9 +559,10 @@ async def run_matrix(
         len(tasks), len(arms), len(pending), config.concurrency,
     )
 
-    last_manifest = [0.0]
+    last_manifest = 0.0
 
     def snapshot() -> None:
+        nonlocal last_manifest
         """Rewrite the summary files from the cells finished so far.
 
         Written as the run goes rather than only at the end, so an interrupted
@@ -596,8 +577,8 @@ async def run_matrix(
         # file whose purpose is to survive an interruption, and the final write
         # after the loop is unconditional.
         now = time.monotonic()
-        if now - last_manifest[0] >= 1.0:
-            last_manifest[0] = now
+        if now - last_manifest >= 1.0:
+            last_manifest = now
             atomic_write(
                 layout.manifest_path,
                 _manifest(eval_set, arms, layout, config, ordered)

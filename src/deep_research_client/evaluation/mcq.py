@@ -61,10 +61,22 @@ _LETTERS = string.ascii_uppercase
 #: Patterns tried, in order, to recover a letter from a provider's response.
 #: Ordered most explicit first: a report that states "Answer: C" means it, while
 #: a bare "C" somewhere in prose is far weaker evidence.
-_LETTER_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"(?:final\s+)?answer\s*(?:is)?\s*[:\-]?\s*\(?([A-Z])\)?[.\s)]*$", re.IGNORECASE | re.MULTILINE),
-    re.compile(r"^\s*\(?([A-Z])\)?\s*$", re.MULTILINE),
+#: An explicit verdict: "Answer: D", "the final answer is B". Saying so is
+#: unambiguous, so the last one in the document wins - a report may weigh the
+#: options aloud before committing.
+_EXPLICIT_ANSWER = re.compile(
+    r"(?:final\s+)?answer\s*(?:is)?\s*[:\-]?\s*\(?([A-Z])\)?[.\s)]*$",
+    re.IGNORECASE | re.MULTILINE,
 )
+
+#: A line that is nothing but a letter. Far weaker evidence than it looks:
+#: emphasis is stripped before matching, so per-option headings written "**A**",
+#: "### A" or "**A)**" all arrive here as bare letters. A report that walks
+#: through its options under such headings and never commits would otherwise be
+#: scored as whichever option came last - and with an abstention offered last,
+#: that is the abstention. So this resolves only when a single distinct letter
+#: is marked this way.
+_BARE_LETTER_LINE = re.compile(r"^\s*\(?([A-Z])\)?\s*$", re.MULTILINE)
 
 #: A line that opens with a letter marker, capturing the letter and the rest of
 #: the line: "C. Thymine". Matched separately from the patterns above because
@@ -335,15 +347,20 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     # a line, which "**Answer: D**" never reaches.
     tail = _strip_emphasis(tail)
 
-    for pattern in _LETTER_PATTERNS:
-        matches = pattern.findall(tail)
-        if not matches:
-            continue
-        # Last match wins: a report that discusses options before concluding
-        # states its conclusion at the end.
-        letter = matches[-1].upper()
-        if letter in by_letter:
-            return by_letter[letter]
+    # An explicit verdict is unambiguous, so the last one wins.
+    for match in reversed(_EXPLICIT_ANSWER.findall(tail)):
+        choice = by_letter.get(match.upper())
+        if choice is not None:
+            return choice
+
+    # A bare letter is not, so it resolves only when exactly one is marked.
+    bare = {
+        letter.upper()
+        for letter in _BARE_LETTER_LINE.findall(tail)
+        if letter.upper() in by_letter
+    }
+    if len(bare) == 1:
+        return by_letter[bare.pop()]
 
     # A labelled line counts only when what follows the letter is that option's
     # own text. "C. Arabidopsis thaliana" is a choice; "C. elegans was not

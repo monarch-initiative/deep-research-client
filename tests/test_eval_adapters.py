@@ -639,13 +639,30 @@ def test_lab_bench_reports_a_truncated_cache(monkeypatch, tmp_path):
         lab_bench.fetch_subset("LitQA2", cache_dir=tmp_path)
 
 
-def test_every_adapter_rejects_duplicate_task_ids():
-    """Ids become directory names, so this must hold for every benchmark."""
+def test_check_unique_ids_rejects_duplicates():
+    """The shared guard itself."""
     from deep_research_client.evaluation.adapters.base import check_unique_ids
 
     task = EvalTask(id="dupe", prompt="p", answer_type=AnswerType.REPORT)
     with pytest.raises(ValueError, match="duplicate task ids: dupe"):
         check_unique_ids([task, task], "somewhere")
+
+
+def test_an_adapter_actually_applies_the_uniqueness_guard(tmp_path):
+    """Calling the guard in a test proves nothing about adapters calling it.
+
+    Ids become directory names, so a duplicate means one task's results
+    overwrite another's. This goes through a real adapter so that an adapter
+    dropping the check fails here.
+    """
+    path = tmp_path / "dupes.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: same\n    prompt: first\n"
+        "  - id: same\n    prompt: second\n"
+    )
+    with pytest.raises(ValueError, match="duplicate task ids: same"):
+        get_adapter("yaml").load(path)
 
 
 def test_a_report_discussing_each_option_states_no_answer():
@@ -683,3 +700,74 @@ def test_a_walkthrough_that_ends_in_a_verdict_is_read():
     answer = mcq.grade("walkthrough2", "p", f"{report}\n\nAnswer: {ideal.letter}", choices)
     assert answer.disposition == ScoreDisposition.SCORED
     assert answer.correct
+
+
+@pytest.mark.parametrize("heading", ["**{L}**", "### {L}", "**{L})**", "`{L}`"])
+def test_emphasised_option_headings_are_not_a_verdict(heading):
+    """Stripping emphasis turns per-option headings into bare letters.
+
+    "**A**", "### A" and "**A)**" all arrive at the bare-letter pattern as a
+    lone letter, so a report that walks through its options under such headings
+    and never commits was scored as whichever came last — the abstention, when
+    one is offered. That is the module docstring's own first defect, reached by
+    a different route.
+    """
+    task = EvalTask(
+        id="headings", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Thymine", distractors=["Guanine", "Cytosine"],
+            abstention_option="Insufficient information to answer this question.",
+        ),
+    )
+    choices = mcq.present_choices(task)
+    report = "\n\n".join(
+        heading.format(L=c.letter) + f"\n\nA paragraph about {c.text}." for c in choices
+    )
+    assert mcq.grade("headings", "p", report, choices).disposition == (
+        ScoreDisposition.EXTRACTION_FAILED
+    )
+
+
+@pytest.mark.parametrize("heading", ["**{L}**", "### {L}"])
+def test_emphasised_headings_followed_by_a_verdict_are_read(heading):
+    """The counterpart: an explicit verdict after the walkthrough still counts."""
+    task = EvalTask(
+        id="headings2", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+    report = "\n\n".join(heading.format(L=c.letter) + "\n\nDiscussion." for c in choices)
+    answer = mcq.grade("headings2", "p", f"{report}\n\nAnswer: {ideal.letter}", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct
+
+
+def test_a_single_emphasised_letter_is_still_a_verdict():
+    """One marked letter is a choice; several are a table of contents."""
+    task = EvalTask(
+        id="one", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Guanine", "Cytosine"]),
+    )
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+    answer = mcq.grade("one", "p", f"My conclusion:\n\n**{ideal.letter}**\n", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct
+
+
+def test_offline_fallback_needs_every_subset_under_one_revision(tmp_path):
+    """A cache assembled across two revisions must not satisfy a multi-subset load."""
+    import json as json_mod
+
+    from deep_research_client.evaluation.adapters.lab_bench import newest_cached_revision
+
+    root = tmp_path / "eval_datasets" / "lab-bench"
+    (root / "rev1").mkdir(parents=True)
+    (root / "rev2").mkdir(parents=True)
+    (root / "rev1" / "LitQA2.json").write_text(json_mod.dumps([]))
+    (root / "rev2" / "SuppQA.json").write_text(json_mod.dumps([]))
+
+    assert newest_cached_revision("LitQA2", tmp_path) == "rev1"
+    assert newest_cached_revision("SuppQA", tmp_path) == "rev2"
+    assert newest_cached_revision(["LitQA2", "SuppQA"], tmp_path) is None

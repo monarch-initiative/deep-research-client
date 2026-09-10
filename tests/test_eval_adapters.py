@@ -495,3 +495,51 @@ def test_distinctive_option_text_is_still_matched():
     answer = mcq.grade("named", "p", "We conclude the resistance is to ciprofloxacin.", choices)
     assert answer.disposition == ScoreDisposition.SCORED
     assert answer.correct
+
+
+@pytest.mark.parametrize("verdict", [
+    "**Answer: D**",
+    "## Answer: D",
+    "**Final answer: D**",
+    "`Answer: D`",
+    "Answer: **D**",
+])
+def test_an_emphasised_verdict_is_still_read(verdict):
+    """Real reports bold or head their verdict.
+
+    Found on live Edison output, which ends its analysis with "**Answer: D**"
+    and then appends a References section. A pattern anchored to the end of the
+    line never reaches past the trailing marks, so the verdict was missed and a
+    correct answer was recorded as an extraction failure - which reads as a low
+    score rather than as a bug.
+    """
+    task = EvalTask(
+        id="emph", prompt="Which antibiotic?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="ciprofloxacin",
+            distractors=["ampicillin", "gentamicin", "meropenem"],
+        ),
+    )
+    choices = mcq.present_choices(task)
+    target = choices[3]  # whichever option is at D
+    response = f"A long analysis.\n\n{verdict.replace('D', target.letter)}\n\nReferences\n\n1. Darby et al."
+
+    answer = mcq.grade("emph", "edison", response, choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.chosen_letter == target.letter
+
+
+def test_a_verdict_followed_by_references_is_still_found():
+    """The answer is often not the last thing in the document."""
+    task = EvalTask(
+        id="refs", prompt="Which?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="right", distractors=["wrong-a", "wrong-b"]),
+    )
+    choices = mcq.present_choices(task)
+    ideal = next(c for c in choices if c.is_ideal)
+    response = (
+        f"## Interpretation\n\nSome reasoning.\n\n**Answer: {ideal.letter}**\n\n"
+        "References\n\n1. Author, A. (2024). A paper. doi:10.1/2\n"
+        "2. Author, B. (2023). Another paper. doi:10.3/4\n"
+    )
+    assert mcq.grade("refs", "p", response, choices).correct

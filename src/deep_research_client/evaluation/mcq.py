@@ -211,6 +211,23 @@ def _strip_echoed_prompt(response: str, choices: list["Choice"]) -> str:
     return "\n".join(kept)
 
 
+#: Markdown emphasis and heading marks, stripped before looking for an answer.
+#: Real reports write their verdict as "**Answer: D**" or "## Answer: D", and a
+#: pattern anchored to the end of the line will not see past the trailing marks.
+_EMPHASIS = re.compile(r"[*`#]+")
+
+
+def _strip_emphasis(text: str) -> str:
+    """Remove markdown emphasis and heading marks from a line.
+
+    >>> _strip_emphasis("**Answer: D**")
+    'Answer: D'
+    >>> _strip_emphasis("## Final answer: B")
+    ' Final answer: B'
+    """
+    return _EMPHASIS.sub("", text)
+
+
 def _normalize(text: str) -> str:
     """Lowercase and collapse whitespace and punctuation for loose matching.
 
@@ -282,6 +299,9 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     tail = _strip_echoed_prompt(response, choices).strip()
     if not tail:
         return None
+    # Emphasis has to go before the line patterns run: they anchor to the end of
+    # a line, which "**Answer: D**" never reaches.
+    tail = _strip_emphasis(tail)
 
     for pattern in _LETTER_PATTERNS:
         matches = pattern.findall(tail)

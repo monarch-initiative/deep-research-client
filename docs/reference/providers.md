@@ -228,8 +228,14 @@ params = OpenScientistParams(
     timeout=3600,                  # Max wait time (1-2 hours recommended)
     save_artifacts=True,           # Preserve useful ZIP artifacts
     artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
+    artifact_keep_runtime=False,   # Also keep logs, transcripts, stdout/stderr
+    artifact_extra_extensions=[],  # Extend the extension allowlist
+    artifact_include_globs=[],     # Force-keep these paths
+    artifact_exclude_globs=[],     # Always drop these paths
 )
 ```
+
+See [Artifact selection](#artifact-selection) for what the last four do.
 
 ### Characteristics
 
@@ -237,7 +243,7 @@ params = OpenScientistParams(
 - **Speed**: 10-60+ minutes (iterative multi-step research)
 - **Capabilities**: PubMed search, code execution, hypothesis-driven research
 - **Citations**: PMID format with deduplication
-- **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default.
+- **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see [Artifact selection](#artifact-selection).
 
 ### When to Use
 
@@ -700,6 +706,74 @@ call, so `--check` reports the auth method and plan without spending a token.
 The one failure the CLI does not always report cleanly is a spent usage limit
 mid-run, which can stall rather than fail. The timeout message points at
 `providers --check` for that reason.
+
+## Artifact selection
+
+Providers that return a bundle of files — currently OpenScientist's artifacts
+ZIP — decide which members become `ResearchArtifact` entries. The defaults keep
+what most callers want (figures, small structured data, rendered reports) and
+drop agent scaffolding, but "noise" is a judgement about the consumer, not about
+the file: a knowledge base recording *how* a run reached its answer wants the
+agent transcripts that a report-only consumer does not.
+
+So the decision is data, not code. `ArtifactSelectionParams` supplies the knobs
+and any provider can inherit them:
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `save_artifacts` | `True` | Preserve artifacts at all |
+| `artifact_max_bytes` | 5 MB | Per-file size cap |
+| `artifact_keep_runtime` | `False` | Keep logs, agent transcripts, captured stdout/stderr; also allows `.log`, `.txt`, `.jsonl`, `.ndjson` |
+| `artifact_extra_extensions` | `[]` | Extend the extension allowlist |
+| `artifact_include_globs` | `[]` | Force-keep matching paths |
+| `artifact_exclude_globs` | `[]` | Always drop matching paths |
+
+Precedence, highest first:
+
+1. `artifact_exclude_globs` — an explicit deny always wins.
+2. `artifact_max_bytes` — the size cap applies even to an explicit include,
+   because it is what keeps a bundle out of memory. Raise the cap rather than
+   globbing around it.
+3. The report body the provider already returned as the result markdown.
+4. `artifact_include_globs` — an explicit allow bypasses every remaining default.
+5. Default denies: scaffolding directories (`.git/`, `.claude/`, `node_modules/`,
+   …), nested archives, and — unless `artifact_keep_runtime` — runtime records.
+6. The extension allowlist, plus `artifact_extra_extensions`, plus any `image/*`
+   media type.
+
+Globs are `fnmatch` patterns matched against the lowercased, bundle-relative
+path. `*` crosses `/`, so `*.json` matches `provenance/iter1_transcript.json`.
+
+### Keeping OpenScientist agent transcripts
+
+OpenScientist writes its agent transcripts to `provenance/iter<N>_transcript.json`
+and `provenance/report_transcript.json`. They are dropped by default:
+
+```python
+params = OpenScientistParams(artifact_keep_runtime=True)
+```
+
+or, to take the transcripts without the container logs:
+
+```python
+params = OpenScientistParams(
+    artifact_include_globs=["provenance/*_transcript.json"],
+)
+```
+
+Both work through the CLI, where list-valued parameters accept a
+comma-separated string:
+
+```bash
+deep-research "..." --provider openscientist \
+  --param artifact_keep_runtime=true
+
+deep-research "..." --provider openscientist \
+  --param artifact_include_globs=provenance/*_transcript.json
+```
+
+Note that transcripts can be large and, being a record of everything the agent
+did, are worth reading before they are committed anywhere public.
 
 ## Adding Custom Providers
 

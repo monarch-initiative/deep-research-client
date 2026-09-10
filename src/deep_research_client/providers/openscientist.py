@@ -11,6 +11,7 @@ openscientist.io), polls for completion, and downloads the final report.
 import asyncio
 import base64
 from dataclasses import dataclass
+from functools import cached_property
 import io
 import logging
 import mimetypes
@@ -23,6 +24,14 @@ import zipfile
 import httpx
 
 from . import ResearchProvider
+from ..artifact_selection import (
+    DEFAULT_ALLOWED_EXTENSIONS,
+    DEFAULT_ARCHIVE_EXTENSIONS,
+    DEFAULT_RUNTIME_NAME_FRAGMENTS,
+    DEFAULT_RUNTIME_SUFFIXES,
+    DEFAULT_SCAFFOLDING_PREFIXES,
+    ArtifactSelectionPolicy,
+)
 from ..exceptions import ProviderNotConfiguredError
 from ..models import (
     ResearchArtifact,
@@ -43,46 +52,13 @@ IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "aw
 DEFAULT_BASE_URL = "https://www.openscientist.io"
 
 
-_ALLOWED_ARTIFACT_EXTENSIONS = {
-    ".csv",
-    ".gif",
-    ".htm",
-    ".html",
-    ".jpeg",
-    ".jpg",
-    ".json",
-    ".md",
-    ".pdf",
-    ".png",
-    ".svg",
-    ".tsv",
-    ".webp",
-}
-_ARCHIVE_ARTIFACT_EXTENSIONS = {
-    ".7z",
-    ".bz2",
-    ".gz",
-    ".tar",
-    ".tgz",
-    ".xz",
-    ".zip",
-}
-_NOISY_ARTIFACT_PREFIXES = (
-    ".cache/",
-    ".claude/",
-    ".git/",
-    ".ipynb_checkpoints/",
-    ".venv/",
-    "__macosx/",
-    "cache/",
-    "node_modules/",
-)
-_NOISY_ARTIFACT_SUFFIXES = (".log", ".tmp")
-_NOISY_ARTIFACT_NAME_FRAGMENTS = (
-    "stderr",
-    "stdout",
-    "transcript",
-)
+# Artifact selection lives in ``artifact_selection`` so it is configurable and
+# reusable; these aliases keep the previous names importable.
+_ALLOWED_ARTIFACT_EXTENSIONS = DEFAULT_ALLOWED_EXTENSIONS
+_ARCHIVE_ARTIFACT_EXTENSIONS = DEFAULT_ARCHIVE_EXTENSIONS
+_NOISY_ARTIFACT_PREFIXES = DEFAULT_SCAFFOLDING_PREFIXES
+_NOISY_ARTIFACT_SUFFIXES = DEFAULT_RUNTIME_SUFFIXES
+_NOISY_ARTIFACT_NAME_FRAGMENTS = DEFAULT_RUNTIME_NAME_FRAGMENTS
 _REPORT_MARKDOWN_BASENAMES = {"final_report.md", "report.md"}
 _ARTIFACT_SOURCE = "openscientist_artifacts_zip"
 
@@ -474,40 +450,47 @@ class OpenScientistProvider(ResearchProvider):
 
         return artifacts
 
+    @cached_property
+    def artifact_policy(self) -> ArtifactSelectionPolicy:
+        """The resolved artifact selection policy for this provider instance.
+
+        Cached because it is consulted once per bundle member and the params
+        are fixed for the life of the provider.
+        """
+        return ArtifactSelectionPolicy.from_params(self.params)
+
     def _should_preserve_artifact(
         self,
         info: zipfile.ZipInfo,
         report_names: set[str],
     ) -> bool:
-        """Return whether a ZIP member should become a ResearchArtifact."""
+        """Return whether a ZIP member should become a ResearchArtifact.
+
+        Delegates to :class:`ArtifactSelectionPolicy`, adding the two
+        provider-specific denials: directory entries, and the markdown report
+        already returned as the result body.
+
+        Args:
+            info: The ZIP member being considered.
+            report_names: Members already consumed as the report body.
+
+        Returns:
+            Whether to preserve the member.
+        """
         if info.is_dir():
             return False
 
         name = info.filename
-        if name in report_names:
-            return False
+        deny = set(report_names)
+        if self._is_report_markdown_name(name):
+            deny.add(name)
 
-        if self._is_report_markdown_name(name) or self._is_noisy_artifact_path(name):
-            return False
-
-        if info.file_size > self.params.artifact_max_bytes:
-            logger.info(
-                "Skipping OpenScientist artifact %s: %s bytes exceeds %s byte limit",
-                name,
-                info.file_size,
-                self.params.artifact_max_bytes,
+        decision = self.artifact_policy.decide(name, info.file_size, provider_deny=deny)
+        if not decision.keep:
+            logger.debug(
+                "Skipping OpenScientist artifact %s: %s", name, decision.reason
             )
-            return False
-
-        path = PurePosixPath(name.lower())
-        suffix = path.suffix
-        if suffix in _ARCHIVE_ARTIFACT_EXTENSIONS:
-            return False
-
-        media_type = mimetypes.guess_type(name)[0]
-        return suffix in _ALLOWED_ARTIFACT_EXTENSIONS or (
-            media_type is not None and media_type.startswith("image/")
-        )
+        return decision.keep
 
     def _is_report_markdown_name(self, name: str) -> bool:
         """Return whether a ZIP member is the markdown report already captured."""
@@ -515,7 +498,18 @@ class OpenScientistProvider(ResearchProvider):
         return path.name in _REPORT_MARKDOWN_BASENAMES
 
     def _is_noisy_artifact_path(self, name: str) -> bool:
-        """Return whether a ZIP member is runtime scaffolding or verbose logs."""
+        """Return whether a ZIP member is runtime scaffolding or verbose logs.
+
+        Used when picking the markdown report out of the bundle, so it always
+        applies the default noise rules: a caller who widens artifact selection
+        still does not want a transcript chosen as the report body.
+
+        Args:
+            name: ZIP member path.
+
+        Returns:
+            Whether the member is scaffolding or a runtime record.
+        """
         normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
         basename = PurePosixPath(normalized).name
         if normalized.startswith(_NOISY_ARTIFACT_PREFIXES):

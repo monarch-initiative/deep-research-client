@@ -35,7 +35,7 @@ import httpx
 
 from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
 from .._fs import atomic_write
-from .base import EvalSetAdapter, check_unique_ids
+from .base import EvalSetAdapter, validate_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +421,7 @@ class LabBenchAdapter(EvalSetAdapter):
             revisions.add(revision)
             tasks.extend(_task_from_row(row, subset, abstention) for row in rows)
 
-        check_unique_ids(tasks, f"LAB-Bench {', '.join(subsets)}")
+        validate_tasks(tasks, f"LAB-Bench {', '.join(subsets)}")
         return EvalSet(
             name=f"lab-bench-{'-'.join(s.lower() for s in subsets)}",
             description=(

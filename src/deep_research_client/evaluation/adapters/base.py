@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ..datamodel import EvalSet, EvalTask
+from ..datamodel import AnswerType, EvalSet, EvalTask
 
 
 class EvalSetAdapter(ABC):
@@ -84,3 +84,59 @@ def check_unique_ids(tasks: list[EvalTask], source: str) -> None:
         seen.add(task.id)
     if duplicates:
         raise ValueError(f"{source}: duplicate task ids: {', '.join(duplicates)}")
+
+
+def check_task_shapes(tasks: list[EvalTask], source: str) -> None:
+    """Raise if any task is shaped so that it cannot be answered meaningfully.
+
+    Checked when an eval set is loaded rather than when a cell runs. The
+    invariant is fully determinable from the eval set, and a matrix run costs
+    real money: discovering at cell 43 that task 44 is malformed aborts the run
+    and wastes every call already made. Loading is also where ``eval load`` looks,
+    which is the command whose job is to catch this before anything is spent.
+
+    ``present_choices`` keeps its own guard as a backstop, for tasks built in
+    code rather than loaded through an adapter.
+
+    Args:
+        tasks: The tasks an adapter produced.
+        source: What was loaded, for the error message.
+
+    Raises:
+        ValueError: If a multiple-choice task offers fewer than two distinct
+            options besides any abstention.
+
+    >>> from ..datamodel import AnswerSpec
+    >>> ok = EvalTask(id="a", prompt="p", answer_type="MULTIPLE_CHOICE",
+    ...               answer_spec=AnswerSpec(ideal="x", distractors=["y"]))
+    >>> check_task_shapes([ok], "x")
+    >>> bad = EvalTask(id="b", prompt="p", answer_type="MULTIPLE_CHOICE",
+    ...                answer_spec=AnswerSpec(ideal="x", distractors=[]))
+    >>> check_task_shapes([bad], "somewhere")
+    Traceback (most recent call last):
+        ...
+    ValueError: somewhere: task 'b' is multiple choice but offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
+    """
+    from ..mcq import degenerate_reason
+
+    for task in tasks:
+        if task.answer_type != AnswerType.MULTIPLE_CHOICE:
+            continue
+        if task.answer_spec is None:
+            raise ValueError(
+                f"{source}: task {task.id!r} is multiple choice but has no answer_spec"
+            )
+        reason = degenerate_reason(task.answer_spec)
+        if reason is not None:
+            raise ValueError(
+                f"{source}: task {task.id!r} is multiple choice but {reason}"
+            )
+
+
+def validate_tasks(tasks: list[EvalTask], source: str) -> None:
+    """Run every load-time check an adapter's output is subject to.
+
+    One call so that an adapter cannot pick up one guard and miss the next.
+    """
+    check_unique_ids(tasks, source)
+    check_task_shapes(tasks, source)

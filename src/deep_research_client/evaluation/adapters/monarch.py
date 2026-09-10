@@ -31,7 +31,7 @@ from ..datamodel import (
     Rubric,
     SpotCheck,
 )
-from .base import EvalSetAdapter, check_unique_ids
+from .base import EvalSetAdapter, validate_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -695,7 +695,7 @@ class _MonarchAdapter(EvalSetAdapter):
 
         # Entity ids fall back to a name and then a filename, so two curated
         # files can land on the same task id.
-        check_unique_ids(tasks, str(path))
+        validate_tasks(tasks, str(path))
         logger.info(
             "Loaded %d entities from %s, generating %d tasks", len(entities), path, len(tasks)
         )

@@ -832,19 +832,63 @@ def test_an_abstention_does_not_count_towards_the_two_options():
         mcq.present_choices(task)
 
 
-def test_an_authored_set_declaring_multiple_choice_without_distractors_is_caught(tmp_path):
-    """The realistic way in: a spreadsheet conversion that forgets the distractors."""
+@pytest.mark.parametrize("body,expected", [
+    ("    answer_type: MULTIPLE_CHOICE\n    ideal: Thymine\n",
+     "distinct option"),
+    ("    ideal: Thymine\n    distractors: [Thymine]\n",
+     "repeats its ideal answer"),
+    ("    ideal: Thymine\n    distractors: ['  thymine ']\n",
+     "repeats its ideal answer"),
+])
+def test_a_degenerate_set_is_refused_when_it_loads(tmp_path, body, expected):
+    """Caught at load, not at cell 43 of a run that has already been paid for.
+
+    The realistic ways in are a spreadsheet conversion that forgets the
+    distractors, and an edit that leaves an option duplicated.
+    """
     path = tmp_path / "degenerate.yaml"
+    path.write_text(f"tasks:\n  - id: q1\n    prompt: Which base?\n{body}")
+    with pytest.raises(ValueError, match=expected):
+        get_adapter("yaml").load(path)
+
+
+def test_distractors_duplicating_each_other_are_allowed(tmp_path):
+    """Untidy but harmless, and real benchmarks contain them.
+
+    Both duplicates are wrong however the model answers, so no score changes.
+    Two LitQA2 questions have this shape; refusing it would make a published
+    benchmark unloadable over a defect that costs nothing.
+    """
+    path = tmp_path / "dupe_distractors.yaml"
     path.write_text(
-        "tasks:\n"
-        "  - id: q1\n"
-        "    prompt: Which base pairs with adenine?\n"
-        "    answer_type: MULTIPLE_CHOICE\n"
-        "    ideal: Thymine\n"
+        "tasks:\n  - id: q1\n    prompt: Which base?\n"
+        "    ideal: Thymine\n    distractors: [Guanine, Guanine]\n"
     )
     eval_set = get_adapter("yaml").load(path)
-    with pytest.raises(ValueError, match="at least two"):
-        mcq.present_choices(eval_set.tasks[0])
+    assert len(mcq.present_choices(eval_set.tasks[0])) == 3
+
+
+def test_options_differing_only_in_punctuation_are_distinct():
+    """Real questions distinguish options by exactly what `_normalize` strips.
+
+    LAB-Bench offers "CD8- / IGNF+" against "CD8-/IGNF -"; folding punctuation
+    away to compare options would reject that question as degenerate.
+    """
+    task = EvalTask(
+        id="signs", prompt="Which population?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="CD8- / IGNF+", distractors=["CD8-/IGNF -"]),
+    )
+    assert len(mcq.present_choices(task)) == 2
+
+
+def test_present_choices_keeps_its_own_guard_as_a_backstop():
+    """Tasks built in code never pass through an adapter."""
+    task = EvalTask(
+        id="in_code", prompt="Which?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Thymine"]),
+    )
+    with pytest.raises(ValueError, match="repeats its ideal answer"):
+        mcq.present_choices(task)
 
 
 def test_a_superseded_verdict_does_not_resurface():

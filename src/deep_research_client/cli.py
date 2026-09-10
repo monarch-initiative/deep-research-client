@@ -2950,13 +2950,11 @@ def eval_run(
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
 
-    mcq_count = sum(1 for t in tasks if t.answer_type == AnswerType.MULTIPLE_CHOICE)
     scores = score_by_arm(eval_set, cells) if grade else {}
     if grade and not scores:
         typer.echo(
-            f"\nNothing to grade: --grade scores multiple-choice answers, and this "
-            f"selection has {mcq_count} multiple-choice task(s). The responses are "
-            f"materialised either way."
+            "\nNothing to grade: --grade scores multiple-choice answers, and this "
+            "selection has none. The responses are materialised either way."
         )
     if scores:
         typer.echo("\nMultiple-choice scores:\n")

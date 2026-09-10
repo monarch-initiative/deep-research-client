@@ -621,12 +621,19 @@ def test_cell_files_are_written_atomically(tmp_path, mock_client, report_eval_se
         json.loads(cell_json.read_text())
 
 
-def test_written_files_are_readable_by_others(tmp_path, mock_client, report_eval_set):
+def test_written_files_get_the_mode_an_ordinary_write_would_give(
+    tmp_path, mock_client, report_eval_set
+):
     """Atomic writes must not silently make everything owner-only.
 
     mkstemp creates 0600 and os.replace keeps that mode, so without restoring
-    the umask default a shared benchmark cache stops being readable by anyone
-    but whoever fetched it first.
+    the default a shared benchmark cache stops being readable by anyone but
+    whoever fetched it first.
+
+    Compared against a sibling written the ordinary way rather than against an
+    absolute mode: what the fix promises is parity with a normal write, and
+    asserting group-readability instead would fail under a strict umask on a
+    machine where the code is behaving exactly as intended.
     """
     import stat
 
@@ -636,6 +643,25 @@ def test_written_files_are_readable_by_others(tmp_path, mock_client, report_eval
         MatrixConfig(output_dir=run_dir), client=mock_client,
     ))
 
+    reference = run_dir / "reference.txt"
+    reference.write_text("written the ordinary way")
+    expected = stat.S_IMODE(reference.stat().st_mode)
+
     for written in (run_dir / "results.tsv", run_dir / "manifest.json"):
         mode = stat.S_IMODE(written.stat().st_mode)
-        assert mode & stat.S_IRGRP, f"{written.name} is not group-readable ({oct(mode)})"
+        assert mode == expected, f"{written.name} is {oct(mode)}, not {oct(expected)}"
+
+
+def test_atomic_write_preserves_an_existing_files_mode(tmp_path):
+    """A cache deliberately opened up to a group must not close on refresh."""
+    import stat
+
+    from deep_research_client.evaluation._fs import atomic_write
+
+    path = tmp_path / "cache.json"
+    path.write_text("{}")
+    path.chmod(0o664)
+
+    atomic_write(path, '{"refreshed": true}')
+    assert stat.S_IMODE(path.stat().st_mode) == 0o664
+    assert path.read_text() == '{"refreshed": true}'

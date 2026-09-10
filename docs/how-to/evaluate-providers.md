@@ -50,9 +50,11 @@ be graded. `eval run` says so at the end of a run rather than leaving it to be
 discovered. Add distractors to make it multiple choice, or drop the ideal answer
 to make it a report task.
 
-Declaring `answer_type: MULTIPLE_CHOICE` without distractors is refused outright:
-one option and a right answer is not a question, and every arm would score 1.000
-on it.
+Declaring `answer_type: MULTIPLE_CHOICE` without distractors is refused when the
+eval set loads — by `eval load` and `eval run` alike, before any provider is
+called. One option and a right answer is not a question: every arm would score
+1.000 on it. The same refusal covers duplicated options, since two lettered
+options reading identically mark a correct answer wrong half the time.
 
 TSV works too, for questions that came out of a spreadsheet:
 

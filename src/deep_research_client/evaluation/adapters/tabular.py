@@ -16,7 +16,7 @@ from typing import Any
 import yaml
 
 from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
-from .base import EvalSetAdapter, check_unique_ids
+from .base import EvalSetAdapter, validate_tasks
 
 #: Column/key names accepted for the question text, in precedence order. Real
 #: eval sets arrive spelled all three ways and rejecting two of them would be
@@ -195,7 +195,7 @@ class YamlAdapter(EvalSetAdapter):
             raise ValueError(f"{path}: no tasks found")
 
         tasks = [_task_from_row(row, i, separator) for i, row in enumerate(rows)]
-        check_unique_ids(tasks, str(path))
+        validate_tasks(tasks, str(path))
 
         return EvalSet(
             name=data.get("name") or path.stem,
@@ -248,6 +248,6 @@ class TsvAdapter(EvalSetAdapter):
             raise ValueError(f"{path}: no rows found")
 
         tasks = [_task_from_row(row, i, separator) for i, row in enumerate(rows)]
-        check_unique_ids(tasks, str(path))
+        validate_tasks(tasks, str(path))
 
         return EvalSet(name=path.stem, source=str(path), tasks=tasks)

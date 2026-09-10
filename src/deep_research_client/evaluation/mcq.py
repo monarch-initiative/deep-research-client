@@ -59,7 +59,7 @@ import re
 import string
 from dataclasses import dataclass
 
-from .datamodel import EvalTask, ScoreDisposition
+from .datamodel import AnswerSpec, EvalTask, ScoreDisposition
 from .models import MCQAnswer, MCQScore
 
 #: Letters assigned to options, in order.
@@ -101,6 +101,68 @@ class Choice:
     is_abstention: bool
 
 
+def _comparable(text: str) -> str:
+    """Fold a option's text for comparing it with another option's.
+
+    Deliberately conservative - case and whitespace only. ``_normalize`` strips
+    punctuation, which is right for finding an option's text inside a report and
+    wrong for telling two options apart: real benchmark questions distinguish
+    options by exactly the characters it removes. LAB-Bench offers "CD8- / IGNF+"
+    against "CD8-/IGNF -", and treating those as the same option would reject a
+    perfectly good question.
+
+    >>> _comparable("  Thymine  ") == _comparable("thymine")
+    True
+    >>> _comparable("CD8- / IGNF+") == _comparable("CD8-/IGNF -")
+    False
+    """
+    return " ".join(text.split()).casefold()
+
+
+def degenerate_reason(spec: AnswerSpec) -> str | None:
+    """Why this spec cannot pose an answerable question, or None if it can.
+
+    Two shapes are refused, and only two - both because they produce a number
+    rather than an error:
+
+    - Fewer than two distinct options. One option and a right answer is not a
+      question: every arm answers it correctly.
+    - The ideal answer repeated among the distractors. Two lettered options then
+      read identically with only one flagged correct, so a provider that knows
+      the answer is marked wrong half the time, at random.
+
+    Distractors that duplicate *each other* are not refused. They are untidy but
+    harmless - both are wrong however the model answers - and real benchmarks
+    contain them: two LitQA2 questions do, and rejecting those would make a
+    published benchmark unloadable over a defect that changes no score.
+
+    >>> degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["Guanine"])) is None
+    True
+    >>> degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["Guanine", "Guanine"])) is None
+    True
+    >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=[])))
+    offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
+    >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["thymine "])))
+    repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
+    """
+    ideal = _comparable(spec.ideal) if spec.ideal else ""
+    distractors = [_comparable(d) for d in (spec.distractors or []) if d and d.strip()]
+
+    if ideal and ideal in distractors:
+        return (
+            "repeats its ideal answer among the distractors, so two options read "
+            "identically and only one counts as correct"
+        )
+
+    distinct = len({t for t in [ideal, *distractors] if t})
+    if distinct < 2:
+        return (
+            f"offers {distinct} distinct option(s) besides any abstention; at "
+            f"least two are needed for the answer to mean anything"
+        )
+    return None
+
+
 def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
     """Build the lettered options for a multiple-choice task.
 
@@ -140,7 +202,8 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
     options = [(spec.ideal, True)] + [(d, False) for d in (spec.distractors or [])]
     random.Random(seed or task.id).shuffle(options)
 
-    if len(options) < 2:
+    reason = degenerate_reason(spec)
+    if reason is not None:
         # One option and a right answer is not a question: every arm answers it
         # correctly and the run reports perfect accuracy for having asked
         # nothing. Reachable from an authored eval set that declares
@@ -148,9 +211,7 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
         # whose distractors field is empty or renamed - neither of which
         # anything downstream would notice.
         raise ValueError(
-            f"Task {task.id!r} is multiple choice but offers "
-            f"{len(options)} option(s) besides any abstention; at least two are "
-            f"needed for the answer to mean anything."
+            f"Task {task.id!r} is multiple choice but {reason}."
         )
 
     # Appended after the guard: declining is not one of the things being chosen
@@ -375,6 +436,9 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     # cannot trust.
     explicit = _EXPLICIT_ANSWER.findall(tail)
     if explicit:
+        # Deliberately returns None when the letter is not on offer: this is the
+        # one place a *match* produces an extraction failure, because a report
+        # that ends by naming an option that does not exist has not chosen one.
         return by_letter.get(explicit[-1].upper())
 
     # A bare letter is not, so it resolves only when exactly one is marked.

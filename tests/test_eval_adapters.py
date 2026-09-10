@@ -458,3 +458,40 @@ def test_echoed_instruction_line_is_ignored():
 
     answer = mcq.grade("echo", "p", prompt_echo + "\n\nI cannot determine this.", choices)
     assert answer.disposition == ScoreDisposition.EXTRACTION_FAILED
+
+
+def test_short_numeric_options_are_not_matched_by_text_alone():
+    """A bare quantity appearing in a report is not evidence of a choice.
+
+    LAB-Bench options are often quantities - "6%", "17", "2.7 fold" - and a
+    report of any length mentions numbers constantly. Matching those as answers
+    invents choices the provider never made, which is worse than recovering
+    nothing: an extraction failure is visible in its own column, while a
+    fabricated answer silently enters the accuracy.
+    """
+    task = EvalTask(
+        id="numeric",
+        prompt="By what percentage?",
+        answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="6%", distractors=["12%", "20%"]),
+    )
+    choices = mcq.present_choices(task)
+    report = "The assay showed roughly 6% of cells responding, though this is preliminary."
+
+    assert mcq.grade("numeric", "p", report, choices).disposition == (
+        ScoreDisposition.EXTRACTION_FAILED
+    )
+
+
+def test_distinctive_option_text_is_still_matched():
+    """The guard must not break recovery from a report that names its choice."""
+    task = EvalTask(
+        id="named",
+        prompt="Which antibiotic?",
+        answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(ideal="ciprofloxacin", distractors=["ampicillin", "meropenem"]),
+    )
+    choices = mcq.present_choices(task)
+    answer = mcq.grade("named", "p", "We conclude the resistance is to ciprofloxacin.", choices)
+    assert answer.disposition == ScoreDisposition.SCORED
+    assert answer.correct

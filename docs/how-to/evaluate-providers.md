@@ -192,6 +192,61 @@ error never becomes permanent.
 A failing arm does not take the run down with it. If one provider is out of
 quota you lose that arm's cells and keep everything else.
 
+### Test the harness before paying for it
+
+The mock provider can answer multiple-choice questions by position, which makes
+the whole pipeline verifiable at zero cost. It has no idea which option is
+correct, and that is exactly why this works: because option order is
+deterministic for a given task, the score each policy deserves can be worked out
+in advance and checked against what the harness reports.
+
+```yaml
+# mock-arms.yaml
+arms:
+  - id: always-a
+    provider: mock
+    params: {answer_policy: first}    # picks option A every time
+  - id: echoing
+    provider: mock
+    params: {answer_policy: echo}     # restates every option, then answers A
+  - id: decliner
+    provider: mock
+    params: {answer_policy: last}     # picks the last option: the abstention
+  - id: silent
+    provider: mock
+    params: {answer_policy: none}     # never states an answer
+```
+
+```bash
+ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
+  --adapter lab-bench --arms mock-arms.yaml --limit 40
+```
+
+```
+  arm                      acc     cov    prec       n
+  always-a               0.325   1.000   0.325   13/40
+  decliner               0.000   0.000   0.000    0/40
+  echoing                0.325   1.000   0.325   13/40
+  silent                 0.000   0.000   0.000    0/40
+```
+
+Four things worth reading off that table:
+
+- **`always-a` is your chance baseline.** On these 40 LitQA2 questions, picking
+  by position scores 0.325 — the options-per-question vary, so this is not
+  1-in-4. Any real provider has to beat this to have shown anything at all.
+- **`echoing` scores identically to `always-a`.** It must: they choose the same
+  option, one of them just quotes the question first. A gap between those two
+  rows means the extractor is being fooled by restated options.
+- **`decliner` has zero coverage, not zero accuracy alone.** Abstentions are not
+  wrong answers.
+- **`silent` has zero coverage too.** A provider that never answers must record
+  extraction failures, never a fabricated choice.
+
+Run this against a new benchmark before spending anything on it. If these four
+rows do not come out as above, the harness is misreading that benchmark's
+answers, and every real number you then collect would be wrong in the same way.
+
 ### Reading the scores
 
 Multiple-choice tasks are graded during the run, because grading them costs

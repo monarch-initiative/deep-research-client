@@ -11,6 +11,7 @@ import json
 import pytest
 
 from deep_research_client.client import DeepResearchClient
+from deep_research_client.evaluation import mcq
 from deep_research_client.evaluation.datamodel import (
     AnswerSpec,
     AnswerType,
@@ -19,6 +20,7 @@ from deep_research_client.evaluation.datamodel import (
     CellStatus,
     EvalSet,
     EvalTask,
+    MetadataItem,
     ScoreDisposition,
 )
 from deep_research_client.evaluation.matrix import (
@@ -303,3 +305,135 @@ def test_score_by_arm_is_empty_without_multiple_choice_tasks():
         EvalTask(id="r1", prompt="Q?", answer_type=AnswerType.REPORT),
     ])
     assert score_by_arm(eval_set, []) == {}
+
+
+# ---------------------------------------------------------------------------
+# End-to-end scoring, via the mock provider
+#
+# The mock cannot know which option is correct, so it answers by position. That
+# is what makes these assertions possible: option order is deterministic for a
+# given task id, so the score an "always A" arm deserves can be computed here
+# independently of the code under test, and asserted exactly.
+# ---------------------------------------------------------------------------
+
+
+def _mcq_eval_set(n: int = 12, abstention: str | None = None) -> EvalSet:
+    return EvalSet(name="scored", tasks=[
+        EvalTask(
+            id=f"q{i}",
+            prompt=f"Question {i}?",
+            answer_type=AnswerType.MULTIPLE_CHOICE,
+            answer_spec=AnswerSpec(
+                ideal=f"right-{i}",
+                distractors=[f"wrong-{i}-a", f"wrong-{i}-b", f"wrong-{i}-c"],
+                abstention_option=abstention,
+            ),
+        )
+        for i in range(n)
+    ])
+
+
+def _mock_arm(arm_id: str, policy: str) -> ArmSpec:
+    return ArmSpec(
+        id=arm_id, provider="mock",
+        params=[MetadataItem(key="answer_policy", value=json.dumps(policy))],
+    )
+
+
+def _expected_correct_for_first(eval_set: EvalSet) -> int:
+    """How many tasks an 'always answer A' arm should get right."""
+    return sum(
+        1 for task in (eval_set.tasks or []) if mcq.present_choices(task)[0].is_ideal
+    )
+
+
+def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):
+    eval_set = _mcq_eval_set()
+    expected = _expected_correct_for_first(eval_set)
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("always-a", "first")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+    ))
+
+    score = score_by_arm(eval_set, manifest.cells)["always-a"]
+    assert score.total == len(eval_set.tasks)
+    assert score.attempted == len(eval_set.tasks)  # it answers every question
+    assert score.correct == expected
+    assert score.accuracy == pytest.approx(expected / len(eval_set.tasks))
+    assert score.coverage == pytest.approx(1.0)
+    assert score.precision == pytest.approx(expected / len(eval_set.tasks))
+    assert score.extraction_failures == 0
+
+
+def test_always_last_arm_abstains_on_every_question(tmp_path, mock_client):
+    """With an abstention offered last, 'always last' must read as declining."""
+    eval_set = _mcq_eval_set(abstention="Insufficient information to answer this question.")
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("decliner", "last")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+    ))
+
+    score = score_by_arm(eval_set, manifest.cells)["decliner"]
+    assert score.abstained == len(eval_set.tasks)
+    assert score.attempted == 0
+    assert score.coverage == pytest.approx(0.0)
+    assert score.correct == 0
+    # Precision over zero attempts is zero, not a division error.
+    assert score.precision == pytest.approx(0.0)
+
+
+def test_an_echoing_arm_scores_the_same_as_a_terse_one(tmp_path, mock_client):
+    """The regression, end to end.
+
+    A provider that restates every option before answering must score exactly
+    the same as one that answers tersely. Before the extractor learned to strip
+    restatements, the echoing arm scored as abstaining on every question.
+    """
+    eval_set = _mcq_eval_set(abstention="Insufficient information to answer this question.")
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("terse", "first"), _mock_arm("echoing", "echo")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+    ))
+
+    scores = score_by_arm(eval_set, manifest.cells)
+    assert scores["echoing"].correct == scores["terse"].correct
+    assert scores["echoing"].accuracy == pytest.approx(scores["terse"].accuracy)
+    assert scores["echoing"].abstained == 0
+    assert scores["echoing"].correct == _expected_correct_for_first(eval_set)
+
+
+def test_silent_arm_is_extraction_failure_not_abstention(tmp_path, mock_client):
+    """A provider that never answers must not be recorded as declining."""
+    eval_set = _mcq_eval_set(abstention="Insufficient information to answer this question.")
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("silent", "none")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+    ))
+
+    score = score_by_arm(eval_set, manifest.cells)["silent"]
+    assert score.abstained == 0
+    assert score.extraction_failures == len(eval_set.tasks)
+    assert score.coverage == pytest.approx(0.0)
+
+
+def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
+    """The written file is the artifact people read; it must agree with the API."""
+    eval_set = _mcq_eval_set()
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("always-a", "first")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
+    ))
+
+    score = score_by_arm(eval_set, manifest.cells)["always-a"]
+    rows = (tmp_path / "run" / "scores.tsv").read_text().strip().split("\n")
+    header, row = (line.split("\t") for line in rows)
+    values = dict(zip(header, row))
+
+    assert values["arm_id"] == "always-a"
+    assert int(values["correct"]) == score.correct
+    assert float(values["accuracy"]) == pytest.approx(score.accuracy, abs=1e-4)
+    assert float(values["coverage"]) == pytest.approx(score.coverage, abs=1e-4)

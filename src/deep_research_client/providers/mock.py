@@ -1,6 +1,7 @@
 """Mock provider for testing and development."""
 
 import asyncio
+import re
 from datetime import datetime
 from typing import List, Optional
 
@@ -27,6 +28,9 @@ from ..provider_params import MockParams
 #: one error that folds provider-supplied text into its own remedy, so without
 #: it the mock cannot reproduce the case the report's redaction exists for --
 #: the comma keeps everything after the time, and none of it reaches the file.
+#: Lettered option lines in a multiple-choice prompt, e.g. ``C. Thymine``.
+_MCQ_OPTION = re.compile(r"^([A-Z])\.\s+(.+?)\s*$", re.MULTILINE)
+
 _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = {
     "auth": (ProviderAuthError, 401, {}),
     "billing": (ProviderBillingError, 402, {}),
@@ -109,6 +113,10 @@ class MockProvider(ResearchProvider):
         else:
             markdown_content = self._generate_mock_response(query)
 
+        answer = self._mock_answer(query)
+        if answer:
+            markdown_content = f"{markdown_content}\n\n{answer}"
+
         # Generate mock citations
         citations = self._generate_mock_citations(query)
 
@@ -121,6 +129,36 @@ class MockProvider(ResearchProvider):
             start_time=datetime.now(),
             end_time=datetime.now()
         )
+
+    def _mock_answer(self, query: str) -> str:
+        """Answer a multiple-choice prompt according to ``answer_policy``.
+
+        The mock has no idea which option is right, so it answers by position.
+        That is the point: the score an "always A" arm deserves can be worked
+        out independently, which makes the evaluation harness testable end to
+        end without calling a real provider.
+
+        Args:
+            query: The prompt sent to the provider.
+
+        Returns:
+            Text to append to the response, or "" when nothing should be added.
+        """
+        policy = self.params.answer_policy
+        if policy == "none":
+            return ""
+
+        options = _MCQ_OPTION.findall(query)
+        if not options:
+            return ""
+
+        letters = [letter for letter, _ in options]
+        chosen = letters[0] if policy in ("first", "echo") else letters[-1]
+
+        if policy == "echo":
+            quoted = "\n".join(f"{letter}. {text}" for letter, text in options)
+            return f"Restating the question:\n\n{quoted}\n\nAnswer: {chosen}"
+        return f"Answer: {chosen}"
 
     def _generate_mock_response(self, query: str) -> str:
         """Generate mock markdown response based on query and parameters."""

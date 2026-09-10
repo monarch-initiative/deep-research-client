@@ -220,6 +220,36 @@ def _normalize(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
+#: Shortest normalized option text that may be matched on its own. Benchmark
+#: options are often bare quantities - "6%", "17", "2.7" - and a report of any
+#: length mentions numbers constantly, so matching those as answers invents
+#: choices the provider never made. That is worse than recovering nothing: an
+#: extraction failure is visible in its own column, while a fabricated answer
+#: silently enters the accuracy.
+_MIN_DISCRIMINATING_LENGTH = 4
+
+
+def _is_discriminating(text: str) -> bool:
+    """Whether an option's text is distinctive enough to identify a choice by.
+
+    >>> _is_discriminating("Thymine")
+    True
+    >>> _is_discriminating("2.7 fold")
+    True
+    >>> _is_discriminating("6%")
+    False
+    >>> _is_discriminating("17")
+    False
+    >>> _is_discriminating("")
+    False
+    """
+    normalized = _normalize(text)
+    return (
+        len(normalized) >= _MIN_DISCRIMINATING_LENGTH
+        and any(char.isalpha() for char in normalized)
+    )
+
+
 def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
     """Recover the option a provider chose from its response text.
 
@@ -265,7 +295,8 @@ def extract_choice(response: str, choices: list[Choice]) -> Choice | None:
 
     normalized_response = _normalize(tail)
     text_matches = [
-        c for c in choices if c.text.strip() and _normalize(c.text) in normalized_response
+        c for c in choices
+        if _is_discriminating(c.text) and _normalize(c.text) in normalized_response
     ]
     # Only trust a text match when exactly one option's text appears; two
     # matches means the report discussed the options rather than choosing one.

@@ -190,6 +190,52 @@ def test_eval_run_grades_multiple_choice_and_warns_about_the_extractor(tmp_path)
     assert "provisional regex extractor" in result.stdout
 
 
+def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):
+    """The eighth rate, and the one the enumeration reached but did not gate.
+
+    Precision is correct-over-attempted, so an arm that attempted nothing has
+    none. It printed `0.000` in a column beside arms that did attempt, which
+    reads as "answered and got them all wrong" -- and the three ways in are
+    the ordinary ones: every question declined, every response unreadable by
+    the provisional extractor, or an endpoint down for the whole run (a failed
+    multiple-choice cell is given PROVIDER_ERROR precisely so the arm appears
+    rather than vanishing from the comparison).
+
+    The reasoning offered for leaving it was that `cov 0.000` sits beside it
+    and does say so. That is the same trade -- a disambiguator next to a rate
+    -- that the citation lines rejected one command over, and there the
+    disambiguator was in the same sentence rather than an adjacent column.
+    """
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    path = _write(tmp_path / "mcq.yaml",
+                  "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
+                  "    ideal: Thymine\n    distractors: [Guanine, Cytosine]\n"
+                  "    abstention_option: Insufficient information\n")
+    arms = _write(tmp_path / "arms.yaml",
+                  "arms:\n  - id: decliner\n    provider: mock\n"
+                  "    params:\n      answer_policy: last\n")
+
+    result = runner.invoke(app, [
+        "eval", "run", str(path), "--arms", str(arms), "--grade",
+        "--output-dir", str(tmp_path / "run"),
+    ])
+
+    assert result.exit_code == 0, result.stdout
+    # From the score table, not the arm listing above it, which also names
+    # the arm and would satisfy a bare substring search with no numbers on it.
+    table = result.stdout.split("Multiple-choice scores:", 1)[-1]
+    row = next((ln for ln in table.splitlines() if "decliner" in ln), None)
+    assert row is not None, result.stdout
+    assert "0.000   0.000" in row, f"the arm must still show a measured zero coverage: {row}"
+    assert "—" in row, f"precision over no attempts must be absent, not zero: {row}"
+    # And in the artifact, where a spreadsheet would average the column.
+    scores = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8")
+    header, *rows = [ln.split("\t") for ln in scores.strip().splitlines()]
+    cell = dict(zip(header, rows[0]))
+    assert cell["attempted"] == "0"
+    assert cell["precision"] == "", f"precision should be empty, got {cell['precision']!r}"
+
+
 def test_eval_run_limit_selects_a_prefix(tmp_path):
     result = runner.invoke(app, [
         "eval", "run", str(EVAL_INPUT / "example_evalset.yaml"),
@@ -1018,7 +1064,18 @@ def test_a_judge_that_cannot_be_reached_is_not_a_report_that_scored_zero(
     async def dead_judge(prompt, llm_client, model="gpt-4o-mini"):
         raise RuntimeError("judge endpoint is down")
 
+    async def abstract(pmid, client=None):
+        return "FGFR3 gain-of-function underlies achondroplasia."
+
     monkeypatch.setattr(scorers, "_llm_judge", dead_judge)
+    # FACT is left on deliberately -- it is one of the three lines under test
+    # -- so the PMID below is fetched. Stubbed, because this file's docstring
+    # promises no network, and because the premise matters: with the abstract
+    # in hand the pair is checkable and the judge is what failed, which is the
+    # distinction the line is being asserted on. Unstubbed it also passes, by
+    # the other route (no abstract, so nothing to judge) and after a 30-second
+    # timeout on a blackholed network.
+    monkeypatch.setattr(scorers, "fetch_pubmed_abstract", abstract)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
 
     path = _write(tmp_path / "t.yaml",

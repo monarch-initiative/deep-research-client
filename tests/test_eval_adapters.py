@@ -324,7 +324,30 @@ def test_score_mcq_follows_lab_bench_metric_definitions():
 
 def test_empty_score_does_not_divide_by_zero():
     score = mcq.score_mcq([])
-    assert (score.accuracy, score.coverage, score.precision) == (0.0, 0.0, 0.0)
+    assert (score.accuracy, score.coverage) == (0.0, 0.0)
+    # Absent rather than zero: there were no attempts to be precise about.
+    assert score.precision is None
+
+
+def test_a_correct_flag_on_an_answer_that_was_never_scored_does_not_count():
+    """`correct` is set on the SCORED path and filtered on no other.
+
+    That held by convention -- asserted in `MCQAnswer`'s docstring, enforced
+    nowhere -- while `attempted` filtered by disposition and the numerator did
+    not. An answer carrying ABSTAINED with `correct=True` is constructible in
+    code and is what a hand-edited or older-format `cell.json` yields on
+    resume, and it made `precision` 2.0 and `accuracy` exceed `coverage`,
+    silently, in numbers a LAB-Bench comparison publishes.
+    """
+    score = mcq.score_mcq([
+        MCQAnswer(task_id="1", provider="p",
+                  disposition=ScoreDisposition.ABSTAINED, correct=True),
+        MCQAnswer(task_id="2", provider="p",
+                  disposition=ScoreDisposition.SCORED, correct=True),
+    ])
+    assert score.correct == 1, "an unscored answer cannot be a correct one"
+    assert score.precision == pytest.approx(1.0)
+    assert score.accuracy <= score.coverage
 
 
 # ---------------------------------------------------------------------------

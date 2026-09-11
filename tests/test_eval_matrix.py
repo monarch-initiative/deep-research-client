@@ -491,8 +491,12 @@ def test_always_last_arm_abstains_on_every_question(tmp_path, mock_client):
     assert score.attempted == 0
     assert score.coverage == pytest.approx(0.0)
     assert score.correct == 0
-    # Precision over zero attempts is zero, not a division error.
-    assert score.precision == pytest.approx(0.0)
+    # Precision over zero attempts is absent, not zero -- and not a division
+    # error either, which is what this line used to assert. `0.000` in the
+    # `--grade` table's precision column, beside an arm that answered, reads
+    # as "answered and got them all wrong", which is the one reading this
+    # fixture exists to rule out.
+    assert score.precision is None
 
 
 def test_an_echoing_arm_scores_the_same_as_a_terse_one(tmp_path, mock_client):

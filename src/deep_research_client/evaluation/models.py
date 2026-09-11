@@ -14,7 +14,7 @@ Scoring follows several complementary frameworks:
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from .datamodel import ScoreDisposition
 
@@ -295,8 +295,23 @@ class RACEScore(BaseModel):
         ... ])
         >>> len(s.scored_dimensions), s.unscored_count
         (1, 1)
+
+        Filtered on `normalized_score`, not on `score`. Those answered
+        differently for a dimension carrying a raw score against a
+        non-positive scale: `normalized_score` refuses it, `score is not None`
+        admitted it, and the CLI reads *this* property to decide whether
+        anything was measured. So four dimensions with `max_score=0` took the
+        measured branch, and `overall_score` -- a mean over an empty list
+        after its own filter -- printed `overall=0.00`, which is the reading
+        the branch exists to prevent. Two accessors, one question.
+
+        >>> degenerate = RACEScore(dimensions=[
+        ...     RACEDimension(dimension="comprehensiveness", score=3.0, max_score=0.0),
+        ... ])
+        >>> len(degenerate.scored_dimensions), degenerate.unscored_count
+        (0, 1)
         """
-        return [d for d in self.dimensions if d.score is not None]
+        return [d for d in self.dimensions if d.normalized_score is not None]
 
     @property
     def unscored_count(self) -> int:
@@ -309,6 +324,14 @@ class RACEScore(BaseModel):
 
         0.0 when none were, which `unscored_count` distinguishes from a report
         that genuinely scored zero.
+
+        A float where `RACEDimension.normalized_score` and `MCQScore.precision`
+        are Optional, and the difference is deliberate: the line is where the
+        number is RENDERED. A rate that reaches a reader over a zero
+        denominator becomes None, because no adjacent column or field reliably
+        travels with it; one that cannot reach a reader stays a float with its
+        boundary documented. This zero cannot: the CLI gates on
+        `scored_dimensions` before formatting it.
         """
         scored = [
             d.normalized_score for d in self.scored_dimensions
@@ -474,8 +497,18 @@ class CitationAlignmentScore(BaseModel):
     0.7
     """
 
-    total_checked: int
-    aligned_count: int
+    total_checked: int = Field(
+        ...,
+        description=(
+            "Citation-claim pairs a comparison was actually made for, which "
+            "is `alignment_rate`'s denominator. NOT every pair -- see "
+            "`total_pairs`"
+        ),
+    )
+    aligned_count: int = Field(
+        ...,
+        description="Checked pairs whose title supports the claim",
+    )
     unresolvable: int = Field(
         default=0,
         description=(
@@ -495,6 +528,7 @@ class CitationAlignmentScore(BaseModel):
     alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")
     results: list[CitationAlignmentResult] = Field(default_factory=list)
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def total_pairs(self) -> int:
         """Every citation-claim pair found, checked or not.
@@ -505,9 +539,17 @@ class CitationAlignmentScore(BaseModel):
         side by side in the same block, is how the two lines drifted apart
         before.
 
+        A `computed_field`, so it reaches `--output` too. A plain property
+        made the two CLI lines ask one question while a JSON consumer still
+        had to add two numbers here and read one from the sibling score.
+
         >>> CitationAlignmentScore(total_checked=3, unresolvable=2,
         ...                        aligned_count=2, alignment_rate=0.67).total_pairs
         5
+        >>> "total_pairs" in CitationAlignmentScore(
+        ...     total_checked=3, unresolvable=2, aligned_count=2,
+        ...     alignment_rate=0.67).model_dump()
+        True
         """
         return self.total_checked + self.unresolvable
 
@@ -707,25 +749,38 @@ class MCQScore(BaseModel):
     accuracy: float = Field(
         ...,
         description=(
-            "correct / total, and 0.0 when `total` is 0 -- a float cannot say "
-            "'no questions', so read it against `total` rather than alone"
+            "correct / total, and 0.0 when `total` is 0. Stays a float where "
+            "`precision` became Optional, and the line is where the number is "
+            "RENDERED rather than where it is computed: an arm reaches the "
+            "`--grade` table only with at least one disposed cell, so a total "
+            "of 0 never reaches a reader, while an attempted of 0 does. A "
+            "caller that builds an `MCQScore` by hand can still see this zero "
+            "-- read it against `total`"
         ),
     )
     coverage: float = Field(
         ...,
         description=(
-            "attempted / total, and 0.0 when `total` is 0, as for `accuracy`"
+            "attempted / total, and 0.0 when `total` is 0, for the same "
+            "reason as `accuracy`. This is the field that says an arm "
+            "attempted nothing, so it is the one `precision` being absent "
+            "sends a reader to"
         ),
     )
-    precision: float = Field(
-        ...,
+    precision: Optional[float] = Field(
+        default=None,
         description=(
-            "correct / attempted, and 0.0 when `attempted` is 0 -- the "
-            "boundary a reader actually meets, since an arm that errored on "
-            "every call or abstained on every question attempts nothing and "
-            "prints `prec 0.000` beside an arm that answered. `coverage` is "
-            "what tells those apart, which is why the CLI table and "
-            "`scores.tsv` never print one without the other"
+            "correct / attempted, and None when `attempted` is 0 -- an arm "
+            "that errored on every call or abstained on every question has no "
+            "precision, and `0.000` in a comparison column reads as 'answered "
+            "and got them all wrong'. Rendered as an em dash in the `--grade` "
+            "table and as an empty field in `scores.tsv`.\n\n"
+            "History: this was a float documented as readable-against-"
+            "`coverage`. That is the same trade -- a disambiguator beside a "
+            "rate -- that the citation lines had just rejected one command "
+            "over, and there the disambiguator was in the same sentence "
+            "rather than an adjacent column. See the note on `accuracy` for "
+            "why its own zero stays a float."
         ),
     )
     answers: list[MCQAnswer] = Field(default_factory=list, description="Per-task graded answers")

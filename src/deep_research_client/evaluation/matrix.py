@@ -495,7 +495,11 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
         lines.append("\t".join([
             arm_id,
             str(score.total), str(score.attempted), str(score.correct),
-            f"{score.accuracy:.4f}", f"{score.coverage:.4f}", f"{score.precision:.4f}",
+            f"{score.accuracy:.4f}", f"{score.coverage:.4f}",
+            # Empty rather than 0.0000, for the reason the CLI prints a dash:
+            # a spreadsheet averaging this column must not average in an arm
+            # that made no attempt.
+            "" if score.precision is None else f"{score.precision:.4f}",
             str(score.abstained), str(score.extraction_failures), str(score.provider_errors),
         ]))
     atomic_write(layout.scores_path, "\n".join(lines) + "\n")

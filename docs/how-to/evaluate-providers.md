@@ -316,9 +316,13 @@ ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
 ```
   arm                      acc     cov    prec       n
   always-a               0.325   1.000   0.325   13/40
-  decliner               0.000   0.000   0.000    0/40
+  decliner               0.000   0.000       —    0/40
   echoing                0.325   1.000   0.325   13/40
-  silent                 0.000   0.000   0.000    0/40
+  silent                 0.000   0.000       —    0/40
+
+  Some responses had no recoverable answer. Those count against coverage but
+  are a harness limitation, not a provider result; see the extraction_failures
+  column in scores.tsv.
 ```
 
 `always-a` gives a chance baseline — 0.325 on these questions, since the number
@@ -326,6 +330,13 @@ of options varies. `echoing` must score identically to `always-a`; a gap means
 the extractor is being fooled by restated options. `decliner` and `silent` must
 both show zero coverage, for different reasons: declining is not answering, and
 neither is saying nothing.
+
+Neither has a precision. It is over answers attempted, and these two attempted
+nothing, so the column shows an em dash rather than `0.000` — which in a
+comparison would read as "answered and got them all wrong". `silent` is why
+this matters most: its responses are ones the provisional extractor could not
+read, which is a limitation of this harness rather than a result from the
+provider, and the note the command prints below the table says so.
 
 ## Score a saved report
 
@@ -357,8 +368,10 @@ title and one with no identifier at all. On an accession-only report they
 agree by coincidence. That matters for a genomics benchmark, whose reference lists are
 often accessions: `Citation Verifiability: not measured, 12 not checked` is a
 report this client cannot judge, not a report that invented twelve references.
-The rate is absent rather than zero whenever nothing was checkable, on this line
-and on every other score line, so a measured zero always means a measured zero.
+The rate is absent rather than zero whenever nothing was checkable, on this
+line and on every other score line, so a measured zero always means a measured
+zero. That holds across commands: `eval run`'s precision column is an em dash
+for an arm that attempted nothing.
 
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:

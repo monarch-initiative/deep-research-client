@@ -703,21 +703,30 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     0.0
 
     An arm that attempted nothing -- every call errored, or every question was
-    declined -- has no precision to report, and a float has no way to say so.
-    It reads 0.000 in the same column as an arm that answered everything
-    wrongly; `coverage` is what separates them, which is why neither the CLI
-    table nor `scores.tsv` prints one without the other.
+    declined -- has no precision. None rather than 0.000, which in a column
+    beside arms that did attempt reads as "answered and got them all wrong".
 
     >>> errored = score_mcq([
     ...     MCQAnswer(task_id="1", provider="p", disposition="PROVIDER_ERROR"),
     ...     MCQAnswer(task_id="2", provider="p", disposition="PROVIDER_ERROR"),
     ... ])
-    >>> errored.total, errored.attempted, errored.precision, errored.coverage
-    (2, 0, 0.0, 0.0)
+    >>> errored.total, errored.attempted, errored.coverage
+    (2, 0, 0.0)
+    >>> errored.precision is None
+    True
     """
     total = len(answers)
     attempted = sum(1 for a in answers if a.disposition == ScoreDisposition.SCORED)
-    correct = sum(1 for a in answers if a.correct)
+    # Filtered by disposition on BOTH counts. `correct` alone relied on
+    # `MCQAnswer.correct` being set only on the SCORED path -- true of every
+    # producer here, asserted in that model's docstring, and enforced nowhere,
+    # so an answer carrying `ABSTAINED` with `correct=True` (constructible in
+    # code, and what a hand-edited or older-format `cell.json` yields on
+    # resume) gave `precision 2.0` and `accuracy > coverage`, silently.
+    correct = sum(
+        1 for a in answers
+        if a.correct and a.disposition == ScoreDisposition.SCORED
+    )
 
     return MCQScore(
         total=total,
@@ -732,6 +741,8 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         ),
         accuracy=correct / total if total else 0.0,
         coverage=attempted / total if total else 0.0,
-        precision=correct / attempted if attempted else 0.0,
+        # None, not 0.0: an arm that attempted nothing has no precision, and
+        # this number is printed in a column beside arms that did attempt.
+        precision=correct / attempted if attempted else None,
         answers=answers,
     )

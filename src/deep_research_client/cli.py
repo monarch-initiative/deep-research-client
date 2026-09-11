@@ -3262,9 +3262,19 @@ def eval_run(
         typer.echo("\nMultiple-choice scores:\n")
         typer.echo(f"  {'arm':<20} {'acc':>7} {'cov':>7} {'prec':>7}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
+            # An em dash where an arm attempted nothing: `prec 0.000` in a
+            # column beside arms that answered reads as "got them all wrong",
+            # and the arm that abstained on every question, or whose every
+            # response the extractor could not read, or whose endpoint was
+            # down all run, is exactly the one a comparison must not read that
+            # way. `cov 0.000` is beside it and does say so -- but that is a
+            # disambiguator next to a rate, which is what the citation lines
+            # stopped doing, and there it was in the same sentence rather than
+            # an adjacent column.
+            prec = "      —" if score.precision is None else f"{score.precision:>7.3f}"
             typer.echo(
                 f"  {arm_id:<20} {score.accuracy:>7.3f} {score.coverage:>7.3f} "
-                f"{score.precision:>7.3f}   {score.correct:>2}/{score.total}"
+                f"{prec}   {score.correct:>2}/{score.total}"
             )
         if any(s.extraction_failures for s in scores.values()):
             typer.echo(

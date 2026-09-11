@@ -1760,7 +1760,11 @@ def test_the_evidence_named_is_the_most_specific_disagreement():
      "an array closed with a brace"),
     ('{"criteria": {"supported": false}] {"supported": true}', "supported", True,
      "an object closed with a bracket"),
-    # A reply that is only a mismatched container still yields what it holds.
+    # A no-regression case rather than a discriminating one: with the fix
+    # reverted the whole remainder was mined as salvage and the salvage tier
+    # returned this same object. Kept because it says the mine still works when
+    # the entire reply is damaged, and labelled because the two cases above are
+    # what actually pin the change.
     ('{"criteria": [{"score": 2}}', "score", 2, "only a mismatched container"),
 ])
 def test_a_mismatched_bracket_bounds_the_damage_rather_than_erasing_it(
@@ -1904,3 +1908,112 @@ def test_a_mismatch_inside_a_later_closing_container_costs_the_verdict():
     assert scorers._extract_json_object(
         '{"breakdown": [1}, "supported": true}', key="supported"
     ) is None
+
+
+def test_a_run_of_unclosed_openers_does_not_stall_the_scorer():
+    """Removing the recursion moved the cost rather than removing it.
+
+    Every unclosed opener drove a `_balanced_span` scan to the end of the text,
+    so a judge reply that degenerates into a run of braces -- an ordinary LLM
+    failure mode -- took about six seconds at MAX_REPORT_CHARS where it used to
+    come back fast as a recorded error. `score_race` makes four judge calls per
+    report and `score_claim_recall` one per claim, so a single degenerate arm
+    could stall a matrix cell with nothing to show for it.
+
+    Timed rather than asserted on wall clock alone: the bound is that the work
+    is linear in the reply, so quadrupling the input must not multiply the time
+    by sixteen. A generous ceiling, because this runs on shared CI.
+    """
+    import time
+
+    from deep_research_client.evaluation import scorers
+
+    def elapsed(openers: int) -> float:
+        text = "{" * openers
+        start = time.perf_counter()
+        scorers._extract_json_object(text, key="score")
+        return time.perf_counter() - start
+
+    small = max(elapsed(1000), 1e-4)
+    large = elapsed(4000)
+    assert large < small * 40, (
+        f"4x the input took {large / small:.1f}x the time; the per-opener scan "
+        f"is quadratic again"
+    )
+
+
+def test_a_repair_inside_an_unclosed_container_is_given_up_deliberately():
+    """What the cost bound above costs.
+
+    A trailing-comma object nested inside a container that never closes is no
+    longer repaired: once the scan is inside something with no end, whatever it
+    finds is salvage whichever way it is bounded, so the bound is skipped and
+    `raw_decode` alone finds the well-formed values. The repaired object would
+    have been salvage too, so this is a lost measurement inside text already
+    declared unreadable -- the side this branch errs on -- and the alternative
+    was a six-second stall per judge call.
+
+    Pinned so the trade stays deliberate rather than being "fixed" back into
+    the quadratic scan.
+    """
+    from deep_research_client.evaluation import scorers
+
+    assert scorers._extract_json_object('{oops {"x": 1,}', key="x") is None
+    # The same object outside an unclosed container is still repaired.
+    assert scorers._extract_json_object('{"x": 1,}', key="x") == {"x": 1}
+
+
+@pytest.mark.parametrize("scenario,body,expected_exists", [
+    # The registry answered: this paper does not exist.
+    ("fabricated pmid",
+     {"result": {"99999999": {"error": "cannot get document summary"}}}, False),
+    # The registry answered: it does.
+    ("real record",
+     {"result": {"99999999": {"title": "A real paper", "pubdate": "2019"}}}, True),
+    # Nothing was established -- the body says nothing about this uid.
+    ("rate-limit envelope", {"error": "API rate limit exceeded"}, None),
+])
+def test_exists_is_three_valued_because_the_question_is(
+    scenario, body, expected_exists,
+):
+    """A `bool` gave the per-citation record the answer the aggregate was fixed
+    to stop giving.
+
+    `citations[]` goes into `--output` verbatim, so a consumer reading the
+    obvious field saw `exists: false` for a real paper nobody had asked about.
+    `lookup_failed` discriminated, and nothing obliged a reader to consult it.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A claim [PMID:99999999].", "test")
+
+    async def score():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.score_citation_verifiability(out, client)
+
+    result = asyncio.run(score())
+    assert result.citations[0].exists is expected_exists, scenario
+
+
+def test_an_identifier_with_no_resolver_establishes_nothing():
+    """The case this round added: a real PMC article, never looked up."""
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "FGFR3 drives achondroplasia (PMC11000121).", "test")
+
+    result = asyncio.run(scorers.score_citation_verifiability(out))
+
+    assert result.citations[0].exists is None
+    assert result.citations[0].lookup_failed is True

@@ -333,15 +333,18 @@ class CitationExistence(BaseModel):
     """
 
     citation_id: str = Field(..., description="Normalized citation ID (PMID:xxx or DOI:xxx)")
-    exists: bool = Field(
+    exists: Optional[bool] = Field(
         ...,
         description=(
-            "Whether the citation resolved to a real paper. False also for a "
-            "citation nothing was learned about -- an outage, or an identifier "
-            "kind with no resolver -- so it is not on its own evidence that a "
-            "paper does not exist. `lookup_failed` is the discriminator, and a "
-            "consumer reading this field alone would call a real PMC article "
-            "fabricated."
+            "Whether the citation resolved to a real paper: True, False when "
+            "the registry says it does not exist, and None when nothing was "
+            "established -- an outage, or an identifier kind this scorer has "
+            "no resolver for. A `bool` answering a three-valued question meant "
+            "the per-citation record of a real PMC article read "
+            "`exists: false` in `--output`, so a consumer reading the obvious "
+            "field got exactly the answer the aggregate was fixed to stop "
+            "giving. `lookup_failed` still discriminates; nothing obliges a "
+            "reader to consult it."
         ),
     )
     title: Optional[str] = Field(default=None, description="Paper title if retrieved")

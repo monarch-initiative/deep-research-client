@@ -347,6 +347,13 @@ Four groups of scores are available, and they differ sharply in what they cost:
 | RACE | Report quality across four dimensions | LLM judge |
 | Intrinsic | Citation existence, title/claim alignment, spot checks, topic coverage | PubMed only |
 
+Citation existence resolves PMIDs against PubMed and DOIs against CrossRef.
+Anything else the report cites — a PMC accession, a GEO series — is reported as
+*not checked* rather than counted against the report, and both citation lines
+say how many. That matters for a genomics benchmark, whose reference lists are
+often accessions: `Citation Verifiability: 0/0 (0.00), 12 not checked` is a
+report this client cannot judge, not a report that invented twelve references.
+
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:
 

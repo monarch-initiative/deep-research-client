@@ -352,6 +352,21 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         try:
             parsed, end = decoder.raw_decode(text, i)
         except json.JSONDecodeError:
+            if inside_unclosed:
+                # Already inside a container with no end. Whatever is here is
+                # salvage whichever way it is bounded, so there is nothing to
+                # decide and `raw_decode` alone finds the well-formed values.
+                #
+                # Skipping the bound here is what keeps this loop out of
+                # quadratic time: `_balanced_span` scans to the end of the text
+                # when nothing closes, and calling it at every subsequent
+                # opener made a reply that degenerates into a run of braces --
+                # an ordinary LLM failure -- take six seconds at
+                # MAX_REPORT_CHARS, measured, where it used to fail fast with a
+                # RecursionError. The cost of the skip is a trailing comma left
+                # unrepaired inside text already declared unreadable.
+                i += 1
+                continue
             span = _balanced_span(text, i)
             if span is None:
                 # Never closed -- a reply cut off mid-object, say. The scan
@@ -1177,7 +1192,7 @@ async def score_citation_verifiability(
             # Distinct from an identifier that would not normalise, which is a
             # property of the report's own text and still counts against it.
             results.append(CitationExistence(
-                citation_id=cid, exists=False,
+                citation_id=cid, exists=None,
                 error=(
                     "No resolver for this identifier kind: "
                     f"{cid.split(':', 1)[0] if ':' in cid else cid}"
@@ -1186,6 +1201,7 @@ async def score_citation_verifiability(
             ))
             continue
 
+        lookup_failed = bool(meta.get("lookup_failed", False))
         exists = meta.get("exists", False)
         title = meta.get("title")
         year = meta.get("year")
@@ -1193,11 +1209,13 @@ async def score_citation_verifiability(
 
         results.append(CitationExistence(
             citation_id=cid,
-            exists=bool(exists),
+            # None rather than False when the lookup established nothing: a
+            # timeout is not evidence that a paper does not exist.
+            exists=None if lookup_failed else bool(exists),
             title=str(title) if title else None,
             year=int(year) if year else None,
             error=str(error) if error else None,
-            lookup_failed=bool(meta.get("lookup_failed", False)),
+            lookup_failed=lookup_failed,
         ))
         if year:
             years.append(int(year))

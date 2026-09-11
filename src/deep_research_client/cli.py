@@ -1685,8 +1685,11 @@ def _format_transcript_stats_text(stats: "TranscriptStats") -> str:
             + ", ".join(f"{p} ({c})" for p, c in stats.shell_commands.items())
         )
     if stats.web_searches:
+        total = sum(stats.web_search_counts.values()) or len(stats.web_searches)
         lines.append("")
-        lines.append(f"web searches:  {len(stats.web_searches)}")
+        lines.append(
+            f"web searches:  {total} ({len(stats.web_searches)} distinct)"
+        )
     unused = stats.unused_available_tools
     if unused:
         lines.append("")

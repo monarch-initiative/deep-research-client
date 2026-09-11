@@ -348,7 +348,8 @@ deep-research-client transcript-stats [OPTIONS] PATHS...
 - Several transcripts merge into one summary, which is what a job writing one
   transcript per iteration needs.
 - Reports distinct tools and call counts, per-tool failures, skills invoked,
-  shell programs, web searches, files changed, models, token usage, and the
+  shell programs, web searches (total and distinct — a retried query is one
+  query but several searches), files changed, models, token usage, and the
   tools a session declared but never called.
 - Transcripts are dropped by the default artifact policy. To keep them, run the
   provider with `--param artifact_keep_runtime=true` (see

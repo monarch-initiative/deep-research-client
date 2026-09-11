@@ -98,7 +98,8 @@ class TranscriptStats(BaseModel):
         default_factory=list,
         description=(
             "Transcript sources this summary covers. Not always a bare "
-            "filename: summarize_paths uses the full path, and "
+            "filename: summarize_paths uses the resolved absolute path (so a "
+            "relative argument still reports an absolute source), and "
             "summarize_artifacts suffixes a duplicate filename with #2, #3 "
             "so neither transcript is lost."
         ),
@@ -131,6 +132,14 @@ class TranscriptStats(BaseModel):
     )
     web_searches: list[str] = Field(
         default_factory=list, description="Distinct web search queries issued"
+    )
+    web_search_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Times each query was issued. A retried query is one entry in "
+            "web_searches but several searches, so the two numbers differ and "
+            "both are reported."
+        ),
     )
     files_changed: dict[str, list[str]] = Field(
         default_factory=dict, description="Paths touched, keyed by change kind"
@@ -187,13 +196,24 @@ class TranscriptStats(BaseModel):
         when a tool that did run appears in it.
 
         Both sides are normalized, because a declaration and a call can spell
-        one tool differently across merged sources. A session declaring
+        one tool differently across merged sources: a session declaring
         ``mcp__github__search_issues`` and a call recorded as
-        ``github.search_issues`` with ``namespace: github`` name the same
-        tool, and each spelling reaches the other only through the servers
-        this run actually used.
+        ``github.search_issues`` with ``namespace: github`` name one tool.
+
+        Matched on ``(server, short name)`` rather than the short name alone.
+        Comparing bare names would make a declared ``github.notify`` match an
+        unrelated local ``notify`` that happened to run — turning the false
+        positive this guards against into a false negative, in the same list
+        where neither is visible to a reader.
+
+        The residual case is a call recorded with its qualifier stripped *and*
+        no ``server`` or ``namespace`` field, where the transcript holds no
+        evidence of which server it belonged to; such a call matches only a
+        declaration that is likewise unqualified. No backend in use writes
+        that shape — an ``mcp__``-style name carries its server in the name
+        itself — so the strict reading costs nothing today.
         """
-        used_short = {tool.name for tool in self.tools}
+        used_pairs = {(tool.server, tool.name) for tool in self.tools}
         used_qualified = {
             qualified for tool in self.tools for qualified in tool.qualified_names
         }
@@ -203,12 +223,33 @@ class TranscriptStats(BaseModel):
         for declared in self.available_tools:
             if declared in used_qualified:
                 continue
-            spellings = {short_tool_name(declared)}
-            spellings.update(short_tool_name(declared, server) for server in servers)
-            if spellings & used_short:
-                continue
-            unused.append(declared)
+            if self._declared_identity(declared, servers) not in used_pairs:
+                unused.append(declared)
         return sorted(unused)
+
+    @staticmethod
+    def _declared_identity(
+        declared: str, servers: set[str]
+    ) -> tuple[Optional[str], str]:
+        """Split a declared tool name into the server it names and its short name.
+
+        Args:
+            declared: The name as the session declared it.
+            servers: MCP servers this run actually used, which is what makes a
+                dotted prefix readable as a server rather than part of a name.
+
+        Returns:
+            The ``(server, short name)`` pair, with ``None`` for a tool that
+            names no server.
+        """
+        server = mcp_server_of(declared)
+        if server is not None:
+            return server, short_tool_name(declared)
+
+        head, _, tail = declared.partition(".")
+        if tail and head in servers:
+            return head, tail
+        return None, declared
 
     @property
     def tool_success_rate(self) -> Optional[float]:
@@ -490,7 +531,7 @@ class _Accumulator:
         self.skill_counts: Counter[str] = Counter()
         self.shell_commands: Counter[str] = Counter()
         self.failed_shell_commands = 0
-        self.web_searches: set[str] = set()
+        self.web_searches: Counter[str] = Counter()
         self.files_changed: dict[str, set[str]] = {}
 
         self.models: set[str] = set()
@@ -566,6 +607,7 @@ class _Accumulator:
             shell_commands=dict(self.shell_commands.most_common()),
             failed_shell_commands=self.failed_shell_commands,
             web_searches=sorted(self.web_searches),
+            web_search_counts=dict(self.web_searches.most_common()),
             files_changed={
                 kind: sorted(paths) for kind, paths in sorted(self.files_changed.items())
             },
@@ -638,7 +680,7 @@ class _Accumulator:
     def _on_web_search(self, entry: dict[str, Any]) -> None:
         query = entry.get("query")
         if query:
-            self.web_searches.add(str(query))
+            self.web_searches[str(query)] += 1
 
     def _on_collab_agent_tool_call(self, entry: dict[str, Any]) -> None:
         self.subagent_calls += 1
@@ -892,8 +934,15 @@ def _render_markdown(stats: TranscriptStats) -> str:
         lines.append("")
 
     if stats.web_searches:
-        lines.extend([f"### Web searches ({len(stats.web_searches)})", ""])
-        lines.extend(f"- {_md(query)}" for query in stats.web_searches)
+        total = sum(stats.web_search_counts.values()) or len(stats.web_searches)
+        heading = f"### Web searches ({total})"
+        if total != len(stats.web_searches):
+            heading = f"### Web searches ({total}, {len(stats.web_searches)} distinct)"
+        lines.extend([heading, ""])
+        for query in stats.web_searches:
+            count = stats.web_search_counts.get(query, 1)
+            suffix = f" (x{count})" if count > 1 else ""
+            lines.append(f"- {_md(query)}{suffix}")
         lines.append("")
 
     if stats.files_changed:

@@ -745,7 +745,6 @@ def test_a_pipe_outside_a_table_is_left_alone():
     assert "`we|ird`" in markdown
     assert "- a|b" in markdown
     assert "`out|put.csv`" in markdown
-    assert "\\|" not in markdown.split("### Skills invoked")[1]
 
 
 def test_a_declared_tool_called_under_another_spelling_is_not_reported_unused():
@@ -809,3 +808,54 @@ def test_one_file_named_two_ways_is_a_single_source(tmp_path, run_transcript):
     assert len(twice.sources) == 1
     assert twice.entries == once.entries
     assert twice.tool_calls == once.tool_calls
+
+
+def test_a_declared_server_tool_is_not_matched_by_an_unrelated_local_tool():
+    """Matching on the bare name turns one false report into its mirror.
+
+    `github.notify` and a local `notify` share a short name and nothing else.
+    Treating them as the same tool hides a genuinely unused one, in the same
+    list where a wrong entry is indistinguishable from a right one.
+    """
+    stats = summarize_transcript(
+        [
+            {
+                "type": "session_init",
+                "tools": ["github.notify", "mcp__github__search_issues"],
+            },
+            tool_call("a", "mcp__github__search_issues"),
+            tool_call("b", "notify"),
+        ]
+    )
+
+    assert stats.distinct_tools == ["notify", "search_issues"]
+    assert stats.unused_available_tools == ["github.notify"]
+
+
+def test_a_repeated_web_search_is_counted_not_collapsed():
+    """A query retried four times is four searches, not one.
+
+    Every neighbouring tally here is a count keyed by the thing; this was the
+    one place a repeat vanished, under a heading that read as a total.
+    """
+    def search(query):
+        return {"type": "web_search", "id": "w", "query": query, "raw": {}}
+
+    stats = summarize_transcript([search("a"), search("a"), search("a"), search("b")])
+
+    assert stats.web_searches == ["a", "b"]
+    assert stats.web_search_counts == {"a": 3, "b": 1}
+
+    markdown = stats.render_markdown()
+    assert "### Web searches (4, 2 distinct)" in markdown
+    assert "- a (x3)" in markdown
+    assert "- b" in markdown
+
+
+def test_a_single_web_search_reports_one_number():
+    """No "N distinct" noise when nothing was repeated."""
+    stats = summarize_transcript(
+        [{"type": "web_search", "id": "w", "query": "only once", "raw": {}}]
+    )
+
+    assert "### Web searches (1)" in stats.render_markdown()

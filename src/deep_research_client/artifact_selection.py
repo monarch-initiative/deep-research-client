@@ -158,7 +158,13 @@ class ArtifactDecision:
     The reason exists so a skipped file can be logged with the rule that
     skipped it — "which knob do I turn to get this file" is the question a
     caller actually has. ``rule`` is the same thing as a stable slug, so a
-    caller can treat one outcome differently without matching on prose.
+    caller can treat one outcome differently without matching on prose — the
+    provider does exactly that to log a size-cap skip louder than the rest.
+
+    The slugs, which callers may branch on: ``exclude_glob``, ``size_cap``,
+    ``provider_deny``, ``include_glob``, ``scaffolding``, ``archive``,
+    ``runtime``, ``extension`` (a keep) and ``extension_not_allowed`` (the
+    matching deny).
     """
 
     keep: bool

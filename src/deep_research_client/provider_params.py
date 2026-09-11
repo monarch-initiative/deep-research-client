@@ -270,7 +270,9 @@ class ArtifactSelectionParams(BaseProviderParams):
 
     List fields accept a comma-separated string, so they are reachable through
     a CLI ``--param key=value`` pair:
-    ``--param artifact_include_globs=provenance/*.json,figures/*``
+    ``--param 'artifact_include_globs=provenance/*.json,figures/*'`` (quoted,
+    so the shell does not expand the ``*`` against the working directory
+    first)
     """
 
     save_artifacts: bool = Field(

@@ -182,12 +182,33 @@ class TranscriptStats(BaseModel):
         """Declared tools that were never called.
 
         The gap between what a session was given and what it reached for is
-        usually more interesting than either list alone.
+        usually more interesting than either list alone — which is why a false
+        positive here is worth avoiding: nothing about the list looks wrong
+        when a tool that did run appears in it.
+
+        Both sides are normalized, because a declaration and a call can spell
+        one tool differently across merged sources. A session declaring
+        ``mcp__github__search_issues`` and a call recorded as
+        ``github.search_issues`` with ``namespace: github`` name the same
+        tool, and each spelling reaches the other only through the servers
+        this run actually used.
         """
-        used = {tool.name for tool in self.tools} | {
+        used_short = {tool.name for tool in self.tools}
+        used_qualified = {
             qualified for tool in self.tools for qualified in tool.qualified_names
         }
-        return sorted(set(self.available_tools) - used)
+        servers = set(self.mcp_servers)
+
+        unused = []
+        for declared in self.available_tools:
+            if declared in used_qualified:
+                continue
+            spellings = {short_tool_name(declared)}
+            spellings.update(short_tool_name(declared, server) for server in servers)
+            if spellings & used_short:
+                continue
+            unused.append(declared)
+        return sorted(unused)
 
     @property
     def tool_success_rate(self) -> Optional[float]:
@@ -318,10 +339,12 @@ def summarize_paths(paths: Iterable[Path]) -> TranscriptStats:
         if not path.exists():
             raise FileNotFoundError(f"No such transcript path: {path}")
         for resolved in _iter_transcript_files(path):
-            # Keyed by full path: two runs each holding
-            # ``provenance/iter1_transcript.json`` would otherwise collapse
-            # into one entry and a whole run would vanish unreported.
-            transcripts[str(resolved)] = _as_entry_list(
+            # Keyed by the resolved path. Full, so two runs each holding
+            # ``provenance/iter1_transcript.json`` do not collapse into one
+            # entry with a whole run vanishing unreported. Resolved, so one
+            # file named two ways (``./run/x.json`` and ``run/``) is one
+            # source rather than a doubled tally.
+            transcripts[str(resolved.resolve())] = _as_entry_list(
                 json.loads(resolved.read_text(encoding="utf-8")), str(resolved)
             )
     return summarize_transcripts(transcripts)
@@ -779,23 +802,38 @@ def _iter_transcript_files(path: Path) -> list[Path]:
 
 
 def _md(value: str) -> str:
-    r"""Escape agent-supplied text for a markdown table cell.
+    r"""Flatten agent-supplied text onto one line of markdown.
 
-    Tool names, paths and search queries come from agent output. An
-    unescaped pipe splits the cell and breaks the table for every reader
-    downstream.
+    Newlines only. Nothing is backslash-escaped, because most of these values
+    render inside a code span, where an escape is shown literally: escaping
+    would turn a Windows path into ``C:\\path`` and a piped name into ``a\|b``,
+    showing the reader a backslash the agent never produced.
 
-    Only pipes and newlines are escaped. Backslashes are left alone: most of
-    these values render inside a code span, where an escape is shown
-    literally, so doubling them would turn a Windows path into ``C:\\path``.
+    Use :func:`_md_cell` for text going into a table row, the one place a pipe
+    has to be escaped.
 
     Example:
         >>> _md("a|b")
-        'a\\|b'
+        'a|b'
         >>> _md(r"C:\runs\out.csv")
         'C:\\runs\\out.csv'
     """
-    return str(value).replace("|", "\\|").replace("\n", " ")
+    return str(value).replace("\n", " ")
+
+
+def _md_cell(value: str) -> str:
+    r"""Escape agent-supplied text for a markdown *table cell*.
+
+    An unescaped pipe splits the cell and breaks the table for every reader
+    downstream. GFM unescapes ``\|`` while splitting the row, before inline
+    parsing, so the backslash never reaches the rendered output — which is
+    what makes escaping right here and wrong everywhere else.
+
+    Example:
+        >>> _md_cell("a|b")
+        'a\\|b'
+    """
+    return _md(value).replace("|", "\\|")
 
 
 def _render_markdown(stats: TranscriptStats) -> str:
@@ -830,8 +868,8 @@ def _render_markdown(stats: TranscriptStats) -> str:
         lines.extend(["### Tools used", "", "| Tool | Calls | Failed | Server |", "|---|---:|---:|---|"])
         for tool in stats.tools:
             lines.append(
-                f"| `{_md(tool.name)}` | {tool.calls} | {tool.failures} "
-                f"| {_md(tool.server) if tool.server else '—'} |"
+                f"| `{_md_cell(tool.name)}` | {tool.calls} | {tool.failures} "
+                f"| {_md_cell(tool.server) if tool.server else '—'} |"
             )
         lines.append("")
 

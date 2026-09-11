@@ -175,15 +175,15 @@ class ArtifactSelectionPolicy:
 
     Args:
         max_bytes: Largest uncompressed size preserved for a single member.
-            0 or less keeps nothing at all, including a zero-byte member. Note
-            that ``__post_init__`` normalizes ``scaffolding_prefixes``, so a
-            policy built without ``__init__`` would stop matching scaffolding.
+            0 or less keeps nothing at all, including a zero-byte member.
         allowed_extensions: Extension allowlist, lowercase and dot-prefixed.
         archive_extensions: Extensions refused as nested archives.
         scaffolding_prefixes: Directory names treated as agent working
             state, matched as a whole path segment at any depth rather than
             only at the bundle root. Normalized to lowercase and a trailing
-            slash on construction.
+            slash by ``__post_init__``, which :meth:`decide` then relies on —
+            a policy reconstructed without ``__init__`` (unpickling,
+            ``object.__new__``) would stop matching scaffolding.
         runtime_suffixes: Filename suffixes treated as runtime logs.
         runtime_name_fragments: Substrings in a basename marking runtime output.
         include_globs: Patterns force-kept, bypassing every default deny.
@@ -360,7 +360,9 @@ class ArtifactSelectionPolicy:
         if suffix in self.effective_extensions:
             return ArtifactDecision(True, "allowed extension", rule="extension")
 
-        media_type = mimetypes.guess_type(name)[0]
+        # ``normalized`` like every other rule here; mimetypes lowercases the
+        # suffix itself, so this is consistency rather than a fix.
+        media_type = mimetypes.guess_type(normalized)[0]
         if media_type is not None and media_type.startswith("image/"):
             return ArtifactDecision(True, "image media type", rule="media_type")
 
@@ -368,7 +370,7 @@ class ArtifactSelectionPolicy:
             False,
             f"extension {suffix or '(none)'} not in allowlist "
             "(add it with artifact_extra_extensions)",
-            rule="extension",
+            rule="extension_not_allowed",
         )
 
 

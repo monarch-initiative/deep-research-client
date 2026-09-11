@@ -692,8 +692,7 @@ def test_markdown_table_survives_a_pipe_in_a_tool_name():
     assert table_rows
     for row in table_rows:
         assert len(re.split(r"(?<!\\)\|", row)) == 6, row
-    assert "a|b" not in markdown
-    assert "a\\|b" in markdown
+    assert "`we\\|ird`" in markdown
 
 
 def test_two_artifacts_sharing_a_filename_are_both_summarized():
@@ -718,3 +717,95 @@ def test_two_artifacts_sharing_a_filename_are_both_summarized():
         "iter1_transcript.json",
         "iter1_transcript.json#2",
     ]
+
+
+def test_a_pipe_outside_a_table_is_left_alone():
+    """Escaping is a table-row rule, not a markdown-wide one.
+
+    A GFM table row is unescaped while the row is split, before inline
+    parsing, so a backslash there never reaches the output. Outside a table
+    there is no such pass — and inside a code span, which is where most of
+    these values sit, the backslash renders literally. Escaping everywhere
+    would show the reader a character the agent never produced.
+    """
+    markdown = summarize_transcript(
+        [
+            tool_call("a", "Skill", {"skill": "we|ird"}),
+            {"type": "web_search", "id": "w", "query": "a|b"},
+            {
+                "type": "file_change",
+                "id": "f",
+                "path": "out|put.csv",
+                "kind": "create",
+                "success": True,
+            },
+        ]
+    ).render_markdown()
+
+    assert "`we|ird`" in markdown
+    assert "- a|b" in markdown
+    assert "`out|put.csv`" in markdown
+    assert "\\|" not in markdown.split("### Skills invoked")[1]
+
+
+def test_a_declared_tool_called_under_another_spelling_is_not_reported_unused():
+    """One backend declares mcp__github__search_issues, another calls
+    github.search_issues. Reporting it unused is a false statement in the one
+    section with no count to look wrong.
+    """
+    stats = summarize_transcripts(
+        {
+            "iter1_transcript.json": [
+                {
+                    "type": "session_init",
+                    "tools": ["mcp__github__search_issues", "Bash"],
+                }
+            ],
+            "iter2_transcript.json": [
+                {
+                    "type": "tool_call",
+                    "id": "a",
+                    "tool": "github.search_issues",
+                    "arguments": {},
+                    "namespace": "github",
+                }
+            ],
+        }
+    )
+
+    assert stats.distinct_tools == ["search_issues"]
+    assert stats.unused_available_tools == ["Bash"]
+
+
+def test_a_declared_tool_matching_the_call_exactly_is_still_not_unused():
+    """The straightforward case must keep working."""
+    stats = summarize_transcript(
+        [
+            {"type": "session_init", "tools": ["Bash", "Read"]},
+            tool_call("a", "Bash"),
+        ]
+    )
+
+    assert stats.unused_available_tools == ["Read"]
+
+
+def test_one_file_named_two_ways_is_a_single_source(tmp_path, run_transcript):
+    """`transcript-stats ./run/x.json run/` is one file, not two.
+
+    Keyed on the spelling, the same transcript was read twice and every tally
+    in it doubled.
+    """
+    provenance = tmp_path / "provenance"
+    provenance.mkdir()
+    path = provenance / "iter1_transcript.json"
+    path.write_text(json.dumps(run_transcript))
+
+    # Two spellings of one file: as given, and via a redundant parent hop.
+    detoured = provenance / ".." / "provenance" / "iter1_transcript.json"
+
+    once = summarize_paths([path])
+    twice = summarize_paths([path, detoured])
+
+    assert len(twice.sources) == 1
+    assert twice.entries == once.entries
+    assert twice.tool_calls == once.tool_calls

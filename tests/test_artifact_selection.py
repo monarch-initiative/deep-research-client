@@ -896,12 +896,17 @@ def test_a_bare_string_include_glob_through_the_constructor_is_split():
     assert policy.decide("results/table.json", 100).keep
 
 
-def test_the_constructor_refuses_a_glob_list_the_splitter_refuses():
-    """One rule, one home: __post_init__ raises where from_params would."""
-    with pytest.raises(TypeError, match="re-readable collection"):
-        ArtifactSelectionPolicy(
-            max_bytes=1024, exclude_globs=iter(["*.log"])
-        )
+@pytest.mark.parametrize("make_value,expected_message", REFUSED_NAME_SHAPES)
+def test_the_constructor_refuses_a_glob_list_the_splitter_refuses(
+    make_value, expected_message
+):
+    """One rule, one home: __post_init__ raises where from_params would.
+
+    Driven from the shared table so the constant's claim to cover every door
+    is true of three rather than of two.
+    """
+    with pytest.raises(TypeError, match=expected_message):
+        ArtifactSelectionPolicy(max_bytes=1024, exclude_globs=make_value())
 
 
 def test_a_bare_string_archive_extension_drops_every_extensionless_member():
@@ -1267,6 +1272,79 @@ def test_an_unordered_setting_is_stored_sorted_in_its_transformed_form(
     appending "/" does. Fixing it for the slash wrapper alone left the claim
     true of one of the two.
     """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
+
+    assert getattr(policy, field) == expected
+
+
+def test_a_bare_string_provider_deny_is_refused_rather_than_denying_nothing():
+    """The last name collection in the module without a bare-string guard.
+
+    The string iterates into single characters, none of which equals a member
+    path, so the deny silently never fired — and the member it was meant to
+    suppress is the report body already returned as the result, re-emitted as
+    a duplicate artifact.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+
+    with pytest.raises(TypeError, match="not a single string"):
+        policy.decide("analysis/report.md", 100, provider_deny="analysis/report.md")
+
+
+def test_a_provider_deny_path_containing_a_comma_is_not_split():
+    """Why this door does not go through split_name_list.
+
+    A deny entry is a path, and a path may contain a comma; splitting one
+    would produce two entries matching nothing, which is the very failure the
+    entry exists to prevent.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+
+    decision = policy.decide(
+        "analysis/a,b report.md", 100, provider_deny=["analysis/a,b report.md"]
+    )
+
+    assert decision.rule == "provider_deny"
+
+
+def test_a_one_shot_provider_deny_is_refused_because_it_is_read_per_member():
+    """Not a uniformity call here — the argument really does outlive the call.
+
+    The provider builds one deny collection and passes it to decide() for
+    every member of the bundle, so a generator fires for the first member and
+    is empty for every one after it.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+
+    with pytest.raises(TypeError, match="re-readable collection"):
+        policy.decide(
+            "analysis/report.md",
+            100,
+            provider_deny=(n for n in ["analysis/report.md"]),
+        )
+
+
+def test_the_ordinary_provider_deny_shapes_still_decide():
+    """The guard narrows what is accepted, not what it decides."""
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+    deny = frozenset({"analysis/report.md"})
+
+    assert policy.decide("analysis/report.md", 100, provider_deny=deny).rule == (
+        "provider_deny"
+    )
+    assert policy.decide("analysis/other.md", 100, provider_deny=deny).keep
+    assert policy.decide("analysis/other.md", 100).keep
+
+
+@pytest.mark.parametrize(
+    "field,setting,expected",
+    [
+        ("runtime_name_fragments", {"STDERR", "aaa"}, ("aaa", "stderr")),
+    ],
+)
+def test_the_fourth_lowercased_field_is_sorted_too(field, setting, expected):
+    """The sibling parametrize covered three of the four fields _lowercased
+    feeds; there is no behavioural gap, but it read as exhaustive."""
     policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
 
     assert getattr(policy, field) == expected

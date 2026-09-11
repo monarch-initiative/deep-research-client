@@ -194,8 +194,15 @@ def split_name_list(value: object) -> tuple[str, ...]:
 
     Args:
         value: A collection of names, a comma-separated string, or None.
-            An unordered collection is sorted, so two policies built from
-            equal sets compare equal.
+            An unordered collection is sorted, so this function's own return
+            value is deterministic rather than dependent on set iteration
+            order. It is *not* what makes two policies built from equal sets
+            compare equal — every policy field is re-sorted afterwards by
+            :func:`_normalized_names` or collapsed into a frozenset by
+            :func:`_normalize_extensions`, because a transformation applied
+            after this sort can reorder the result. Deleting the sort here
+            leaves that equality property intact and breaks only this
+            function's documented order.
 
     Returns:
         The names, stripped of surrounding whitespace, with empty and repeated
@@ -254,6 +261,44 @@ def split_name_list(value: object) -> tuple[str, ...]:
     )
 
 
+def checked_path_collection(value: object, parameter: str) -> tuple[str, ...]:
+    """Read a collection of paths, which must not be comma-split.
+
+    The sibling of :func:`split_name_list` for the one kind of name that can
+    legitimately contain a comma. A deny entry is a member path, so splitting
+    ``"a,b/report.md"`` would turn one valid entry into two that match
+    nothing — the failure the entry existed to prevent. A bare string is
+    therefore refused outright rather than read as a list.
+
+    Refusing the string first means the delegation below can never reach the
+    comma-splitting branch, so the rest of the rule — no mapping, no
+    ``bytes``, no one-shot iterator, stripped and distinct — is shared rather
+    than restated.
+
+    Args:
+        value: A collection of paths.
+        parameter: Name of the parameter being read, for the message.
+
+    Returns:
+        The distinct paths.
+
+    Raises:
+        TypeError: If given a single string, or anything
+            :func:`split_name_list` refuses.
+
+    Example:
+        >>> checked_path_collection(["a/b.md", "a/b.md"], "provider_deny")
+        ('a/b.md',)
+    """
+    if isinstance(value, str):
+        raise TypeError(
+            f"{parameter} must be a collection of paths, not a single string; "
+            f"iterating one yields characters, none of which equals a member "
+            f"path, so nothing would be denied. Pass [{value!r}]."
+        )
+    return split_name_list(value)
+
+
 def _normalized_names(
     value: object, transform: Callable[[str], str]
 ) -> tuple[str, ...]:
@@ -269,6 +314,13 @@ def _normalized_names(
     The sort condition lives here too, rather than being re-derived per
     wrapper: an unordered collection is sorted and a caller's own list order
     is left alone, which is one rule, not one per transform.
+
+    This is the sort that establishes the policy-level property — two
+    policies built from equal sets compare equal — because it runs on the
+    stored form. :func:`split_name_list` sorts as well, for its own public
+    contract, so a set-shaped setting is sorted twice at construction. That
+    is a handful of names once per policy, and collapsing the two would cost
+    the public function its documented order.
 
     Args:
         value: A collection of names or a comma-separated string.
@@ -623,6 +675,9 @@ class ArtifactSelectionPolicy:
             name: Bundle-relative member path.
             size: Uncompressed size in bytes.
             provider_deny: Member paths the provider has already consumed.
+                Read by :func:`checked_path_collection`, not
+                :func:`split_name_list`: a path may contain a comma, so this
+                one is never comma-split.
                 Each entry is normalized here before comparison, so one
                 differing only in case or a leading ``./`` still matches, and
                 passing an already-normalized set is idempotent rather than
@@ -635,6 +690,14 @@ class ArtifactSelectionPolicy:
 
         Returns:
             The decision, carrying the rule that produced it.
+
+        Raises:
+            TypeError: If ``provider_deny`` is a single string, or anything
+                :func:`split_name_list` refuses. The string case is the one
+                that used to pass silently, denying nothing; the one-shot
+                iterator is refused because this argument is reused across
+                every member of a bundle, so a generator would fire for the
+                first member and be empty for the rest.
         """
         normalized = normalize_member_path(name)
         basename = PurePosixPath(normalized).name
@@ -658,7 +721,8 @@ class ArtifactSelectionPolicy:
                 rule="size_cap",
             )
 
-        if any(normalize_member_path(denied) == normalized for denied in provider_deny):
+        denied_paths = checked_path_collection(provider_deny, "provider_deny")
+        if any(normalize_member_path(denied) == normalized for denied in denied_paths):
             return ArtifactDecision(
                 False, "already returned as the report body", rule="provider_deny"
             )

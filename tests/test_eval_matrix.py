@@ -31,6 +31,7 @@ from deep_research_client.evaluation.datamodel import (
     MetadataItem,
     ScoreDisposition,
 )
+from deep_research_client.evaluation.models import MCQScore
 from deep_research_client.evaluation.matrix import (
     MatrixConfig,
     RunLayout,
@@ -547,8 +548,6 @@ def test_scores_tsv_counts_the_attempts_that_left_precisions_denominator(tmp_pat
     written; this had a `logger.warning` on stderr while the table it moved
     went to stdout.
     """
-    from deep_research_client.evaluation.models import MCQScore
-
     layout = RunLayout(root=tmp_path / "run")
     layout.root.mkdir(parents=True, exist_ok=True)
     # `abstained=1` is what makes the third question's disposition explicit.
@@ -698,13 +697,18 @@ def test_silent_arm_is_extraction_failure_not_abstention(tmp_path, mock_client):
     assert score.coverage == pytest.approx(0.0)
 
 
-def _assert_row_agrees_with_score(header, row, score):
+def _assert_row_agrees_with_score(
+    header: list[str], row: list[str], score: MCQScore,
+) -> dict[str, str]:
     """Every emitted column against the model, derived from the header.
 
     Both loops were literal tuples of eight names while the writer emits
     twelve, under docstrings claiming EVERY column -- so a thirteenth added to
     both of the writer's hand-parallel sequences was asserted by neither. The
     names come from the file itself now, and each is compared by kind.
+
+    Returns the row as a name-to-text mapping, so a caller can assert on a
+    column this cannot check by kind -- `arm_id` is the one that has.
     """
     assert len(row) == len(header), (
         f"the row has {len(row)} fields for {len(header)} columns, so every "
@@ -741,8 +745,6 @@ def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
     list are two ordered sequences kept parallel by hand, so the alignment
     needs a fixture where every count differs.
     """
-    from deep_research_client.evaluation.models import MCQScore
-
     layout = RunLayout(root=tmp_path / "run")
     layout.root.mkdir(parents=True, exist_ok=True)
     # EIGHT DISTINCT counts: 12 + 1 + 2 + 3 + 4 == 22, and `correct` 6 is

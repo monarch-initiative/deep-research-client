@@ -506,7 +506,9 @@ def test_the_rates_are_derived_and_cannot_contradict_the_counts():
     eight questions.
 
     Derived, the disagreement is unconstructible rather than validated, and
-    `precision` is absent exactly when nothing was judged.
+    `precision` is absent exactly when nothing was judged. The COST of that
+    -- the dump the constructor then refuses -- is a different property, in
+    `test_the_recipe_rebuilds_a_score_its_own_dump_cannot`.
     """
     s = MCQScore(total=15, attempted=4, correct=3, abstained=1,
                  extraction_failures=2, provider_errors=3, skipped=5,
@@ -532,17 +534,55 @@ def test_the_rates_are_derived_and_cannot_contradict_the_counts():
     assert empty.model_dump()["precision"] is None
     assert empty.model_dump()["coverage"] == 0.0
 
-    # The price of the pair above, and the way back, both pinned here because
-    # the class comment states them and nothing else executed either half:
-    # `extra="forbid"` plus computed fields means the dump carries three keys
-    # the constructor refuses, so this model alone does not reload from its
-    # own dump. Left unasserted, the documented recipe rots silently the day
-    # the dump's shape or `model_fields`' access pattern moves.
+
+def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
+    """The price of deriving the rates, and the documented way back.
+
+    `extra="forbid"` plus three `computed_field`s means `model_dump()` emits
+    three keys the constructor then refuses, so this is the one score in the
+    module that does not reload from its own dump. `MCQScore`'s class comment
+    states that and hands library callers a recipe -- rebuild from the COUNTS
+    -- and nothing executed either half, so the workaround would have rotted
+    silently the day the dump's shape or `model_fields`' access pattern
+    moved.
+
+    Its own test rather than a fourth block in
+    `test_the_rates_are_derived_and_cannot_contradict_the_counts`: that name
+    and its summary are about a row not disagreeing with itself, and this is
+    the COST of arranging that, which is a different property. The line
+    pytest prints is a describer too.
+    """
+    # `answers` carried, because it is the one non-scalar field and so the
+    # one whose rebuild is not a no-op: the dump holds a list of dicts that
+    # has to re-validate into `MCQAnswer`. Over scalars alone a broken
+    # recipe and a working one look identical. `total` matches the answer
+    # count, which the validator now requires.
+    answer = MCQAnswer(task_id="t1", provider="p",
+                       disposition=ScoreDisposition.SCORED, correct=True)
+    s = MCQScore(total=1, attempted=1, correct=1, answers=[answer])
+
     dump = s.model_dump()
     with pytest.raises(ValidationError, match="accuracy"):
         MCQScore(**dump)
+
     counts = {k: v for k, v in dump.items() if k in MCQScore.model_fields}
+    # One `==`, not a field-by-field walk: pydantic's compares every field,
+    # `answers` included, so a separate assertion on it would restate this
+    # one rather than pin anything further.
     assert MCQScore(**counts) == s
+
+    # `MCQScore`'s class comment sends a reader here by name, and a citation
+    # naming something in another file is the claim that rots without either
+    # text being touched -- which is why the citation it used to make, to
+    # `correct`'s description, had to be removed. This one is pinned instead:
+    # rename this test and the reference fails rather than dangles.
+    from deep_research_client.evaluation import models
+
+    source = Path(models.__file__).read_text(encoding="utf-8")
+    assert test_the_recipe_rebuilds_a_score_its_own_dump_cannot.__name__ in source, (
+        "MCQScore's class comment no longer names this test, so the recipe "
+        "it documents points at nothing a reader can run"
+    )
 
 
 def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(caplog):

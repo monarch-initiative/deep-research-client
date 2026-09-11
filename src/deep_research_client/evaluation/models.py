@@ -873,6 +873,13 @@ class MCQScore(BaseModel):
     # COUNTS (`{k: v for k, v in dump.items() if k in MCQScore.model_fields}`)
     # rather than from a rate that was only ever a view of them. Silently
     # accepting a stale rate is the failure this pair exists to prevent.
+    #
+    # The recipe is EXECUTED rather than only written here, by the test named
+    # `test_the_recipe_rebuilds_a_score_its_own_dump_cannot`, which asserts
+    # both that the raw dump is refused and that the filtered one rebuilds an
+    # equal score. This copy is a second statement of it and can drift from
+    # the one that runs, so the test is the authority; it pins this reference
+    # in turn, and fails if the name stops appearing here.
     model_config = ConfigDict(extra="forbid")
 
     total: int = Field(..., ge=0, description="Questions in the eval set")
@@ -991,12 +998,15 @@ class MCQScore(BaseModel):
     def judged(self) -> int:
         """`attempted - unusable`: precision's denominator.
 
-        A plain `@property`, not a `computed_field`, and the reason is the
-        `extra="forbid"` trade above: every computed field is one more key
-        `model_dump()` emits and the constructor then refuses, so each one
-        widens the gap that already stops this model reloading from its own
-        dump. `judged` buys nothing there -- a consumer subtracts the two
-        counts, exactly as this does, from columns the dump already carries.
+        A plain `@property`, not a `computed_field`, because it buys a
+        consumer nothing: `judged` is two counts subtracted, and both keys
+        are already in the dump, so anyone who wants it writes the same
+        expression this line does. The `extra="forbid"` trade above is the
+        standing reason not to add keys that buy nothing -- not a cost that
+        grows with each one. That gap is binary and already open: a fourth
+        computed field would put one more name in the error, and the
+        documented way back filters on `model_fields`, so it excludes every
+        computed field however many there are.
 
         History: the definition was computed in the rate, again in the
         validator, and restated in four descriptions -- two independent
@@ -1060,8 +1070,18 @@ class MCQScore(BaseModel):
         every failure count at its default, a row whose remainder says a pair
         was skipped when none was, and a shape `score_mcq` cannot produce.
 
-        Enforced here rather than documented, so the sentence a reader acts on
-        holds by construction -- the way `correct`'s does.
+        Enforced here rather than documented, because a claim that holds for
+        one producer's output is not a claim about the type, and every count
+        is independently settable.
+
+        History: this closed "-- the way `correct`'s does", citing that
+        description as the model of a claim holding by construction. Fair
+        when written; `14c9662` then corrected `correct` on the grounds that
+        its construction claim was FALSE, and rewrote it to credit this
+        validator -- so the two pointed at each other, and the exemplar was
+        the one text whose own `History:` records it did not hold. A claim
+        stated as "the way X does" rots whenever X does, and no sweep over
+        this claim's subject visits X.
 
         >>> MCQScore(total=2, attempted=1, correct=1, abstained=1).skipped
         0

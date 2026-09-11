@@ -11,6 +11,7 @@ openscientist.io), polls for completion, and downloads the final report.
 import asyncio
 import base64
 from dataclasses import dataclass
+from functools import cached_property
 import io
 import logging
 import mimetypes
@@ -23,6 +24,14 @@ import zipfile
 import httpx
 
 from . import ResearchProvider
+from ..artifact_selection import (
+    DEFAULT_RUNTIME_NAME_FRAGMENTS,
+    DEFAULT_RUNTIME_SUFFIXES,
+    DEFAULT_SCAFFOLDING_DIRECTORIES,
+    ArtifactSelectionPolicy,
+    is_under_normalized_directory,
+    normalize_member_path,
+)
 from ..exceptions import ProviderNotConfiguredError
 from ..models import (
     ResearchArtifact,
@@ -43,47 +52,17 @@ IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "aw
 DEFAULT_BASE_URL = "https://www.openscientist.io"
 
 
-_ALLOWED_ARTIFACT_EXTENSIONS = {
-    ".csv",
-    ".gif",
-    ".htm",
-    ".html",
-    ".jpeg",
-    ".jpg",
-    ".json",
-    ".md",
-    ".pdf",
-    ".png",
-    ".svg",
-    ".tsv",
-    ".webp",
-}
-_ARCHIVE_ARTIFACT_EXTENSIONS = {
-    ".7z",
-    ".bz2",
-    ".gz",
-    ".tar",
-    ".tgz",
-    ".xz",
-    ".zip",
-}
-_NOISY_ARTIFACT_PREFIXES = (
-    ".cache/",
-    ".claude/",
-    ".git/",
-    ".ipynb_checkpoints/",
-    ".venv/",
-    "__macosx/",
-    "cache/",
-    "node_modules/",
-)
-_NOISY_ARTIFACT_SUFFIXES = (".log", ".tmp")
-_NOISY_ARTIFACT_NAME_FRAGMENTS = (
-    "stderr",
-    "stdout",
-    "transcript",
-)
-_REPORT_MARKDOWN_BASENAMES = {"final_report.md", "report.md"}
+# Artifact selection lives in ``artifact_selection`` so it is configurable and
+# reusable. Only the noise rules are still referenced here, by the report-picking
+# path below.
+# Ordered most canonical first; _REPORT_MARKDOWN_BASENAMES is derived from it
+# so the membership test and the preference order cannot drift apart.
+_REPORT_MARKDOWN_PREFERENCE = {"final_report.md": 0, "report.md": 1}
+_REPORT_MARKDOWN_BASENAMES = frozenset(_REPORT_MARKDOWN_PREFERENCE)
+# Markdown that is almost never the report body, ranked last on the fallback
+# tier. Deliberately not in the preference map, which decides what counts as a
+# report name in the first place.
+_DEPRIORITIZED_MARKDOWN_BASENAMES = frozenset({"readme.md", "contributing.md"})
 _ARTIFACT_SOURCE = "openscientist_artifacts_zip"
 
 
@@ -427,6 +406,7 @@ class OpenScientistProvider(ResearchProvider):
                     if n.lower().endswith(".md")
                     and not self._is_noisy_artifact_path(n)
                 ]
+            md_files.sort(key=self._report_candidate_rank)
 
             if not md_files:
                 raise ValueError(
@@ -448,13 +428,15 @@ class OpenScientistProvider(ResearchProvider):
         report_names: set[str] | None = None,
     ) -> list[ResearchArtifact]:
         """Extract useful sidecar artifacts from an OpenScientist ZIP archive."""
-        report_names = report_names or set()
+        deny = frozenset(
+            normalize_member_path(name) for name in (report_names or set())
+        )
         artifacts: list[ResearchArtifact] = []
         used_filenames: set[str] = set()
 
         with zipfile.ZipFile(io.BytesIO(bundle)) as zf:
             for info in sorted(zf.infolist(), key=lambda item: item.filename):
-                if not self._should_preserve_artifact(info, report_names):
+                if not self._should_preserve_artifact(info, deny):
                     continue
 
                 with zf.open(info) as file:
@@ -474,55 +456,144 @@ class OpenScientistProvider(ResearchProvider):
 
         return artifacts
 
+    @cached_property
+    def artifact_policy(self) -> ArtifactSelectionPolicy:
+        """The resolved artifact selection policy for this provider instance.
+
+        Cached because it is consulted once per bundle member and the params
+        are fixed for the life of the provider.
+        """
+        return ArtifactSelectionPolicy.from_params(self.params)
+
     def _should_preserve_artifact(
         self,
         info: zipfile.ZipInfo,
-        report_names: set[str],
+        report_names: frozenset[str],
     ) -> bool:
-        """Return whether a ZIP member should become a ResearchArtifact."""
+        """Return whether a ZIP member should become a ResearchArtifact.
+
+        Delegates to :class:`ArtifactSelectionPolicy`, adding the two
+        provider-specific denials: directory entries, and the markdown report
+        already returned as the result body.
+
+        Args:
+            info: The ZIP member being considered.
+            report_names: Normalized paths already consumed as the report
+                body, computed once per bundle by the caller.
+
+        Returns:
+            Whether to preserve the member.
+        """
         if info.is_dir():
             return False
 
         name = info.filename
-        if name in report_names:
-            return False
+        deny = report_names
+        if self._is_root_report_markdown_name(name):
+            deny = deny | {normalize_member_path(name)}
 
-        if self._is_report_markdown_name(name) or self._is_noisy_artifact_path(name):
-            return False
+        decision = self.artifact_policy.decide(name, info.file_size, provider_deny=deny)
+        if not decision.keep:
+            # A size-cap skip is the one that is usually unintentional — a
+            # curator who lost a 6 MB figure needs to see why without turning
+            # on debug logging.
+            log = logger.info if decision.rule == "size_cap" else logger.debug
+            log("Skipping OpenScientist artifact %s: %s", name, decision.reason)
+        return decision.keep
 
-        if info.file_size > self.params.artifact_max_bytes:
-            logger.info(
-                "Skipping OpenScientist artifact %s: %s bytes exceeds %s byte limit",
-                name,
-                info.file_size,
-                self.params.artifact_max_bytes,
-            )
-            return False
+    @staticmethod
+    def _report_candidate_rank(name: str) -> tuple[int, int, int, str]:
+        """Order report-body candidates, shallowest and most canonical first.
 
-        path = PurePosixPath(name.lower())
-        suffix = path.suffix
-        if suffix in _ARCHIVE_ARTIFACT_EXTENSIONS:
-            return False
+        The picker used to take the first match in ``namelist()`` order, which
+        is whatever order the server wrote the files. Two consequences, both
+        reproduced before this existed: a bundle holding
+        ``analysis/subtopic/report.md`` before ``final_report.md`` returned the
+        subtopic document as the entire research result, and a bundle holding
+        both root ``report.md`` and root ``final_report.md`` resolved by write
+        order alone.
 
-        media_type = mimetypes.guess_type(name)[0]
-        return suffix in _ALLOWED_ARTIFACT_EXTENSIONS or (
-            media_type is not None and media_type.startswith("image/")
+        A de-prioritized basename sorts last ahead of everything else,
+        because a ``README.md`` sits at the root of almost every bundle and
+        would otherwise win the last-resort tier on depth alone. Then depth,
+        because a nested ``report.md`` is a different document — the same
+        judgement ``_is_root_report_markdown_name`` already encodes on the
+        artifact path. Then canonical name, so ``final_report.md`` beats
+        ``report.md`` at equal depth. Then the path, so the result is
+        reproducible for any bundle.
+
+        Args:
+            name: ZIP member path.
+
+        Returns:
+            A sort key; lower sorts earlier.
+        """
+        normalized = normalize_member_path(name)
+        depth = normalized.count("/")
+        basename = PurePosixPath(normalized).name
+        # Ahead of depth, so a root README loses to a nested real document.
+        # Kept out of the preference map, which decides what counts as a
+        # report name in the first place.
+        deprioritized = int(basename in _DEPRIORITIZED_MARKDOWN_BASENAMES)
+        canonical = _REPORT_MARKDOWN_PREFERENCE.get(
+            basename, len(_REPORT_MARKDOWN_PREFERENCE)
         )
+        return (deprioritized, depth, canonical, normalized)
 
     def _is_report_markdown_name(self, name: str) -> bool:
-        """Return whether a ZIP member is the markdown report already captured."""
+        """Return whether a ZIP member is report-shaped markdown, at any depth.
+
+        Used when picking the report body out of the bundle, which should
+        prefer such a file wherever it sits.
+        """
         path = PurePosixPath(name.lower())
         return path.name in _REPORT_MARKDOWN_BASENAMES
 
+    def _is_root_report_markdown_name(self, name: str) -> bool:
+        """Return whether a ZIP member is the report body at the bundle root.
+
+        The main download path takes the report from the API rather than the
+        ZIP, so it passes no ``report_names`` and the bundle's own
+        ``final_report.md`` would otherwise be emitted as an artifact
+        duplicating the result body. That dedup applies only at the root: a
+        nested ``analysis/subtopic/report.md`` is a different document, and
+        dropping it as "already returned as the report body" would be both
+        untrue and unreachable by ``artifact_include_globs``, which sits below
+        the provider deny in precedence.
+        """
+        normalized = normalize_member_path(name)
+        return "/" not in normalized and normalized in _REPORT_MARKDOWN_BASENAMES
+
     def _is_noisy_artifact_path(self, name: str) -> bool:
-        """Return whether a ZIP member is runtime scaffolding or verbose logs."""
-        normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
+        """Return whether a ZIP member is runtime scaffolding or verbose logs.
+
+        Used when picking the markdown report out of the bundle, so it always
+        applies the default noise rules: a caller who widens artifact selection
+        still does not want a transcript chosen as the report body.
+
+        Scaffolding is matched by the same shared segment rule the selection
+        policy uses. It has to be: ``_is_report_markdown_name`` matches at any
+        depth, so a root-anchored check here left
+        ``workspace/.claude/skills/writer/report.md`` eligible to be returned
+        as the entire report body ahead of the bundle's real
+        ``final_report.md``.
+
+        Args:
+            name: ZIP member path.
+
+        Returns:
+            Whether the member is scaffolding or a runtime record.
+        """
+        normalized = normalize_member_path(name)
         basename = PurePosixPath(normalized).name
-        if normalized.startswith(_NOISY_ARTIFACT_PREFIXES):
+        # The normalized-input matcher against a pre-normalized tuple: this
+        # runs once per markdown member per fallback tier, so re-deriving
+        # either side here is the per-member work `decide` just stopped doing.
+        if is_under_normalized_directory(normalized, DEFAULT_SCAFFOLDING_DIRECTORIES):
             return True
-        if basename.endswith(_NOISY_ARTIFACT_SUFFIXES):
+        if basename.endswith(DEFAULT_RUNTIME_SUFFIXES):
             return True
-        return any(fragment in basename for fragment in _NOISY_ARTIFACT_NAME_FRAGMENTS)
+        return any(fragment in basename for fragment in DEFAULT_RUNTIME_NAME_FRAGMENTS)
 
     def _artifact_filename(self, raw_name: str, used_filenames: set[str]) -> str:
         """Return a stable, unique filename for a ZIP artifact member."""

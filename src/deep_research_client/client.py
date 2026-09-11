@@ -396,8 +396,16 @@ class DeepResearchClient:
         # keep stale cache entries from shadowing current live results.
         if provider_name == "asta":
             effective_params["_cache_version"] = "snippet-v5"
-        elif provider_name in {"falcon", "openscientist"}:
+        elif provider_name == "falcon":
             effective_params["_cache_version"] = "artifacts-v1"
+        # OpenScientist result content changed: the report body is now picked
+        # deterministically and scaffolding-aware (a nested
+        # ``.claude/skills/**/report.md`` could previously be returned as the
+        # whole report), and the default artifact set moved with it. Split from
+        # falcon, whose behaviour is unchanged, so the invalidation is
+        # proportional.
+        elif provider_name == "openscientist":
+            effective_params["_cache_version"] = "artifacts-v2"
         # The Claude Code prompt scaffolding (inline-report directive) and run
         # provenance capture changed how results are produced; bump to keep
         # stale cache entries from shadowing current live results.

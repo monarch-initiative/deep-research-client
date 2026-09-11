@@ -176,14 +176,36 @@ def test_falcon_cache_params_include_artifact_version_tag():
 
 
 def test_openscientist_cache_params_include_artifact_version_tag():
-    """OpenScientist cache keys should invalidate stale no-artifact entries."""
+    """OpenScientist cache keys should invalidate entries from older results.
+
+    Bumped past ``artifacts-v1``: the report body is now picked
+    deterministically and scaffolding-aware, and the default artifact set
+    moved with it, so an entry written before that still serves the old body —
+    possibly skill boilerplate from a nested ``.claude/**/report.md``.
+    """
     cache_config = CacheConfig(enabled=False)
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
     cache_params = client._get_cache_provider_params("openscientist")
 
-    assert cache_params == {"_cache_version": "artifacts-v1"}
+    assert cache_params == {"_cache_version": "artifacts-v2"}
+
+
+def test_falcon_and_openscientist_no_longer_share_a_cache_version():
+    """Falcon behaviour is untouched here, so its entries must survive.
+
+    They shared one string, so bumping OpenScientist naively would have
+    discarded every cached Falcon run too.
+    """
+    cache_config = CacheConfig(enabled=False)
+    with patch.dict(os.environ, {}, clear=True):
+        client = DeepResearchClient(cache_config=cache_config)
+
+    falcon = client._get_cache_provider_params("falcon")
+    openscientist = client._get_cache_provider_params("openscientist")
+
+    assert falcon["_cache_version"] != openscientist["_cache_version"]
 
 
 def test_claude_code_cache_params_include_version_tag():

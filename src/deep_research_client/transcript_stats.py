@@ -268,6 +268,11 @@ class TranscriptStats(BaseModel):
                 that did not. Both report it unused, so nothing observable
                 changes — but the split is load-bearing for a second purpose
                 now, which is worth knowing before reusing it for a third.
+                It is also last-write-wins: two servers exposing one short
+                tool name collapse onto a single entry, so the loser can be
+                absent here and its dotted prefix then reads as part of a
+                name. That needs the collision *and* a spelling mismatch, an
+                exact qualified spelling being caught before this.
 
         Returns:
             The ``(server, short name)`` pair, with ``None`` for a tool that
@@ -697,11 +702,18 @@ class _Accumulator:
 
     def _on_shell_execution(self, entry: dict[str, Any]) -> None:
         self.shell_commands[program_of(str(entry.get("command", "")))] += 1
+        # _is_number, not isinstance(int): bool is an int subclass, so a JSON
+        # ``true`` would count as a failed command, and a float 1.0 as none —
+        # the same defect this helper was introduced for on duration_ms.
         exit_code = entry.get("exit_code")
-        if isinstance(exit_code, int) and exit_code != 0:
+        if _is_number(exit_code) and exit_code != 0:
             self.failed_shell_commands += 1
 
     def _on_file_change(self, entry: dict[str, Any]) -> None:
+        # Dropped rather than given a placeholder, unlike a query-less
+        # web_search: nothing reports a files_changed total, so a pathless
+        # entry contradicts no number — and a placeholder path would render as
+        # a file that does not exist.
         kind = str(entry.get("kind", "unknown"))
         path = entry.get("path")
         if path:
@@ -818,7 +830,11 @@ def _as_names(value: Any) -> tuple[str, ...]:
         value: The field as decoded, of any shape.
 
     Returns:
-        The names, or empty for anything that is not a list of them.
+        The names, or empty for anything that is not a list of them — a
+        mapping included, so a backend declaring
+        ``{"tools": {"Bash": {...schema...}}}`` contributes nothing rather
+        than a key per tool. Silent by the same argument: an empty section
+        beats a wrong one.
 
     Example:
         >>> _as_names(["Bash", "Read"])
@@ -826,6 +842,8 @@ def _as_names(value: Any) -> tuple[str, ...]:
         >>> _as_names("Bash")
         ()
         >>> _as_names(None)
+        ()
+        >>> _as_names({"Bash": {}})
         ()
     """
     if isinstance(value, str) or not isinstance(value, (list, tuple, set)):

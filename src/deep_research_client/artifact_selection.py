@@ -112,6 +112,42 @@ DEFAULT_RUNTIME_NAME_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+def split_name_list(value: object) -> tuple[str, ...]:
+    """Read a list-valued artifact setting, accepting a comma-separated string.
+
+    A bare string is the trap this exists for. ``tuple("*.json")`` is
+    ``('*', '.', 'j', 's', 'o', 'n')``, and since ``include_globs`` sits above
+    every default deny and ``fnmatch(anything, "*")`` is true, that single
+    stray character preserves the entire bundle — archives and transcripts
+    included. Splitting instead means a string says what a CLI user means by
+    it, and makes the duck-typed door agree with the pydantic one, which
+    applies the same rule.
+
+    Args:
+        value: A collection of names, a comma-separated string, or None.
+
+    Returns:
+        The names, empty for None or anything that is not iterable as names.
+
+    Example:
+        >>> split_name_list("*.json")
+        ('*.json',)
+        >>> split_name_list("a/*, b/*")
+        ('a/*', 'b/*')
+        >>> split_name_list(["a/*", "b/*"])
+        ('a/*', 'b/*')
+        >>> split_name_list(None)
+        ()
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return tuple(str(item) for item in value)
+    return ()
+
+
 def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
     """Normalize directory names for segment matching.
 
@@ -294,12 +330,18 @@ class ArtifactSelectionPolicy:
         max_bytes = getattr(params, "artifact_max_bytes", None)
         if max_bytes is None:
             max_bytes = DEFAULT_MAX_BYTES
-        extra = _normalize_extensions(getattr(params, "artifact_extra_extensions", ()))
+        extra = _normalize_extensions(
+            split_name_list(getattr(params, "artifact_extra_extensions", ()))
+        )
         return cls(
             max_bytes=max_bytes,
             allowed_extensions=DEFAULT_ALLOWED_EXTENSIONS | extra,
-            include_globs=tuple(getattr(params, "artifact_include_globs", ()) or ()),
-            exclude_globs=tuple(getattr(params, "artifact_exclude_globs", ()) or ()),
+            include_globs=split_name_list(
+                getattr(params, "artifact_include_globs", ())
+            ),
+            exclude_globs=split_name_list(
+                getattr(params, "artifact_exclude_globs", ())
+            ),
             keep_runtime=bool(getattr(params, "artifact_keep_runtime", False)),
         )
 

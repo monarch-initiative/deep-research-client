@@ -1628,9 +1628,10 @@ def transcript_stats_command(
 
     try:
         stats = summarize_paths(paths)
-    except (FileNotFoundError, ValueError) as e:
-        # json.JSONDecodeError subclasses ValueError, so malformed JSON lands
-        # here too.
+    except (OSError, ValueError) as e:
+        # OSError covers an unreadable file as well as a missing one, matching
+        # the --output path below; FileNotFoundError is one of its subclasses,
+        # as json.JSONDecodeError is of ValueError.
         logger.error(f"Could not read transcripts: {e}")
         raise typer.Exit(1)
 

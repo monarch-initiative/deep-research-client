@@ -3,7 +3,7 @@
 from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
-from .artifact_selection import DEFAULT_MAX_BYTES
+from .artifact_selection import DEFAULT_MAX_BYTES, split_name_list
 
 
 class BaseProviderParams(BaseModel):
@@ -338,6 +338,10 @@ class ArtifactSelectionParams(BaseProviderParams):
         CLI ``--param`` pairs arrive as strings, so without this the artifact
         knobs would be unreachable from the command line.
 
+        Delegates to :func:`~.artifact_selection.split_name_list`, which
+        ``ArtifactSelectionPolicy.from_params`` also uses, so the two doors
+        into the same settings cannot come to read a string differently.
+
         Args:
             value: Raw field value, possibly a comma-separated string.
 
@@ -346,7 +350,7 @@ class ArtifactSelectionParams(BaseProviderParams):
             otherwise, so pydantic still reports genuinely bad input.
         """
         if isinstance(value, str):
-            return [item.strip() for item in value.split(",") if item.strip()]
+            return list(split_name_list(value))
         return value
 
 

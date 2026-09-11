@@ -699,3 +699,67 @@ def test_an_undocumented_rule_slug_is_rejected_at_construction():
 def test_a_decision_may_still_carry_no_slug():
     """The empty default stays legal for a decision built outside decide."""
     assert ArtifactDecision(keep=True, reason="hand-built").rule == ""
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("*.json", ("*.json",)),
+        ("a/*, b/*", ("a/*", "b/*")),
+        (["a/*", "b/*"], ("a/*", "b/*")),
+        (None, ()),
+        ((), ()),
+    ],
+)
+def test_a_duck_typed_glob_setting_reads_the_same_as_the_pydantic_one(raw, expected):
+    """A bare string is the trap: tuple("*.json") starts with '*'.
+
+    include_globs sits above every default deny and '*' matches every path,
+    so one stray character preserved the entire bundle — archives and
+    transcripts included.
+    """
+
+    class LooseParams:
+        artifact_include_globs = raw
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.include_globs == expected
+
+
+def test_a_bare_string_glob_no_longer_preserves_the_whole_bundle():
+    """The concrete failure, stated as the outcome rather than the parse."""
+
+    class LooseParams:
+        artifact_include_globs = "*.json"
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert not policy.decide("raw/archive.zip", 100).keep
+    assert policy.decide("results/table.json", 100).keep
+
+
+def test_a_bare_string_extra_extension_is_not_split_into_characters():
+    """"csv" became {".c", ".s", ".v"} before the shared splitter."""
+
+    class LooseParams:
+        artifact_extra_extensions = "csv,yaml"
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.decide("config/run.yaml", 100).keep
+    assert not policy.decide("notes.c", 100).keep
+
+
+def test_both_doors_into_the_settings_read_a_string_the_same_way():
+    """The pydantic validator and from_params share one rule."""
+    typed = ArtifactSelectionPolicy.from_params(
+        OpenScientistParams(artifact_include_globs="a/*, b/*")
+    )
+
+    class LooseParams:
+        artifact_include_globs = "a/*, b/*"
+
+    assert typed.include_globs == ArtifactSelectionPolicy.from_params(
+        LooseParams()
+    ).include_globs

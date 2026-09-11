@@ -909,3 +909,37 @@ def test_a_malformed_tools_field_does_not_become_phantom_tools(declared, expecte
     stats = summarize_transcript([{"type": "session_init", "tools": declared}])
 
     assert stats.available_tools == expected
+
+
+@pytest.mark.parametrize(
+    "exit_code,expected_failures",
+    [
+        (0, 0),
+        (1, 1),
+        (1.0, 1),
+        (True, 0),
+        (False, 0),
+        (None, 0),
+        ("1", 0),
+    ],
+)
+def test_a_non_integer_exit_code_is_not_a_failed_command(exit_code, expected_failures):
+    """bool is an int subclass, so `true` counted as a failure and 1.0 as none.
+
+    The same defect `_is_number` was introduced for on duration_ms, left in
+    the handler next door.
+    """
+    stats = summarize_transcript(
+        [
+            {
+                "type": "shell_execution",
+                "id": "s",
+                "command": "pytest",
+                "output": "",
+                "exit_code": exit_code,
+                "raw": {},
+            }
+        ]
+    )
+
+    assert stats.failed_shell_commands == expected_failures

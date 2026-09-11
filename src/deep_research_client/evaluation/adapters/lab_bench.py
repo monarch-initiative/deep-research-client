@@ -319,7 +319,7 @@ def fetch_subset(
         if from_cache:
             logger.info("Using cached LAB-Bench %s at revision %s", subset, resolved[:8])
             try:
-                rows = json.loads(path.read_text())
+                rows = json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as exc:
                 # Named here rather than in one command: this read is reached by
                 # `eval fetch` and, through `LabBenchAdapter.load`, by `eval

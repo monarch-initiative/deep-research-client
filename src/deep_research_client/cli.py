@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
-    from .evaluation.datamodel import EvalSet
+    from .evaluation.datamodel import ArmSpec, EvalSet
     from .validation import (
         ReferenceValidationReport,
         ReferenceValidator,
@@ -2834,7 +2834,10 @@ def eval_load(
     tasks = eval_set.tasks or []
 
     if output:
-        output.write_text(json_mod.dumps(eval_set.model_dump(mode="json"), indent=2))
+        output.write_text(
+            json_mod.dumps(eval_set.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
         typer.echo(f"Wrote {len(tasks)} tasks to {output}")
         return
 
@@ -2970,31 +2973,6 @@ def eval_run(
         typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
-    # Said before the spending, because afterwards the answer is not even
-    # stable. Two arms with the same provider, model and params share a
-    # response-cache key, so whether the second replays the first depends on
-    # scheduling: at -j 1 it does, and at the default concurrency both usually
-    # reach the provider before either writes the cache. The number of
-    # independent samples behind a reported spread therefore varies between
-    # identical invocations -- which is the very thing a duplicate-arm run
-    # exists to measure. Duplicate arm *ids* are refused above; this is the
-    # duplicate that matters to the number.
-    def _config_of(a) -> tuple:
-        return (a.provider, a.model,
-                tuple(sorted((p.key, p.value) for p in (a.params or []))))
-
-    if not no_cache:
-        for config_key, n in Counter(_config_of(a) for a in arms).items():
-            if n > 1:
-                same = [a.id for a in arms if _config_of(a) == config_key]
-                typer.echo(
-                    f"\nNOTE: arms {', '.join(same)} are identically configured. "
-                    f"They share a response-cache key, so depending on scheduling "
-                    f"some may replay another instead of calling the provider - "
-                    f"one sample reported as several. Pass --no-cache to measure "
-                    f"each of them."
-                )
-
     eval_set = _load_eval_set_or_exit(adapter, source)
     tasks = eval_set.tasks or []
     if task_id:
@@ -3010,6 +2988,35 @@ def eval_run(
         typer.echo("No tasks selected.")
         raise typer.Exit(1)
     eval_set.tasks = tasks
+
+    # Said after the eval set loads, so it cannot advise on a run that then
+    # refuses to start, and still well before any provider call. It has to
+    # be up front at all because afterwards the answer is not even
+    # stable. Two arms with the same provider, model and params share a
+    # response-cache key, so whether the second replays the first depends on
+    # scheduling: at -j 1 it does, and at the default concurrency both usually
+    # reach the provider before either writes the cache. The number of
+    # independent samples behind a reported spread therefore varies between
+    # identical invocations -- which is the very thing a duplicate-arm run
+    # exists to measure. Duplicate arm *ids* are refused above; this is the
+    # duplicate that matters to the number.
+    def _config_of(a: "ArmSpec") -> tuple:
+        return (a.provider, a.model,
+                tuple(sorted((p.key, p.value) for p in (a.params or []))))
+
+    if not no_cache:
+        for config_key, n in Counter(_config_of(a) for a in arms).items():
+            if n > 1:
+                same = [a.id for a in arms if _config_of(a) == config_key]
+                typer.echo(
+                    f"\nNOTE: arms {', '.join(same)} are identically configured. "
+                    f"They share a response-cache key, so depending on scheduling "
+                    f"some may replay another instead of calling the provider - "
+                    f"one sample reported as several. Pass --no-cache to measure "
+                    f"each of them - or --no-resume --no-cache if this output "
+                    f"directory already holds results."
+                )
+
 
     typer.echo(f"\nEval set: {eval_set.name}")
     typer.echo(f"  Tasks: {len(tasks)}  x  Arms: {len(arms)}  =  {len(tasks) * len(arms)} cells")
@@ -3086,16 +3093,22 @@ def eval_run(
     # `cached` flag, so counting it as a cache replay describes neither -- and
     # --no-cache alone cannot re-run it, since resume skips it before the client
     # is consulted.
+    # `failed` is excluded from `measured` rather than falling into it: a FAILED
+    # cell has cached=None, and the sentence below claims the measured cells
+    # describe the provider as it is now. A cell that raised describes nothing.
     resumed = [c for c in cells if c.resumed]
     replayed = [c for c in cells if not c.resumed and c.cached]
-    measured = [c for c in cells if not c.resumed and not c.cached]
+    measured = [c for c in cells
+                if not c.resumed and not c.cached and c.status == CellStatus.COMPLETED]
 
     if resumed or replayed:
-        typer.echo(
+        counts = (
             f"\nOf {len(cells)} cells: {len(measured)} measured in this run, "
             f"{len(replayed)} replayed from the response cache, "
-            f"{len(resumed)} resumed from a previous run in this directory."
+            f"{len(resumed)} resumed from a previous run in this directory"
         )
+        remainder = len(cells) - len(measured) - len(replayed) - len(resumed)
+        typer.echo(f"{counts}, {remainder} failed." if remainder else f"{counts}.")
         remedy = (
             "--no-resume --no-cache" if resumed else "--no-cache"
         )
@@ -3237,7 +3250,7 @@ def eval_score(
         raise typer.Exit(1)
 
     task = tasks[0]
-    markdown_text = report.read_text()
+    markdown_text = report.read_text(encoding="utf-8")
 
     api_key = os.environ.get(llm_api_key_env, "")
     if not api_key and not (no_fact and no_recall and no_race):
@@ -3294,7 +3307,10 @@ def eval_score(
         typer.echo(f"  Errors: {result.error}")
 
     if output:
-        output.write_text(json_mod.dumps(result.model_dump(mode="json"), indent=2))
+        output.write_text(
+            json_mod.dumps(result.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
         typer.echo(f"\nResults written to {output}")
 
 

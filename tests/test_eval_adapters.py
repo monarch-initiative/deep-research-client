@@ -1174,13 +1174,52 @@ def test_a_truncated_cache_file_names_itself_and_the_remedy(tmp_path, monkeypatc
     assert "refresh" in message
 
 
-def test_the_resolve_timeout_is_shorter_than_the_download_timeout():
-    """The resolve call gates the offline fallback, so its timeout is a wait.
+def test_the_resolve_and_download_calls_use_their_own_timeouts(monkeypatch, tmp_path):
+    """The call sites are the property; the constants alone are not.
 
-    Collapsing both onto one constant took the larger, which meant a host that
-    accepts the connection and then stalls held `eval load` for two minutes
-    before falling back to a cache that was already complete on disk.
+    Comparing `_RESOLVE_TIMEOUT < _DOWNLOAD_TIMEOUT` stayed green with all three
+    call sites reverted to the download timeout -- the constants would still be
+    correctly ordered and nothing would use the smaller one. What the fix
+    changed is the timeout each client is constructed with, so that is what is
+    recorded here.
+
+    It matters because the resolve call gates the offline fallback: its timeout
+    is how long a user waits before a complete local cache is used instead.
+
+    Whether the calls themselves succeed is irrelevant and deliberately not
+    asserted -- this must record the same thing on a machine with network and
+    one without.
     """
     from deep_research_client.evaluation.adapters import lab_bench
 
-    assert lab_bench._RESOLVE_TIMEOUT < lab_bench._DOWNLOAD_TIMEOUT
+    seen: list[float | None] = []
+    real_client = lab_bench.httpx.Client
+
+    def recording_client(*args, **kwargs):
+        seen.append(kwargs.get("timeout"))
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(lab_bench.httpx, "Client", recording_client)
+
+    try:
+        lab_bench.resolve_revision()
+    except Exception:  # noqa: BLE001 - the network outcome is not the property
+        pass
+    assert seen, "resolve_revision built no client"
+    assert seen[0] == lab_bench._RESOLVE_TIMEOUT, (
+        f"the revision lookup was built with timeout {seen[0]!r}, "
+        f"expected _RESOLVE_TIMEOUT ({lab_bench._RESOLVE_TIMEOUT})"
+    )
+
+    seen.clear()
+    monkeypatch.setattr(lab_bench, "_resolve_or_fall_back", lambda *a, **k: "deadbeef")
+    monkeypatch.setattr(lab_bench, "_fetch_rows", lambda subset, client: [])
+    try:
+        lab_bench.fetch_subset("LitQA2", cache_dir=str(tmp_path))
+    except Exception:  # noqa: BLE001 - the row-count guard fires; not the property
+        pass
+    assert seen, "fetch_subset built no client"
+    assert seen[0] == lab_bench._DOWNLOAD_TIMEOUT, (
+        f"the row download was built with timeout {seen[0]!r}, "
+        f"expected _DOWNLOAD_TIMEOUT ({lab_bench._DOWNLOAD_TIMEOUT})"
+    )

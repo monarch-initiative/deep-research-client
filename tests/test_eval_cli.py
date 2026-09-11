@@ -436,8 +436,15 @@ def test_eval_run_says_when_cells_were_replayed_rather_than_measured(tmp_path):
     first, second = _run_twice(tmp_path)
     assert "replayed from the response cache" not in first
     # Distinct output dirs, so the second run is a cache replay, not a resume.
-    assert "1 replayed from the response cache" in second
-    assert "0 resumed from a previous run" in second
+    # Asserted on the TSV rather than on the phrasing of a zero, which a
+    # reworded message that only listed non-zero categories would fail while
+    # being perfectly correct.
+    assert "replayed from the response cache" in second
+    header, row = (tmp_path / "run2" / "results.tsv").read_text(
+        encoding="utf-8").splitlines()[:2]
+    columns = header.split("\t")
+    assert row.split("\t")[columns.index("cached")] == "true"
+    assert row.split("\t")[columns.index("resumed")] == "false"
 
 
 def test_eval_run_no_cache_forces_a_live_call(tmp_path):
@@ -564,3 +571,34 @@ def test_the_identical_arms_note_stays_quiet_when_it_does_not_apply(tmp_path, ar
         "--output-dir", str(tmp_path / "run")])
     assert result.exit_code == 0
     assert "identically configured" not in result.stdout
+
+
+def test_a_failed_cell_is_not_counted_as_measured(tmp_path):
+    """"Only the measured cells describe the provider as it is now."
+
+    A FAILED cell has cached=None, so it fell into `measured` -- and a cell
+    that raised describes nothing. On a resumed run whose remaining cells all
+    failed, the operator read "N measured in this run" three lines under
+    "N failed".
+    """
+    path = _write(tmp_path / "rep.yaml",
+                  "tasks:\n  - id: r1\n    prompt: Failure accounting probe?\n")
+    arms = _write(tmp_path / "arms.yaml",
+                  "arms:\n"
+                  "  - id: broken\n    provider: mock\n"
+                  "    params:\n      error_type: transient\n"
+                  "  - id: ok\n    provider: mock\n")
+    out = tmp_path / "run"
+
+    runner.invoke(app, ["eval", "run", str(path), "--arms", str(arms),
+                        "--output-dir", str(out)])
+    # Re-run so the summary prints at all: it is shown when anything resumed.
+    second = runner.invoke(app, ["eval", "run", str(path), "--arms", str(arms),
+                                 "--output-dir", str(out)])
+    assert second.exit_code == 0
+
+    summary = next(ln for ln in second.stdout.splitlines() if "measured in this run" in ln)
+    assert "0 measured in this run" in summary, (
+        f"a failed cell was counted as measured: {summary}"
+    )
+    assert "1 failed" in summary

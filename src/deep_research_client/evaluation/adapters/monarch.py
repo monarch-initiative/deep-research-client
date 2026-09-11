@@ -253,7 +253,7 @@ def load_dismech_entity(yaml_path: Path) -> GroundTruthEntity:
         GroundTruthEntity with claims extracted from pathophysiology,
         phenotypes, treatments, and inheritance sections.
     """
-    with open(yaml_path) as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     # Extract disease identifier
@@ -393,7 +393,7 @@ def load_gene_review_entity(yaml_path: Path) -> GroundTruthEntity:
     Returns:
         GroundTruthEntity with claims from annotations and core functions.
     """
-    with open(yaml_path) as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     gene_symbol = data.get("gene_symbol", yaml_path.parent.name)
@@ -454,7 +454,7 @@ def load_rubric_data(stem: str) -> dict[str, Any]:
     path = RUBRIC_DIR / f"{stem}.yaml"
     if not path.exists():
         raise FileNotFoundError(f"Rubric not found: {path}")
-    return yaml.safe_load(path.read_text()) or {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def build_rubric(

@@ -201,7 +201,7 @@ class YamlAdapter(EvalSetAdapter):
             raise FileNotFoundError(f"Eval set file not found: {path}")
 
         separator = str(options.get("list_separator", "|"))
-        data = yaml.safe_load(path.read_text()) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
         if isinstance(data, list):
             data = {"tasks": data}

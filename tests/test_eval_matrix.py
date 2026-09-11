@@ -6,8 +6,9 @@ exercised end to end without reaching a network.
 """
 
 import asyncio
-import re
 import json
+import os
+import re
 from pathlib import Path
 
 import pytest
@@ -833,3 +834,139 @@ def test_the_cache_column_is_written_to_results_tsv(tmp_path, monkeypatch):
     header, row = (run_dir / "results.tsv").read_text().splitlines()[:2]
     assert "cached" in header.split("\t")
     assert row.split("\t")[header.split("\t").index("cached")] == "false"
+
+
+# ---------------------------------------------------------------------------
+# Encoding
+# ---------------------------------------------------------------------------
+
+
+def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
+    """Every write here is UTF-8 by argument; the reads were UTF-8 by luck.
+
+    `atomic_write` passes an explicit encoding, for the reason its docstring
+    gives -- reports carry non-ASCII and the bytes should not depend on the
+    machine. The matching reads were bare `read_text()`, which uses the
+    interpreter's locale encoding. Where that bites is `_completed_cell`,
+    called from `one()` above the semaphore and outside any `try`: a µ or a °C
+    in a prompt (LitQA2 has plenty) aborted the entire resumed matrix with a
+    traceback out of `as_completed` -- not one FAILED cell, the whole run.
+
+    Run in a subprocess, because the condition cannot be created in-process.
+    Monkeypatching `locale.getpreferredencoding` does nothing: `TextIOWrapper`
+    reads `locale.getencoding()` at the C level. And the environment alone is
+    not enough either -- PEP 538 coercion turns `LC_ALL=C` into C.UTF-8, so
+    `PYTHONCOERCECLOCALE=0` and `PYTHONUTF8=0` are both needed to get an
+    interpreter whose preferred encoding is really ASCII. That an in-process
+    version of this test passed with the fix reverted is exactly why it is
+    written this way.
+    """
+    import subprocess
+    import sys
+
+    script = tmp_path / "resume_under_ascii.py"
+    script.write_text(
+        "import asyncio, os, sys, locale\n"
+        "assert locale.getpreferredencoding(False).lower() in ('ansi_x3.4-1968', 'ascii'), \\\n"
+        "    f'locale is {locale.getpreferredencoding(False)}, not ASCII'\n"
+        "os.environ['ENABLE_MOCK_PROVIDER'] = 'true'\n"
+        "from pathlib import Path\n"
+        "from deep_research_client.client import DeepResearchClient\n"
+        "from deep_research_client.models import CacheConfig\n"
+        "from deep_research_client.evaluation.datamodel import (\n"
+        "    AnswerType, ArmSpec, EvalSet, EvalTask)\n"
+        "from deep_research_client.evaluation.matrix import run_matrix, MatrixConfig\n"
+        "out = Path(sys.argv[1])\n"
+        "client = DeepResearchClient(cache_config=CacheConfig(\n"
+        "    enabled=False, directory=str(out / 'cache')))\n"
+        "es = EvalSet(name='enc', tasks=[EvalTask(\n"
+        "    id='t1', prompt='Concentration was 5 \\u00b5M at 37 \\u00b0C - why?',\n"
+        "    answer_type=AnswerType.REPORT)])\n"
+        "arm = ArmSpec(id='a', provider='mock')\n"
+        "asyncio.run(run_matrix(es, [arm], MatrixConfig(output_dir=out / 'run'),\n"
+        "                       client=client))\n"
+        "m = asyncio.run(run_matrix(es, [arm], MatrixConfig(output_dir=out / 'run'),\n"
+        "                           client=client))\n"
+        "assert len(m.cells) == 1, m.cells\n"
+        "assert m.cells[0].resumed is True\n"
+        "print('OK')\n",
+        encoding="utf-8",
+    )
+
+    env = {
+        **os.environ,
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PYTHONCOERCECLOCALE": "0",
+        "PYTHONUTF8": "0",
+    }
+    done = subprocess.run(
+        [sys.executable, str(script), str(tmp_path)],
+        capture_output=True, text=True, env=env,
+    )
+    assert done.returncode == 0, (
+        "a resumed run died under an ASCII locale:\n"
+        + done.stdout[-2000:] + done.stderr[-2000:]
+    )
+    assert "OK" in done.stdout
+
+
+def test_every_text_read_and_write_in_the_package_names_its_encoding():
+    """The write side was argued for; the read side was never written down.
+
+    Structural rather than behavioural, deliberately: the failure needs a
+    non-UTF-8 locale to appear, so a reader added under a UTF-8 default would
+    pass every other test in this file and break only on someone else's
+    machine.
+
+    Parsed rather than grepped, because a line-based check both missed the
+    multi-line calls that do pass an encoding and, on its first writing,
+    mis-grouped its own `or`/`and` so it never tested writes at all.
+    """
+    import ast
+    import pathlib
+
+    package = pathlib.Path(__file__).resolve().parent.parent / "src" / "deep_research_client"
+    offenders = []
+    for path in sorted(package.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"read_text", "write_text"}
+                and not any(k.arg == "encoding" for k in node.keywords)
+            ):
+                offenders.append(
+                    f"{path.relative_to(package)}:{node.lineno} {node.func.attr}"
+                )
+
+    assert not offenders, (
+        "these read or write text without naming an encoding, so the bytes "
+        f"depend on the machine's locale: {', '.join(offenders)}"
+    )
+
+
+def test_the_manifest_records_the_cache_state_the_client_actually_had(
+    tmp_path, monkeypatch,
+):
+    """`config.use_cache` is not it when the caller supplies a client.
+
+    The config field applies only when `run_matrix` builds the client, which is
+    documented on the field itself -- so recording it in the manifest made the
+    manifest assert the default for every library caller and every test here,
+    where the fixture exists precisely to turn caching off. This file's job is
+    provenance; it must not be the one field that can state the reverse of what
+    happened.
+    """
+    client = _cache_client(tmp_path, monkeypatch, enabled=False)
+    eval_set = EvalSet(name="m", tasks=[
+        EvalTask(id="t1", prompt="Manifest probe?", answer_type=AnswerType.REPORT),
+    ])
+
+    # use_cache left at its default True, while the client has caching off.
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=tmp_path / "run"), client=client,
+    ))
+    assert manifest.cache_enabled is False

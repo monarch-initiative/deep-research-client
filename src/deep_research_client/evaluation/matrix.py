@@ -141,7 +141,7 @@ def load_arms(path: str | Path) -> list[ArmSpec]:
     if not path.exists():
         raise FileNotFoundError(f"Arms file not found: {path}")
 
-    data = yaml.safe_load(path.read_text()) or {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     rows = data if isinstance(data, list) else data.get("arms") or []
     if not rows:
         raise ValueError(f"{path}: no arms found")
@@ -315,12 +315,12 @@ def _completed_cell(
     if not path.exists():
         return None
 
-    cell = CellResult(**json.loads(path.read_text()))
+    cell = CellResult(**json.loads(path.read_text(encoding="utf-8")))
     if cell.status != CellStatus.COMPLETED:
         return None
 
     stored_prompt = cell_dir / "prompt.md"
-    if not stored_prompt.exists() or stored_prompt.read_text() != prompt:
+    if not stored_prompt.exists() or stored_prompt.read_text(encoding="utf-8") != prompt:
         logger.info(
             "Cell %s/%s was asked a different question; re-running", task.id, arm.id
         )
@@ -341,7 +341,7 @@ def _completed_cell(
                 "Cell %s/%s has no saved response to grade; re-running", task.id, arm.id
             )
             return None
-        answer = mcq.grade(task.id, arm.id, output.read_text(), choices)
+        answer = mcq.grade(task.id, arm.id, output.read_text(encoding="utf-8"), choices)
         cell.disposition = answer.disposition
         cell.chosen_letter = answer.chosen_letter
         cell.correct = answer.correct
@@ -507,8 +507,17 @@ def _manifest(
     layout: RunLayout,
     config: "MatrixConfig",
     cells: Sequence[CellResult],
+    cache_enabled: bool,
 ) -> RunManifest:
-    """Build the run manifest from the cells finished so far."""
+    """Build the run manifest from the cells finished so far.
+
+    `cache_enabled` is read off the client rather than off the config, because
+    `config.use_cache` applies only when `run_matrix` builds the client. A
+    caller that passes its own client -- every library caller, and every test
+    here -- would otherwise have the manifest assert the default, which for a
+    client with caching off is the opposite of what happened. This file's job
+    is provenance; it must not be the one field that can state the reverse.
+    """
     return RunManifest(
         run_id=layout.root.name,
         created_at=datetime.now(timezone.utc).isoformat(),
@@ -520,7 +529,7 @@ def _manifest(
         client_version=__version__,
         concurrency=config.concurrency,
         resume_enabled=config.resume,
-        cache_enabled=config.use_cache,
+        cache_enabled=cache_enabled,
         arms=list(arms),
         cells=list(cells),
     )
@@ -558,6 +567,10 @@ async def run_matrix(
             enabled=config.use_cache,
             directory=config.cache_dir,
         ))
+
+    # Whatever the client ended up with, which for a caller-supplied client is
+    # not config.use_cache. Recorded rather than assumed: see `_manifest`.
+    cache_enabled = bool(getattr(getattr(client, "cache_config", None), "enabled", False))
     layout = RunLayout(Path(config.output_dir))
     layout.root.mkdir(parents=True, exist_ok=True)
 
@@ -570,9 +583,11 @@ async def run_matrix(
             done = _completed_cell(layout, task, arm, prompt, choices, config.grade)
             if done is not None:
                 logger.info("Cell %s/%s already complete; skipping", task.id, arm.id)
-                # Marked on the in-memory cell only. cell.json is not rewritten
-                # on resume, so the stored copy keeps the flags of the run that
-                # produced it, and this manifest describes this run.
+                # Marked after `_completed_cell` returns, which is what keeps
+                # it out of the stored copy: the resume-and-grade path does
+                # rewrite cell.json, but it does so before this line. So the
+                # file keeps the flags of the run that produced it and this
+                # manifest describes this run.
                 done.resumed = True
                 return done
         async with semaphore:
@@ -615,7 +630,7 @@ async def run_matrix(
             last_manifest = now
             atomic_write(
                 layout.manifest_path,
-                _manifest(eval_set, arms, layout, config, ordered)
+                _manifest(eval_set, arms, layout, config, ordered, cache_enabled)
                 .model_dump_json(indent=2, exclude_none=True),
             )
 
@@ -627,7 +642,7 @@ async def run_matrix(
             config.on_cell(cell)
 
     ordered = _ordered(cells)
-    manifest = _manifest(eval_set, arms, layout, config, ordered)
+    manifest = _manifest(eval_set, arms, layout, config, ordered, cache_enabled)
 
     atomic_write(layout.manifest_path, manifest.model_dump_json(indent=2, exclude_none=True))
     write_results_tsv(layout, ordered)

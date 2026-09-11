@@ -204,6 +204,11 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     >>> print(degenerate_reason(
     ...     AnswerSpec(ideal="Thymine", distractors=["thymine ", "Guanine"])))
     repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
+    >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["Thymine"])))
+    repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
+    >>> print(degenerate_reason(AnswerSpec(
+    ...     ideal="right", distractors=[f"d{i}" for i in range(26)])))
+    has 27 options, more than the 26 letters available to label them
     >>> print(degenerate_reason(AnswerSpec(ideal="  ", distractors=["Guanine", "Cytosine"])))
     has no ideal answer, so its correct option would render blank and every arm would be marked wrong
     >>> print(degenerate_reason(AnswerSpec(
@@ -220,20 +225,25 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     distractors = [_comparable(d) for d in usable_distractors(spec)]
     abstention = _comparable(usable_abstention(spec) or "")
 
-    # Basic problems first, so the message names the simplest thing wrong: a
-    # task with one option and a colliding abstention should be reported as
-    # having one option.
+    # Ordering is deliberate: name the most specific diagnosable mistake first,
+    # and fall back to the generic count only when nothing more specific fits.
+    # An ideal repeated as its only distractor is one option *and* a duplicate;
+    # "repeats its ideal answer" tells the author which cell of their file to
+    # edit, where "offers 1 distinct option(s)" only tells them the result. The
+    # generic count still has to precede the abstention checks, so that a task
+    # with one option and a colliding abstention is reported as having one
+    # option rather than as an abstention collision.
+    if ideal in distractors:
+        return (
+            "repeats its ideal answer among the distractors, so two options read "
+            "identically and only one counts as correct"
+        )
+
     distinct = len({ideal, *distractors})
     if distinct < 2:
         return (
             f"offers {distinct} distinct option(s) besides any abstention; at "
             f"least two are needed for the answer to mean anything"
-        )
-
-    if ideal in distractors:
-        return (
-            "repeats its ideal answer among the distractors, so two options read "
-            "identically and only one counts as correct"
         )
 
     # The abstention is appended by present_choices after everything above, so
@@ -331,7 +341,7 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
             letter=_LETTERS[i],
             text=text,
             is_ideal=is_ideal,
-                is_abstention=bool(abstention) and i == len(options) - 1,
+            is_abstention=bool(abstention) and i == len(options) - 1,
         )
         for i, (text, is_ideal) in enumerate(options)
     ]

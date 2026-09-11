@@ -46,15 +46,23 @@ There is a third shape, and it is worth knowing about before you write an eval
 set: a task with an ideal answer and **no** distractors infers `SHORT_ANSWER`,
 and nothing in this client scores that yet — not `eval run`, not `eval score`.
 Such tasks run and their responses are saved like any other; they simply cannot
-be graded. `eval run` says so at the end of a run rather than leaving it to be
-discovered. Add distractors to make it multiple choice, or drop the ideal answer
-to make it a report task.
+be graded. `eval load` and `eval run` both say so up front — before any provider
+is called, and in `--dry-run` too — rather than leaving it to be discovered once
+the run is paid for. Add distractors to make it multiple choice, or drop the
+ideal answer to make it a report task.
 
-Declaring `answer_type: MULTIPLE_CHOICE` without distractors is refused when the
-eval set loads — by `eval load` and `eval run` alike, before any provider is
-called. One option and a right answer is not a question: every arm would score
-1.000 on it. The same refusal covers duplicated options, since two lettered
-options reading identically mark a correct answer wrong half the time.
+A multiple-choice task whose options cannot pose an answerable question is
+refused when the eval set loads — by `eval load` and `eval run` alike, before
+any provider is called. The commonest case is `answer_type: MULTIPLE_CHOICE`
+with no distractors: one option and a right answer is not a question, and every
+arm would score 1.000 on it. Duplicated options are refused for the mirror-image
+reason, since two lettered options reading identically mark a correct answer
+wrong half the time.
+
+The full list of refused shapes lives in the docstring of `degenerate_reason`
+in `deep_research_client.evaluation.mcq`, which is the canonical statement and
+carries a worked example of each. It is deliberately not re-enumerated here —
+this list has drifted behind that one before.
 
 TSV works too, for questions that came out of a spreadsheet:
 

@@ -50,8 +50,9 @@ def atomic_write(path: Path, text: str) -> None:
 
     The result carries the mode an ordinary write would have left: the
     destination's own mode when it already exists, and otherwise whatever a
-    plain file creation in that directory produces. Neither is what ``mkstemp`` produces - it creates 0600, and
-    ``os.replace`` keeps the temporary file's mode - which would quietly make
+    plain file creation in that directory produces. Neither is what ``mkstemp``
+    produces - it creates 0600, and ``os.replace`` keeps the temporary file's
+    mode - which would quietly make
     every file here owner-only, including a benchmark cache whose whole purpose
     is to be shared between runs and, on a cluster, between users. Preserving an
     existing destination's mode matters for the same reason: a cache someone

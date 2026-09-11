@@ -15,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from deep_research_client.cli import app
+from deep_research_client.evaluation.adapters import get_adapter
 
 runner = CliRunner()
 
@@ -126,6 +127,44 @@ def test_eval_run_flags_short_answer_tasks_as_unscoreable(tmp_path):
     assert "nothing in this client scores yet" in result.stdout
 
 
+def test_the_unscoreable_warning_arrives_before_any_provider_is_called(tmp_path):
+    """A warning about wasting money is worth nothing after the money is spent.
+
+    It used to be computed after `run_matrix` returned, so a real run printed it
+    once every provider call had been made, and `--dry-run` -- the command
+    documented as the way to price a run first -- returned before it and never
+    printed it at all.
+    """
+    path = _write(tmp_path / "short.yaml",
+                  "tasks:\n  - id: s1\n    prompt: Capital of France?\n    ideal: Paris\n")
+    result = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--dry-run",
+        "--output-dir", str(tmp_path / "run"),
+    ])
+    assert result.exit_code == 0
+    assert "nothing in this client scores yet" in result.stdout
+    # Nothing ran, so there is nothing to have paid for.
+    assert "no providers were called" in result.stdout
+    assert not (tmp_path / "run").exists()
+
+    # On a real run it has to precede the per-cell progress, not trail it.
+    real = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--output-dir", str(tmp_path / "run2"),
+    ])
+    assert real.exit_code == 0
+    assert real.stdout.index("nothing in this client scores yet") < real.stdout.index("[1/1]")
+
+
+def test_eval_load_says_what_follows_from_the_shapes_it_reports(tmp_path):
+    """`Shapes: SHORT_ANSWER=1` states a fact without stating its consequence."""
+    path = _write(tmp_path / "short.yaml",
+                  "tasks:\n  - id: s1\n    prompt: Capital of France?\n    ideal: Paris\n")
+    result = runner.invoke(app, ["eval", "load", str(path)])
+    assert result.exit_code == 0
+    assert "SHORT_ANSWER=1" in result.stdout
+    assert "nothing in this client scores yet" in result.stdout
+
+
 def test_eval_run_grades_multiple_choice_and_warns_about_the_extractor(tmp_path):
     path = _write(tmp_path / "mcq.yaml",
                   "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
@@ -218,14 +257,26 @@ def test_eval_load_reports_the_number_of_options_actually_asked(tmp_path):
     assert "4 options" in result.stdout
 
 
-def test_eval_load_counts_options_after_blanks_are_dropped(tmp_path):
-    """The other half of the count fix: blanks are never presented either."""
+def test_the_tabular_adapters_drop_blanks_before_they_reach_the_spec(tmp_path):
+    """What this actually covers, which is not what it used to claim.
+
+    It was written as a test of `usable_distractors` and asserted `3 options`
+    on a TSV with `Guanine||Cytosine`. But `_split_list` drops empty parts, so
+    the blank never reached the `AnswerSpec` and `usable_distractors` had
+    nothing to filter -- the assertion held with the filter reverted. The
+    adapter-level guarantee is real and worth pinning; it is just a different
+    guarantee, and `usable_distractors` is covered at library level instead,
+    where a spec can actually carry a blank.
+    """
     path = _write(tmp_path / "blanks.tsv",
                   "id\tquestion\tideal\tdistractors\n"
                   "m1\tWhich base?\tThymine\tGuanine||Cytosine\n")
     result = runner.invoke(app, ["eval", "load", str(path), "--adapter", "tsv"])
     assert result.exit_code == 0
     assert "3 options" in result.stdout
+
+    eval_set = get_adapter("tsv").load(path)
+    assert eval_set.tasks[0].answer_spec.distractors == ["Guanine", "Cytosine"]
 
 
 def test_eval_load_reports_too_many_options_as_a_message(tmp_path):

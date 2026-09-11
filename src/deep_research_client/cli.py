@@ -2808,6 +2808,17 @@ def eval_load(
         by_type[task.answer_type] = by_type.get(task.answer_type, 0) + 1
     typer.echo(f"  Shapes:   {', '.join(f'{k}={v}' for k, v in sorted(by_type.items()))}")
 
+    # The shape line reports the fact; this says what follows from it. This is
+    # the command whose job is to catch problems before spending, so it is the
+    # earliest place the consequence can be stated.
+    n_short = by_type.get(AnswerType.SHORT_ANSWER, 0)
+    if n_short:
+        typer.echo(
+            f"\n  NOTE: {n_short} of these are SHORT_ANSWER, which nothing in this "
+            f"client scores yet. Running them materialises responses; no score "
+            f"will come back for them."
+        )
+
     if eval_set.is_partial:
         typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
 
@@ -2934,6 +2945,21 @@ def eval_run(
     if eval_set.is_partial:
         typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
 
+    # Printed before the dry-run return and before any provider is called: this
+    # note exists to stop someone paying for tasks nothing can grade, so saying
+    # it only after `run_matrix` would be telling them once the money is gone.
+    # It is repeated at the end because a long run scrolls it off the screen.
+    unscoreable = sum(1 for t in tasks if t.answer_type == AnswerType.SHORT_ANSWER)
+    unscoreable_note = (
+        f"\nNOTE: {unscoreable} task(s) are SHORT_ANSWER, which nothing in this "
+        f"client scores yet - not by running them and not with `eval score`. "
+        f"Their responses are saved like any other. A task with an ideal answer "
+        f"and no distractors infers this shape; add distractors to make it "
+        f"multiple choice, or drop the ideal answer to make it a report task."
+    ) if unscoreable else ""
+    if unscoreable_note:
+        typer.echo(unscoreable_note)
+
     if dry_run:
         from .evaluation.matrix import _prompt_for
         prompt, _ = _prompt_for(tasks[0])
@@ -3015,15 +3041,8 @@ def eval_run(
             "without re-running any provider."
         )
 
-    unscoreable = sum(1 for t in tasks if t.answer_type == AnswerType.SHORT_ANSWER)
-    if unscoreable:
-        typer.echo(
-            f"\nNOTE: {unscoreable} task(s) are SHORT_ANSWER, which nothing in this "
-            f"client scores yet - not by running them and not with `eval score`. "
-            f"Their responses are saved like any other. A task with an ideal answer "
-            f"and no distractors infers this shape; add distractors to make it "
-            f"multiple choice, or drop the ideal answer to make it a report task."
-        )
+    if unscoreable_note:
+        typer.echo(unscoreable_note)
 
     has_reports = any(t.answer_type == AnswerType.REPORT for t in tasks)
     if has_reports:

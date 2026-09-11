@@ -160,6 +160,23 @@ def test_unknown_lab_bench_subset_is_rejected():
         fetch_subset("NotASubset")
 
 
+def test_a_mistyped_subset_name_is_refused_before_the_network():
+    """`fetch_subset` refuses it too, but only after a revision lookup.
+
+    That put an HTTP call between the user and a message about a typo: online
+    it cost a round trip, and offline the revision lookup failed first, so a
+    mistyped name surfaced as a connection error instead of as its own name.
+    Like the multimodal refusal above, this raises without reaching the network,
+    which is what lets it run outside the integration suite.
+    """
+    with pytest.raises(ValueError, match="Unknown LAB-Bench subset"):
+        get_adapter("lab-bench").load("NotASubset")
+
+    # A real name alongside a bad one must still name the bad one.
+    with pytest.raises(ValueError, match="NotASubset"):
+        get_adapter("lab-bench").load("LitQA2,NotASubset")
+
+
 @pytest.mark.integration
 def test_lab_bench_litqa2_downloads_at_the_expected_size():
     """Guards the pin: a row-count drift means upstream changed under us."""
@@ -836,18 +853,30 @@ def test_an_abstention_does_not_count_towards_the_two_options():
 @pytest.mark.parametrize("body,expected", [
     ("    answer_type: MULTIPLE_CHOICE\n    ideal: Thymine\n",
      "distinct option"),
+    # An ideal repeated as its only distractor is both a duplicate and a
+    # one-option task. The duplicate message is the one that names the cell to
+    # edit, so it is the one that has to win.
     ("    ideal: Thymine\n    distractors: [Thymine]\n",
-     "1 distinct option"),
+     "repeats its ideal answer"),
     ("    ideal: Thymine\n    distractors: [Thymine, Guanine]\n",
      "repeats its ideal answer"),
     ("    ideal: Thymine\n    distractors: ['  thymine ', Guanine]\n",
      "repeats its ideal answer"),
+    # ...but with no duplicate to name, the generic count still has to outrank
+    # the abstention checks, or a one-option task reads as a collision.
+    ("    answer_type: MULTIPLE_CHOICE\n    ideal: Unknown\n"
+     "    abstention_option: unknown\n",
+     "1 distinct option"),
 ])
 def test_a_degenerate_set_is_refused_when_it_loads(tmp_path, body, expected):
     """Caught at load, not at cell 43 of a run that has already been paid for.
 
     The realistic ways in are a spreadsheet conversion that forgets the
     distractors, and an edit that leaves an option duplicated.
+
+    The two orderings this parametrize pins pull in opposite directions, which
+    is why both are here: the duplicate check must outrank the generic count,
+    and the generic count must outrank the abstention checks.
     """
     path = tmp_path / "degenerate.yaml"
     path.write_text(f"tasks:\n  - id: q1\n    prompt: Which base?\n{body}")
@@ -1021,6 +1050,32 @@ def test_the_letter_budget_counts_the_abstention_too():
 
     without = AnswerSpec(ideal="right", distractors=[f"d{i}" for i in range(25)])
     assert mcq.degenerate_reason(without) is None
+
+
+def test_a_blank_distractor_is_never_presented_as_an_option():
+    """The distractor half of the rule, tested where a blank can actually reach.
+
+    Both tabular adapters drop empty parts in `_split_list`, so no CLI route
+    carries a blank distractor into an `AnswerSpec` -- which means a test going
+    through them cannot tell whether `usable_distractors` filters or not. A spec
+    built in code can, and library callers build them that way.
+    """
+    task = EvalTask(
+        id="blank_d", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Thymine", distractors=["Guanine", "", "   ", "Cytosine"],
+        ),
+    )
+    choices = mcq.present_choices(task)
+    # Four without the filter, three with it: the assertion discriminates.
+    assert len(choices) == 3
+    assert all(c.text.strip() for c in choices)
+
+    option_lines = [
+        line for line in mcq.format_prompt(task, choices).splitlines()
+        if re.fullmatch(r"[A-Z]\.\s*", line)
+    ]
+    assert option_lines == []
 
 
 def test_a_blank_abstention_is_treated_as_no_abstention():

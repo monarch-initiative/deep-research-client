@@ -388,6 +388,17 @@ class LabBenchAdapter(EvalSetAdapter):
             else [s.strip() for s in requested.split(",") if s.strip()]
         )
 
+        # Checked in the same pass as the multimodal filter, and before the
+        # network: `fetch_subset` refuses an unknown name too, but only after
+        # `_resolve_or_fall_back` has already made an HTTP call, so a typo cost
+        # a round trip online and surfaced as an httpx error offline.
+        unknown = [s for s in subsets if s not in SUBSETS]
+        if unknown:
+            raise ValueError(
+                f"Unknown LAB-Bench subset(s): {', '.join(repr(s) for s in unknown)}. "
+                f"Available: {', '.join(SUBSETS)}"
+            )
+
         multimodal = [s for s in subsets if s in SUBSETS and not SUBSETS[s][1]]
         if multimodal:
             raise ValueError(

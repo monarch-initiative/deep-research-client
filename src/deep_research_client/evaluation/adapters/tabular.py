@@ -135,7 +135,7 @@ def _task_from_row(
     ]
 
     return EvalTask(
-        id=str(row.get("id") or f"task_{index + 1}").strip(),
+        id=str(row.get("id") or "").strip() or f"task_{index + 1}",
         prompt=prompt,
         answer_type=answer_type,
         answer_spec=answer_spec,

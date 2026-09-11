@@ -594,8 +594,11 @@ def test_the_default_directories_are_derived_from_the_shared_rule():
         max_bytes=1024, scaffolding_prefixes=(".Codex", "Logs/")
     )
 
+    # Against a literal, not against the same function the policy called:
+    # `_with_trailing_slashes(x) == policy.scaffolding_prefixes` is f(x) == f(x).
     assert policy.scaffolding_prefixes == (".codex/", "logs/")
-    assert _with_trailing_slashes((".Codex", "Logs/")) == policy.scaffolding_prefixes
+    # Goes red if the constant is ever re-inlined as a hand-written copy,
+    # which is the round-6 regression.
     assert DEFAULT_SCAFFOLDING_DIRECTORIES == _with_trailing_slashes(
         DEFAULT_SCAFFOLDING_PREFIXES
     )

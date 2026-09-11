@@ -180,7 +180,10 @@ class ArtifactSelectionPolicy:
             policy built without ``__init__`` would stop matching scaffolding.
         allowed_extensions: Extension allowlist, lowercase and dot-prefixed.
         archive_extensions: Extensions refused as nested archives.
-        scaffolding_prefixes: Path prefixes treated as agent working state.
+        scaffolding_prefixes: Directory names treated as agent working
+            state, matched as a whole path segment at any depth rather than
+            only at the bundle root. Normalized to lowercase and a trailing
+            slash on construction.
         runtime_suffixes: Filename suffixes treated as runtime logs.
         runtime_name_fragments: Substrings in a basename marking runtime output.
         include_globs: Patterns force-kept, bypassing every default deny.
@@ -286,10 +289,15 @@ class ArtifactSelectionPolicy:
             name: Bundle-relative member path.
             size: Uncompressed size in bytes.
             provider_deny: Member paths the provider has already consumed.
-                Each entry is normalized here before comparison, so an entry
-                differing only in case or a leading ``./`` still matches.
-                Build the set once per bundle (see
-                :func:`normalize_member_path`) rather than per member.
+                Each entry is normalized here before comparison, so one
+                differing only in case or a leading ``./`` still matches, and
+                passing an already-normalized set is idempotent rather than
+                free. Build the set once per bundle (see
+                :func:`normalize_member_path`) so at least its construction is
+                not repeated per member. Unlike the scaffolding names, these
+                are not hoisted onto a normalized fast path: the set holds one
+                entry in practice, and a second code path would cost more than
+                it saves.
 
         Returns:
             The decision, carrying the rule that produced it.
@@ -442,10 +450,17 @@ def is_under_normalized_directory(
 def normalize_member_path(name: str) -> str:
     """Normalize a bundle member path for comparison.
 
-    Lowercased, POSIX separators, no leading slash — the form every rule in
-    :meth:`ArtifactSelectionPolicy.decide` matches against. Exported so a
-    caller can normalize its deny set once per bundle rather than once per
-    member.
+    Lowercased, no leading slash, ``/`` read as the separator — the form
+    every rule in :meth:`ArtifactSelectionPolicy.decide` matches against.
+    Exported so a caller can normalize its deny set once per bundle rather
+    than once per member.
+
+    Backslashes are *not* converted: they are ordinary characters here, so a
+    member written ``workspace\\.claude\\x.json`` would clear every
+    scaffolding and glob rule. The ZIP format mandates forward slashes
+    (APPNOTE 4.4.17.1), so this does not arise for the bundles in play, and
+    :func:`~.models.sanitize_artifact_filename` handles separators on the way
+    out regardless.
 
     Args:
         name: Bundle-relative member path.

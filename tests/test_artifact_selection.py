@@ -493,7 +493,7 @@ def test_a_bare_string_of_directories_is_rejected():
 
 
 def test_a_zero_cap_also_drops_a_zero_byte_member():
-    """"Keep nothing" has to include an empty file."""
+    """A cap of zero has to include an empty file in "keep nothing"."""
 
     class LooseParams:
         artifact_max_bytes = 0
@@ -502,3 +502,62 @@ def test_a_zero_cap_also_drops_a_zero_byte_member():
 
     assert not policy.decide("results/empty.csv", 0).keep
     assert not policy.decide("results/table.csv", 1).keep
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [
+        # Tier 2: no canonical report name, but "report" in the path.
+        (
+            ["analysis/status_report.md", "weekly_report.md"],
+            "weekly_report.md",
+        ),
+        (
+            ["weekly_report.md", "analysis/status_report.md"],
+            "weekly_report.md",
+        ),
+        # Tier 3: no "report" anywhere. A README is markdown at the root of
+        # almost every bundle and should not win on depth alone.
+        (["README.md", "analysis/writeup.md"], "analysis/writeup.md"),
+        (["analysis/writeup.md", "README.md"], "analysis/writeup.md"),
+        (["README.md"], "README.md"),
+    ],
+)
+def test_the_fallback_tiers_are_ordered_too(names, expected):
+    """Every earlier picker test had a tier-1 candidate, so the sort was
+    only ever exercised on canonical report names."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name in names:
+            archive.writestr(name, f"# {name}")
+
+    config = ProviderConfig(
+        name="openscientist", api_key="k", base_url="https://example.test/", enabled=True
+    )
+    provider = OpenScientistProvider(config)
+    picked, _ = provider._extract_markdown_from_artifact_zip(buffer.getvalue(), "j")
+
+    assert picked == expected
+
+
+def test_the_zero_cap_reason_does_not_claim_a_size_comparison():
+    """`reason` is shown to a user, so "0 bytes exceeds 0" would be a lie."""
+
+    class LooseParams:
+        artifact_max_bytes = 0
+
+    decision = ArtifactSelectionPolicy.from_params(LooseParams()).decide(
+        "results/empty.csv", 0
+    )
+
+    assert not decision.keep
+    assert decision.rule == "size_cap"
+    assert "exceeds" not in decision.reason
+
+
+def test_a_member_exactly_at_the_cap_is_kept():
+    """The cap is a maximum, not an exclusive bound."""
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+
+    assert policy.decide("results/table.csv", 1024).keep
+    assert not policy.decide("results/table.csv", 1025).keep

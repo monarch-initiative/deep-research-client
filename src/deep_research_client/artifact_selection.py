@@ -20,7 +20,8 @@ Precedence, highest first:
 2. ``max_bytes`` — the size cap always applies, including to explicit includes,
    because it is what keeps a bundle from being read into memory. Raise the cap
    rather than trying to glob around it, up to the 50 MB ceiling that
-   ``artifact_max_bytes`` enforces; past that there is no knob, by design.
+   ``artifact_max_bytes`` enforces; past that there is no knob, by design. A
+   cap of 0 is the floor and keeps nothing, a zero-byte member included.
 3. ``provider_deny`` — members the provider has already consumed (the markdown
    report it returned as the result body).
 4. ``include_globs`` — an explicit allow bypasses every remaining default deny.
@@ -109,6 +110,15 @@ DEFAULT_RUNTIME_NAME_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+#: The scaffolding names already lowercased and slash-terminated. Pass this to
+#: :func:`is_under_normalized_directory` from a hot loop rather than
+#: re-normalizing the defaults on every member.
+DEFAULT_SCAFFOLDING_DIRECTORIES: tuple[str, ...] = tuple(
+    directory if directory.endswith("/") else f"{directory}/"
+    for directory in (prefix.lower() for prefix in DEFAULT_SCAFFOLDING_PREFIXES)
+)
+
+
 @dataclass(frozen=True)
 class ArtifactDecision:
     """Whether one bundle member becomes an artifact, and on what grounds.
@@ -133,6 +143,9 @@ class ArtifactSelectionPolicy:
 
     Args:
         max_bytes: Largest uncompressed size preserved for a single member.
+            0 or less keeps nothing at all, including a zero-byte member. Note
+            that ``__post_init__`` normalizes ``scaffolding_prefixes``, so a
+            policy built without ``__init__`` would stop matching scaffolding.
         allowed_extensions: Extension allowlist, lowercase and dot-prefixed.
         archive_extensions: Extensions refused as nested archives.
         scaffolding_prefixes: Path prefixes treated as agent working state.
@@ -171,6 +184,10 @@ class ArtifactSelectionPolicy:
         ``scaffolding_prefixes=("logs",)`` would drop ``run/logs_summary.csv``
         as a directory. Normalizing here makes that structural rather than a
         convention a caller has to know.
+
+        Raises:
+            TypeError: If ``scaffolding_prefixes`` is a single string, which
+                would iterate into characters and match nothing.
         """
         object.__setattr__(
             self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
@@ -250,9 +267,14 @@ class ArtifactSelectionPolicy:
         if _matches_any(normalized, self.exclude_globs):
             return ArtifactDecision(False, "matched artifact_exclude_globs", rule="exclude_glob")
 
-        # ``>=`` at a zero cap: "keep nothing" has to include a zero-byte
-        # member, which ``size > 0`` would let through.
-        if size > self.max_bytes or self.max_bytes <= 0:
+        if self.max_bytes <= 0:
+            # Separate branch so the reason is true: at a zero cap a zero-byte
+            # member is dropped, and "0 bytes exceeds 0" would be a lie in a
+            # string built to be shown to a user.
+            return ArtifactDecision(
+                False, "artifact_max_bytes is 0: keeping nothing", rule="size_cap"
+            )
+        if size > self.max_bytes:
             return ArtifactDecision(
                 False,
                 f"{size} bytes exceeds artifact_max_bytes ({self.max_bytes})",
@@ -269,7 +291,7 @@ class ArtifactSelectionPolicy:
 
         # ``scaffolding_prefixes`` is normalized by __post_init__, so compare
         # against it directly rather than re-normalizing once per member.
-        if _is_under_normalized_directories(normalized, self.scaffolding_prefixes):
+        if is_under_normalized_directory(normalized, self.scaffolding_prefixes):
             return ArtifactDecision(
                 False, "agent scaffolding directory", rule="scaffolding"
             )
@@ -324,6 +346,10 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
     Returns:
         Whether any of them names a directory on the path.
 
+    Raises:
+        TypeError: If ``directories`` is a single string, which would iterate
+            into characters and match nothing.
+
     Example:
         >>> is_under_directory("workspace/.claude/skills/x.md", [".claude/"])
         True
@@ -332,18 +358,35 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
         >>> is_under_directory("run/logs/out.csv", ["logs"])
         True
     """
-    return _is_under_normalized_directories(
+    return is_under_normalized_directory(
         normalize_member_path(name), _with_trailing_slashes(directories)
     )
 
 
-def _is_under_normalized_directories(
-    normalized_name: str, directories: Iterable[str]
+def is_under_normalized_directory(
+    normalized_name: str, normalized_directories: Iterable[str]
 ) -> bool:
-    """Segment match against names already lowercased and slash-terminated."""
+    """Segment match with both sides already normalized.
+
+    The fast path behind :func:`is_under_directory`, for a caller looping over
+    a bundle that has normalized the path itself and holds a pre-normalized
+    directory tuple such as :data:`DEFAULT_SCAFFOLDING_DIRECTORIES`. Nothing is
+    re-derived per call.
+
+    Args:
+        normalized_name: Path through :func:`normalize_member_path`.
+        normalized_directories: Names already lowercased and slash-terminated.
+
+    Returns:
+        Whether any of them names a directory on the path.
+
+    Example:
+        >>> is_under_normalized_directory("a/.claude/x.md", (".claude/",))
+        True
+    """
     return any(
         normalized_name.startswith(directory) or f"/{directory}" in normalized_name
-        for directory in directories
+        for directory in normalized_directories
     )
 
 

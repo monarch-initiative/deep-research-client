@@ -694,3 +694,27 @@ def test_markdown_table_survives_a_pipe_in_a_tool_name():
         assert len(re.split(r"(?<!\\)\|", row)) == 6, row
     assert "a|b" not in markdown
     assert "a\\|b" in markdown
+
+
+def test_two_artifacts_sharing_a_filename_are_both_summarized():
+    """Merging two runs' artifacts must not drop one of them.
+
+    A provider uniquifies filenames within one bundle, but nothing does across
+    bundles — and merging is what summarize_artifacts is for. Keyed by name
+    alone, the second transcript replaced the first and its entries vanished.
+    """
+    def artifact(tool):
+        body = json.dumps([tool_call("a", tool)])
+        return ResearchArtifact(
+            filename="iter1_transcript.json",
+            content_base64=base64.b64encode(body.encode("utf-8")).decode("ascii"),
+        )
+
+    stats = summarize_artifacts([artifact("Bash"), artifact("WebSearch")])
+
+    assert stats.entries == 2
+    assert stats.distinct_tools == ["Bash", "WebSearch"]
+    assert stats.sources == [
+        "iter1_transcript.json",
+        "iter1_transcript.json#2",
+    ]

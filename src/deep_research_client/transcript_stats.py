@@ -256,8 +256,40 @@ def summarize_artifacts(artifacts: Iterable[Any]) -> TranscriptStats:
         if not is_transcript_name(filename):
             continue
         raw = getattr(artifact, "content_base64", "")
-        transcripts[filename] = _decode_entries(raw, filename)
+        # Disambiguated rather than overwritten. A provider uniquifies
+        # filenames within one bundle, but nothing does across bundles, and
+        # merging two runs' artifacts is exactly what this function is for.
+        # Keyed by name alone, the second transcript would replace the first
+        # and its entries would vanish unreported.
+        transcripts[_unique_source(filename, transcripts)] = _decode_entries(
+            raw, filename
+        )
     return summarize_transcripts(transcripts)
+
+
+def _unique_source(name: str, taken: dict[str, Any]) -> str:
+    """Return a source name not already used, suffixing duplicates.
+
+    Args:
+        name: The preferred source name.
+        taken: Sources already recorded.
+
+    Returns:
+        ``name``, or ``name#2``, ``name#3``… The ``#`` marks a disambiguated
+        duplicate rather than pretending to be a distinct filename.
+
+    Example:
+        >>> _unique_source("a.json", {})
+        'a.json'
+        >>> _unique_source("a.json", {"a.json": []})
+        'a.json#2'
+    """
+    if name not in taken:
+        return name
+    counter = 2
+    while f"{name}#{counter}" in taken:
+        counter += 1
+    return f"{name}#{counter}"
 
 
 def summarize_paths(paths: Iterable[Path]) -> TranscriptStats:

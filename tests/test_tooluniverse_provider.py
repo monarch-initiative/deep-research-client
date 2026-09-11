@@ -18,7 +18,6 @@ from deep_research_client.model_cards import ProviderArchetype, ResearchCapabili
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import ToolUniverseParams, create_provider_params
 from deep_research_client.providers.tooluniverse import (
-    DEFAULT_REQUEST_TIMEOUT,
     ToolUniverseProvider,
     missing_tooluniverse_runtime_modules,
 )
@@ -59,7 +58,7 @@ def test_model_card_and_params() -> None:
 @pytest.mark.parametrize("params", [
     {"tools": []}, {"tools": [""]}, {"tools": [" PubMed_get_article"]},
     {"tools": ["PubMed_get_article", "PubMed_get_article"]},
-    {"max_steps": 0}, {"max_steps": 101}, {"timeout": 0},
+    {"max_steps": 0}, {"max_steps": 101}, {"request_timeout": 0}, {"timeout": 120},
     {"llm": ""}, {"unknown": True}, {"allowed_domains": ["example.org"]},
 ])
 def test_invalid_parameters_fail_fast(params: dict[str, Any]) -> None:
@@ -68,24 +67,26 @@ def test_invalid_parameters_fail_fast(params: dict[str, Any]) -> None:
         ToolUniverseParams(**params)
 
 
-@pytest.mark.parametrize("param_timeout,config_timeout,expected", [
-    (None, None, DEFAULT_REQUEST_TIMEOUT), (15, 30, 15), (None, 30, 30),
-])
-def test_model_configuration(
-    param_timeout: int | None, config_timeout: int | None, expected: int,
-) -> None:
-    """Explicit params outrank config, which outranks the request timeout default."""
+@pytest.mark.parametrize("request_timeout", [120, 15])
+def test_model_configuration(request_timeout: int) -> None:
+    """The distinctly named request limit reaches the underlying HTTP client."""
     provider = ToolUniverseProvider(
         ProviderConfig(
             name="tooluniverse", api_key="offline-test-key",
-            base_url="https://example.org/v1", timeout=config_timeout,
+            base_url="https://example.org/v1",
         ),
-        ToolUniverseParams(llm="custom-model", timeout=param_timeout),
+        ToolUniverseParams(llm="custom-model", request_timeout=request_timeout),
     )
     assert provider._model_kwargs() == {
         "model_id": "custom-model", "api_key": "offline-test-key",
-        "api_base": "https://example.org/v1", "client_kwargs": {"timeout": expected},
+        "api_base": "https://example.org/v1", "client_kwargs": {"timeout": request_timeout},
     }
+
+
+def test_whole_run_timeout_is_not_reinterpreted_as_request_timeout() -> None:
+    """A shared deadline cannot silently become a much longer per-request limit."""
+    with pytest.raises(ProviderNotConfiguredError, match="whole-run ProviderConfig.timeout"):
+        ToolUniverseProvider(ProviderConfig(name="tooluniverse", timeout=30))
 
 
 def test_availability_requires_key_and_runtime() -> None:
@@ -155,14 +156,13 @@ def test_build_agent_with_clean_extra(tmp_path: Path) -> None:
     provider = make_provider(system_prompt="Custom scientific instructions.", max_steps=3)
     universe = ToolUniverse(workspace=str(tmp_path))
     try:
-        agent = provider._build_agent(universe)
-        try:
+        with provider._agent_session(universe) as agent:
             assert set(agent.tools) == {*provider.params.tools, "final_answer"}
             assert agent.max_steps == 3
             assert agent.return_full_result
             assert "Custom scientific instructions." in agent.system_prompt
             assert agent.model.model_id == provider.params.llm
-            assert agent.model.client.timeout == DEFAULT_REQUEST_TIMEOUT
+            assert agent.model.client.timeout == 120
             # PubMed's union result schema must not break construction or be
             # rewritten in the ToolUniverse registry to placate the adapter.
             assert universe.all_tool_dict["PubMed_get_article"]["return_schema"]["type"] == [
@@ -178,8 +178,6 @@ def test_build_agent_with_clean_extra(tmp_path: Path) -> None:
             agent.python_executor.send_tools(agent.tools)
             output = agent.python_executor("sum([1, 2, 3])")
             assert output.output == 6
-        finally:
-            agent.model.client.close()
     finally:
         universe.close()
 
@@ -192,9 +190,40 @@ def test_unknown_tool_fails_before_llm_request(tmp_path: Path) -> None:
     universe = ToolUniverse(workspace=str(tmp_path))
     try:
         with pytest.raises(ProviderNotConfiguredError, match="No_such_scientific_tool"):
-            make_provider(tools=["No_such_scientific_tool"])._build_agent(universe)
+            with make_provider(tools=["No_such_scientific_tool"])._agent_session(universe):
+                pytest.fail("An unknown tool must fail before the agent is yielded")
     finally:
         universe.close()
+
+
+def test_agent_error_survives_missing_sdk_client_attribute(tmp_path: Path) -> None:
+    """The wrapper owns a real client even if the model loses its reference during a run."""
+    require_runtime()
+    provider = make_provider(workspace=str(tmp_path))
+    with provider.params.open_universe() as universe:
+        with pytest.raises(RuntimeError, match="original research failure"):
+            with provider._agent_session(universe) as agent:
+                client = agent.model.client
+                del agent.model.client
+                raise RuntimeError("original research failure")
+        assert client.is_closed()
+
+
+def test_default_workspace_resolution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the production default constructor path in an empty working directory."""
+    require_runtime()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TOOLUNIVERSE_HOME", raising=False)
+    monkeypatch.delenv("TOOLUNIVERSE_PROFILE", raising=False)
+    monkeypatch.setenv("TOOLUNIVERSE_CACHE_DIR", str(tmp_path / "cache"))
+    provider = make_provider()
+    with provider.params.open_universe() as universe:
+        assert universe._workspace_dir == tmp_path / ".tooluniverse"
+        assert set(provider.params.tools) <= set(universe.all_tool_dict)
+    # Upstream creates the persistent cache but does not create a missing
+    # default workspace, seed a profile, or download a data lake.
+    assert (tmp_path / "cache/cache.sqlite").exists()
+    assert not (tmp_path / ".tooluniverse").exists()
 
 
 @pytest.mark.parametrize("output,state,error", [
@@ -226,15 +255,12 @@ def test_pubmed_tool_integration(tmp_path: Path, positional: bool) -> None:
 
     universe = ToolUniverse(workspace=str(tmp_path))
     try:
-        agent = make_provider()._build_agent(universe)
-        try:
+        with make_provider()._agent_session(universe) as agent:
             tool = agent.tools["PubMed_get_article"]
             result = tool("942051") if positional else tool(pmid="942051")
             assert "942051" in str(result)
             assert "title" in str(result)
             assert "Error executing tool" not in str(result)
-        finally:
-            agent.model.client.close()
     finally:
         universe.close()
 

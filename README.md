@@ -1094,7 +1094,8 @@ deep-research-client research "Investigate therapeutic targets for Parkinson dis
 `tooluniverse` and `tu`); `llm` selects the underlying OpenAI-compatible model.
 The agent executes Python locally, so run it in a trusted/sandboxed environment.
 Selected tools may need additional packages or API keys. An exhausted step limit
-raises an error; `timeout` limits each LLM request, not the whole investigation.
+raises an error; `request_timeout` limits each LLM request (default 120 seconds).
+Whole-run `ProviderConfig.timeout` is unsupported and rejected.
 See the [ToolUniverse provider reference](docs/reference/providers.md#tooluniverse)
 for Python usage and configuration.
 

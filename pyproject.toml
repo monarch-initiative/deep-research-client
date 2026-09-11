@@ -58,10 +58,14 @@ terms = [
     "prefixmaps>=0.2.6",
 ]
 tooluniverse = [
+    "anyio>=4,<5",
+    "mcp>=1.30.0,<2",
     "smolagents>=1.26.0,<2",
     "tooluniverse>=1.4.1,<2",
 ]
 tooluniverse-tools = [
+    "anyio>=4,<5",
+    "mcp>=1.30.0,<2",
     "tooluniverse>=1.4.1,<2",
 ]
 # NOTE: browser extra removed - linkml-browser is not on PyPI

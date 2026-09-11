@@ -8,9 +8,10 @@ the agent's local code execution. The base install never imports either SDK.
 """
 
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime
 import importlib.util
-from typing import Any
+from typing import Any, Iterator
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -21,10 +22,8 @@ from ..exceptions import (
 from ..model_cards import ProviderModelCards, create_tooluniverse_model_cards
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import ToolUniverseParams
-from ..toolsets.tooluniverse import ToolUniverseToolset
 from ..validation.extraction import find_reference_ids
 
-DEFAULT_REQUEST_TIMEOUT = 120
 RESEARCH_INSTRUCTIONS = """Act as a scientific co-investigator. Develop hypotheses,
 use the available scientific tools and Python to investigate them, and separate
 observations from speculation. Ground factual claims in retrieved evidence.
@@ -59,6 +58,12 @@ class ToolUniverseProvider(ResearchProvider):
     ) -> None:
         """Initialize configuration without constructing an agent or making requests."""
         self.params = params or ToolUniverseParams()
+        if config.timeout is not None:
+            raise ProviderNotConfiguredError(
+                config.name,
+                "ToolUniverse does not yet support a whole-run ProviderConfig.timeout. "
+                "Use request_timeout for individual LLM requests, and max_steps for the agent limit.",
+            )
         super().__init__(config, self.params.model)
 
     def get_default_model(self) -> str:
@@ -101,11 +106,11 @@ class ToolUniverseProvider(ResearchProvider):
             "api_key": self.config.api_key,
             "api_base": self.config.base_url,
             "client_kwargs": {
-                "timeout": self.params.timeout or self.config.timeout or DEFAULT_REQUEST_TIMEOUT,
+                "timeout": self.params.request_timeout,
             },
         }
 
-    def _build_agent(self, universe: Any) -> Any:
+    def _build_agent(self, universe: Any, client: Any) -> Any:
         """Load selected tools and construct the real upstream CodeAgent.
 
         Unknown or unavailable tool names fail before an LLM request. Exposing
@@ -116,33 +121,34 @@ class ToolUniverseProvider(ResearchProvider):
         from ._tooluniverse_tools import create_tooluniverse_tool
 
         try:
-            ToolUniverseToolset(tools=self.params.tools).load_tools(universe)
+            self.params.load_tools(universe)
         except ValueError as error:
             raise ProviderNotConfiguredError(self.name, str(error)) from error
         tools = [create_tooluniverse_tool(name, universe) for name in self.params.tools]
         return CodeAgent(
             tools=tools,
-            model=OpenAIModel(**self._model_kwargs()),
+            model=OpenAIModel(**self._model_kwargs(), client=client),
             instructions=self.params.system_prompt or RESEARCH_INSTRUCTIONS,
             max_steps=self.params.max_steps,
             verbosity_level=0,
             return_full_result=True,
         )
 
+    @contextmanager
+    def _agent_session(self, universe: Any) -> Iterator[Any]:
+        """Own the LLM client directly so SDK attribute drift cannot mask run errors."""
+        from openai import OpenAI
+
+        kwargs = self._model_kwargs()
+        with OpenAI(
+            api_key=kwargs["api_key"], base_url=kwargs["api_base"], **kwargs["client_kwargs"],
+        ) as client:
+            yield self._build_agent(universe, client)
+
     def _run_agent(self, query: str) -> str:
         """Run synchronously with independent conversation and tool state per call."""
-        from tooluniverse import ToolUniverse  # type: ignore[import-not-found, import-untyped]
-
-        universe = ToolUniverse()
-        try:
-            agent = self._build_agent(universe)
-            try:
-                result = agent.run(query)
-                return self._result_to_markdown(result)
-            finally:
-                agent.model.client.close()
-        finally:
-            universe.close()
+        with self.params.open_universe() as universe, self._agent_session(universe) as agent:
+            return self._result_to_markdown(agent.run(query))
 
     @staticmethod
     def _result_to_markdown(result: Any) -> str:
@@ -189,6 +195,6 @@ class ToolUniverseProvider(ResearchProvider):
             run_metadata={
                 "agent_runtime": "smolagents.CodeAgent",
                 "llm": self.params.llm,
-                "toolsets": [ToolUniverseToolset(tools=self.params.tools).provenance()],
+                "toolsets": [self.params.provenance()],
             },
         )

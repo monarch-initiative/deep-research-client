@@ -994,7 +994,7 @@ def create_tooluniverse_model_cards() -> ProviderModelCards:
             "Requires the tooluniverse extra and an underlying LLM API key",
             "Executes Python locally; use a trusted/sandboxed environment",
             "Tools may require additional dependencies or credentials",
-            "Timeout applies to each LLM request, not the whole run or tool execution",
+            "request_timeout limits each LLM request; whole-run ProviderConfig.timeout is unsupported",
             "Available resources depend on the configured tool list",
         ],
     )

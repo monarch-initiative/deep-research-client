@@ -646,7 +646,9 @@ used for reasoning and code generation.
 | `llm` | `gpt-4.1-mini` | Underlying OpenAI-compatible model ID |
 | `tools` | See below | Non-empty list of exact ToolUniverse tool names |
 | `max_steps` | `20` | Agent step limit (1–100); exhausted runs raise an error |
-| `timeout` | `None` | Per-LLM-request timeout in seconds; overrides `ProviderConfig.timeout`, otherwise 120 seconds |
+| `request_timeout` | `120` | Timeout in seconds for each LLM HTTP request |
+| `workspace` | `None` | SDK workspace; otherwise `TOOLUNIVERSE_HOME` or `./.tooluniverse` |
+| `env_vars` | `["NCBI_API_KEY"]` | Environment names forwarded to Biomni's MCP child; applies to composition with Biomni |
 | `system_prompt` | Scientific investigation instructions | Custom agent instructions |
 
 The default tools are `PubMed_search_articles`, `PubMed_get_article`,
@@ -656,6 +658,14 @@ are exposed to the agent. Unknown or unavailable tool names fail before any
 LLM request. Additional tools may require tool-specific environment credentials
 and packages. `allowed_domains` is unsupported and rejected; select appropriate
 tools instead.
+
+The shared toolset also accepts `workspace` and `env_vars` when composed into a
+host. Use an absolute workspace path to share the same SDK configuration across
+host working directories. The SDK reads an existing workspace's `.env` and
+`profile.yaml`, and seeds a default profile if the directory exists without one.
+It does not create a missing default workspace. Its persistent cache defaults to
+`~/.tooluniverse/cache.sqlite`; set `TOOLUNIVERSE_CACHE_DIR` or
+`TOOLUNIVERSE_CACHE_PATH` to relocate it.
 
 ```python
 from deep_research_client import DeepResearchClient
@@ -703,6 +713,13 @@ without smolagents. The `tooluniverse` extra remains the standalone smolagents
 agent installation. Composed runs use the **host's** LLM and authentication;
 `TOOLUNIVERSE_API_KEY` and `TOOLUNIVERSE_BASE_URL` configure only the standalone
 provider. Individual scientific tools still use their own environment keys.
+Biomni forwards `NCBI_API_KEY` by default, alongside MCP's basic process
+environment such as `PATH` and `HOME`. For other scientific credentials, set
+`"env_vars": ["NCBI_API_KEY", "MY_SCIENTIFIC_API_KEY"]` inside the toolset object.
+The temporary configuration stores variable references, not credential values.
+Include any SDK environment settings such as `TOOLUNIVERSE_CACHE_DIR` in
+`env_vars` too when Biomni's child should inherit them.
+Claude and Cyberian use their host CLI's inherited environment.
 
 `true` selects the same default tools as the standalone provider, `false`/`null`
 disables the mixin, and an object selects tools explicitly:
@@ -733,21 +750,28 @@ schemas and structured results, with no general dispatcher exposing unselected
 tools. Claude receives explicit MCP tool permissions alongside its existing
 allowlist; enabling TU does not turn on permission bypass. Cyberian configures
 only its fresh workspace. Biomni uses temporary MCP configuration. No global
-Claude/MCP settings are modified.
+Claude/MCP settings are modified. Tool failures are marked as MCP errors, and
+both Python and native stdout diagnostics are redirected to stderr to protect
+the protocol stream. Biomni closes discovery and execution subprocesses after
+each MCP session.
 
 This integration supplies **tools**, not TU's skill library or an additional
 research loop. TU can coexist with skills already installed in the host. Reports
 retain the host provider identity and record the selected toolset in run
-metadata; cache keys distinguish tool selections. Unsupported hosts reject the
+metadata; cache keys distinguish tool selections regardless of list order. Unsupported hosts reject the
 parameter, and Cyberian rejects it for unmanaged servers or non-Claude agents.
 
 ### Limitations
 
-- Executes generated Python locally; use a trusted/sandboxed environment.
+- Executes generated Python locally; use a trusted environment or run the
+  wrapper inside an external sandbox. Configurable Docker/E2B executors remain
+  a follow-up; the local executor is not a security sandbox.
 - Costs depend on the underlying LLM, tools, and number of steps.
-- The timeout applies to individual LLM HTTP requests, not scientific-tool
-  execution or the whole investigation. Cancelling the async caller does not
-  terminate an already running worker thread.
+- `request_timeout` applies to individual LLM HTTP requests. Scientific-tool
+  execution and the whole investigation have no wall-clock deadline;
+  `ProviderConfig.timeout` is rejected rather than reinterpreted as a request
+  timeout. Use `max_steps` to limit agent steps. Cancelling the async caller
+  does not terminate an already running worker thread.
 - Returns the inline markdown report and recognized reference identifiers;
   generated files are not collected as report artifacts.
 - Available resources and analysis capabilities depend on the selected tools

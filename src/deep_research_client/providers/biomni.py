@@ -308,8 +308,7 @@ class BiomniProvider(ResearchProvider):
             start_time=start_time,
             end_time=end_time,
             duration_seconds=duration,
-            run_metadata={"toolsets": [self.params.tooluniverse.provenance()]}
-            if self.params.tooluniverse else None,
+            run_metadata=self.params.toolset_run_metadata() or None,
         )
 
     def _agent_kwargs(self) -> dict[str, Any]:
@@ -370,7 +369,7 @@ class BiomniProvider(ResearchProvider):
         # A1.add_mcp uses nest_asyncio, which expects a current event loop even
         # in our worker thread. Keep its loop and MCP configuration alive for go().
         with asyncio.Runner() as runner:
-            runner.get_loop()
+            asyncio.set_event_loop(runner.get_loop())
             with self._attach_tooluniverse(agent):
                 return agent.go(query)
 

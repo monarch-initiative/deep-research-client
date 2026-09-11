@@ -9,6 +9,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 from typing import Any
 
@@ -24,9 +26,24 @@ from deep_research_client.provider_params import (
 )
 from deep_research_client.providers.claude_code import ClaudeCodeProvider
 from deep_research_client.providers.cyberian import CyberianProvider
-from deep_research_client.toolsets.tooluniverse import ToolUniverseToolset
+from deep_research_client.toolsets.tooluniverse import (
+    ToolUniverseMixin, ToolUniverseToolset, tooluniverse_result_is_error,
+)
 
 LOCAL_TOOL = "ToolUniverse_get_usage_tips"
+
+
+def mcp_child_pids() -> set[int]:
+    """Inspect real child processes so Biomni tests can detect orphaned MCP servers."""
+    if shutil.which("ps") is None:
+        pytest.skip("Process lifecycle verification requires ps")
+    result = subprocess.run(["ps", "-axo", "pid,ppid,command"], text=True, capture_output=True, check=True)
+    children = set()
+    for line in result.stdout.splitlines()[1:]:
+        pid, parent, command = line.strip().split(None, 2)
+        if int(parent) == os.getpid() and "deep_research_client.toolsets.tooluniverse_mcp" in command:
+            children.add(int(pid))
+    return children
 
 
 def require_tooluniverse() -> None:
@@ -46,8 +63,64 @@ def test_hosts_share_configuration(provider: str, cli_strings: bool) -> None:
     explicit = create_provider_params(provider, provider_params={"tooluniverse": json.dumps(selection) if cli_strings else selection})
     disabled = create_provider_params(provider, provider_params={"tooluniverse": "false" if cli_strings else False})
     assert default.model_dump()["tooluniverse"]["tools"] == ToolUniverseParams().tools
-    assert explicit.model_dump()["tooluniverse"] == {"tools": [LOCAL_TOOL]}
+    assert explicit.model_dump()["tooluniverse"] == ToolUniverseToolset(tools=[LOCAL_TOOL]).model_dump()
     assert disabled.model_dump()["tooluniverse"] is None
+    assert isinstance(explicit, ToolUniverseMixin)
+    assert explicit.toolset_run_metadata() == {"toolsets": [{"name": "tooluniverse", "tools": [LOCAL_TOOL]}]}
+    assert isinstance(disabled, ToolUniverseMixin)
+    assert disabled.toolset_run_metadata() == {}
+
+
+@pytest.mark.parametrize("result,expected", [
+    ("Error executing tool PubMed: failed", True), ("Error: unavailable", True),
+    ("Error extracting content: corrupt input", True), ({"error": "invalid argument"}, True),
+    ({"status": "error"}, True), ({"success": False}, True),
+    ("Error rates improved in the experiment", False), ({"error": None, "data": [1]}, False),
+    ({"status": "success", "data": "Error: quoted source text"}, False), ([1, 2], False),
+])
+def test_tool_failure_classification(result: Any, expected: bool) -> None:
+    """Recognize failure payloads without scanning legitimate evidence for error words."""
+    assert tooluniverse_result_is_error(result) is expected
+
+
+@pytest.mark.skipif(os.getenv("REQUIRE_NO_SMOLAGENTS") != "1", reason="Toolset-only environment check")
+def test_toolset_extra_does_not_install_smolagents() -> None:
+    """Fail the dedicated CI job if the toolset begins pulling in an agent framework."""
+    assert importlib.util.find_spec("tooluniverse") is not None
+    assert importlib.util.find_spec("mcp") is not None
+    assert importlib.util.find_spec("smolagents") is None
+
+
+def test_native_stdout_cannot_corrupt_protocol() -> None:
+    """Exercise real fd writes and exceptional cleanup in a separate Python process."""
+    code = '''
+import os
+from deep_research_client.toolsets.tooluniverse_mcp import protocol_stdout
+try:
+    with protocol_stdout() as output:
+        print("python diagnostic")
+        os.write(1, b"native diagnostic\\n")
+        output.write("protocol output\\n")
+        raise RuntimeError("test error")
+except RuntimeError:
+    pass
+os.write(1, b"restored output\\n")
+'''
+    result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, check=True)
+    assert result.stdout == "protocol output\nrestored output\n"
+    assert "python diagnostic" in result.stderr
+    assert "native diagnostic" in result.stderr
+
+
+def test_explicit_scientific_environment_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Custom scientific credentials are opt-in; host credentials stay out by default."""
+    monkeypatch.setenv("CUSTOM_SCIENCE_KEY", "custom-key")
+    toolset = ToolUniverseToolset(env_vars=["CUSTOM_SCIENCE_KEY"])
+    assert toolset.biomni_mcp_config("tu")["mcp_servers"]["tu"]["env"] == {
+        "CUSTOM_SCIENCE_KEY": "${CUSTOM_SCIENCE_KEY}",
+    }
+    with pytest.raises(ValidationError, match="portable environment"):
+        ToolUniverseToolset(env_vars=["INVALID-NAME"])
 
 
 @pytest.mark.parametrize("provider", ["openscientist", "openai", "falcon", "perplexity", "asta"])
@@ -74,7 +147,7 @@ def test_claude_command_preserves_permissions_and_host_model() -> None:
     config = json.loads(command[command.index("--mcp-config") + 1])
     server = config["mcpServers"]["tu"]
     assert server["command"] == sys.executable
-    assert json.loads(server["args"][-1]) == [LOCAL_TOOL]
+    assert json.loads(server["args"][-1])["tools"] == [LOCAL_TOOL]
     assert command[command.index("--model") + 1] == "sonnet"
     assert command[command.index("--allowedTools") + 1].split(",") == [
         "WebSearch", "WebFetch", f"mcp__tu__{LOCAL_TOOL}",
@@ -108,11 +181,13 @@ def test_cyberian_workspace_configuration(tmp_path: Path) -> None:
 def test_biomni_configuration_keeps_credentials_out_of_files(monkeypatch: pytest.MonkeyPatch) -> None:
     """Biomni resolves references before passing its environment to the MCP child."""
     monkeypatch.setenv("NCBI_API_KEY", "secret-scientific-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "host-llm-key")
+    monkeypatch.setenv("GITHUB_TOKEN", "ci-token")
     toolset = ToolUniverseToolset(tools=[LOCAL_TOOL])
     server = toolset.biomni_mcp_config("test_server")["mcp_servers"]["test_server"]
     assert server["command"][0] == sys.executable
-    assert json.loads(server["command"][-1]) == [LOCAL_TOOL]
-    assert server["env"]["NCBI_API_KEY"] == "${NCBI_API_KEY}"
+    assert json.loads(server["command"][-1])["tools"] == [LOCAL_TOOL]
+    assert server["env"] == {"NCBI_API_KEY": "${NCBI_API_KEY}"}
     assert "secret-scientific-key" not in json.dumps(server)
 
 
@@ -128,6 +203,13 @@ def test_composition_cache_identity(tmp_path: Path) -> None:
     assert mixed != cache._get_cache_filename("query", "biomni", provider_params=shorthand)
     custom = params("claude_code", {"tooluniverse": {"tools": [LOCAL_TOOL]}})
     assert mixed != cache._get_cache_filename("query", "claude_code", provider_params=custom)
+    selection = [LOCAL_TOOL, "PubMed_get_article"]
+    assert params("claude_code", {"tooluniverse": {"tools": selection}}) == params(
+        "claude_code", {"tooluniverse": {"tools": list(reversed(selection))}},
+    )
+    assert params("tooluniverse", {"tools": selection}) == params(
+        "tooluniverse", {"tools": list(reversed(selection))},
+    )
 
 
 def test_missing_mixin_install_explains_toolset_extra() -> None:
@@ -140,13 +222,16 @@ def test_missing_mixin_install_explains_toolset_extra() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tools", [ToolUniverseParams().tools, [LOCAL_TOOL]])
-async def test_real_mcp_bridge(tools: list[str]) -> None:
+async def test_real_mcp_bridge(tools: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A real stdio child advertises only the selection and executes local SDK tools."""
     require_tooluniverse()
     from mcp import ClientSession, StdioServerParameters  # type: ignore[import-not-found, import-untyped]
     from mcp.client.stdio import stdio_client  # type: ignore[import-not-found, import-untyped]
 
-    server = ToolUniverseToolset(tools=tools).mcp_server()
+    # Explicit local workspace and no inherited remote profile: loading schemas
+    # reads packaged JSON; the usage-tips operation itself is entirely offline.
+    monkeypatch.delenv("TOOLUNIVERSE_PROFILE", raising=False)
+    server = ToolUniverseToolset(tools=tools, workspace=str(tmp_path)).mcp_server()
     async with asyncio.timeout(60):
         async with stdio_client(StdioServerParameters(**server, env=os.environ.copy())) as (reader, writer):
             async with ClientSession(reader, writer) as session:
@@ -160,6 +245,8 @@ async def test_real_mcp_bridge(tools: list[str]) -> None:
                     result = await session.call_tool(LOCAL_TOOL, {"topic": "loading"})
                     assert not result.isError
                     assert "loading" in str(result.content)
+                    failed = await session.call_tool(LOCAL_TOOL, {"topic": "invalid-topic"})
+                    assert failed.isError
 
 
 def test_real_biomni_mcp_attachment(tmp_path: Path) -> None:
@@ -179,12 +266,40 @@ def test_real_biomni_mcp_attachment(tmp_path: Path) -> None:
         ),
     )
     agent = provider._build_agent()
+    before = mcp_child_pids()
+    modules_before = {name for name in sys.modules if name.startswith("mcp_servers.tu_")}
     with asyncio.Runner() as runner:
-        runner.get_loop()
+        asyncio.set_event_loop(runner.get_loop())
         with provider._attach_tooluniverse(agent):
             assert LOCAL_TOOL in agent.list_custom_tools()
+            assert mcp_child_pids() == before  # discovery's stdio session has already closed
             result = agent.get_custom_tool(LOCAL_TOOL)(topic="loading")
             assert "loading" in str(result)
+            assert mcp_child_pids() == before  # calls own short-lived stdio sessions too
+    assert mcp_child_pids() == before
+    assert {name for name in sys.modules if name.startswith("mcp_servers.tu_")} == modules_before
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_claude_composed_report_provenance(tmp_path: Path) -> None:
+    """Run the real research entry point and assert composition survives in its result."""
+    require_tooluniverse()
+    if os.getenv("RUN_TOOLUNIVERSE_CLAUDE_INTEGRATION") != "1":
+        pytest.skip("Set RUN_TOOLUNIVERSE_CLAUDE_INTEGRATION=1 for a paid Claude run")
+    toolset = ToolUniverseToolset(tools=[LOCAL_TOOL])
+    provider = ClaudeCodeProvider(
+        ProviderConfig(name="claude_code"),
+        ClaudeCodeParams(model="haiku", working_dir=str(tmp_path), timeout=120, tooluniverse=toolset),
+    )
+    result = await provider.research(
+        f"Call {LOCAL_TOOL} with topic='loading'. Explain its returned tool-loading guidance "
+        "in a markdown report of at least 200 words."
+    )
+    assert result.provider == "claude_code"
+    assert result.run_metadata is not None
+    assert result.run_metadata["toolsets"] == [{"name": "tooluniverse", "tools": [LOCAL_TOOL]}]
+    assert not result.run_metadata.get("permission_denials")
 
 
 @pytest.mark.integration

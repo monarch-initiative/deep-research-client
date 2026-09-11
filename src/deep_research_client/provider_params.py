@@ -2,7 +2,7 @@
 
 from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, model_validator
-from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseToolset, default_tooluniverse_tools
+from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseToolset
 
 
 class BaseProviderParams(BaseModel):
@@ -361,13 +361,17 @@ class CyberianParams(ToolUniverseMixin, BaseProviderParams):
         )
     )
 
-
     @model_validator(mode="after")
     def validate_tooluniverse_host(self) -> "CyberianParams":
         """Require a fresh managed Claude workspace for MCP configuration."""
-        if self.tooluniverse and ((self.agent_type or "claude").lower() != "claude" or not self.manage_server):
+        if self.tooluniverse and (self.effective_agent_type.lower() != "claude" or not self.manage_server):
             raise ValueError("Cyberian ToolUniverse requires agent_type='claude' and manage_server=true")
         return self
+
+    @property
+    def effective_agent_type(self) -> str:
+        """Resolve an explicit None from the declared agent_type default."""
+        return self.agent_type or str(type(self).model_fields["agent_type"].default)
 
 
 class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
@@ -512,7 +516,7 @@ class BiomniParams(ToolUniverseMixin, BaseProviderParams):
     )
 
 
-class ToolUniverseParams(BaseProviderParams):
+class ToolUniverseParams(ToolUniverseToolset, BaseProviderParams):
     """Parameters for a local ToolUniverse co-scientist.
 
     ``model`` selects the research model card; ``llm`` selects the underlying
@@ -531,27 +535,21 @@ class ToolUniverseParams(BaseProviderParams):
         default="gpt-4.1-mini", min_length=1,
         description="Underlying model ID on the configured OpenAI-compatible server",
     )
-    tools: List[str] = Field(
-        default_factory=default_tooluniverse_tools,
-        min_length=1,
-        description="Exact ToolUniverse tool names exposed to the agent (no wildcards)",
-    )
     max_steps: int = Field(
         default=20, ge=1, le=100,
         description="Maximum agent steps; an exhausted run raises instead of returning a report",
     )
-    timeout: Optional[int] = Field(
-        default=None, ge=1,
+    request_timeout: int = Field(
+        default=120, ge=1,
         description=(
-            "Timeout per LLM HTTP request, not a whole-run or scientific-tool deadline. "
-            "Overrides ProviderConfig.timeout; defaults to 120 seconds."
+            "Timeout per LLM HTTP request, independent of ProviderConfig.timeout. "
+            "This provider does not yet support a whole-run deadline."
         ),
     )
 
     @model_validator(mode="after")
     def validate_tool_selection(self) -> "ToolUniverseParams":
-        """Reject empty/duplicate tool names and unsupported domain filtering."""
-        ToolUniverseToolset(tools=self.tools)
+        """Reject unsupported domain filtering; tool validation is inherited."""
         if self.allowed_domains:
             raise ValueError("ToolUniverse does not support allowed_domains; select tools instead")
         return self

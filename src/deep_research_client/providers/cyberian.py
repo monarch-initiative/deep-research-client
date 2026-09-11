@@ -47,7 +47,7 @@ class CyberianProvider(ResearchProvider):
 
         # Workflow configuration
         self.workflow_file = self.params.workflow_file or self._default_workflow_path()
-        self.agent_type = self.params.agent_type or "claude"
+        self.agent_type = self.params.effective_agent_type
         self.skip_permissions = self.params.skip_permissions
         self.manage_server = self.params.manage_server
 
@@ -202,8 +202,7 @@ class CyberianProvider(ResearchProvider):
                     end_time=end_time,
                     duration_seconds=duration,
                     model=self.model,
-                    run_metadata={"toolsets": [self.params.tooluniverse.provenance()]}
-                    if self.params.tooluniverse else None,
+                    run_metadata=self.params.toolset_run_metadata() or None,
                 )
 
             except Exception as e:

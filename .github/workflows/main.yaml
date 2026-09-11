@@ -96,6 +96,7 @@ jobs:
       - name: Verify SDK composition without an agent framework
         env:
           REQUIRE_TOOLUNIVERSE_RUNTIME: "1"
+          REQUIRE_NO_SMOLAGENTS: "1"
         run: |
           uv run --no-dev --extra tooluniverse-tools --with pytest --with pytest-asyncio \
             pytest -q -rs tests/test_tooluniverse_mixin.py

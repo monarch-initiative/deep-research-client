@@ -431,6 +431,10 @@ class DeepResearchClient:
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
         elif provider_name == "tooluniverse":
+            if "tools" in effective_params:
+                from .provider_params import ToolUniverseParams
+
+                effective_params["tools"] = ToolUniverseParams.model_validate(effective_params).tools
             effective_params["_cache_version"] = "smolagents-tooluniverse-v1"
 
         return effective_params or None

@@ -498,8 +498,7 @@ class ClaudeCodeProvider(ResearchProvider):
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
-        if self.params.tooluniverse:
-            run_metadata["toolsets"] = [self.params.tooluniverse.provenance()]
+        run_metadata.update(self.params.toolset_run_metadata())
         # How many separate assistant messages the report was assembled from.
         # More than one is normal for an agentic run (the model narrates between
         # tool calls); the count is provenance for how the report was assembled,

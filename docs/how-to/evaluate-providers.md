@@ -398,10 +398,12 @@ What does say which happened is `scores.tsv`. It carries one column per
 disposition: `attempted` for the questions an option was chosen for, and
 `abstained`, `provider_errors`, `extraction_failures` and `skipped` for the
 four ways one was not. Those five account for `total` exactly, so an arm's
-row says where each of its questions went. It also carries `unusable`, which
-is not a disposition but a subset of `attempted` — answers whose correctness
-was never recorded, which cost precision and accuracy but not coverage, and
-which only a hand-edited or older-format run produces.
+row says where each of its questions went, and `correct` says how many of
+the attempts were right — the `n` column of the table above is `correct` over
+`total`. The row also carries `unusable`, which is not a disposition but a
+subset of `attempted` — answers whose correctness was never recorded, which
+cost precision and accuracy but not coverage, and which only a hand-edited or
+older-format run produces.
 
 Two of those get a note under the table as well as a column: `unusable` and
 `extraction_failures`, the two harness defects, on the principle that a

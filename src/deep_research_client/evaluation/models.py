@@ -20,7 +20,7 @@ first sentence, so a reader can stop there.
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from .datamodel import ScoreDisposition
 
@@ -838,11 +838,15 @@ class MCQScore(BaseModel):
     failure counts partition `total`; a score whose counts do not add up is
     rejected rather than written to a file a spreadsheet subtracts from.
 
-    >>> s = MCQScore(total=10, attempted=8, correct=6, abstained=2,
-    ...              accuracy=0.6, coverage=0.8, precision=0.75)
-    >>> s.precision
-    0.75
+    >>> s = MCQScore(total=10, attempted=8, correct=6, abstained=2)
+    >>> s.accuracy, s.coverage, s.precision
+    (0.6, 0.8, 0.75)
     """
+
+    # The three rates became `computed_field`s, and pydantic DROPS unknown
+    # keyword arguments by default -- so a call site still passing
+    # `accuracy=0.6` would have had it silently ignored rather than flagged.
+    model_config = ConfigDict(extra="forbid")
 
     total: int = Field(..., description="Questions in the eval set")
     attempted: int = Field(
@@ -898,73 +902,78 @@ class MCQScore(BaseModel):
             "report an attempt that was made as one that was not"
         ),
     )
-    accuracy: float = Field(
-        ...,
-        description=(
-            "correct / total, and 0.0 when `total` is 0. Stays a float where "
-            "`precision` became Optional, and the line is where the number is "
-            "RENDERED rather than where it is computed: an arm reaches the "
-            "`--grade` table only with at least one disposed cell, so a total "
-            "of 0 never reaches a reader, while an attempted of 0 does. A "
-            "caller that builds an `MCQScore` by hand can still see this zero "
-            "-- read it against `total`.\n\n"
-            "Unlike `precision`, this rate keeps `unusable` records in its "
-            "denominator and they cannot be in its numerator, so they cost "
-            "accuracy exactly as a wrong answer would. Deliberate, and the "
-            "same treatment `EXTRACTION_FAILED` gets: accuracy is over every "
-            "question asked, which is LAB-Bench's definition, and a question "
-            "the harness cannot report an answer for was not answered "
-            "correctly"
-        ),
-    )
-    coverage: float = Field(
-        ...,
-        description=(
-            "attempted / total, and 0.0 when `total` is 0, for the same "
-            "reason as `accuracy`. This is the field that says whether an arm "
-            "attempted anything, but it does NOT say why `precision` is "
-            "absent: an arm can reach a `None` precision at any coverage, so "
-            "0.0 here means nothing was attempted and says nothing about the "
-            "other way in. Over every question an option was chosen for, "
-            "including the ones `unusable` counts -- those cost precision, not "
-            "coverage"
-        ),
-    )
-    precision: Optional[float] = Field(
-        ...,
-        description=(
-            "correct / (attempted - unusable), and None when that is 0 -- "
-            "when NO attempted answer had its correctness established. That "
-            "is the condition, stated instead of its causes because the "
-            "causes compose. An arm can attempt nothing (every question "
-            "declined, the endpoint down all run, every response unreadable "
-            "by the extractor, the pair skipped, or any mixture of those), or "
-            "attempt and have every attempt come back with no recorded "
-            "correctness. So `coverage` beside the "
-            "dash is not one of two values: 0.000 when nothing was "
-            "attempted, 1.000 when everything was and none of it was usable, "
-            "and anything in between for a mixture -- five declined and five "
-            "unusable out of ten gives `cov 0.500` beside the dash. "
-            "`0.000` in a comparison column would read as 'answered and got "
-            "them all wrong'. Rendered as an em dash in the `--grade` "
-            "table and as an empty field in `scores.tsv`. The denominator is "
-            "narrower than `attempted`: a record whose correctness was never "
-            "written down is not evidence either way.\n\n"
-            "History: this counted the ways in and said four, which was one "
-            "short -- `SKIPPED` reaches `attempted == 0` as well, and "
-            "`score_mcq` names it -- and admitted no mixtures at all, so a "
-            "reader who met a dash beside `cov 0.500` had been told it could "
-            "not happen. A count of causes is a claim about a surface; the "
-            "condition is the thing that cannot drift. Before that it was a "
-            "float documented as readable-against-"
-            "`coverage`. That is the same trade -- a disambiguator beside a "
-            "rate -- that the citation lines had just rejected one command "
-            "over, and there the disambiguator was in the same sentence "
-            "rather than an adjacent column. See the note on `accuracy` for "
-            "why its own zero stays a float."
-        ),
-    )
     answers: list[MCQAnswer] = Field(default_factory=list, description="Per-task graded answers")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def accuracy(self) -> float:
+        """correct / total, and 0.0 when `total` is 0.
+
+        Stays a float where `precision` is Optional, and the line is where the
+        number is RENDERED rather than where it is computed: an arm reaches
+        the `--grade` table only with at least one disposed cell, so a total
+        of 0 never reaches a reader, while an attempted of 0 does.
+
+        Unlike `precision`, this rate keeps `unusable` records in its
+        denominator and they cannot be in its numerator, so they cost accuracy
+        exactly as a wrong answer would. Deliberate, and the same treatment
+        `EXTRACTION_FAILED` gets: accuracy is over every question asked, which
+        is LAB-Bench's definition, and a question the harness cannot report an
+        answer for was not answered correctly.
+        """
+        return self.correct / self.total if self.total else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def coverage(self) -> float:
+        """attempted / total, and 0.0 when `total` is 0, as `accuracy` is.
+
+        This is the field that says whether an arm attempted anything, but it
+        does NOT say why `precision` is absent: an arm can reach a `None`
+        precision at any coverage, so 0.0 here means nothing was attempted and
+        says nothing about the other way in. Over every question an option was
+        chosen for, including the ones `unusable` counts -- those cost
+        precision, not coverage.
+        """
+        return self.attempted / self.total if self.total else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def precision(self) -> Optional[float]:
+        """correct / (attempted - unusable), and None when that is 0.
+
+        None when NO attempted answer had its correctness established. That is
+        the condition, stated instead of its causes because the causes
+        compose. An arm can attempt nothing (every question declined, the
+        endpoint down all run, every response unreadable by the extractor, the
+        pair skipped, or any mixture of those), or attempt and have every
+        attempt come back with no recorded correctness. So `coverage` beside
+        the dash is not one of two values: 0.000 when nothing was attempted,
+        1.000 when everything was and none of it was usable, and anything in
+        between for a mixture -- five declined and five unusable out of ten
+        gives `cov 0.500` beside the dash.
+
+        `0.000` in a comparison column would read as 'answered and got them
+        all wrong'. Rendered as an em dash in the `--grade` table and as an
+        empty field in `scores.tsv`. The denominator is narrower than
+        `attempted`: a record whose correctness was never written down is not
+        evidence either way.
+
+        History: this and its two siblings were settable fields, so a caller
+        could write rates that contradicted the counts in the same row -- and
+        a fixture in this repo did, giving `cov 0.400` beside `attempted 4` of
+        `total 15`. All three are pure functions of the counts, so a stored
+        copy was a second source of truth with nothing keeping the two
+        together. Before that, `precision` counted the ways in and said four,
+        which was one short (`SKIPPED` reaches `attempted == 0` as well), and
+        admitted no mixtures -- a reader who met a dash beside `cov 0.500` had
+        been told it could not happen. Earlier still it was a float documented
+        as readable-against-`coverage`: a disambiguator beside a rate, the
+        trade the citation lines had just rejected one command over.
+        """
+        judged = self.attempted - self.unusable
+        return self.correct / judged if judged else None
+
 
     @model_validator(mode="after")
     def _counts_account_for_total(self) -> "MCQScore":
@@ -982,12 +991,10 @@ class MCQScore(BaseModel):
         Enforced here rather than documented, so the sentence a reader acts on
         holds by construction -- the way `correct`'s does.
 
-        >>> MCQScore(total=2, attempted=1, correct=1, abstained=1,
-        ...          accuracy=0.5, coverage=0.5, precision=1.0).skipped
+        >>> MCQScore(total=2, attempted=1, correct=1, abstained=1).skipped
         0
 
-        >>> MCQScore(total=3, attempted=2, correct=1,
-        ...          accuracy=1/3, coverage=2/3, precision=0.5)
+        >>> MCQScore(total=3, attempted=2, correct=1)
         Traceback (most recent call last):
         ...
         pydantic_core._pydantic_core.ValidationError: ...
@@ -1011,5 +1018,16 @@ class MCQScore(BaseModel):
                 f"unusable={self.unusable} exceeds attempted={self.attempted}: "
                 f"an unusable record is a SCORED one, so it is a subset of "
                 f"`attempted`, not a sixth part of `total`"
+            )
+        judged = self.attempted - self.unusable
+        if self.correct > judged:
+            raise ValueError(
+                f"correct={self.correct} exceeds judged={judged} "
+                f"(attempted={self.attempted} - unusable={self.unusable}): a "
+                f"question can only be right if an option was chosen for it "
+                f"AND its correctness was recorded, and those two sets are "
+                f"disjoint in `score_mcq`. Checked against `judged` rather "
+                f"than `attempted` because `precision` divides by `judged`: "
+                f"`correct <= attempted` alone admits a precision above 1"
             )
         return self

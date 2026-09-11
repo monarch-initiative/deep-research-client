@@ -9,7 +9,6 @@ know, and a message nothing asserts on is a message that can quietly disappear.
 Everything here runs through the mock provider, so no network and no spend.
 """
 
-import inspect
 import json
 import logging
 import re
@@ -265,7 +264,6 @@ def test_the_grade_table_discloses_records_it_could_not_use(tmp_path, monkeypatc
     def one_unusable(eval_set, cells):
         return {"decliner": MCQScore(
             total=1, attempted=1, correct=0, unusable=1,
-            accuracy=0.0, coverage=1.0, precision=None,
         )}
 
     monkeypatch.setattr(matrix_mod, "score_by_arm", one_unusable)
@@ -361,37 +359,56 @@ def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
     )
 
 
-def test_the_page_names_every_disposition_column_the_writer_emits():
-    """Built from `write_scores_tsv`, so a new column cannot leave the page.
+def _scores_tsv_header(score) -> list[str]:
+    """The column names `write_scores_tsv` actually emits, by running it."""
+    import tempfile
+
+    from deep_research_client.evaluation.matrix import RunLayout, write_scores_tsv
+
+    root = Path(tempfile.mkdtemp()) / "run"
+    root.mkdir(parents=True, exist_ok=True)
+    write_scores_tsv(RunLayout(root=root), {"a": score})
+    return (root / "scores.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
+
+
+def test_the_page_names_every_column_the_writer_emits():
+    """DERIVED from `write_scores_tsv`, so a new column cannot leave the page.
 
     The how-to tells a reader that `cov` beside the em dash does not say which
-    case it is, and points at `scores.tsv`'s per-disposition columns as what
-    does. That list was a case short until `skipped` was added -- the page
-    named four dispositions when the enum has five and the file had no column
-    for the fifth. Naming them from the writer's own tuple means the next
-    column added is a failing test rather than a page that quietly stops being
-    the answer.
-    """
-    from deep_research_client.evaluation.matrix import write_scores_tsv
+    case it is, and points at `scores.tsv`'s columns as what does. That list
+    was a case short until `skipped` was added.
 
-    source = inspect.getsource(write_scores_tsv)
-    emitted = set(re.findall(r'"(\w+)",', source))
-    page = (Path(__file__).parent.parent
+    The first version of this guard read the writer's column names and then
+    used them only as a subset self-check on a hardcoded set of five. Adding a
+    sixth column left both assertions passing and the page unchecked for the
+    new name -- so it caught a removal or a rename, and not the addition it
+    was named for, which is the event that prompted it. A guard's list is a
+    describer too.
+
+    Derived, every emitted column must be named on the page or exempted here
+    by name, so a new one fails until someone decides which.
+    """
+    from deep_research_client.evaluation.models import MCQScore
+
+    # The writer's own tuple, read by running it rather than by parsing its
+    # source: a regex over `inspect.getsource` depended on a trailing comma
+    # and matched quoted words in the docstring too.
+    layout_root = Path(__file__).parent
+    emitted = _scores_tsv_header(MCQScore(total=1, attempted=0, correct=0,
+                                          abstained=1))
+    assert "skipped" in emitted, emitted
+
+    page = (layout_root.parent
             / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
 
-    # The disposition counts, which are what resolve the dash. `arm_id` and
-    # the rates are the row's identity and its numbers, documented elsewhere
-    # on the page; these are the ones the em-dash paragraph promises.
-    dispositions = {"abstained", "extraction_failures", "provider_errors",
-                    "skipped", "unusable"}
-    assert dispositions <= emitted, (
-        f"write_scores_tsv no longer emits {dispositions - emitted}; this "
-        f"guard is reading the wrong source"
-    )
-    missing = {c for c in dispositions if f"`{c}`" not in page}
+    # `arm_id` identifies the row; the three rates are documented by the
+    # paragraphs above, which the sibling guards pin sentence by sentence.
+    exempt = {"arm_id", "accuracy", "coverage", "precision"}
+    missing = [c for c in emitted if c not in exempt and f"`{c}`" not in page]
     assert not missing, (
-        f"docs/how-to/evaluate-providers.md does not name {sorted(missing)}, "
-        f"which scores.tsv carries and the em-dash paragraph sends a reader to"
+        f"docs/how-to/evaluate-providers.md does not name {missing}, which "
+        f"scores.tsv carries and the em-dash paragraph sends a reader to. "
+        f"Name it on the page, or add it to `exempt` with a reason."
     )
 
 

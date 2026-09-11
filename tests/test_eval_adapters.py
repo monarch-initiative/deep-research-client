@@ -417,38 +417,66 @@ def test_a_score_whose_counts_do_not_account_for_total_is_rejected():
     every file the writer produces.
     """
     with pytest.raises(ValidationError, match="do not account for total"):
-        MCQScore(total=3, attempted=2, correct=1,
-                 accuracy=1 / 3, coverage=2 / 3, precision=0.5)
+        MCQScore(total=3, attempted=2, correct=1)
 
-    # The complement: `unusable` is a subset of `attempted`, so it cannot
-    # exceed it -- a separate way for the counts to describe no run at all.
+    # `unusable` is a subset of `attempted`, so it cannot exceed it -- a
+    # separate way for the counts to describe no run at all.
     with pytest.raises(ValidationError, match="exceeds attempted"):
-        MCQScore(total=2, attempted=1, correct=0, abstained=1, unusable=2,
-                 accuracy=0.0, coverage=0.5, precision=None)
+        MCQScore(total=2, attempted=1, correct=0, abstained=1, unusable=2)
+
+    # And `correct <= attempted`, which `correct`'s own description said held
+    # by construction while holding only for `score_mcq`'s output. Unenforced,
+    # `correct=5` of `attempted=1` wrote `precision 5.0` to scores.tsv.
+    with pytest.raises(ValidationError, match="exceeds judged"):
+        MCQScore(total=1, attempted=1, correct=5)
+
+    # Against `judged`, not `attempted`: an unusable record had no correctness
+    # recorded, so it cannot be correct, and `precision` divides by `judged`.
+    # This shape satisfies `correct <= attempted` and still yields
+    # `precision 1.5` -- which is how it was found, in a fixture written for
+    # this file two lines of review earlier.
+    with pytest.raises(ValidationError, match="exceeds judged"):
+        MCQScore(total=20, attempted=7, correct=3, abstained=1,
+                 extraction_failures=2, provider_errors=4, skipped=6,
+                 unusable=5)
 
     # And the shape `score_mcq` actually produces is accepted.
-    assert MCQScore(total=3, attempted=2, correct=1, abstained=1, unusable=1,
-                    accuracy=1 / 3, coverage=2 / 3, precision=1.0).skipped == 0
+    assert MCQScore(total=3, attempted=2, correct=1, abstained=1,
+                    unusable=1).skipped == 0
 
 
-def test_precision_is_nullable_but_not_omittable():
+def test_the_rates_are_derived_and_cannot_contradict_the_counts():
     """Absent means "nothing was judged", so it cannot also mean "nobody said".
 
-    Making it `Optional[float] = Field(default=None)` left the one field in
-    this model whose absence carries a specific meaning as the only one a
-    producer could drop by accident -- its siblings are still required -- and
-    the renderer keys on `is None` alone, so a hand-built score that forgot it
-    prints an em dash for an arm that attempted eight questions.
+    All three rates are pure functions of the counts, and all three were
+    settable fields -- a second source of truth with nothing keeping the two
+    together. A fixture in this repo wrote `cov 0.400` beside `attempted 4` of
+    `total 15`, and a score could be built with `precision` omitted, which the
+    renderer keys on `is None` alone: an em dash for an arm that attempted
+    eight questions.
+
+    Derived, the disagreement is unconstructible rather than validated, and
+    `precision` is absent exactly when nothing was judged.
     """
-    # Counts that account for `total`, so the ONLY thing wrong with this
-    # score is the missing `precision`. Without `abstained=2` the accounting
-    # validator rejects it first and this passes for the wrong reason.
-    with pytest.raises(ValidationError, match="precision"):
-        MCQScore(total=10, attempted=8, correct=6, abstained=2,
-                 accuracy=0.6, coverage=0.8)
-    # Still nullable where it means something.
-    assert MCQScore(total=1, attempted=0, correct=0, abstained=1,
-                    accuracy=0.0, coverage=0.0, precision=None).precision is None
+    s = MCQScore(total=15, attempted=4, correct=3, abstained=1,
+                 extraction_failures=2, provider_errors=3, skipped=5,
+                 unusable=1)
+    assert s.coverage == pytest.approx(4 / 15)
+    assert s.accuracy == pytest.approx(3 / 15)
+    assert s.precision == pytest.approx(3 / 3)
+
+    # Passing one is a loud error, not a silently dropped keyword: pydantic
+    # ignores unknown arguments by default, so a call site left over from when
+    # these were fields would have had its value quietly discarded.
+    with pytest.raises(ValidationError, match="coverage"):
+        MCQScore(total=1, attempted=0, correct=0, abstained=1, coverage=0.9)
+
+    # Absent where it means something, and present in `model_dump()` so it
+    # still reaches `--output` and `scores.tsv`.
+    empty = MCQScore(total=1, attempted=0, correct=0, abstained=1)
+    assert empty.precision is None
+    assert empty.model_dump()["precision"] is None
+    assert empty.model_dump()["coverage"] == 0.0
 
 
 def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(caplog):

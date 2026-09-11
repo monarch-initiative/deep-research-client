@@ -790,7 +790,6 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     # it here fixed precision by moving the same collapse into coverage, which
     # would then report an attempt that was made as one that was not.
     attempted = len(scored)
-    judged = attempted - len(unusable)
     # `is True` over truthiness changes nothing here and no test can tell them
     # apart -- `scored` has already filtered the disposition, and None is
     # falsy -- so this is for the reader, the way the sibling count in
@@ -810,13 +809,6 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
             1 for a in answers if a.disposition == ScoreDisposition.PROVIDER_ERROR
         ),
         skipped=sum(1 for a in answers if a.disposition == ScoreDisposition.SKIPPED),
-        accuracy=correct / total if total else 0.0,
-        coverage=attempted / total if total else 0.0,
         unusable=len(unusable),
-        # Over `judged`, not `attempted`: correctness that was never recorded
-        # is not a wrong answer. None, not 0.0, when nothing was judged -- an
-        # arm with no precision has none, and this number is printed in a
-        # column beside arms that do.
-        precision=correct / judged if judged else None,
         answers=answers,
     )

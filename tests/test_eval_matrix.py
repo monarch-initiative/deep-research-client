@@ -558,7 +558,6 @@ def test_scores_tsv_counts_the_attempts_that_left_precisions_denominator(tmp_pat
     # file is countable. The accounting validator now rejects that shape.
     write_scores_tsv(layout, {"a": MCQScore(
         total=3, attempted=2, correct=1, unusable=1, abstained=1,
-        accuracy=1 / 3, coverage=2 / 3, precision=1.0,
     )})
 
     header, row = [
@@ -699,6 +698,35 @@ def test_silent_arm_is_extraction_failure_not_abstention(tmp_path, mock_client):
     assert score.coverage == pytest.approx(0.0)
 
 
+def _assert_row_agrees_with_score(header, row, score):
+    """Every emitted column against the model, derived from the header.
+
+    Both loops were literal tuples of eight names while the writer emits
+    twelve, under docstrings claiming EVERY column -- so a thirteenth added to
+    both of the writer's hand-parallel sequences was asserted by neither. The
+    names come from the file itself now, and each is compared by kind.
+    """
+    assert len(row) == len(header), (
+        f"the row has {len(row)} fields for {len(header)} columns, so every "
+        f"name past the gap is reading the wrong value:\n{header}\n{row}"
+    )
+    values = dict(zip(header, row))
+    rates = {"accuracy", "coverage"}
+    for column in header:
+        if column == "arm_id":
+            continue
+        if column == "precision":
+            assert values[column] == (
+                "" if score.precision is None else f"{score.precision:.4f}"
+            ), column
+        elif column in rates:
+            assert float(values[column]) == pytest.approx(
+                getattr(score, column), abs=1e-4), column
+        else:
+            assert int(values[column]) == getattr(score, column), column
+    return values
+
+
 def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
     """Distinct counts, so a swapped pair is visible.
 
@@ -713,11 +741,18 @@ def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
 
     layout = RunLayout(root=tmp_path / "run")
     layout.root.mkdir(parents=True, exist_ok=True)
-    # 4 + 1 + 2 + 3 + 5 == 15, so the accounting validator accepts it.
+    # EIGHT DISTINCT counts: 12 + 1 + 2 + 3 + 4 == 22, and `correct` 6 is
+    # within `judged` = 12 - 5. The first version of this had `correct` and
+    # `provider_errors` both 3 and `abstained` and `unusable` both 1 --
+    # adjacent swaps still failed, because the adjacent pairs happened to
+    # differ, but a value mis-paired across either of those pairs was
+    # invisible to a test named for every column carrying its own value. The
+    # second version made them distinct and gave `correct` 3 of a `judged` of
+    # 2, i.e. `precision 1.5`, which is what put the `judged` check on the
+    # validator. The rates are derived, so they cannot contradict these.
     score = MCQScore(
-        total=15, attempted=4, correct=3, abstained=1, extraction_failures=2,
-        provider_errors=3, skipped=5, unusable=1,
-        accuracy=0.2, coverage=0.4, precision=0.75,
+        total=22, attempted=12, correct=6, abstained=1, extraction_failures=2,
+        provider_errors=3, skipped=4, unusable=5,
     )
     write_scores_tsv(layout, {"arm-x": score})
 
@@ -725,13 +760,8 @@ def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
         ln.split("\t")
         for ln in layout.scores_path.read_text(encoding="utf-8").strip().splitlines()
     ]
-    assert len(row) == len(header)
-    values = dict(zip(header, row))
+    values = _assert_row_agrees_with_score(header, row, score)
     assert values["arm_id"] == "arm-x"
-    for column in ("total", "attempted", "correct", "abstained",
-                   "extraction_failures", "provider_errors", "skipped",
-                   "unusable"):
-        assert int(values[column]) == getattr(score, column), column
 
 
 def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
@@ -757,23 +787,8 @@ def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
     score = score_by_arm(eval_set, manifest.cells)["always-a"]
     rows = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8").strip().split("\n")
     header, row = (line.split("\t") for line in rows)
-    assert len(row) == len(header), (
-        f"the row has {len(row)} fields for {len(header)} columns, so every "
-        f"name past the gap is reading the wrong value:\n{header}\n{row}"
-    )
-    values = dict(zip(header, row))
-
+    values = _assert_row_agrees_with_score(header, row, score)
     assert values["arm_id"] == "always-a"
-    for column in ("total", "attempted", "correct", "abstained",
-                   "extraction_failures", "provider_errors", "skipped",
-                   "unusable"):
-        assert int(values[column]) == getattr(score, column), column
-    for column in ("accuracy", "coverage"):
-        assert float(values[column]) == pytest.approx(
-            getattr(score, column), abs=1e-4), column
-    assert values["precision"] == (
-        "" if score.precision is None else f"{score.precision:.4f}"
-    )
 
 
 # ---------------------------------------------------------------------------

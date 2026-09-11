@@ -843,7 +843,7 @@ def test_a_one_shot_iterator_is_refused_rather_than_read_once(make_value):
     a per-instance cached_property — so a second provider sharing the params
     would silently select against no patterns at all.
     """
-    with pytest.raises(TypeError, match="one-shot iterator"):
+    with pytest.raises(TypeError, match="re-readable collection"):
         split_name_list(make_value())
 
 
@@ -885,7 +885,7 @@ def test_a_bare_string_include_glob_through_the_constructor_is_split():
 
 def test_the_constructor_refuses_a_glob_list_the_splitter_refuses():
     """One rule, one home: __post_init__ raises where from_params would."""
-    with pytest.raises(TypeError, match="one-shot iterator"):
+    with pytest.raises(TypeError, match="re-readable collection"):
         ArtifactSelectionPolicy(
             max_bytes=1024, exclude_globs=iter(["*.log"])
         )
@@ -1067,14 +1067,17 @@ def test_a_name_in_a_list_is_stripped_the_way_a_name_in_a_string_is():
     policy = ArtifactSelectionPolicy(max_bytes=1024, runtime_suffixes=[" .log"])
 
     assert policy.runtime_suffixes == (".log",)
-    assert not policy.decide("agent-container.log", 100).keep
+    # .rule, not .keep: .log is not in the default allowlist, so an unstripped
+    # " .log" would fail to match here and the member would be dropped by
+    # extension_not_allowed anyway.
+    assert policy.decide("agent-container.log", 100).rule == "runtime"
 
 
 @pytest.mark.parametrize(
     "value,expected_message",
     [
         ({".claude/": 1}, "its keys are unlikely"),
-        (iter([".claude/"]), "one-shot iterator"),
+        (iter([".claude/"]), "re-readable collection"),
         (b".claude/", "decode it to str first"),
     ],
 )
@@ -1098,10 +1101,19 @@ def test_scaffolding_names_from_an_unordered_collection_are_sorted():
     sets alike, so the property would have held by coincidence rather than by
     construction — which is the failure mode this branch keeps catching in
     its own tests.
-    """
-    policy = ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes={"b", "a/"})
 
-    assert policy.scaffolding_prefixes == ("a/", "b/")
+    The pair is chosen so the two candidate implementations disagree. The
+    sort has to run on the *slash-terminated* form: "/" is 0x2F, above "."
+    and every digit, so sorting the pre-slash names and appending afterwards
+    yields ("logs/", "logs.old/"). An earlier version of this test used
+    {"b", "a/"}, where both orders agree — the same coincidence its own
+    docstring argues against.
+    """
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, scaffolding_prefixes={"logs", "logs.old"}
+    )
+
+    assert policy.scaffolding_prefixes == ("logs.old/", "logs/")
 
 
 def test_a_bare_string_scaffolding_prefix_is_still_refused_not_comma_split():
@@ -1125,3 +1137,73 @@ def test_a_glob_is_stored_in_the_form_it_is_matched_in():
 
     assert policy.include_globs == ("*.json",)
     assert policy.decide("results/table.json", 100).keep
+
+
+@pytest.mark.parametrize(
+    "field,setting,expected",
+    [
+        ("scaffolding_prefixes", {"a", "a/"}, ("a/",)),
+        ("include_globs", "*.JSON,*.json", ("*.json",)),
+        ("exclude_globs", ["a/*", "A/*"], ("a/*",)),
+    ],
+)
+def test_normalization_does_not_leave_the_duplicates_it_creates(
+    field, setting, expected
+):
+    """The caller wrote two names; normalization made them one name twice.
+
+    Beyond the wasted match per member, it is the mirror of the equal-sets
+    property this module establishes: {"a"} and {"a", "a/"} decide
+    identically and compared unequal.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
+
+    assert getattr(policy, field) == expected
+
+
+def test_two_policies_that_decide_identically_compare_equal():
+    """The duplicate's visible consequence, stated as the property."""
+    plain = ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes={"a"})
+    redundant = ArtifactSelectionPolicy(
+        max_bytes=1024, scaffolding_prefixes={"a", "a/"}
+    )
+
+    assert plain == redundant
+
+
+def test_a_caller_supplied_list_order_survives_normalization():
+    """Only an unordered collection is sorted; a list's order is the caller's."""
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, scaffolding_prefixes=["z", "a"]
+    )
+
+    assert policy.scaffolding_prefixes == ("z/", "a/")
+
+
+@pytest.mark.parametrize(
+    "value,expected_message",
+    [
+        ({".claude/": 1}, "its keys are unlikely"),
+        (iter([".claude/"]), "re-readable collection"),
+        (b".claude/", "decode it to str first"),
+    ],
+)
+def test_is_under_directory_refuses_what_the_shared_rule_refuses(
+    value, expected_message
+):
+    """The public door behind _with_trailing_slashes, now documented as such.
+
+    The one-shot case is the one that costs something: this function consumes
+    its argument inside the call, so a generator would be safe here. It is
+    refused so one rule holds at every door rather than a caller having to
+    know which doors re-read — and the message now states the contract rather
+    than a harm that does not apply here.
+    """
+    with pytest.raises(TypeError, match=expected_message):
+        is_under_directory("a/.claude/x.md", value)
+
+
+def test_is_under_directory_still_answers_for_an_ordinary_list():
+    """The guard above narrows what is accepted, not what it decides."""
+    assert is_under_directory("workspace/.claude/skills/x.md", [".claude/"])
+    assert not is_under_directory("run/logs_summary.csv", ["logs"])

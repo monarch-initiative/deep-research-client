@@ -113,6 +113,28 @@ DEFAULT_RUNTIME_NAME_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+def _unique(names: Iterable[str]) -> tuple[str, ...]:
+    """Drop repeats, keeping the first occurrence's position.
+
+    Normalization creates duplicates the caller did not write: ``{"a", "a/"}``
+    both become ``a/``, and ``"*.JSON,*.json"`` both become ``*.json``. Beyond
+    the wasted match per member, a duplicate makes two policies that decide
+    identically compare unequal — the mirror of the equal-sets property this
+    module establishes elsewhere.
+
+    Args:
+        names: Normalized names, possibly with repeats.
+
+    Returns:
+        The distinct names, in first-seen order.
+
+    Example:
+        >>> _unique(["a/", "b/", "a/"])
+        ('a/', 'b/')
+    """
+    return tuple(dict.fromkeys(names))
+
+
 def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
     """Strip each name and drop the empties.
 
@@ -131,7 +153,7 @@ def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
         >>> _stripped_names([" a/* ", "", "  "])
         ('a/*',)
     """
-    return tuple(name for name in (item.strip() for item in items) if name)
+    return _unique(name for name in (item.strip() for item in items) if name)
 
 
 def split_name_list(value: object) -> tuple[str, ...]:
@@ -159,10 +181,14 @@ def split_name_list(value: object) -> tuple[str, ...]:
     * A mapping, whose keys are unlikely to be the names meant.
     * ``bytes``, the one remaining string-like that is also an iterable of
       something else: ``tuple(b"*.json")`` is six integers.
-    * A one-shot iterator such as a generator. It reads correctly once and
-      empty every time after, and a params object outlives the policy built
-      from it, so the second reader would select nothing and say nothing.
-      Wrap it in a list.
+    * A one-shot iterator such as a generator. The contract is a re-readable
+      collection, so this is refused at every door rather than only where a
+      second read is certain: a params object outlives the policy built from
+      it, and the second reader would select nothing and say nothing. Refusing
+      it uniformly costs a caller who really does read once — such as
+      :func:`is_under_directory`, which consumes its argument inside the call
+      — one ``list()``, and is the reason there is one rule here instead of a
+      permissive door and a strict one. Wrap it in a list.
 
     Args:
         value: A collection of names, a comma-separated string, or None.
@@ -217,8 +243,8 @@ def split_name_list(value: object) -> tuple[str, ...]:
     if isinstance(value, Iterable):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
-            f"{type(value).__name__}; a one-shot iterator reads correctly once "
-            "and empty after, so wrap it in a list"
+            f"{type(value).__name__}; these names must be a re-readable "
+            "collection, so wrap it in a list"
         )
     raise TypeError(
         "expected a list of names or a comma-separated string, not a "
@@ -243,7 +269,7 @@ def _lowercased(names: object) -> tuple[str, ...]:
         >>> _lowercased("Transcript, LOG")
         ('transcript', 'log')
     """
-    return tuple(name.lower() for name in split_name_list(names))
+    return _unique(name.lower() for name in split_name_list(names))
 
 
 def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
@@ -269,7 +295,8 @@ def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
             comma-split either: these names are not a CLI knob.
 
     Returns:
-        The normalized names, sorted when given an unordered collection.
+        The normalized names, distinct, and sorted in their final
+        slash-terminated form when given an unordered collection.
 
     Raises:
         TypeError: If given a single string instead of a collection, or
@@ -278,18 +305,30 @@ def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
     Example:
         >>> _with_trailing_slashes({"B", ".Codex/"})
         ('.codex/', 'b/')
+        >>> _with_trailing_slashes({"logs", "logs.old"})
+        ('logs.old/', 'logs/')
+        >>> _with_trailing_slashes(["a", "a/"])
+        ('a/',)
     """
     if isinstance(directories, str):
         raise TypeError(
             "directories must be a collection of names, not a single string; "
             f"pass [{directories!r}] rather than {directories!r}"
         )
-    return tuple(
+    suffixed = _unique(
         name if name.endswith("/") else f"{name}/"
         for name in (
             directory.lower() for directory in split_name_list(directories)
         )
     )
+    # split_name_list sorts the *pre-slash* names, and "/" (0x2F) sorts above
+    # "." and every digit, so appending it reorders any pair sharing a prefix:
+    # {"logs", "logs.old"} came back as ("logs/", "logs.old/"). Re-sort the
+    # final form for the inputs split_name_list sorts, and leave a caller's
+    # own list order alone.
+    if isinstance(directories, AbstractSet):
+        return tuple(sorted(suffixed))
+    return suffixed
 
 
 #: The scaffolding names already lowercased and slash-terminated, derived by
@@ -653,7 +692,11 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
 
     Args:
         name: Member path, normalized here if it is not already.
-        directories: Directory names, with or without a trailing slash.
+        directories: Directory names, any case, with or without a trailing
+            slash. Read by :func:`split_name_list`, so surrounding whitespace
+            is stripped, blanks and duplicates are dropped, and an unordered
+            collection is sorted — none of which changes the answer here, but
+            all of which decides what is accepted.
 
     Returns:
         Whether any of them names a directory on the path.
@@ -663,6 +706,13 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
             characters, and a lone ``"a"`` or ``"."`` matches any path with a
             matching segment — so a bare string does not fail to match, it
             matches wrongly and only on some paths.
+
+            Also for anything else :func:`split_name_list` refuses: a mapping,
+            ``bytes``, or a one-shot iterator. The last is the one that costs
+            something here, since this function consumes its argument inside
+            the call and could safely take a generator — it is refused so that
+            the same rule holds at every door rather than a caller having to
+            know which doors re-read. Pass ``list(names)``.
 
     Example:
         >>> is_under_directory("workspace/.claude/skills/x.md", [".claude/"])

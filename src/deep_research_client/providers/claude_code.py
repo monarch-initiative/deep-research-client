@@ -435,8 +435,12 @@ class ClaudeCodeProvider(ResearchProvider):
         system_prompt = f"{system_prompt}\n\n{_INLINE_REPORT_DIRECTIVE}"
         command.extend(["--append-system-prompt", system_prompt])
 
-        if self.params.allowed_tools:
-            command.extend(["--allowedTools", ",".join(self.params.allowed_tools)])
+        allowed_tools = self.params.allowed_tools.copy()
+        if self.params.tooluniverse:
+            command.extend(["--mcp-config", json.dumps(self.params.tooluniverse.claude_mcp_config())])
+            allowed_tools.extend(self.params.tooluniverse.claude_allowed_tools())
+        if allowed_tools:
+            command.extend(["--allowedTools", ",".join(allowed_tools)])
 
         for directory in self.params.add_dirs:
             command.extend(["--add-dir", directory])
@@ -466,6 +470,8 @@ class ClaudeCodeProvider(ResearchProvider):
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
 
+        if self.params.tooluniverse:
+            await asyncio.to_thread(self.params.tooluniverse.prepare, self.name)
         command = self._build_command()
         logger.info("Running Claude Code research (timeout=%ss)", self.timeout)
         logger.debug("Claude Code command: %s", " ".join(command))
@@ -492,6 +498,8 @@ class ClaudeCodeProvider(ResearchProvider):
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
+        if self.params.tooluniverse:
+            run_metadata["toolsets"] = [self.params.tooluniverse.provenance()]
         # How many separate assistant messages the report was assembled from.
         # More than one is normal for an agentic run (the model narrates between
         # tool calls); the count is provenance for how the report was assembled,

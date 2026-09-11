@@ -5,6 +5,7 @@ perform iterative deep research.
 """
 
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
@@ -157,6 +158,8 @@ class CyberianProvider(ResearchProvider):
         if not self.is_available():
             raise ProviderNotInstalledError(self.name, self.unavailable_reason())
 
+        if self.params.tooluniverse:
+            await asyncio.to_thread(self.params.tooluniverse.prepare, self.name)
         workdir_base = self.params.workdir_base
         if workdir_base:
             base_path = Path(workdir_base)
@@ -170,6 +173,7 @@ class CyberianProvider(ResearchProvider):
             dir=workdir_base
         ) as workdir:
             logger.debug(f"Created workdir: {workdir}")
+            self._prepare_tooluniverse_workdir(workdir)
 
             try:
                 # Run the workflow in a thread (since TaskRunner is synchronous)
@@ -197,13 +201,32 @@ class CyberianProvider(ResearchProvider):
                     start_time=start_time,
                     end_time=end_time,
                     duration_seconds=duration,
-                    model=self.model
+                    model=self.model,
+                    run_metadata={"toolsets": [self.params.tooluniverse.provenance()]}
+                    if self.params.tooluniverse else None,
                 )
 
             except Exception as e:
                 logger.error(f"Cyberian workflow failed: {e}")
                 logger.debug("Error details:", exc_info=True)
                 raise ValueError(f"Cyberian workflow error: {e}")
+
+    def _prepare_tooluniverse_workdir(self, workdir: str) -> None:
+        """Configure and approve selected MCP tools in a fresh managed Claude workspace."""
+        toolset = self.params.tooluniverse
+        if toolset is None:
+            return
+        root = Path(workdir)
+        # Exclusive creation prevents this helper from overwriting host/user configuration.
+        with (root / ".mcp.json").open("x") as stream:
+            json.dump(toolset.claude_mcp_config(), stream)
+        settings_dir = root / ".claude"
+        settings_dir.mkdir(exist_ok=True)
+        with (settings_dir / "settings.local.json").open("x") as stream:
+            json.dump({
+                "enabledMcpjsonServers": ["tu"],
+                "permissions": {"allow": toolset.claude_allowed_tools()},
+            }, stream)
 
     def _run_workflow(self, query: str, workdir: str) -> None:
         """Run cyberian workflow synchronously.

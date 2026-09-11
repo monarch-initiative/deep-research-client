@@ -80,6 +80,7 @@ PROVIDER_CREDENTIAL_HINTS = {
     "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
     "consensus": ("CONSENSUS_API_KEY", "Consensus"),
     "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
+    "tooluniverse": ("TOOLUNIVERSE_API_KEY", "ToolUniverse underlying LLM"),
     "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
     "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
 }

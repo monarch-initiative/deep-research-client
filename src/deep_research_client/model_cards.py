@@ -964,6 +964,45 @@ def create_biomni_model_cards() -> ProviderModelCards:
     )
 
 
+def create_tooluniverse_model_cards() -> ProviderModelCards:
+    """Create the model card for the local ToolUniverse co-scientist."""
+    card = ModelCard(
+        name="tooluniverse-coscientist",
+        display_name="ToolUniverse Co-scientist",
+        description=(
+            "Local scientific agent combining ToolUniverse tools with a smolagents "
+            "CodeAgent and an OpenAI-compatible LLM. Investigates hypotheses, "
+            "executes Python, and synthesizes evidence into a markdown report."
+        ),
+        cost_level=CostLevel.HIGH,
+        time_estimate=TimeEstimate.VERY_SLOW,
+        archetype=ProviderArchetype.co_scientist,
+        capabilities=[
+            ResearchCapability.scientific_literature,
+            ResearchCapability.code_interpretation,
+            ResearchCapability.data_analysis,
+            ResearchCapability.hypothesis_generation,
+            ResearchCapability.experiment_design,
+            ResearchCapability.evidence_synthesis,
+            ResearchCapability.citation_tracking,
+        ],
+        resources=[ResearchResource.pubmed, ResearchResource.biomedical_databases],
+        aliases=["tooluniverse", "tu"],
+        pricing_notes="Underlying LLM and selected tools determine cost; no fixed per-report price.",
+        use_cases=["Biomedical hypothesis investigation", "Target discovery", "Experiment planning"],
+        limitations=[
+            "Requires the tooluniverse extra and an underlying LLM API key",
+            "Executes Python locally; use a trusted/sandboxed environment",
+            "Tools may require additional dependencies or credentials",
+            "Timeout applies to each LLM request, not the whole run or tool execution",
+            "Available resources depend on the configured tool list",
+        ],
+    )
+    return ProviderModelCards(
+        provider_name="tooluniverse", default_model=card.name, models={card.name: card},
+    )
+
+
 # Registry of all provider model cards. Defined here, after every factory, so
 # each provider is registered in exactly one place.
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
@@ -977,4 +1016,5 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "deeper_med": create_deeper_med_model_cards(),
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
+    "tooluniverse": create_tooluniverse_model_cards(),
 }

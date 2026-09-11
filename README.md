@@ -84,6 +84,13 @@ pip install deep-research-client[biomni]
 # drives its own LLM (set e.g. ANTHROPIC_API_KEY). The extra does not provision
 # Biomni's external R, CLI, or bioinformatics toolchain.
 # Run only in a trusted/sandboxed environment; set DISABLE_BIOMNI_PROVIDER=true to opt out.
+
+# For ToolUniverse (local co-scientist with scientific tools and Python execution):
+uv add 'deep-research-client[tooluniverse]'
+export TOOLUNIVERSE_API_KEY="your-llm-key"  # falls back to OPENAI_API_KEY
+# Optional OpenAI-compatible endpoint:
+# export TOOLUNIVERSE_BASE_URL="https://your-server.example/v1"
+# Set DISABLE_TOOLUNIVERSE_PROVIDER=true to opt out of auto-detection.
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -1069,6 +1076,46 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
+| ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | tooluniverse-coscientist | Local co-scientist, scientific database tools, hypothesis investigation and Python execution |
+
+ToolUniverse exposes its scientific Python tools to a `smolagents.CodeAgent`.
+Like Biomni and OpenScientist, it has the
+`co_scientist` archetype. The default tools cover PubMed, Europe PMC, and Open
+Targets; configure `tools` to expose other ToolUniverse capabilities.
+
+```bash
+deep-research-client research "Investigate therapeutic targets for Parkinson disease" \
+  --provider tooluniverse \
+  --param llm=gpt-4.1-mini \
+  --param max_steps=20
+```
+
+`model` identifies the research service (`tooluniverse-coscientist`, aliases
+`tooluniverse` and `tu`); `llm` selects the underlying OpenAI-compatible model.
+The agent executes Python locally, so run it in a trusted/sandboxed environment.
+Selected tools may need additional packages or API keys. An exhausted step limit
+raises an error; `timeout` limits each LLM request, not the whole investigation.
+See the [ToolUniverse provider reference](docs/reference/providers.md#tooluniverse)
+for Python usage and configuration.
+
+ToolUniverse can also augment an existing local agent. That agent retains its
+own LLM, credentials, and research workflow; TU supplies the selected scientific
+tools over MCP. This mode needs no smolagents installation:
+
+```bash
+uv add 'deep-research-client[tooluniverse-tools]'
+deep-research-client research "Investigate therapeutic targets for Parkinson disease" \
+  --provider claude_code --param tooluniverse=true
+# Select specific tools using a JSON object:
+deep-research-client research "Summarize recent Parkinson disease research" \
+  --provider claude_code \
+  --param 'tooluniverse={"tools":["PubMed_search_articles","PubMed_get_article"]}'
+```
+
+The same `tooluniverse` option works with Biomni and with Cyberian when it manages
+a Claude agent. Hosted providers such as OpenScientist currently reject it
+because their APIs do not expose toolset configuration. The standalone
+`--provider tooluniverse` continues to use smolagents by default.
 
 When Edison or OpenScientist produces diagrams, charts, figures, or other useful output artifacts, saved reports include an `Artifacts` section. The standard `research` command materializes recovered artifacts beside the output markdown in a sidecar directory such as `report_artifacts/`, and image artifacts are embedded with relative Markdown links. Rehydrated Edison trajectories also record `trajectory_id` and `artifact_sources` in frontmatter.
 

@@ -33,6 +33,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
+    "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
@@ -50,6 +51,10 @@ REGISTRATION_GATES: dict[str, str] = {
     "biomni": (
         "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
         "environment with deep-research-client[biomni]"
+    ),
+    "tooluniverse": (
+        "requires deep-research-client[tooluniverse] and an underlying LLM key "
+        "(TOOLUNIVERSE_API_KEY or OPENAI_API_KEY), with DISABLE_TOOLUNIVERSE_PROVIDER unset"
     ),
     "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
 }
@@ -190,6 +195,18 @@ class DeepResearchClient:
                 timeout=BIOMNI_DEFAULT_TIMEOUT,
             )
             self.registry.register(self._create_provider("biomni", biomni_config))
+
+        from .providers.tooluniverse import ToolUniverseProvider
+
+        if os.getenv("DISABLE_TOOLUNIVERSE_PROVIDER", "").lower() not in ("true", "1", "yes"):
+            tooluniverse_config = ProviderConfig(
+                name="tooluniverse",
+                api_key=os.getenv("TOOLUNIVERSE_API_KEY") or os.getenv("OPENAI_API_KEY"),
+                base_url=os.getenv("TOOLUNIVERSE_BASE_URL"),
+            )
+            tooluniverse_provider = ToolUniverseProvider(tooluniverse_config)
+            if tooluniverse_provider.is_available():
+                self.registry.register(tooluniverse_provider)
 
         # Claude Code provider - available whenever the `claude` CLI is on PATH.
         # No API key required; auth/billing is handled by the local installation.
@@ -391,6 +408,16 @@ class DeepResearchClient:
             Parameters to key the cache entry by, or None when there are none.
         """
         effective_params = dict(provider_params or {})
+        # Canonicalize the mixin shorthand so true and an explicit default
+        # selection represent the same composition, independently of host LLM.
+        toolset = effective_params.get("tooluniverse")
+        if toolset is not None and toolset is not False:
+            from .toolsets.tooluniverse import ToolUniverseMixin
+
+            selection = ToolUniverseMixin(tooluniverse=toolset).tooluniverse
+            if selection is not None:
+                effective_params["tooluniverse"] = selection.model_dump()
+                effective_params["_tooluniverse_bridge_version"] = "mcp-v1"
 
         # Asta response parsing and paper metadata changed after initial release;
         # keep stale cache entries from shadowing current live results.
@@ -403,6 +430,8 @@ class DeepResearchClient:
         # stale cache entries from shadowing current live results.
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
+        elif provider_name == "tooluniverse":
+            effective_params["_cache_version"] = "smolagents-tooluniverse-v1"
 
         return effective_params or None
 

@@ -2,6 +2,7 @@
 
 from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, model_validator
+from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseToolset, default_tooluniverse_tools
 
 
 class BaseProviderParams(BaseModel):
@@ -309,7 +310,7 @@ class DeeperMedParams(BaseProviderParams):
     """
 
 
-class CyberianParams(BaseProviderParams):
+class CyberianParams(ToolUniverseMixin, BaseProviderParams):
     """Parameters specific to Cyberian agent-based research provider.
 
     Cyberian uses AI agents to perform iterative research workflows,
@@ -361,7 +362,15 @@ class CyberianParams(BaseProviderParams):
     )
 
 
-class ClaudeCodeParams(BaseProviderParams):
+    @model_validator(mode="after")
+    def validate_tooluniverse_host(self) -> "CyberianParams":
+        """Require a fresh managed Claude workspace for MCP configuration."""
+        if self.tooluniverse and ((self.agent_type or "claude").lower() != "claude" or not self.manage_server):
+            raise ValueError("Cyberian ToolUniverse requires agent_type='claude' and manage_server=true")
+        return self
+
+
+class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
     """Parameters specific to the Claude Code research provider.
 
     Claude Code is invoked as a local command-line tool (the ``claude`` binary)
@@ -441,7 +450,7 @@ class ClaudeCodeParams(BaseProviderParams):
     )
 
 
-class BiomniParams(BaseProviderParams):
+class BiomniParams(ToolUniverseMixin, BaseProviderParams):
     """Parameters specific to the Biomni biomedical co-scientist provider.
 
     Biomni runs locally in its upstream software environment: this wrapper
@@ -503,6 +512,51 @@ class BiomniParams(BaseProviderParams):
     )
 
 
+class ToolUniverseParams(BaseProviderParams):
+    """Parameters for a local ToolUniverse co-scientist.
+
+    ``model`` selects the research model card; ``llm`` selects the underlying
+    OpenAI-compatible model. The agent executes Python and calls the explicitly
+    selected scientific tools. ToolUniverse's optional scientific dependencies
+    and tool-specific credentials must be supplied separately when needed.
+
+    >>> params = ToolUniverseParams(llm="custom-model", max_steps=5)
+    >>> (params.model, params.llm, params.max_steps)
+    (None, 'custom-model', 5)
+    >>> "PubMed_get_article" in params.tools
+    True
+    """
+
+    llm: str = Field(
+        default="gpt-4.1-mini", min_length=1,
+        description="Underlying model ID on the configured OpenAI-compatible server",
+    )
+    tools: List[str] = Field(
+        default_factory=default_tooluniverse_tools,
+        min_length=1,
+        description="Exact ToolUniverse tool names exposed to the agent (no wildcards)",
+    )
+    max_steps: int = Field(
+        default=20, ge=1, le=100,
+        description="Maximum agent steps; an exhausted run raises instead of returning a report",
+    )
+    timeout: Optional[int] = Field(
+        default=None, ge=1,
+        description=(
+            "Timeout per LLM HTTP request, not a whole-run or scientific-tool deadline. "
+            "Overrides ProviderConfig.timeout; defaults to 120 seconds."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_tool_selection(self) -> "ToolUniverseParams":
+        """Reject empty/duplicate tool names and unsupported domain filtering."""
+        ToolUniverseToolset(tools=self.tools)
+        if self.allowed_domains:
+            raise ValueError("ToolUniverse does not support allowed_domains; select tools instead")
+        return self
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -515,6 +569,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
     "biomni": BiomniParams,
+    "tooluniverse": ToolUniverseParams,
     "deeper_med": DeeperMedParams,
 }
 

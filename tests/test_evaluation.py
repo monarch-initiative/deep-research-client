@@ -395,6 +395,40 @@ def test_accuracy_is_reported_over_the_checks_that_compared_something():
     assert score.accuracy_rate == 0.0
 
 
+@pytest.mark.parametrize("pattern,report,why", [
+    # groups() is (None,) -- truthy -- so the comparison branch ran.
+    (r"\bRING\s*(finger)?\s*domain\b", "BRCA1 has a RING domain.",
+     "optional group did not participate"),
+    # lastindex is 2 while group(1) is still None, so the branch ran again.
+    (r"(?:(17q\d+)|chromosome (17))", "It is on chromosome 17.",
+     "a later group participated but group 1 did not"),
+])
+def test_group_one_without_a_captured_value_is_not_a_comparison(pattern, report, why):
+    """Two weaker predicates were wrong here; the property is what is asked now.
+
+    `groups()` is truthy for a tuple of Nones, and `lastindex` is the index of
+    the *last* group that matched -- so an alternation whose second branch
+    matched left `group(1)` None and crashed identically. The crash discards
+    all four intrinsic scores, so the exact predicate is worth having over a
+    sufficient one.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="g", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[
+            SpotCheck(name="g", pattern=pattern, expected="something"),
+        ]),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    check = score.checks[0]
+    assert check.present
+    assert not check.compared, why
+    assert check.correct, "nothing was captured, so nothing can disagree"
+
+
 def test_an_optional_group_that_did_not_participate_is_not_a_captured_value():
     """The scorer half of the RING-domain crash, pinned independently.
 
@@ -535,3 +569,115 @@ def test_a_judge_reply_without_a_verdict_is_not_read_as_a_verdict():
         "a reply containing the letters 'true' is not a verdict of true"
     )
     assert score.unjudged_claims == 1
+
+
+@pytest.mark.parametrize("scenario,pubmed_body,expect_verifiability,expect_unresolvable", [
+    # NCBI reports an unknown uid as a per-uid error. That is the authoritative
+    # negative -- a fabricated citation -- and must count against the rate.
+    ("fabricated pmid",
+     {"result": {"99999999": {"error": "cannot get document summary"}}},
+     0.0, 0),
+    # A real one.
+    ("real pmid",
+     {"result": {"99999999": {"title": "A real paper", "pubdate": "2019 Jan"}}},
+     1.0, 0),
+])
+def test_a_fabricated_citation_counts_against_verifiability(
+    scenario, pubmed_body, expect_verifiability, expect_unresolvable, monkeypatch,
+):
+    """Filtering on `error` dropped fabricated PMIDs out of the denominator.
+
+    Nine real citations and one invented one scored 1.00 with unresolvable=1 --
+    the metric that exists to detect hallucinated references reporting a report
+    that hallucinated one as perfectly verifiable. Only a transport failure is
+    unresolvable; "the registry says it does not exist" is the finding.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def fake_pubmed(pmid, client=None):
+        entry = pubmed_body["result"]["99999999"]
+        if "error" in entry:
+            return {"exists": False, "title": None, "year": None,
+                    "error": entry["error"], "lookup_failed": False}
+        return {"exists": True, "title": entry["title"], "year": 2019}
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_metadata", fake_pubmed)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A claim [PMID:99999999].", "test")
+
+    score = asyncio.run(scorers.score_citation_verifiability(out))
+    assert score.total_citations == 1
+    assert score.verifiability == expect_verifiability, scenario
+    assert score.unresolvable == expect_unresolvable, scenario
+
+
+def test_only_a_transport_failure_leaves_the_verifiability_rate(monkeypatch):
+    """An outage is still excluded -- that half of the round-nineteen fix stands."""
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def unreachable(pmid, client=None):
+        return {"exists": False, "title": None, "year": None,
+                "error": "ConnectTimeout", "lookup_failed": True}
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_metadata", unreachable)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A claim [PMID:12345678].", "test")
+
+    score = asyncio.run(scorers.score_citation_verifiability(out))
+    assert score.unresolvable == 1
+    assert score.verifiability == 0.0  # nothing checkable, not "all fabricated"
+    assert score.total_citations == 1
+
+
+@pytest.mark.parametrize("phrasing,expect_correct", [
+    # A shorter locus is less precise, not wrong -- and is the commonest
+    # phrasing in the literature. Scoring it a factual error was the mirror of
+    # the defect that scored the *precise* report wrong.
+    ("BRCA1 is on chromosome 17.", True),
+    ("BRCA1 is on chromosome 17q21.", True),
+    ("BRCA1 is on chromosome 17q21.31.", True),
+    # A different arm is still wrong, which a presence-only check could not
+    # have told apart from silence.
+    ("BRCA1 is on chromosome 17p13.1.", False),
+])
+def test_a_hierarchical_fact_accepts_a_less_precise_answer(phrasing, expect_correct):
+    from deep_research_client.evaluation.adapters.monarch import build_rubric
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject="BRCA1"),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, phrasing, "test"), task)
+    check = next(c for c in score.checks if c.fact_name == "chromosome")
+    assert check.compared, "this check should be comparing a captured value"
+    assert check.correct is expect_correct
+
+
+@pytest.mark.parametrize("phrasing,expect_correct", [
+    ("BRCA1 is 1,863 amino acids long.", True),
+    ("BRCA1 is 1863 amino acids long.", True),
+    ("BRCA1 is 1234 amino acids long.", False),
+])
+def test_a_thousands_separator_is_not_a_disagreement(phrasing, expect_correct):
+    """`(\\d{3,4})` against "1,863" captured "863" and scored the report wrong."""
+    from deep_research_client.evaluation.adapters.monarch import build_rubric
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject="BRCA1"),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, phrasing, "test"), task)
+    check = next(c for c in score.checks if c.fact_name == "protein_length")
+    assert check.correct is expect_correct

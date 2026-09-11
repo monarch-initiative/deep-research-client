@@ -294,7 +294,19 @@ class CitationExistence(BaseModel):
     exists: bool = Field(..., description="Whether the citation resolves to a real paper")
     title: Optional[str] = Field(default=None, description="Paper title if retrieved")
     year: Optional[int] = Field(default=None, description="Publication year if retrieved")
-    error: Optional[str] = Field(default=None, description="Error if lookup failed")
+    error: Optional[str] = Field(
+        default=None, description="Why the citation did not resolve, if it didn't"
+    )
+    lookup_failed: bool = Field(
+        default=False,
+        description=(
+            "Whether nothing was learned about this citation -- a timeout, a "
+            "5xx, a connection error. Distinct from `error`, which is also set "
+            "for an authoritative negative: NCBI reports an unknown PMID as a "
+            "per-uid error, and that is a fabricated citation rather than a "
+            "failed lookup. Only `lookup_failed` leaves the verifiability rate."
+        ),
+    )
 
 
 class CitationVerifiabilityScore(BaseModel):
@@ -312,7 +324,9 @@ class CitationVerifiabilityScore(BaseModel):
         description=(
             "Citations whose lookup errored. Excluded from `verifiability`: a "
             "CrossRef or PubMed outage otherwise reports every DOI in the "
-            "report as hallucinated."
+            "report as hallucinated. Counts only transport failures -- a "
+            "citation the registry says does not exist is fabricated, and "
+            "stays in the rate."
         ),
     )
     verifiability: float = Field(
@@ -324,7 +338,13 @@ class CitationVerifiabilityScore(BaseModel):
         ),
     )
     year_distribution: dict[int, int] = Field(default_factory=dict, description="Publication year -> count")
-    median_year: Optional[int] = Field(default=None, description="Median publication year")
+    median_year: Optional[int] = Field(
+        default=None,
+        description=(
+            "Upper middle publication year, so the value is always a year "
+            "that appears in the citations rather than an average of two."
+        ),
+    )
     citations: list[CitationExistence] = Field(default_factory=list, description="Per-citation results")
 
 
@@ -360,6 +380,15 @@ class CitationAlignmentScore(BaseModel):
 
     total_checked: int
     aligned_count: int
+    unresolvable: int = Field(
+        default=0,
+        description=(
+            "Citation-claim pairs whose paper title could not be retrieved, so "
+            "nothing could be aligned. Recorded because 0/0 (0.00) otherwise "
+            "reads the same for a PubMed outage as for a report whose "
+            "citations support nothing."
+        ),
+    )
     alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")
     results: list[CitationAlignmentResult] = Field(default_factory=list)
 

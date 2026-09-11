@@ -14,8 +14,16 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
-from ..datamodel import AnswerSpec, AnswerType, EvalSet, EvalTask, MetadataItem
+from ..datamodel import (
+    AnswerSpec,
+    AnswerType,
+    EvalSet,
+    EvalTask,
+    MetadataItem,
+    Rubric,
+)
 from .base import EvalSetAdapter, validate_tasks
 
 #: Column/key names accepted for the question text, in precedence order. Real
@@ -27,7 +35,7 @@ _PROMPT_KEYS = ("prompt", "question", "query")
 #: than being silently dropped.
 _KNOWN_KEYS = {
     "id", "answer_type", "ideal", "distractors", "abstention_option",
-    "task_type", "subject_id", "tags", "source_id", *_PROMPT_KEYS,
+    "task_type", "subject_id", "tags", "source_id", "rubric", *_PROMPT_KEYS,
 }
 
 
@@ -111,6 +119,42 @@ def _answer_type_of(
     return AnswerType.REPORT
 
 
+def _rubric_of_row(row: dict[str, Any], where: str) -> Rubric | None:
+    """Parse a row's ``rubric:`` block, or None when it has none.
+
+    Three places promised this worked -- this module's own docstring, the
+    how-to, and the bundled rubric's header -- while `rubric` was not a known
+    key, so the block was stringified into task metadata and never read again.
+    The scorers then ran against an empty rubric and reported claim recall
+    0.00, spot checks 0/0 and topic coverage 0/0, with nothing saying the
+    rubric had been ignored.
+
+    Malformed input is refused with the row number, like every other error in
+    this module, rather than silently yielding an empty rubric -- which is the
+    state that produced the scorecard of zeros.
+
+    >>> _rubric_of_row({}, "row 1") is None
+    True
+    >>> r = _rubric_of_row(
+    ...     {"rubric": {"spot_checks": [{"name": "x", "pattern": "y"}]}}, "row 1")
+    >>> r.spot_checks[0].name
+    'x'
+    """
+    block = row.get("rubric")
+    if block in (None, ""):
+        return None
+    if not isinstance(block, dict):
+        raise ValueError(
+            f"{where}: 'rubric' must be a mapping with keys such as "
+            f"reference_claims, spot_checks or expected_topics; got "
+            f"{type(block).__name__}"
+        )
+    try:
+        return Rubric(**block)
+    except ValidationError as exc:
+        raise ValueError(f"{where}: 'rubric' is not valid: {exc}") from exc
+
+
 def _task_from_row(
     row: dict[str, Any], index: int, list_separator: str
 ) -> EvalTask:
@@ -146,6 +190,8 @@ def _task_from_row(
             f"{where} declares answer_type={answer_type.value} but has no 'ideal' answer"
         )
 
+    rubric = _rubric_of_row(row, where)
+
     metadata = [
         MetadataItem(key=k, value=str(v))
         for k, v in sorted(row.items())
@@ -159,6 +205,7 @@ def _task_from_row(
         answer_spec=answer_spec,
         task_type=row.get("task_type") or None,
         subject_id=row.get("subject_id") or None,
+        rubric=rubric,
         tags=_split_list(row.get("tags"), ","),
         source_id=row.get("source_id") or None,
         metadata=metadata,

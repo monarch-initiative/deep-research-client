@@ -627,3 +627,53 @@ def test_a_fresh_run_reports_how_many_cells_failed(tmp_path):
     assert "and 2 more" in result.stdout
     # The accounting paragraph is absent on a fresh run, which is the premise.
     assert "measured in this run" not in result.stdout
+
+
+def test_eval_score_without_an_api_key_offers_a_remedy_that_works(tmp_path, monkeypatch):
+    """The command's own advice used to traceback.
+
+    `AsyncOpenAI` raises on an empty key at *construction*, and the client was
+    built unconditionally -- so `--no-fact --no-recall --no-race`, the remedy
+    the warning offered, died before any scoring. There was no way to get the
+    intrinsic scores without a key at all.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    # Without the remedy: a message naming it, not a traceback.
+    refused = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
+    assert refused.exit_code == 1
+    assert "--no-fact --no-recall --no-race" in refused.stdout
+    assert refused.exception is None or isinstance(refused.exception, SystemExit)
+
+    # With it: the intrinsic scores the message promised.
+    ok = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-race"])
+    assert ok.exit_code == 0, ok.stdout
+    assert "Factual Spot Checks" in ok.stdout
+
+
+def test_an_unscored_race_dimension_prints_rather_than_raising():
+    """`score` is Optional now, and this loop is outside runner._run's except.
+
+    Formatting None with `:.1f` raises TypeError, so a judge that failed
+    mid-run took down the whole command after every scorer had finished.
+    """
+    from deep_research_client.evaluation.models import RACEDimension, RACEScore
+
+    race = RACEScore(dimensions=[
+        RACEDimension(dimension="comprehensiveness", score=4.0, max_score=5.0),
+        RACEDimension(dimension="accuracy", score=None, max_score=5.0),
+    ])
+    # The property the CLI relies on, exercised the way the CLI uses it.
+    assert race.unscored_count == 1
+    rendered = [
+        "unscored" if d.score is None else f"{d.score:.1f}/5" for d in race.dimensions
+    ]
+    assert rendered == ["4.0/5", "unscored"]
+    # Averaged over what was scored, not over a zero for the failed one.
+    assert race.overall_score == 0.8

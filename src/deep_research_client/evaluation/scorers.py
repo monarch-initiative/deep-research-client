@@ -40,7 +40,7 @@ from .models import (
     TopicCoverage,
     TopicCoverageScore,
 )
-from .datamodel import EvalTask, ReferenceClaim, Rubric
+from .datamodel import EvalTask, MatchStyle, ReferenceClaim, Rubric
 from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
@@ -589,7 +589,14 @@ async def fetch_pubmed_metadata(
 
         result_data = data.get("result", {}).get(numeric_id, {})
         if "error" in result_data:
-            return {"exists": False, "title": None, "year": None, "error": result_data["error"]}
+            # NCBI reports an unknown uid as a per-uid `error`. That is the
+            # authoritative negative -- the single thing this scorer exists to
+            # detect -- not a failed lookup, so `lookup_failed` stays False and
+            # the citation counts against verifiability.
+            return {
+                "exists": False, "title": None, "year": None,
+                "error": result_data["error"], "lookup_failed": False,
+            }
 
         title = result_data.get("title", "")
         pubdate = result_data.get("pubdate", "")
@@ -601,8 +608,14 @@ async def fetch_pubmed_metadata(
 
         return {"exists": bool(title), "title": title, "year": year}
     except Exception as e:
+        # Transport: a timeout, a 5xx, a connection error. Nothing was learned
+        # about the citation, so it is excluded from the rate rather than
+        # counted as fabricated.
         logger.warning("Failed to fetch PubMed metadata for %s: %s", pmid, e)
-        return {"exists": False, "title": None, "year": None, "error": str(e)}
+        return {
+            "exists": False, "title": None, "year": None,
+            "error": str(e), "lookup_failed": True,
+        }
 
 
 async def resolve_doi(
@@ -644,7 +657,10 @@ async def resolve_doi(
         return {"exists": bool(title), "title": title, "year": year}
     except Exception as e:
         logger.warning("Failed to resolve DOI %s: %s", doi, e)
-        return {"exists": False, "title": None, "year": None, "error": str(e)}
+        return {
+            "exists": False, "title": None, "year": None,
+            "error": str(e), "lookup_failed": True,
+        }
 
 
 async def score_citation_verifiability(
@@ -672,8 +688,11 @@ async def score_citation_verifiability(
     for cit in citations:
         cid = cit.normalized_id
         if not cid:
+            # A property of the report's own reference list, not of anyone's
+            # network: it counts against verifiability.
             results.append(CitationExistence(
-                citation_id=cit.raw_reference, exists=False, error="Could not normalize"
+                citation_id=cit.raw_reference, exists=False,
+                error="Could not normalize", lookup_failed=False,
             ))
             continue
 
@@ -683,7 +702,8 @@ async def score_citation_verifiability(
             meta = await resolve_doi(cid, pubmed_client)
         else:
             results.append(CitationExistence(
-                citation_id=cid, exists=False, error="Unknown citation type"
+                citation_id=cid, exists=False,
+                error="Unknown citation type", lookup_failed=False,
             ))
             continue
 
@@ -698,15 +718,19 @@ async def score_citation_verifiability(
             title=str(title) if title else None,
             year=int(year) if year else None,
             error=str(error) if error else None,
+            lookup_failed=bool(meta.get("lookup_failed", False)),
         ))
         if year:
             years.append(int(year))
 
-    # A lookup that errored is not a citation that does not exist: a CrossRef
-    # outage used to report every DOI in a report as hallucinated. Excluded
-    # from the rate, and counted so the number can say what it did not cover.
+    # The distinction is transport failure versus authoritative negative, not
+    # the presence of an `error` string. A CrossRef outage tells us nothing and
+    # is excluded; a PMID that NCBI reports as unknown is precisely what this
+    # scorer exists to catch, and NCBI reports it *as* a per-uid error -- so
+    # filtering on `error` dropped fabricated citations out of the denominator
+    # and scored a report that invented one at 1.00.
     total = len(results)
-    checkable = [r for r in results if r.error is None]
+    checkable = [r for r in results if not r.lookup_failed]
     verified = sum(1 for r in checkable if r.exists)
 
     # Year distribution
@@ -714,8 +738,9 @@ async def score_citation_verifiability(
     for y in years:
         year_dist[y] = year_dist.get(y, 0) + 1
     # Upper middle element for an even-length list rather than the mean of the
-    # two middles. Kept as-is -- a publication year should be a year that
-    # exists -- but named so the field is not read as a true median.
+    # two middles, so the value is always a year that actually appears. The
+    # field is still called `median_year`; this is the one place that says it
+    # is the upper middle rather than a true median.
     median_year = sorted(years)[len(years) // 2] if years else None
 
     return CitationVerifiabilityScore(
@@ -751,6 +776,7 @@ async def score_citation_alignment(
         claims = extract_claims_with_citations(dr_output.raw_markdown)
 
     results: list[CitationAlignmentResult] = []
+    unresolvable = 0
 
     for claim in claims:
         claim_terms = _extract_key_terms(claim.text)
@@ -769,6 +795,11 @@ async def score_citation_alignment(
 
             title = meta.get("title")
             if not title:
+                # No title to align against. Counted rather than dropped: a
+                # PubMed outage otherwise reports 0/0 (0.00), where "nothing
+                # was checkable" and "nothing aligned" render identically --
+                # the distinction its three sibling scorers just learned.
+                unresolvable += 1
                 continue
 
             title_terms = _extract_key_terms(str(title))
@@ -795,6 +826,7 @@ async def score_citation_alignment(
     return CitationAlignmentScore(
         total_checked=total,
         aligned_count=aligned_count,
+        unresolvable=unresolvable,
         alignment_rate=aligned_count / total if total > 0 else 0.0,
         results=results,
     )
@@ -864,24 +896,42 @@ def score_factual_spot_checks(
         match = re.search(spec.pattern, text, re.IGNORECASE)
 
         if match is None:
-            present, found, correct = False, None, False
+            present, found, correct, compared = False, None, False, False
         else:
-            present, found = True, match.group(0)
-            compared = False
+            present, found, compared = True, match.group(0), False
             if spec.expected is None:
                 # Presence-only check: appearing is the whole test.
                 correct = True
-            elif match.lastindex:
-                # `lastindex` is None when no group participated, where
-                # `groups()` would be a truthy tuple of Nones -- and an optional
-                # group that did not participate has no captured value to
-                # compare. `\bRING\s*(finger)?\s*domain\b` against "a RING
-                # domain" is the bundled case: groups() is (None,), which is
-                # truthy, so this branch ran and `.strip()` raised on None.
-                # That crash reached score_intrinsic, whose `except Exception`
-                # discarded all four intrinsic scores for a correct report.
-                captured = match.group(1)
-                correct = captured.strip().lower() == spec.expected.strip().lower()
+            elif match.re.groups and match.group(1) is not None:
+                # The property is "group 1 has a captured value", so that is
+                # what is asked. Two weaker predicates have been wrong here:
+                # `groups()` is a truthy tuple of Nones when an optional group
+                # did not participate -- the bundled `RING (finger)? domain`
+                # case, which crashed on the commonest phrasing -- and
+                # `lastindex` is the index of the *last* group that matched, so
+                # `(?:(17q\d+)|chromosome (17))` gives lastindex 2 with
+                # group(1) still None and crashes identically. `match.re.groups`
+                # guards the groupless pattern, where group(1) raises IndexError.
+                #
+                # The crash matters out of proportion to its size: it reaches
+                # score_intrinsic, whose `except Exception` then discards all
+                # four intrinsic scores for a report that was fine.
+                # Thousands separators removed on both sides: a report writing
+                # "1,863 amino acids" is not disagreeing about the number.
+                captured = match.group(1).strip().lower().replace(",", "")
+                wanted = spec.expected.strip().lower().replace(",", "")
+                # `prefix` is for hierarchical facts -- a locus, an ontology id,
+                # a version -- where a shorter answer is less precise rather
+                # than incorrect. "chromosome 17" against 17q21.31 is the
+                # commonest phrasing in the literature; scoring it a factual
+                # error is the mirror of the defect that scored the precise
+                # report wrong. A different locus is still wrong, which a
+                # presence-only check could not tell apart from silence.
+                correct = (
+                    wanted.startswith(captured)
+                    if spec.match == MatchStyle.prefix.value
+                    else captured == wanted
+                )
                 compared = True
             else:
                 # A pattern with no participating group cannot disagree with
@@ -894,7 +944,7 @@ def score_factual_spot_checks(
             found_in_report=found,
             correct=correct,
             present=present,
-            compared=compared if present else False,
+            compared=compared,
         ))
 
     present_count = sum(1 for c in checks if c.present)

@@ -105,6 +105,20 @@ linkml_meta = LinkMLMeta({'default_prefix': 'evaluation',
      'source_file': 'src/deep_research_client/evaluation/evaluation.yaml',
      'title': 'Deep Research Client Evaluation'} )
 
+class MatchStyle(str, Enum):
+    """
+    How a spot check compares a captured value against its expected one.
+    """
+    exact = "exact"
+    """
+    Case- and whitespace-insensitive equality.
+    """
+    prefix = "prefix"
+    """
+    Equality, or the captured value being a leading part of the expected one. For hierarchical facts, where a shorter answer is less precise rather than incorrect.
+    """
+
+
 class AnswerType(str, Enum):
     """
     The shape of answer a task expects, and so which scorers can read it. This is the dispatch key of the whole framework: a scorer declares the answer types it understands, instead of inspecting the subject matter.
@@ -224,6 +238,7 @@ class SpotCheck(ConfiguredBaseModel):
     name: str = Field(default=..., description="""Name of the fact being checked, for example chromosome_location.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ReferenceClaim', 'SpotCheck', 'ExpectedTopic', 'EvalSet']} })
     pattern: str = Field(default=..., description="""Regular expression searched for in the report, case-insensitively. A capturing group, when present, is the value compared against `expected`.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SpotCheck']} })
     expected: Optional[str] = Field(default=None, description="""The correct value. When absent, the check tests only that the pattern appears at all, which is a coverage signal rather than an accuracy one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SpotCheck']} })
+    match: Optional[MatchStyle] = Field(default=MatchStyle.exact, description="""How the captured value is compared against `expected`. `exact` is case- and whitespace-insensitive equality. `prefix` additionally accepts a captured value that is a leading part of the expected one, for facts whose correct answer is hierarchical: a cytogenetic locus, an ontology identifier, a version. A report saying \"chromosome 17\" where the answer is 17q21.31 is less precise, not wrong, and scoring it wrong marks the commonest phrasing in the literature as a factual error - while a report saying 17p13.1 is still wrong, which a presence-only check could not tell apart from silence.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SpotCheck'], 'ifabsent': 'string(exact)'} })
 
 
 class ExpectedTopic(ConfiguredBaseModel):

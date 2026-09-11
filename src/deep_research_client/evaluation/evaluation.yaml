@@ -39,6 +39,17 @@ imports:
   - linkml:types
 
 enums:
+  MatchStyle:
+    description: How a spot check compares a captured value against its expected one.
+    permissible_values:
+      exact:
+        description: Case- and whitespace-insensitive equality.
+      prefix:
+        description: >-
+          Equality, or the captured value being a leading part of the expected
+          one. For hierarchical facts, where a shorter answer is less precise
+          rather than incorrect.
+
 
   AnswerType:
     description: >-
@@ -215,6 +226,19 @@ classes:
           The correct value. When absent, the check tests only that the pattern
           appears at all, which is a coverage signal rather than an accuracy
           one.
+      match:
+        description: >-
+          How the captured value is compared against `expected`. `exact` is
+          case- and whitespace-insensitive equality. `prefix` additionally
+          accepts a captured value that is a leading part of the expected one,
+          for facts whose correct answer is hierarchical: a cytogenetic locus,
+          an ontology identifier, a version. A report saying "chromosome 17"
+          where the answer is 17q21.31 is less precise, not wrong, and scoring
+          it wrong marks the commonest phrasing in the literature as a factual
+          error - while a report saying 17p13.1 is still wrong, which a
+          presence-only check could not tell apart from silence.
+        range: MatchStyle
+        ifabsent: string(exact)
 
   ExpectedTopic:
     description: >-

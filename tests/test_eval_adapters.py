@@ -1224,3 +1224,49 @@ def test_the_resolve_and_download_calls_use_their_own_timeouts(monkeypatch, tmp_
         f"the row download was built with timeout {seen[0]!r}, "
         f"expected _DOWNLOAD_TIMEOUT ({lab_bench._DOWNLOAD_TIMEOUT})"
     )
+
+
+def test_a_yaml_eval_set_can_carry_its_own_rubric(tmp_path):
+    """Three files promised this and the adapter dropped it.
+
+    `rubric` was not a known key, so the block was stringified into task
+    metadata and never read. The documented `eval score --source questions.yaml`
+    path then reported claim recall 0.00, spot checks 0/0 and topic coverage
+    0/0 -- a scorecard of zeros with nothing saying the rubric was ignored.
+    """
+    path = tmp_path / "with_rubric.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: r1\n"
+        "    prompt: What does BRCA1 do?\n"
+        "    rubric:\n"
+        "      spot_checks:\n"
+        "        - name: suppressor\n"
+        "          pattern: '\\btumour suppressor\\b'\n"
+        "      expected_topics:\n"
+        "        - name: repair\n"
+        "          keywords: [recombination]\n",
+        encoding="utf-8",
+    )
+    task = get_adapter("yaml").load(path).tasks[0]
+
+    assert task.rubric is not None, "the rubric block was dropped"
+    assert [c.name for c in task.rubric.spot_checks] == ["suppressor"]
+    assert [t.name for t in task.rubric.expected_topics] == ["repair"]
+    # And not left behind in metadata as a stringified dict.
+    assert "rubric" not in {m.key for m in (task.metadata or [])}
+
+
+@pytest.mark.parametrize("block,expected", [
+    ("    rubric: not a mapping\n", "must be a mapping"),
+    ("    rubric:\n      spot_checks: [{name: x}]\n", "not valid"),
+])
+def test_a_malformed_rubric_is_refused_with_its_row(tmp_path, block, expected):
+    """Silently yielding an empty rubric is the state that produced the zeros."""
+    path = tmp_path / "bad.yaml"
+    path.write_text(f"tasks:\n  - id: r1\n    prompt: Q?\n{block}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="row 1"):
+        get_adapter("yaml").load(path)
+    with pytest.raises(ValueError, match=expected):
+        get_adapter("yaml").load(path)

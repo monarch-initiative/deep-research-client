@@ -3282,10 +3282,23 @@ def eval_score(
     markdown_text = report.read_text(encoding="utf-8")
 
     api_key = os.environ.get(llm_api_key_env, "")
-    if not api_key and not (no_fact and no_recall and no_race):
-        typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail; "
-                   f"pass --no-fact --no-recall --no-race for intrinsic scores only.")
-    llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
+    wants_judge = not (no_fact and no_recall and no_race)
+
+    # Built only when a judge-backed scorer will actually run. AsyncOpenAI
+    # raises on an empty key at *construction*, so building it unconditionally
+    # made `--no-fact --no-recall --no-race` -- the remedy this command's own
+    # warning offers -- traceback before any scoring, leaving no way to get the
+    # intrinsic scores without a key at all.
+    llm_client = None
+    if wants_judge:
+        if not api_key:
+            typer.echo(
+                f"{llm_api_key_env} is not set, so the judge-backed scorers "
+                f"cannot run. Re-run with --no-fact --no-recall --no-race for "
+                f"the intrinsic scores, which need no API key."
+            )
+            raise typer.Exit(1)
+        llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
 
     config = EvalConfig(
         run_fact=not no_fact,
@@ -3305,19 +3318,42 @@ def eval_score(
                    f"effective_citations={result.fact_score.effective_citations}/"
                    f"{result.fact_score.total_citations}")
     if result.claim_recall_score:
-        typer.echo(f"  Claim Recall: {result.claim_recall_score.claim_recall:.2f} "
-                   f"({result.claim_recall_score.matched_claims}/"
-                   f"{result.claim_recall_score.total_ground_truth_claims})")
+        # The fraction is the rate's own numerator and denominator: recall is
+        # over the claims the judge ruled on, so printing it against the full
+        # ground-truth count let a reader divide and get a different number.
+        cr = result.claim_recall_score
+        judged = cr.total_ground_truth_claims - cr.unjudged_claims
+        line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
+        if cr.unjudged_claims:
+            line += f", {cr.unjudged_claims} not judged"
+        typer.echo(line)
     if result.race_score:
-        typer.echo(f"  RACE: overall={result.race_score.overall_score:.2f}")
-        for d in result.race_score.dimensions:
-            typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
+        race = result.race_score
+        overall = f"  RACE: overall={race.overall_score:.2f}"
+        if race.unscored_count:
+            # Without this, "every dimension failed" and "a genuinely terrible
+            # report" both render as 0.00 -- the distinction unscored_count was
+            # added to make.
+            overall += f" over {len(race.scored_dimensions)}/{len(race.dimensions)} dimensions"
+        typer.echo(overall)
+        for d in race.dimensions:
+            # `score` is Optional since a judge that cannot be reached records
+            # no score. Formatting None with :.1f raises, and this loop is
+            # outside runner._run's except -- so a missing API key, which this
+            # command warns about and offers --no-race for, tracebacked here
+            # after every scorer had run.
+            shown = "unscored" if d.score is None else f"{d.score:.1f}/5"
+            typer.echo(f"    {d.dimension}: {shown}")
     if result.intrinsic_score:
         isc = result.intrinsic_score
         if isc.citation_verifiability:
             cv = isc.citation_verifiability
-            typer.echo(f"  Citation Verifiability: {cv.verified_exist}/{cv.total_citations} "
-                       f"({cv.verifiability:.2f})")
+            checked = cv.total_citations - cv.unresolvable
+            line = (f"  Citation Verifiability: {cv.verified_exist}/{checked} "
+                    f"({cv.verifiability:.2f})")
+            if cv.unresolvable:
+                line += f", {cv.unresolvable} could not be looked up"
+            typer.echo(line)
             if cv.median_year:
                 typer.echo(f"    Median citation year: {cv.median_year}")
         if isc.citation_alignment:
@@ -3326,8 +3362,15 @@ def eval_score(
                        f"({ca.alignment_rate:.2f})")
         if isc.factual_spot_checks:
             sc = isc.factual_spot_checks
-            typer.echo(f"  Factual Spot Checks: {sc.correct_count}/{sc.total_checks} correct, "
-                       f"{sc.present_count}/{sc.total_checks} present")
+            # `correct_count` includes presence-only checks, which are correct
+            # whenever they match -- agreement that was never tested. The
+            # accuracy rate is over the checks that compared something, and
+            # that is the number worth showing.
+            typer.echo(
+                f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} present, "
+                f"accuracy {sc.accuracy_rate:.2f} over {sc.compared_count} "
+                f"check(s) that compared a value"
+            )
         if isc.topic_coverage:
             tc = isc.topic_coverage
             typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "

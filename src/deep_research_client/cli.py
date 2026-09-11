@@ -3483,8 +3483,15 @@ def eval_score(
         if not fact.total_citations:
             line = "  FACT: no citations to verify"
         elif not judged_pairs:
-            line = (f"  FACT: no citation was judged "
-                    f"({fact.total_citations} found, none checkable)")
+            # "none checkable" was a property of the citations, and the set it
+            # describes is wider than that: `score_fact` records `supported=
+            # None` for a judge call that raised and for a reply it could not
+            # read, so a judge that was simply down reported three entirely
+            # checkable PMIDs as uncheckable. Worded with the suffix's own
+            # count and words -- `not judged` -- which is the true thing and
+            # is already on this line in the measured case.
+            line = (f"  FACT: not measured, "
+                    f"{fact.unjudged_citations} not judged")
         else:
             line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
                     f"effective_citations={fact.effective_citations}/"
@@ -3510,9 +3517,11 @@ def eval_score(
         elif not judged:
             # Claims to match, and a judge that ruled on none of them. The
             # `not judged` suffix made this tolerable; it is still a rate over
-            # a zero denominator, which is what the branch above refuses.
-            line = (f"  Claim Recall: no claim was judged "
-                    f"({cr.total_ground_truth_claims} to match)")
+            # a zero denominator, which is what the branch above refuses. In
+            # the suffix's words, not a second phrasing: `(5 to match)` said
+            # the same count in different words from the line it replaced.
+            line = (f"  Claim Recall: not measured, "
+                    f"{cr.unjudged_claims} not judged")
         else:
             line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
         if cr.unjudged_claims and judged:
@@ -3520,17 +3529,42 @@ def eval_score(
         # Claim recall truncates the report the same way RACE does, and records
         # the same pair. Recall measured over a report's opening is an
         # understatement, and nothing else on this line says the report was cut.
-        line += _truncation_note(cr.judged_chars, cr.report_chars)
+        #
+        # Only where something was judged. `judged_chars` is the length that
+        # was *sent*, set on the main path whether or not a judge answered, so
+        # appending it unconditionally printed "no claim was judged" and
+        # "judged on 12,000 of 51,044 characters" in one line. That is
+        # `_truncation_note`'s own argument about "judged on 0 of 29,000",
+        # reached with a non-zero count, which its guard cannot see.
+        if judged:
+            line += _truncation_note(cr.judged_chars, cr.report_chars)
         typer.echo(line)
     if result.race_score:
         race = result.race_score
-        overall = f"  RACE: overall={race.overall_score:.2f}"
-        if race.unscored_count:
-            # Without this, "every dimension failed" and "a genuinely terrible
-            # report" both render as 0.00 -- the distinction unscored_count was
-            # added to make.
-            overall += f" over {len(race.scored_dimensions)}/{len(race.dimensions)} dimensions"
-        overall += _truncation_note(race.judged_chars, race.report_chars)
+        if not race.scored_dimensions:
+            # The sixth line of this shape, and the one found by enumerating
+            # scorers rather than lines: RACE has no citation count to reach
+            # it from. `overall_score` is 0.0 over an empty list and the four
+            # dimensions are always emitted, so a judge that could not be
+            # reached -- an endpoint that is down, a rate limit, the 401 this
+            # command warns a custom `--llm-base-url` will answer -- printed
+            # `overall=0.00 over 0/4 dimensions`: a rate over a zero
+            # denominator with a suffix to disambiguate it, which is exactly
+            # what the citation lines stopped doing. All four fail together,
+            # so this is the commonest RACE failure, not the rarest.
+            overall = (f"  RACE: not measured, 0/{len(race.dimensions)} "
+                       f"dimensions scored")
+        else:
+            overall = f"  RACE: overall={race.overall_score:.2f}"
+            if race.unscored_count:
+                # Without this, "every dimension failed" and "a genuinely
+                # terrible report" both render as 0.00 -- the distinction
+                # unscored_count was added to make.
+                overall += (f" over {len(race.scored_dimensions)}"
+                            f"/{len(race.dimensions)} dimensions")
+            # As on claim recall: what was sent is not what was judged, so the
+            # note goes only on a line that reports a judgement.
+            overall += _truncation_note(race.judged_chars, race.report_chars)
         typer.echo(overall)
         for d in race.dimensions:
             # `score` is Optional since a judge that cannot be reached records
@@ -3568,7 +3602,7 @@ def eval_score(
                 typer.echo(f"    Median citation year: {cv.median_year}")
         if isc.citation_alignment:
             ca = isc.citation_alignment
-            if not ca.total_checked and not ca.unresolvable:
+            if not ca.total_pairs:
                 line = "  Citation-Claim Alignment: no citation-claim pairs"
             elif not ca.total_checked:
                 # As above: nothing left to take a rate over, said in the

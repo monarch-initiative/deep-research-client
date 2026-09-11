@@ -734,7 +734,11 @@ def test_eval_score_reports_a_report_the_judge_only_partly_saw(tmp_path, monkeyp
     from deep_research_client.evaluation import scorers
 
     async def judge(prompt, llm_client, model="gpt-4o-mini"):
-        return '{"score": 3, "explanation": "ok"}'
+        # Answers BOTH scorers: RACE reads `score`, claim recall reads
+        # `matched`. With only `score`, claim recall found no verdict, counted
+        # the claim unjudged, and this test's assertion that its line carries
+        # the truncation note was pinning a line that said nothing was judged.
+        return '{"score": 3, "explanation": "ok", "matched": true}'
 
     monkeypatch.setattr(scorers, "_llm_judge", judge)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
@@ -992,6 +996,55 @@ def test_a_task_with_no_rubric_prints_no_rates_it_did_not_measure(tmp_path, monk
         assert absent not in result.stdout, absent
 
 
+def test_a_judge_that_cannot_be_reached_is_not_a_report_that_scored_zero(
+    tmp_path, monkeypatch,
+):
+    """The three judge-backed lines, from the commonest judge failure there is.
+
+    Gating the citation lines on their own denominators was done by enumerating
+    the *lines* that print a rate, and RACE has no citation count to be reached
+    that way -- so `overall=0.00 over 0/4 dimensions` survived, which is the
+    same rate-over-nothing with a disambiguating suffix the citation lines had
+    just stopped printing. All four dimensions fail together whenever the judge
+    itself is unreachable, so it is the commonest RACE outcome, not the rarest.
+
+    The same run covers two more: `FACT: … none checkable` called an outage a
+    property of the citations, when the PMID here was entirely checkable; and
+    the truncation note was appended to a line saying nothing was judged,
+    because `judged_chars` records what was *sent*.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def dead_judge(prompt, llm_client, model="gpt-4o-mini"):
+        raise RuntimeError("judge endpoint is down")
+
+    monkeypatch.setattr(scorers, "_llm_judge", dead_judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n"
+                  "    rubric:\n      reference_claims:\n"
+                  "        - name: fgfr3\n          category: mechanism\n"
+                  "          description: FGFR3 mutations cause achondroplasia.\n")
+    # Long enough to be truncated, so the note fires if it is not gated, and
+    # carrying a citation so FACT has a pair it could have judged.
+    report = _write(tmp_path / "r.md",
+                    "FGFR3 drives achondroplasia [PMID:7913883]. "
+                    + "Filler sentence. " * 3000)
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "RACE: not measured, 0/4 dimensions scored" in result.stdout
+    assert "FACT: not measured, 1 not judged" in result.stdout
+    assert "Claim Recall: not measured, 1 not judged" in result.stdout
+    # No rate, and nothing that says a judgement was made on part of the report.
+    for absent in ("overall=0.00", "none checkable", "judged on "):
+        assert absent not in result.stdout, absent
+
+
 def test_the_docs_quote_a_line_the_command_can_actually_print(tmp_path, monkeypatch):
     """The page quoted `Citation Verifiability: 0/0 (0.00), 12 not checked`.
 
@@ -1065,8 +1118,14 @@ def test_a_report_without_citations_prints_no_rates_it_did_not_measure(
     # A measured zero on any of the three is the defect, whichever line it is
     # on: assert over the output rather than per-line so a regression that
     # moves between them still fails.
-    for absent in ("accuracy=0.00", "0/0 (0.00)", "0/0 ("):
+    for absent in ("accuracy=0.00", "0/0 ("):
         assert absent not in result.stdout, absent
+    # `Factual Spot Checks: 0/0 present` is deliberately outside that list: it
+    # is a count of checks, not a rate over them, and the line says separately
+    # that no accuracy was measured. Stated here because it is the only bare
+    # `0/0` left in this output, and a carve-out nobody wrote down is one
+    # someone else will read as an oversight.
+    assert "Factual Spot Checks: 0/0 present" in result.stdout
 
 
 def test_the_verifiability_line_says_not_checked_rather_than_could_not_be(

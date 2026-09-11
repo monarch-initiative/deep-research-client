@@ -1385,9 +1385,9 @@ async def score_citation_alignment(
                 # list is PMC ids printed `0/0 (0.00)` with nothing
                 # unresolvable -- byte-identical to a report that cited
                 # nothing, which is the reading this counter exists to
-                # prevent. Three ways in: an identifier that would not
-                # normalise, one of a kind neither scorer resolves, and a
-                # citation with no identifier at all.
+                # prevent. Ways in: an identifier that would not normalise,
+                # one of a kind neither scorer resolves, and a citation with
+                # no identifier at all.
                 #
                 # The sibling agrees about the middle one -- it is
                 # `lookup_failed` there too, so neither scorer treats a PMC
@@ -1404,14 +1404,18 @@ async def score_citation_alignment(
 
             title = meta.get("title")
             if meta.get("lookup_failed") or (meta.get("exists") and not title):
-                # Two ways to learn nothing. A failed lookup -- a timeout, a
-                # 5xx, a body that answers about no uid at all -- and a record
-                # that resolves but carries no title, which is a real paper
-                # with nothing to align a claim against. Both leave the rate
-                # rather than counting against it. Counted rather than dropped,
-                # because a PubMed outage otherwise reports 0/0 (0.00), where
-                # "nothing was checkable" and "nothing aligned" render
-                # identically.
+                # Ways to learn nothing: a failed lookup -- a timeout, a 5xx,
+                # a body that answers about no uid at all -- and a record that
+                # resolves but carries no title, which is a real paper with
+                # nothing to align a claim against. Both leave the rate rather
+                # than counting against it.
+                #
+                # Counted rather than dropped, because without this counter a
+                # PubMed outage and a report whose citations support nothing
+                # render identically. (That used to be `0/0 (0.00)` on both;
+                # the CLI now says `not measured, N with nothing to align
+                # against` for the outage, which it can only say because this
+                # count exists.)
                 unresolvable += 1
                 continue
 

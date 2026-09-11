@@ -475,12 +475,30 @@ class CitationAlignmentScore(BaseModel):
             "no resolver for, such as a PMC accession or a GEO series. A "
             "citation the registry says does not exist is NOT here -- that is "
             "a finding, and counts against `alignment_rate`. Recorded because "
-            "0/0 (0.00) otherwise reads the same for a PubMed outage as for a "
-            "report whose citations support nothing."
+            "without it a PubMed outage and a report whose citations support "
+            "nothing read the same: the CLI can only say `not measured, N "
+            "with nothing to align against` for the outage because this count "
+            "exists."
         ),
     )
     alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")
     results: list[CitationAlignmentResult] = Field(default_factory=list)
+
+    @property
+    def total_pairs(self) -> int:
+        """Every citation-claim pair found, checked or not.
+
+        The sibling verifiability score carries this as a stored field, so its
+        CLI line asks `not cv.total_citations` where this one had to ask
+        `not total_checked and not unresolvable`. Two spellings of one question,
+        side by side in the same block, is how the two lines drifted apart
+        before.
+
+        >>> CitationAlignmentScore(total_checked=3, unresolvable=2,
+        ...                        aligned_count=2, alignment_rate=0.67).total_pairs
+        5
+        """
+        return self.total_checked + self.unresolvable
 
 
 class FactualSpotCheck(BaseModel):

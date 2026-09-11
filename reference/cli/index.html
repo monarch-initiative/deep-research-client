@@ -506,6 +506,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/evaluate-providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Evaluate Providers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../how-to/cache/" class="md-nav__link">
         
   
@@ -1236,6 +1259,84 @@
       clear-cache
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="eval">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      Subcommands
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval adapters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval fetch
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval run
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-score" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval score
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -2063,6 +2164,84 @@
       clear-cache
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="eval">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      Subcommands
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval adapters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval fetch
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-load" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval load
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval run
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eval-score" class="md-nav__link">
+    <span class="md-ellipsis">
+      eval score
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -3105,6 +3284,299 @@ deep-research-client browse-files ./research -o ./browser -t &quot;Research Arch
 <pre><code class="language-bash">deep-research-client clear-cache
 </code></pre>
 <p>Removes all files from <code>~/.deep_research_cache/</code>.</p>
+<hr />
+<h3 id="eval">eval</h3>
+<p>Evaluate research tools against benchmark eval sets. A benchmark is read by an
+<em>adapter</em>; see <a href="../../how-to/evaluate-providers/">Evaluate Providers</a> for the
+full workflow.</p>
+<h4 id="subcommands">Subcommands</h4>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>eval adapters</code></td>
+<td>List the benchmark formats this client can read</td>
+</tr>
+<tr>
+<td><code>eval fetch</code></td>
+<td>Download a benchmark dataset into the local cache</td>
+</tr>
+<tr>
+<td><code>eval load</code></td>
+<td>Load an eval set and show what it contains</td>
+</tr>
+<tr>
+<td><code>eval run</code></td>
+<td>Run every task in an eval set against every arm</td>
+</tr>
+<tr>
+<td><code>eval score</code></td>
+<td>Score a saved report against one task from an eval set</td>
+</tr>
+</tbody>
+</table>
+<h4 id="eval-adapters">eval adapters</h4>
+<p>Lists every registered adapter with its description, marking those that download
+data.</p>
+<h4 id="eval-fetch">eval fetch</h4>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SUBSET</code></td>
+<td>LAB-Bench subset(s), comma-separated, or <code>all</code> (default: <code>LitQA2</code>)</td>
+</tr>
+<tr>
+<td><code>--cache-dir PATH</code></td>
+<td>Cache directory (default: <code>~/.deep_research_cache</code>)</td>
+</tr>
+<tr>
+<td><code>--revision TEXT</code></td>
+<td>Fail unless the dataset's current revision is this one (asserts; the API serves only the current revision)</td>
+</tr>
+<tr>
+<td><code>--refresh</code></td>
+<td>Re-download even if a cached copy exists</td>
+</tr>
+</tbody>
+</table>
+<p>Benchmark data is cached rather than committed: LAB-Bench ships a contamination
+canary, is CC-BY-SA-4.0 where this project is BSD-3-Clause, and is large. The
+revision downloaded is recorded so a score can name the data behind it.</p>
+<h4 id="eval-load">eval load</h4>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SOURCE</code></td>
+<td>Source for the adapter: a file, a directory, or a dataset subset</td>
+</tr>
+<tr>
+<td><code>--adapter</code>, <code>-a TEXT</code></td>
+<td>Eval set format (default: <code>yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Write the eval set as JSON instead of summarising it</td>
+</tr>
+<tr>
+<td><code>--limit INTEGER</code></td>
+<td>Show only the first N tasks in the summary (default: 10)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="eval-run">eval run</h4>
+<p>Runs every task in an eval set against every arm, writing results into a
+predictable directory tree.</p>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SOURCE</code></td>
+<td>Eval set source: a file, a directory, or a dataset subset name</td>
+</tr>
+<tr>
+<td><code>--adapter</code>, <code>-a TEXT</code></td>
+<td>Eval set format (default: <code>yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--arm TEXT</code></td>
+<td>Arm as <code>provider</code>, <code>provider:model</code>, or <code>id=provider:model</code> (repeatable)</td>
+</tr>
+<tr>
+<td><code>--arms PATH</code></td>
+<td>YAML file defining arms, for arms that need provider params</td>
+</tr>
+<tr>
+<td><code>--output-dir</code>, <code>-o PATH</code></td>
+<td>Run directory (default: <code>runs/&lt;timestamp&gt;</code>)</td>
+</tr>
+<tr>
+<td><code>--limit INTEGER</code></td>
+<td>Run only the first N tasks</td>
+</tr>
+<tr>
+<td><code>--task-id TEXT</code></td>
+<td>Run only these task ids (repeatable)</td>
+</tr>
+<tr>
+<td><code>--concurrency</code>, <code>-j INTEGER</code></td>
+<td>Cells to run at a time (default: 4)</td>
+</tr>
+<tr>
+<td><code>--no-resume</code></td>
+<td>Re-run cells an earlier run already completed (does not bypass the response cache; pair with <code>--no-cache</code>)</td>
+</tr>
+<tr>
+<td><code>--no-cache</code></td>
+<td>Never replay a response from the client cache; call the provider for every cell</td>
+</tr>
+<tr>
+<td><code>--cache-dir TEXT</code></td>
+<td>Override the response cache directory (default: <code>~/.deep_research_cache</code>)</td>
+</tr>
+<tr>
+<td><code>--grade</code></td>
+<td>Also score multiple-choice answers with the provisional regex extractor</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show the matrix and one prompt without calling any provider</td>
+</tr>
+</tbody>
+</table>
+<p>A run materialises results and does not score them: every response lands on disk
+beside the prompt that produced it, so grading can be decided and redone later
+without re-running any provider. <code>--grade</code> opts into a provisional regex-based
+multiple-choice grader, which is fine for a quick look but is not the intended
+design — see <a href="../../how-to/evaluate-providers/">Evaluate Providers</a>.</p>
+<p>Responses are cached by default, keyed on prompt, provider, model and
+parameters, so a cell can be served from an earlier run rather than measured in
+this one. The end-of-run summary separates cells measured now, replayed from the
+cache, and resumed from a previous run in the same directory; <code>results.tsv</code>
+carries <code>resumed</code> and <code>cached</code> columns. Use <code>--no-cache</code> when the number has to
+describe calls made now, and <code>--no-resume --no-cache</code> when the run directory
+already holds results.</p>
+<p>Output layout:</p>
+<pre><code>&lt;run_dir&gt;/
+  manifest.json        arms, dataset revision, every cell
+  results.tsv          one row per cell
+  scores.tsv           per-arm aggregates, for multiple-choice runs
+  &lt;task_id&gt;/&lt;arm_id&gt;/
+    prompt.md          exactly what the provider was sent
+    output.md          exactly what it returned
+    cell.json          the cell record
+    answer.json        the graded answer, for multiple-choice tasks
+</code></pre>
+<p>Cells are written as they finish, so a run is resumable: point <code>--output-dir</code> at
+an existing run and completed cells are skipped. Failed cells are always
+retried. A provider failure fails its own cell and no others.</p>
+<h4 id="eval-score">eval score</h4>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REPORT</code></td>
+<td>Markdown file with the report to score</td>
+</tr>
+<tr>
+<td><code>--source TEXT</code></td>
+<td>Eval set source (required)</td>
+</tr>
+<tr>
+<td><code>--adapter</code>, <code>-a TEXT</code></td>
+<td>Eval set format (default: <code>yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--task-id TEXT</code></td>
+<td>Task to score against; required when the set has more than one</td>
+</tr>
+<tr>
+<td><code>--provider TEXT</code></td>
+<td>Name of the provider that generated the report</td>
+</tr>
+<tr>
+<td><code>--no-fact</code></td>
+<td>Skip FACT (citation support) scoring</td>
+</tr>
+<tr>
+<td><code>--no-recall</code></td>
+<td>Skip claim recall scoring</td>
+</tr>
+<tr>
+<td><code>--no-race</code></td>
+<td>Skip RACE (report quality) scoring</td>
+</tr>
+<tr>
+<td><code>--no-intrinsic</code></td>
+<td>Skip intrinsic (LLM-free) scoring</td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Output file for results (JSON)</td>
+</tr>
+<tr>
+<td><code>--llm-base-url TEXT</code></td>
+<td>Base URL for the LLM judge API</td>
+</tr>
+<tr>
+<td><code>--llm-api-key-env TEXT</code></td>
+<td>Env var for the LLM judge API key (default: <code>OPENAI_API_KEY</code>)</td>
+</tr>
+<tr>
+<td><code>--llm-model TEXT</code></td>
+<td>Model for the LLM judge (default: <code>gpt-4o-mini</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>FACT, claim recall and RACE need an LLM judge; the intrinsic scores do not.</p>
+<h4 id="examples_11">Examples</h4>
+<pre><code class="language-bash"># See what benchmark formats are available
+deep-research-client eval adapters
+
+# Check your own questions parse before spending money on providers
+deep-research-client eval load questions.yaml
+deep-research-client eval load questions.tsv --adapter tsv
+
+# Download and inspect a published benchmark
+deep-research-client eval fetch LitQA2
+deep-research-client eval load LitQA2 --adapter lab-bench
+
+# Load curated Monarch ground truth
+deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+
+# Price a matrix run before committing to it
+deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml --limit 20 --dry-run
+
+# Run a benchmark across several arms
+deep-research-client eval run LitQA2 --adapter lab-bench \\
+  --arm edison=falcon --arm baseline=claude_code --limit 20
+
+# Score a saved report
+deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+
+# Intrinsic scores only: no LLM judge, no API spend
+deep-research-client eval score report.md --source questions.yaml \
+  --no-fact --no-recall --no-race
+
+# A local OpenAI-compatible judge, which needs no API key
+deep-research-client eval score report.md --source questions.yaml \
+  --llm-base-url http://localhost:8000/v1 --llm-model my-local-model
+</code></pre>
+<p><code>eval score</code> refuses to start when a judge-backed score is enabled and no API
+key is set, rather than running the intrinsic scores and then failing at the
+judge. Set <code>OPENAI_API_KEY</code>, point <code>--llm-api-key-env</code> at a variable that is
+set, pass <code>--llm-base-url</code>, or turn the judge-backed scores off with the three
+flags above.</p>
+<p>Any <code>--llm-base-url</code> skips that check, not only a local one: the command cannot
+tell a keyless endpoint from one that checks keys, so it sends a placeholder and
+says so. A local server accepts it; a remote proxy that does check will answer
+401 on every judge call.</p>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>
 <table>

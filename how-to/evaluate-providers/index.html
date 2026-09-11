@@ -1,0 +1,1923 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/evaluate-providers/">
+      
+      
+        <link rel="prev" href="../validate-terms/">
+      
+      
+        <link rel="next" href="../cache/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.22">
+    
+    
+      
+        <title>Evaluate Providers - deep-research-client</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.84d31ad4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../css/ansi-colours.css">
+    
+      <link rel="stylesheet" href="../../css/jupyter-cells.css">
+    
+      <link rel="stylesheet" href="../../css/pandas-dataframe.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#evaluate-providers-against-a-benchmark" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="deep-research-client" class="md-header__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            deep-research-client
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Evaluate Providers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="deep-research-client" class="md-nav__button md-logo" aria-label="deep-research-client" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    deep-research-client
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ai4curation/deep-research-client" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Tutorials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Tutorials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/first-query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Your First Query
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    How-to Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            How-to Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../choose-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Choose a Provider
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../use-cyberian-codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Cyberian + Codex
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Templates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validate-references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Validate References
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validate-terms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Validate Ontology Terms
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Evaluate Providers
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Evaluate Providers
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#bring-your-own-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bring your own questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#responses-are-cached-and-a-replayed-cell-is-not-a-measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      Responses are cached, and a replayed cell is not a measurement
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-a-published-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use a published benchmark
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use a published benchmark">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lab-bench" class="md-nav__link">
+    <span class="md-ellipsis">
+      LAB-Bench
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monarch-knowledge-bases" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monarch knowledge bases
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      Run the matrix
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Run the matrix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-run-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a run writes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grading-is-deliberately-not-part-of-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Grading is deliberately not part of a run
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-multiple-choice-grader-is-provisional" class="md-nav__link">
+    <span class="md-ellipsis">
+      The multiple-choice grader is provisional
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checking-the-plumbing-for-free" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checking the plumbing for free
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score-a-saved-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Score a saved report
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rubrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rubrics
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rubrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#writing-a-rubric-in-your-own-eval-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      Writing a rubric in your own eval set
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adding a benchmark
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-here-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is not here yet
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Manage Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../browse-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../browse-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Browse Files
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxies/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Use Proxies
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    FAQ
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Reference
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Providers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Capabilities & Archetypes
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Models
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Cache
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Explanation
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Explanation
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Provider Comparison
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/ralph-wiggum-deep-research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ralph Wiggum Tries Research
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#bring-your-own-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Bring your own questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#responses-are-cached-and-a-replayed-cell-is-not-a-measurement" class="md-nav__link">
+    <span class="md-ellipsis">
+      Responses are cached, and a replayed cell is not a measurement
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-a-published-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use a published benchmark
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use a published benchmark">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lab-bench" class="md-nav__link">
+    <span class="md-ellipsis">
+      LAB-Bench
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monarch-knowledge-bases" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monarch knowledge bases
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      Run the matrix
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Run the matrix">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-run-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a run writes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grading-is-deliberately-not-part-of-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Grading is deliberately not part of a run
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-multiple-choice-grader-is-provisional" class="md-nav__link">
+    <span class="md-ellipsis">
+      The multiple-choice grader is provisional
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checking-the-plumbing-for-free" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checking the plumbing for free
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#score-a-saved-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Score a saved report
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rubrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rubrics
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Rubrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#writing-a-rubric-in-your-own-eval-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      Writing a rubric in your own eval set
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adding a benchmark
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-here-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is not here yet
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="evaluate-providers-against-a-benchmark">Evaluate providers against a benchmark</h1>
+<p>The <code>eval</code> commands run research tools against a set of questions and score what
+comes back. A benchmark is data here, not code: you point an <em>adapter</em> at a
+source, and it produces an eval set of tasks that the scorers understand.</p>
+<h2 id="bring-your-own-questions">Bring your own questions</h2>
+<p>The plainest eval set is a list of questions in YAML:</p>
+<pre><code class="language-yaml"># questions.yaml
+name: coscientist-v1
+description: Mechanism questions for the co-scientist comparison
+tasks:
+  - id: fgfr3_mech
+    prompt: What are the pathophysiological mechanisms of achondroplasia?
+    tags: [biomedical, mechanism]
+
+  - id: fgfr3_residue
+    prompt: Which FGFR3 residue is most commonly mutated in achondroplasia?
+    ideal: G380R
+    distractors: [G375C, R248C, K650E]
+    abstention_option: Insufficient information to answer this question.
+</code></pre>
+<p>Check that it parses before spending money on providers:</p>
+<pre><code class="language-bash">deep-research-client eval load questions.yaml
+</code></pre>
+<pre><code>Eval set: coscientist-v1
+  Tasks:    2
+  Shapes:   MULTIPLE_CHOICE=1, REPORT=1
+</code></pre>
+<p>The two tasks have different shapes, and that determines how each is scored. A
+task with distractors is multiple choice, scored by matching the option chosen.
+A task with neither an ideal answer nor distractors is a report task, scored
+against a rubric. You do not have to say which — it is inferred — but you can
+state <code>answer_type</code> explicitly to override.</p>
+<p>There is a third shape, and it is worth knowing about before you write an eval
+set: a task with an ideal answer and <strong>no</strong> distractors infers <code>SHORT_ANSWER</code>,
+and nothing in this client scores that yet — not <code>eval run</code>, not <code>eval score</code>.
+Such tasks run and their responses are saved like any other; they simply cannot
+be graded. <code>eval load</code> and <code>eval run</code> both say so up front — before any provider
+is called, and in <code>--dry-run</code> too — rather than leaving it to be discovered once
+the run is paid for. Add distractors to make it multiple choice, or drop the
+ideal answer to make it a report task.</p>
+<p>A multiple-choice task whose options cannot pose an answerable question is
+refused when the eval set loads — by <code>eval load</code> and <code>eval run</code> alike, before
+any provider is called. The commonest case is <code>answer_type: MULTIPLE_CHOICE</code>
+with no distractors: one option and a right answer is not a question, and every
+arm would score 1.000 on it. Duplicated options are refused for the mirror-image
+reason, since two lettered options reading identically mark a correct answer
+wrong half the time.</p>
+<p>The full list of refused shapes lives in the docstring of <code>degenerate_reason</code>
+in <code>deep_research_client.evaluation.mcq</code>, which is the canonical statement and
+carries a worked example of each. It is deliberately not re-enumerated here —
+this list has drifted behind that one before.</p>
+<h2 id="responses-are-cached-and-a-replayed-cell-is-not-a-measurement">Responses are cached, and a replayed cell is not a measurement</h2>
+<p>The client caches responses in <code>~/.deep_research_cache</code>, keyed on the prompt,
+provider, model and parameters. That makes a resumed or repeated run cheap, and
+it is on by default — but it means a cell can be served from a response
+recorded weeks ago, by a model version that has since changed. The cache
+re-stamps the timings for the current run, so nothing downstream distinguishes
+a replay from a live call.</p>
+<p>Two consequences worth knowing before you publish a number:</p>
+<ul>
+<li><code>--no-resume</code> re-runs a cell; it does not re-call the provider, and on a run
+  directory that already has results <code>--no-cache</code> alone cannot reach those
+  cells either — resume skips them before the client is consulted. To force
+  real calls on an existing run directory, pass <code>--no-resume --no-cache</code>.</li>
+<li>Two arms sharing a provider, model and parameters — the way you ask what a
+  provider's run-to-run spread looks like — share a cache key, so one may
+  replay another instead of calling the provider. Whether it happens depends on
+  scheduling: at <code>-j 1</code> the second arm replays the first, while at the default
+  concurrency both usually reach the provider before either writes the cache.
+  That means the number of independent samples behind a reported spread varies
+  between identical invocations, which is why <code>eval run</code> warns about identically
+  configured arms before it starts rather than reporting it afterwards.</li>
+</ul>
+<p>At the end of a run <code>eval run</code> says how many cells were measured, how many were
+replayed from the cache and how many were resumed from a previous run in the
+same directory — three different things, only the first of which describes the
+provider as it is now. <code>results.tsv</code> carries <code>resumed</code> and <code>cached</code> columns
+marking which rows were which. Use <code>--no-cache</code> for a calibration run, and
+<code>--cache-dir</code> to keep a benchmark's cache separate from your ad-hoc queries.</p>
+<pre><code>deep-research-client eval run questions.yaml --arm a=falcon --arm b=falcon --no-cache
+</code></pre>
+<p>TSV works too, for questions that came out of a spreadsheet:</p>
+<pre><code>id  question    ideal   distractors tags
+q_mcq   Which base pairs with adenine?  Thymine Guanine|Cytosine    biology,basics
+q_open  What are the mechanisms of achondroplasia?          biomedical
+</code></pre>
+<pre><code class="language-bash">deep-research-client eval load questions.tsv --adapter tsv
+</code></pre>
+<p>Columns the model does not name are kept as task metadata rather than dropped,
+so your bookkeeping columns survive into the results.</p>
+<h2 id="use-a-published-benchmark">Use a published benchmark</h2>
+<pre><code class="language-bash">deep-research-client eval adapters
+</code></pre>
+<pre><code>yaml             Eval set written as YAML, with optional distractors and provenance
+tsv              Eval set written as TSV/CSV with a header row
+lab-bench        LAB-Bench biology multiple-choice benchmark (FutureHouse) (downloads data)
+dismech          Curated disease mechanisms (Monarch dismech)
+ai-gene-review   Curated gene function annotations (Monarch ai-gene-review)
+</code></pre>
+<h3 id="lab-bench">LAB-Bench</h3>
+<p><a href="https://arxiv.org/abs/2407.10362">LAB-Bench</a> (Laurent et al. 2024) is a
+multiple-choice benchmark of biology research tasks. Download a subset first:</p>
+<pre><code class="language-bash">deep-research-client eval fetch LitQA2
+</code></pre>
+<pre><code>LitQA2: 199 rows at revision 5c77cec64843
+</code></pre>
+<p>Then load it like any other eval set:</p>
+<pre><code class="language-bash">deep-research-client eval load LitQA2 --adapter lab-bench
+</code></pre>
+<p>The data is downloaded rather than shipped with this package, for three reasons:
+LAB-Bench carries a canary string so that contamination can be detected if its
+questions turn up in a training corpus, and committing it to a public repository
+would feed it to scrapers; it is CC-BY-SA-4.0 where this project is
+BSD-3-Clause; and it is large. The revision that was downloaded is recorded in
+the eval set, which is what makes a score reproducible — more so than a vendored
+copy, which cannot tell you which version produced a given number.</p>
+<p>Two constraints are worth knowing before you read any LAB-Bench number:</p>
+<ul>
+<li><strong>Scores are not leaderboard-comparable.</strong> The publisher withholds roughly 20%
+  of the benchmark privately for contamination monitoring, so only the public
+  portion is scored here. Loading the set prints this, and the eval set carries
+  it as <code>is_partial</code>.</li>
+<li><strong>FigQA and TableQA are refused.</strong> Their questions are about figures and tables
+  supplied as images, which a text-only research client cannot present. Scoring
+  them would measure the harness rather than the provider.</li>
+</ul>
+<p>Text-only subsets: <code>LitQA2</code>, <code>SuppQA</code>, <code>DbQA</code>, <code>ProtocolQA</code>, <code>SeqQA</code>,
+<code>CloningScenarios</code>. Pass <code>all</code> to fetch every one of them.</p>
+<h3 id="monarch-knowledge-bases">Monarch knowledge bases</h3>
+<p><code>dismech</code> and <code>ai-gene-review</code> produce report tasks from curated YAML, with the
+curated claims attached as reference claims to score recall against:</p>
+<pre><code class="language-bash">deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+deep-research-client eval load /path/to/ai-gene-review/genes/human --adapter ai-gene-review
+</code></pre>
+<p>Both accept a single YAML file or a directory.</p>
+<h2 id="run-the-matrix">Run the matrix</h2>
+<p><code>eval run</code> sends every task to every arm. An <em>arm</em> is one configuration under
+test — a provider, optionally a model, optionally provider parameters. It is
+called an arm rather than a provider because the same provider usually appears
+more than once in a useful comparison:</p>
+<pre><code class="language-yaml"># arms.yaml
+arms:
+  - id: edison
+    provider: falcon
+
+  - id: agent-web
+    provider: claude_code
+    description: Plain agent with web search, as a control
+
+  - id: agent-noweb
+    provider: claude_code
+    description: Closed-book control, to probe contamination
+    params:
+      allowed_tools: []
+</code></pre>
+<p>Price the run before committing to it — <code>--dry-run</code> shows the grid and the exact
+prompt one cell would receive, without calling anything:</p>
+<pre><code class="language-bash">deep-research-client eval run LitQA2 --adapter lab-bench \
+  --arms arms.yaml --limit 20 --dry-run
+</code></pre>
+<p>Then run it:</p>
+<pre><code class="language-bash">deep-research-client eval run LitQA2 --adapter lab-bench \
+  --arms arms.yaml --limit 20 --concurrency 4
+</code></pre>
+<p>Simple arms need no file: <code>--arm falcon --arm openai:o3-deep-research --arm
+baseline=claude_code</code>.</p>
+<h3 id="what-a-run-writes">What a run writes</h3>
+<pre><code>runs/2026-09-10T14-22Z/
+  manifest.json        the run: arms, dataset revision, every cell
+  results.tsv          one row per cell
+  scores.tsv           per-arm aggregates, for multiple-choice runs
+  &lt;task_id&gt;/
+    &lt;arm_id&gt;/
+      prompt.md        exactly what the provider was sent
+      output.md        exactly what it returned
+      cell.json        the cell record
+      answer.json      the graded answer, for multiple-choice tasks
+</code></pre>
+<p><code>prompt.md</code> matters more than it looks: for a multiple-choice task the prompt
+carries the lettered options in the order that provider actually saw, and
+without it a score cannot be audited.</p>
+<p>Cells are written as they finish, so a run can be inspected while it is going
+and resumed if it is interrupted — point <code>--output-dir</code> at the same directory
+and completed cells are skipped. Failed cells are always retried, so a transient
+error never becomes permanent.</p>
+<p>A failing arm does not take the run down with it. If one provider is out of
+quota you lose that arm's cells and keep everything else.</p>
+<h3 id="grading-is-deliberately-not-part-of-a-run">Grading is deliberately not part of a run</h3>
+<p>A run materialises results and stops there. Every response is on disk beside the
+prompt that produced it, so how they get scored is a decision you can make — and
+change — later, without paying any provider a second time.</p>
+<p><code>--grade</code> will additionally score multiple-choice answers, but read the next
+section before trusting what it prints.</p>
+<h3 id="the-multiple-choice-grader-is-provisional">The multiple-choice grader is provisional</h3>
+<p>It reads a provider's answer out of its prose with regular expressions. That is
+a stopgap, not the design. Three defects surfaced within a day of first use, and
+what makes them worth recording is that none of them looked like a failure:</p>
+<table>
+<thead>
+<tr>
+<th>What happened</th>
+<th>What the table showed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A restated option list read as choosing the last option</td>
+<td>Every arm abstaining on nearly everything</td>
+</tr>
+<tr>
+<td>A bare quantity (<code>6%</code>) appearing anywhere read as choosing that option</td>
+<td>An answer the provider never gave</td>
+</tr>
+<tr>
+<td><code>**Answer: D**</code> read as no answer at all</td>
+<td>Every correct answer discarded, for any provider that bolds its verdict</td>
+</tr>
+</tbody>
+</table>
+<p>Each was found by running the thing rather than reading it, and each produced a
+plausible table. The next defect of this kind is equally likely to look like a
+score rather than a bug — which is the argument against the approach, not a list
+of things now fixed.</p>
+<p><strong>The intended replacement is an LLM judge</strong>, which is what the report scorers
+already use. Deciding which option a report settled on is reading comprehension,
+and a model asked for a structured answer can both do it more reliably and say
+when it is unsure. Until that lands, <code>--grade</code> is fine for a quick look and
+should not be the basis of a published number.</p>
+<p>Presentation and aggregation are unaffected by this and will survive the change:
+option order is deterministic per task, and accuracy/coverage/precision are
+arithmetic over dispositions regardless of how the dispositions were obtained.</p>
+<h3 id="checking-the-plumbing-for-free">Checking the plumbing for free</h3>
+<p>The mock provider can answer multiple-choice questions by position, which makes
+the run machinery verifiable at zero cost — it has no idea which option is
+correct, so the score each policy deserves is computable in advance:</p>
+<pre><code class="language-yaml"># mock-arms.yaml
+arms:
+  - id: always-a
+    provider: mock
+    params: {answer_policy: first}    # picks option A every time
+  - id: echoing
+    provider: mock
+    params: {answer_policy: echo}     # restates every option, then answers A
+  - id: decliner
+    provider: mock
+    params: {answer_policy: last}     # picks the last option: the abstention
+  - id: silent
+    provider: mock
+    params: {answer_policy: none}     # never states an answer
+</code></pre>
+<pre><code class="language-bash">ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
+  --adapter lab-bench --arms mock-arms.yaml --limit 40 --grade
+</code></pre>
+<pre><code>  arm                      acc     cov    prec       n
+  always-a               0.325   1.000   0.325   13/40
+  decliner               0.000   0.000       —    0/40
+  echoing                0.325   1.000   0.325   13/40
+  silent                 0.000   0.000       —    0/40
+
+  Some responses had no recoverable answer. Those count against coverage and
+  against accuracy, which is over every question asked -- but they are a
+  harness limitation, not a provider result; see the extraction_failures
+  column in scores.tsv.
+
+  These come from a provisional regex extractor, not an LLM judge. It has
+  produced plausible-looking but wrong numbers before; treat them as a quick
+  look, not as a result.
+</code></pre>
+<p><code>always-a</code> gives a chance baseline — 0.325 on these questions, since the number
+of options varies. <code>echoing</code> must score identically to <code>always-a</code>; a gap means
+the extractor is being fooled by restated options. <code>decliner</code> and <code>silent</code> must
+both show zero coverage, for different reasons: declining is not answering, and
+neither is saying nothing.</p>
+<p>Neither has a precision. It is over the answers attempted whose correctness
+was actually established, and these two attempted nothing, so the column
+shows an em dash rather than <code>0.000</code> — which in a comparison would read as
+"answered and got them all wrong". <code>silent</code> is why this matters most: its
+responses are ones the provisional extractor could not read, which is a
+limitation of this harness rather than a result from the provider, and the
+extraction-failures note below the table says so. The last note is printed
+after every graded run and qualifies the whole table: these numbers come
+from the provisional extractor, not a judge.</p>
+<h2 id="score-a-saved-report">Score a saved report</h2>
+<p>For report-shaped tasks, score a markdown file you already have:</p>
+<pre><code class="language-bash">deep-research-client eval score report.md \
+  --source questions.yaml \
+  --task-id fgfr3_mech \
+  --provider falcon
+</code></pre>
+<p>Four groups of scores are available, and they differ sharply in what they cost:</p>
+<table>
+<thead>
+<tr>
+<th>Score</th>
+<th>What it measures</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claim recall</td>
+<td>Fraction of reference claims the report covers</td>
+<td>LLM judge</td>
+</tr>
+<tr>
+<td>FACT</td>
+<td>Whether each citation supports the claim it is attached to</td>
+<td>LLM judge + PubMed</td>
+</tr>
+<tr>
+<td>RACE</td>
+<td>Report quality across four dimensions</td>
+<td>LLM judge</td>
+</tr>
+<tr>
+<td>Intrinsic</td>
+<td>Citation existence, title/claim alignment, spot checks, topic coverage</td>
+<td>PubMed only</td>
+</tr>
+</tbody>
+</table>
+<p>Citation existence resolves PMIDs against PubMed and DOIs against CrossRef.
+Anything else the report cites — a PMC accession, a GEO series — is reported as
+<em>not checked</em> rather than counted against the report, and both citation lines
+say how many. The two counts are not the same count: verifiability's <code>N not
+checked</code> is citations it did not resolve, while alignment's <code>N with nothing to
+align against</code> also covers a citation that resolved to a record carrying no
+title and one with no identifier at all. On an accession-only report they
+agree by coincidence. That matters for a genomics benchmark, whose reference lists are
+often accessions: <code>Citation Verifiability: not measured, 12 not checked</code> is a
+report this client cannot judge, not a report that invented twelve references.
+The rate is absent rather than zero whenever nothing was checkable, on this
+line and on every other score line, so a measured zero always means a measured
+zero. That holds across commands: <code>eval run</code>'s precision column is an em dash
+whenever there is nothing to take a rate over — that is, whenever no
+attempted answer had its correctness established. An arm gets there by
+attempting nothing (every question declined, the endpoint down all run,
+every response unreadable by the extractor, the pair skipped, or any mixture
+of those), or by attempting and having every attempt come back with no
+recorded correctness.</p>
+<p>Do not read the <code>cov</code> beside the dash as saying which happened. Those causes
+compose, so coverage there can be anything: <code>cov 0.000</code> when nothing was
+attempted, <code>cov 1.000</code> when everything was and none of it was usable — not a
+contradiction, the provider answered and the harness cannot say whether it was
+right — and anything in between for a mixture. Five questions declined and
+five answered with no recorded correctness, out of ten, prints <code>cov 0.500</code>
+beside the dash.</p>
+<p>What does say which happened is <code>scores.tsv</code>. It carries one column per
+disposition: <code>attempted</code> for the questions an option was chosen for, and
+<code>abstained</code>, <code>provider_errors</code>, <code>extraction_failures</code> and <code>skipped</code> for the
+four ways one was not. Those five account for <code>total</code> exactly, so an arm's row
+says where each of its questions went. <code>correct</code> is a subset of those attempts
+— the ones whose answer was both recorded and right — and the <code>n</code> column of
+the table above is <code>correct</code> over <code>total</code>. The row also carries <code>unusable</code>,
+which is not a disposition but a subset of <code>attempted</code> — answers whose
+correctness was never recorded. Those are left out of precision's denominator
+rather than counted against it, since nothing can be said about whether they
+were right; they stay in coverage, because an option was chosen; and they
+lower accuracy exactly as a wrong answer would, since accuracy is over every
+question asked. Only a hand-edited or older-format run produces them.</p>
+<p>Two of those columns get a note under the table as well: <code>unusable</code> and
+<code>extraction_failures</code>, the two harness defects, on the principle that a
+record gap moving a published rate has to say so where the rate is printed.
+The other causes have columns only, so an arm that declined every question
+gets the dash and no note.</p>
+<p>The intrinsic scores need no LLM judge at all, so they are the cheap ones to
+run first:</p>
+<pre><code class="language-bash">deep-research-client eval score report.md --source questions.yaml \
+  --no-fact --no-recall --no-race
+</code></pre>
+<p>The three judge-backed scores need an API key, and the command refuses to start
+without one rather than running everything and failing at the judge. Three ways
+past it: set <code>OPENAI_API_KEY</code>, point <code>--llm-api-key-env</code> at a variable that is
+set, or turn the judge-backed scores off with the flags above. A local
+OpenAI-compatible endpoint needs no key at all — pass <code>--llm-base-url</code> and the
+check is skipped:</p>
+<p>Note that <em>any</em> <code>--llm-base-url</code> skips it, not only a local one. The command
+cannot tell a keyless endpoint from one that checks keys, so it sends a
+placeholder and prints a line saying so; point it at a proxy that does check
+and every judge call will answer 401.</p>
+<pre><code class="language-bash">deep-research-client eval score report.md --source questions.yaml \
+  --llm-base-url http://localhost:8000/v1 --llm-model my-local-model
+</code></pre>
+<h2 id="rubrics">Rubrics</h2>
+<p>Report tasks are scored against a rubric — reference claims to recall, facts to
+spot-check, topics to cover. The <code>dismech</code> and <code>ai-gene-review</code> adapters attach
+bundled rubrics from <code>src/deep_research_client/evaluation/rubrics/</code>, and an eval
+set can supply its own instead.</p>
+<h3 id="writing-a-rubric-in-your-own-eval-set">Writing a rubric in your own eval set</h3>
+<p>Attach a <code>rubric</code> block to any report task:</p>
+<pre><code class="language-yaml"># questions.yaml
+tasks:
+  - id: brca1_function
+    prompt: What does BRCA1 do, and where is it?
+    answer_type: REPORT
+    rubric:
+      spot_checks:
+        - name: chromosome
+          pattern: 'chromosome\s+(17(?:[pq]\d+(?:\.\d+)?)?)\b'
+          expected: 17q21.31
+          match: prefix
+        - name: ring_domain
+          pattern: '\bRING\s*(?:finger\s*)?domain\b'
+      expected_topics:
+        - name: dna_repair
+          keywords: [homologous recombination, double-strand break]
+      reference_claims:
+        - name: e3_ligase
+          category: molecular_function
+          description: BRCA1 is an E3 ubiquitin ligase in complex with BARD1.
+</code></pre>
+<p>A spot check with an <code>expected</code> value and a capturing group is an accuracy
+check: the captured text has to match. One without an <code>expected</code> only asks
+whether the pattern appears at all. Presence and accuracy are reported as
+separate rates, because "the report never mentioned it" and "the report got it
+wrong" are different failures.</p>
+<p><code>match</code> says how a captured value is compared:</p>
+<table>
+<thead>
+<tr>
+<th><code>match</code></th>
+<th>Accepts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exact</code></td>
+<td>Equality, ignoring case, surrounding whitespace and thousands separators. The default.</td>
+</tr>
+<tr>
+<td><code>prefix</code></td>
+<td>The above, plus a captured value that is a leading part of <code>expected</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>prefix</code> for hierarchical facts — a cytogenetic locus, an ontology
+identifier, a version — where a shorter answer is less precise rather than
+wrong. A report saying "chromosome 17" where the answer is 17q21.31 is the
+commonest phrasing in the literature; <code>prefix</code> accepts it, while a report
+saying 17p13.1 is still scored wrong, which a presence-only check could not
+tell apart from silence.</p>
+<p>A rubric is checked when the eval set loads, not when a report is scored, so a
+typo is reported by <code>eval load</code> before any provider is paid. The full list of
+refusals is below.</p>
+<p>A check whose pattern matches but captures nothing (any group that can match
+the empty string) counts as present and is left out of the accuracy rate. It
+is not evidence either way, and the two match styles would otherwise disagree
+about the same report.</p>
+<p>Every occurrence of a pattern is considered, not just the first. A report on
+BRCA1 that mentions TP53's locus before stating BRCA1's own would otherwise be
+marked wrong for a fact it got right two sentences later. A check is correct if
+any occurrence compares correctly — except that under <code>prefix</code>, an occurrence
+that disagreed with a <em>strictly more specific</em> value wins instead. "Genes on
+chromosome 17 include BRCA1" captures <code>17</code>, which is a valid prefix, and
+without that rule it would excuse a report that went on to place BRCA1 at
+17p13.1. Either way the detail reports the occurrence that settled it.</p>
+<p><code>eval load</code> refuses:</p>
+<table>
+<thead>
+<tr>
+<th>Refused</th>
+<th>Because</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A pattern that is not a valid regular expression</td>
+<td>It would raise mid-scoring and cost the report its other intrinsic scores too</td>
+</tr>
+<tr>
+<td>A pattern that matches the empty string</td>
+<td>It reports itself present in a report that says nothing</td>
+</tr>
+<tr>
+<td><code>match: prefix</code> with no capturing group, or no <code>expected</code></td>
+<td>The comparison it asks for cannot happen</td>
+</tr>
+<tr>
+<td>A topic with no keywords</td>
+<td>No report can ever cover it</td>
+</tr>
+<tr>
+<td>A topic with a blank keyword</td>
+<td>Every report covers it, including an empty one</td>
+</tr>
+<tr>
+<td>A reference claim with a blank description</td>
+<td>It asks the judge to look for nothing</td>
+</tr>
+<tr>
+<td>A spot check with a blank name</td>
+<td>It is how a failed check is identified in the results</td>
+</tr>
+<tr>
+<td>An empty <code>rubric:</code> block</td>
+<td>It scores exactly what no rubric scores</td>
+</tr>
+</tbody>
+</table>
+<h2 id="adding-a-benchmark">Adding a benchmark</h2>
+<p>Write one adapter class. Subclass <code>EvalSetAdapter</code>, implement <code>load()</code> to return
+an <code>EvalSet</code>, and register it in <code>ADAPTER_CLASSES</code>. Nothing in the runner or the
+scorers needs to change, because scorers dispatch on each task's <code>answer_type</code>
+rather than on its subject matter.</p>
+<p>The eval-set model itself is the LinkML schema at
+<code>src/deep_research_client/evaluation/evaluation.yaml</code>; regenerate its Pydantic
+classes with <code>just gen-datamodel-eval</code> after any change.</p>
+<h2 id="what-is-not-here-yet">What is not here yet</h2>
+<p>Scoring is the open piece, by choice. The runner materialises results; how to
+grade them is deferred.</p>
+<p>When it is picked up, the direction is LLM-as-judge throughout, replacing the
+provisional regex extractor described above. Report scoring already works that
+way (<code>score_fact</code>, <code>score_claim_recall</code>, <code>score_race</code>), so the pattern to follow
+is in the codebase. Batch scoring over a whole run directory — rather than one
+report at a time — is the other missing piece.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.copy", "navigation.sections", "navigation.expand"], "search": "../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>

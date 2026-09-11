@@ -22,6 +22,7 @@ from deep_research_client.artifact_selection import (
     is_under_directory,
     is_under_normalized_directory,
     normalize_member_path,
+    split_name_list,
 )
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import OpenScientistParams
@@ -763,3 +764,58 @@ def test_both_doors_into_the_settings_read_a_string_the_same_way():
     assert typed.include_globs == ArtifactSelectionPolicy.from_params(
         LooseParams()
     ).include_globs
+
+
+def test_a_bare_string_exclude_glob_no_longer_empties_the_bundle():
+    """exclude_globs sits at precedence 1, so a stray '*' dropped everything.
+
+    Worse than the include direction, which over-preserves visibly: preserving
+    nothing looks like a run that simply produced no files.
+    """
+
+    class LooseParams:
+        artifact_exclude_globs = "*.log"
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.exclude_globs == ("*.log",)
+    assert policy.decide("results/table.csv", 100).keep
+    assert not policy.decide("agent-container.log", 100).keep
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ((g for g in ["a/*", "b/*"]), ("a/*", "b/*")),
+        ({"a/*": 1}.keys(), ("a/*",)),
+        ({"b/*", "a/*"}, ("a/*", "b/*")),
+        (frozenset({"a/*"}), ("a/*",)),
+    ],
+)
+def test_any_iterable_of_names_is_accepted(value, expected):
+    """A generator and dict_keys worked before the splitter and must still.
+
+    An unordered collection is sorted, so two policies built from equal sets
+    are equal — the dataclass compares by field.
+    """
+    assert split_name_list(value) == expected
+
+
+@pytest.mark.parametrize("value", [42, 3.5, object(), {"a": 1}])
+def test_a_setting_that_is_not_a_list_of_names_raises(value):
+    """Silently yielding no names is the worst outcome available here.
+
+    An empty exclude_globs keeps every log the caller asked to drop; an empty
+    include_globs leaves denied the file they meant to rescue. `tuple(42)`
+    used to raise, and the first version of the splitter swallowed it.
+    """
+    with pytest.raises(TypeError, match="expected a list of names"):
+        split_name_list(value)
+
+
+def test_two_policies_from_equal_sets_compare_equal():
+    """tuple(some_set) has no defined order, and the policy is a dataclass."""
+    first = ArtifactSelectionPolicy(max_bytes=1024, include_globs=split_name_list({"a", "b"}))
+    second = ArtifactSelectionPolicy(max_bytes=1024, include_globs=split_name_list({"b", "a"}))
+
+    assert first == second

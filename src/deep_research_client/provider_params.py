@@ -314,14 +314,16 @@ class ArtifactSelectionParams(BaseProviderParams):
             "fnmatch patterns, matched against the lowercased bundle-relative "
             "path, that are preserved regardless of the default filters. '*' "
             "crosses directory separators, so '*.json' matches nested files. "
-            "The size limit still applies."
+            "The size limit still applies. A comma separates patterns, so one "
+            "cannot contain a comma: pass a list for 'data[a,b]/*'."
         )
     )
     artifact_exclude_globs: List[str] = Field(
         default_factory=list,
         description=(
             "fnmatch patterns that are always dropped. Takes precedence over "
-            "artifact_include_globs and over every default."
+            "artifact_include_globs and over every default. A comma separates "
+            "patterns, so one cannot contain a comma: pass a list instead."
         )
     )
 

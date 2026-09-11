@@ -747,6 +747,11 @@ Precedence, highest first:
 Globs are `fnmatch` patterns matched against the lowercased, bundle-relative
 path. `*` crosses `/`, so `*.json` matches `provenance/iter1_transcript.json`.
 
+A comma separates patterns, which means a pattern cannot contain one — `[a,b]`
+is a valid `fnmatch` character class, so `artifact_include_globs="data[a,b]/*"`
+becomes two patterns that match nothing. Pass a list to use a comma inside a
+pattern; a list element is never split.
+
 ### Keeping OpenScientist agent transcripts
 
 OpenScientist writes its agent transcripts to `provenance/iter<N>_transcript.json`

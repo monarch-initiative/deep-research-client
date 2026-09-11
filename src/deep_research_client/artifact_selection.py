@@ -43,7 +43,7 @@ from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 import mimetypes
 from pathlib import PurePosixPath
-from typing import Iterable
+from collections.abc import Iterable, Mapping
 
 # Default per-artifact size cap. Declared here and referenced by the pydantic
 # field, so the value cannot drift between the policy and the params model.
@@ -123,11 +123,27 @@ def split_name_list(value: object) -> tuple[str, ...]:
     it, and makes the duck-typed door agree with the pydantic one, which
     applies the same rule.
 
+    A comma is therefore a separator and cannot appear inside a pattern —
+    ``"data[a,b]/*"`` becomes two patterns that match nothing. Pass a list to
+    use one; ``["data[a,b]/*"]`` is untouched.
+
+    Anything that is neither a string nor an iterable of names raises, rather
+    than yielding no names. A setting silently reduced to nothing is the worst
+    outcome available here: an empty ``exclude_globs`` keeps every runtime log
+    the caller asked to drop, and an empty ``include_globs`` leaves denied the
+    file they meant to rescue. A mapping raises for the same reason — its keys
+    are unlikely to be what a caller meant by a list of patterns.
+
     Args:
         value: A collection of names, a comma-separated string, or None.
+            An unordered collection is sorted, so two policies built from
+            equal sets compare equal.
 
     Returns:
-        The names, empty for None or anything that is not iterable as names.
+        The names, empty only for None or an empty collection.
+
+    Raises:
+        TypeError: If given a mapping, or anything that is not iterable.
 
     Example:
         >>> split_name_list("*.json")
@@ -136,6 +152,8 @@ def split_name_list(value: object) -> tuple[str, ...]:
         ('a/*', 'b/*')
         >>> split_name_list(["a/*", "b/*"])
         ('a/*', 'b/*')
+        >>> split_name_list(g for g in ["a/*"])
+        ('a/*',)
         >>> split_name_list(None)
         ()
     """
@@ -143,9 +161,19 @@ def split_name_list(value: object) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         return tuple(item.strip() for item in value.split(",") if item.strip())
-    if isinstance(value, (list, tuple, set, frozenset)):
+    if isinstance(value, Mapping):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; its keys are unlikely to be the names meant"
+        )
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted(str(item) for item in value))
+    if isinstance(value, Iterable):
         return tuple(str(item) for item in value)
-    return ()
+    raise TypeError(
+        "expected a list of names or a comma-separated string, not a "
+        f"{type(value).__name__}: {value!r}"
+    )
 
 
 def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:

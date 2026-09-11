@@ -551,13 +551,24 @@ def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
     and its summary are about a row not disagreeing with itself, and this is
     the COST of arranging that, which is a different property. The line
     pytest prints is a describer too.
+
+    Both copies of the recipe are checked, not just the one that runs. The
+    comment in `models.py` is what a library caller reads and pastes, and
+    that comment says outright that it can drift from the executed one --
+    so the expression is compared verbatim against both. Pinning only the
+    pointer (that the comment still NAMES this test) would have guarded the
+    navigational half and left the half that gets copied.
     """
     # `answers` carried, because it is the one non-scalar field and so the
     # one whose rebuild is not a no-op: the dump holds a list of dicts that
     # has to re-validate into `MCQAnswer`. Over scalars alone a broken
     # recipe and a working one look identical. `total` matches the answer
-    # count, which the validator now requires.
-    answer = MCQAnswer(task_id="t1", provider="p",
+    # count, which the validator now requires, and `chosen_letter` is set
+    # because `mcq.grade` sets it on every SCORED answer it builds -- a
+    # fixture the producer could not have emitted is the shape that hides a
+    # defect.
+    answer = MCQAnswer(task_id="t1", provider="p", chosen_letter="A",
+                       chosen_text="first option",
                        disposition=ScoreDisposition.SCORED, correct=True)
     s = MCQScore(total=1, attempted=1, correct=1, answers=[answer])
 
@@ -568,20 +579,97 @@ def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
     counts = {k: v for k, v in dump.items() if k in MCQScore.model_fields}
     # One `==`, not a field-by-field walk: pydantic's compares every field,
     # `answers` included, so a separate assertion on it would restate this
-    # one rather than pin anything further.
+    # one rather than pin anything further. It does NOT compare
+    # `model_fields_set`, so `s` (four kwargs) and the rebuild (every count)
+    # are equal despite different provenance -- which is the right comparison
+    # here, since the recipe's job is to restore values.
     assert MCQScore(**counts) == s
 
-    # `MCQScore`'s class comment sends a reader here by name, and a citation
-    # naming something in another file is the claim that rots without either
-    # text being touched -- which is why the citation it used to make, to
-    # `correct`'s description, had to be removed. This one is pinned instead:
-    # rename this test and the reference fails rather than dangles.
+    # The two copies of the recipe, against one string. `RECIPE` is compared
+    # to this function's own source as well as to `models.py`, so it cannot
+    # drift from the comprehension that just ran either.
+    import inspect
+
+    # `import models` rather than `from models import ...`: the module object
+    # is what carries `__file__`, and the module-scope imports in this file
+    # are all of the second form.
     from deep_research_client.evaluation import models
 
-    source = Path(models.__file__).read_text(encoding="utf-8")
-    assert test_the_recipe_rebuilds_a_score_its_own_dump_cannot.__name__ in source, (
-        "MCQScore's class comment no longer names this test, so the recipe "
-        "it documents points at nothing a reader can run"
+    recipe = "{k: v for k, v in dump.items() if k in MCQScore.model_fields}"
+    # Against the ASSIGNMENT line specifically, not `recipe in source`: this
+    # function's source contains the line defining `recipe`, so a substring
+    # search over the whole of it matches that and is true however the
+    # comprehension above is rewritten. It survived the mutation that proved
+    # it -- the fourth self-reference on this branch.
+    executed = next(
+        ln.strip() for ln in inspect.getsource(
+            test_the_recipe_rebuilds_a_score_its_own_dump_cannot).splitlines()
+        if ln.strip().startswith("counts = ")
+    )
+    assert executed == f"counts = {recipe}", (
+        f"the executed recipe is {executed!r}, not {recipe!r}, so comparing "
+        f"the latter against the documented copy proves nothing"
+    )
+    assert recipe in Path(models.__file__).read_text(encoding="utf-8"), (
+        f"MCQScore's class comment no longer carries {recipe!r} verbatim, so "
+        f"the expression a library caller copies has drifted from the one "
+        f"this test runs"
+    )
+
+
+
+def test_no_comment_cites_a_test_that_does_not_exist():
+    """Every `test_...` a comment names, across `src/` and `tests/`.
+
+    A citation is the claim that rots without either text being touched, so
+    this repo pins them rather than trusting them. The first pin was written
+    inside the test it protected -- it asserted its own `__name__` appeared
+    in `models.py` -- which catches a RENAME and not a DELETION: delete the
+    test and the checker goes with it, leaving production-code documentation
+    pointing at nothing and a green suite. Deletion is the likelier rot for a
+    test.
+
+    A checker placed inside the thing it checks disappears with it. This one
+    is outside all of them, and it covers a second reference the first could
+    not: the derived-rates test names the recipe test in its docstring, and
+    that citation was unpinned.
+
+    Backtick-delimited, because that is what a citation looks like in this
+    tree and an unquoted name in prose is not distinguishable from a
+    sentence. Resolved against BOTH function names and module filenames,
+    since three citations name a test MODULE (`test_eval_matrix`,
+    `test_eval_adapters`, `test_provider_fallback`) rather than a function.
+
+    No invented name appears anywhere above: the first draft of this
+    docstring illustrated the backtick rule with a made-up one, and this
+    function read its own example and reported it as dangling. That is the
+    third instrument on this branch to be an instance of what it measures,
+    and the reason its blind spots are worth stating -- it cannot see a
+    citation that wraps across lines, and it treats any backticked
+    `test_`-prefixed token as a claim that something exists.
+    """
+    import re
+
+    tests_dir = Path(__file__).parent
+    src_dir = Path(__file__).parent.parent / "src"
+
+    known: set[str] = set()
+    for path in sorted(tests_dir.rglob("*.py")):
+        known.add(path.stem)
+        text = path.read_text(encoding="utf-8")
+        known.update(re.findall(r"^def (test_\w+)", text, re.M))
+
+    dangling: list[str] = []
+    for path in sorted([*tests_dir.rglob("*.py"), *src_dir.rglob("*.py")]):
+        text = path.read_text(encoding="utf-8")
+        for line_no, line in enumerate(text.splitlines(), 1):
+            for cited in re.findall(r"`(test_\w+)`", line):
+                if cited not in known:
+                    dangling.append(f"{path.name}:{line_no} cites `{cited}`")
+
+    assert not dangling, (
+        "these comments name a test that no longer exists, so a reader "
+        "following them finds nothing:\n  " + "\n  ".join(dangling)
     )
 
 

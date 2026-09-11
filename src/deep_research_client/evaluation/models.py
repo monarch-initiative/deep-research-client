@@ -884,9 +884,15 @@ class MCQScore(BaseModel):
     # The recipe is EXECUTED rather than only written here, by the test named
     # `test_the_recipe_rebuilds_a_score_its_own_dump_cannot`, which asserts
     # both that the raw dump is refused and that the filtered one rebuilds an
-    # equal score. This copy is a second statement of it and can drift from
-    # the one that runs, so the test is the authority; it pins this reference
-    # in turn, and fails if the name stops appearing here.
+    # equal score. That test compares the expression above against its own
+    # source AND against this file, so the copy a caller pastes cannot drift
+    # from the one that runs; a separate test fails if this comment ever
+    # names a test that no longer exists.
+    #
+    # Naming a test from `src/` is deliberate and is the only place this
+    # package does it. The alternative is to describe the recipe without
+    # saying what runs it, which is what left this comment unexecuted for
+    # four commits.
     model_config = ConfigDict(extra="forbid")
 
     total: int = Field(..., ge=0, description="Questions in the eval set")
@@ -1099,6 +1105,13 @@ class MCQScore(BaseModel):
         the one text whose own `History:` records it did not hold. A claim
         stated as "the way X does" rots whenever X does, and no sweep over
         this claim's subject visits X.
+
+        Note what was NOT the mechanism: distance. `correct`'s description
+        sits about 190 lines up, in this same class, and same-file proximity
+        saved nothing -- the commit that rewrote it had every reason to be
+        reading this file. A later comment elsewhere blamed the rot on the
+        citation being cross-file; it was not, and saying so would imply a
+        nearby citation is safe.
 
         >>> MCQScore(total=2, attempted=1, correct=1, abstained=1).skipped
         0

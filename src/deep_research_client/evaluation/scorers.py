@@ -408,9 +408,11 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # rather than fixed.
             #
             # It needs ~10,000 levels of nesting, which is where `raw_decode`
-            # gives out (measured by bisection on this interpreter). That is
-            # NOT the budget the mine below runs against: the mine is Python
-            # recursion, which gives out at ~999 frames. Two branches of one
+            # gives out. That is NOT the budget the mine below runs against:
+            # the mine is Python recursion, which gives out at ~999 frames.
+            # Both bisected on both interpreters CI runs -- 9,998 and 999 on
+            # 3.12.3, 9,999 and 999 on 3.13.12 -- since a budget quoted from
+            # one version is a claim about the other. Two branches of one
             # function, two limits an order of magnitude apart, and a case
             # sized against the wrong one lands between them.
             inside_unclosed = True

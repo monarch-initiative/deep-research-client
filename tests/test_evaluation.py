@@ -2035,8 +2035,8 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # gives out around 10,000 and the mine's Python recursion around 999 --
     # which is worth knowing before re-sizing it. Measured rather than
     # reasoned: the answer is `{}` at every `sys.setrecursionlimit` from 150
-    # to 3,000, the mine makes 998 calls, and its `RecursionError` handler
-    # does not fire. Wrapping `_decode_candidates` to watch it DOES flip the
+    # to 3,000 and on both interpreters CI runs (3.12.3 and 3.13.12), the
+    # mine makes 998 calls, and its `RecursionError` handler does not fire. Wrapping `_decode_candidates` to watch it DOES flip the
     # answer to None, because the wrapper spends a frame per level -- so an
     # instrument put here to check this comment will contradict it.
     ("a bounded brace nest deeper than the stack", "{" * 1200 + "}" * 1200, {}),

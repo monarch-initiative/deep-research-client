@@ -1249,3 +1249,115 @@ def test_claim_recall_with_no_reference_claims_records_nothing_judged():
 
     assert score.judged_chars == 0, "no judge was asked anything"
     assert score.report_chars == len(long_report)
+
+
+@pytest.mark.parametrize("report,expect_correct,expect_found", [
+    # The regression "any occurrence is correct" introduced. A bare
+    # "chromosome 17" captures "17", which is a valid prefix of 17q21.31, so a
+    # correct-by-vagueness occurrence outranked the report's actual, wrong
+    # claim. A report on a chromosome-17 tumour suppressor writes the bare
+    # number routinely, which made this check unable to register a wrong locus
+    # at all -- while still counting in `compared_count` as one of only two
+    # bundled checks that compare anything.
+    ("Genes on chromosome 17 include BRCA1 and TP53. "
+     "BRCA1 is located at chromosome 17p13.1.", False, "chromosome 17p13.1"),
+    # The fix must not undo the case it was built for: here the more specific
+    # claim is the correct one, so it still wins over the earlier wrong arm.
+    ("BRCA1 works with TP53, on chromosome 17p13.1. "
+     "BRCA1 is on chromosome 17q21.31.", True, "chromosome 17q21.31"),
+    # And `prefix` still accepts a less precise answer when that is all the
+    # report says -- the whole reason the style exists.
+    ("BRCA1 is on chromosome 17.", True, "chromosome 17"),
+    # A vague mention beside a correct specific one reports the specific one.
+    ("Genes on chromosome 17 include BRCA1. BRCA1 is at chromosome 17q21.31.",
+     True, "chromosome 17q21.31"),
+    # Two equally specific claims that contradict each other: the override is
+    # for a *strictly* more specific disagreement, so an equally precise wrong
+    # mention does not beat a right one. There is no principled winner between
+    # claims of the same precision, and `prefix` is the forgiving style by
+    # construction -- recorded here so the choice is deliberate rather than an
+    # artifact of which comparison happens to be written first.
+    ("Some sources say chromosome 17p21.31. BRCA1 is at chromosome 17q21.31.",
+     True, "chromosome 17q21.31"),
+])
+def test_a_specific_disagreement_outranks_a_vague_agreement(
+    report, expect_correct, expect_found,
+):
+    """Under `prefix`, a correct capture can be a vaguer form of the answer, so
+    "any occurrence is correct" let context override the report's own claim."""
+    from deep_research_client.evaluation.adapters.monarch import build_rubric
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject="BRCA1"),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+    check = next(c for c in score.checks if c.fact_name == "chromosome")
+
+    assert check.compared
+    assert check.correct is expect_correct
+    # The occurrence that settled it, not whichever came first.
+    assert check.found_in_report == expect_found
+
+
+def test_the_specificity_rule_does_not_reach_an_exact_check():
+    """Under `exact` a correct capture *is* the answer, so nothing can be more
+    specific than it; a longer wrong capture elsewhere is a second, different
+    claim, not a more precise version of the same one."""
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="protein_length", pattern=r"(\d+)\s*amino acid", expected="1863",
+        )]),
+    )
+    report = "BRCA1 is 1863 amino acids. A splice form runs to 18630 amino acids."
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    assert score.checks[0].correct is True
+
+
+@pytest.mark.parametrize("scenario,body,expect_checked,expect_unresolvable", [
+    ("fabricated pmid",
+     {"result": {"99999999": {"error": "cannot get document summary"}}}, 1, 0),
+    ("top-level esummary error",
+     {"esummaryresult": ["Invalid db name"]}, 0, 1),
+    ("real record with a title",
+     {"result": {"99999999": {"title": "FGFR3 mutations cause achondroplasia",
+                              "pubdate": "2019"}}}, 1, 0),
+])
+def test_alignment_reads_the_same_responses_the_lookup_does(
+    scenario, body, expect_checked, expect_unresolvable,
+):
+    """Driven from the response rather than from a hand-written `lookup_failed`.
+
+    The parametrized test above stubs `fetch_pubmed_metadata`, which pins the
+    alignment scorer's filter but replaces the response-shape mapping it
+    depends on -- so a regression in the mapping would leave it green. This one
+    goes through the transport, so the two halves are tested joined.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(
+        task, "FGFR3 mutations cause achondroplasia [PMID:99999999].", "test"
+    )
+
+    async def score():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.score_citation_alignment(out, client)
+
+    result = asyncio.run(score())
+    assert result.total_checked == expect_checked, scenario
+    assert result.unresolvable == expect_unresolvable, scenario

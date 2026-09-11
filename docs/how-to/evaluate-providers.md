@@ -425,8 +425,7 @@ Patterns are compiled when the eval set loads, not when a report is scored, so
 a typo is reported by `eval load` before any provider is paid. `match: prefix`
 is refused at the same point when it has nothing to compare — no capturing
 group, or no `expected` — because the comparison it asks for cannot happen and
-the check would silently become a presence-only one. So is an empty `rubric:`
-block, which scores exactly what no rubric at all scores.
+the check would silently become a presence-only one.
 
 A check whose pattern matches but captures nothing (any group that can match
 the empty string) counts as present and is left out of the accuracy rate. It
@@ -436,8 +435,24 @@ about the same report.
 Every occurrence of a pattern is considered, not just the first. A report on
 BRCA1 that mentions TP53's locus before stating BRCA1's own would otherwise be
 marked wrong for a fact it got right two sentences later. A check is correct if
-any occurrence compares correctly; if none does but some occurrence compared,
-the check is wrong and the detail reports that occurrence.
+any occurrence compares correctly — except that under `prefix`, an occurrence
+that disagreed with a *strictly more specific* value wins instead. "Genes on
+chromosome 17 include BRCA1" captures `17`, which is a valid prefix, and
+without that rule it would excuse a report that went on to place BRCA1 at
+17p13.1. Either way the detail reports the occurrence that settled it.
+
+Patterns are compiled when the eval set loads, and so are the rest of a
+rubric's parts. `eval load` refuses, before any provider is paid:
+
+| Refused | Because |
+| --- | --- |
+| A pattern that is not a valid regular expression | It would raise mid-scoring and cost the report its other intrinsic scores too |
+| A pattern that matches the empty string | It reports itself present in a report that says nothing |
+| `match: prefix` with no capturing group, or no `expected` | The comparison it asks for cannot happen |
+| A topic with no keywords | No report can ever cover it |
+| A topic with a blank keyword | Every report covers it, including an empty one |
+| A reference claim with a blank description | It asks the judge to look for nothing |
+| An empty `rubric:` block | It scores exactly what no rubric scores |
 
 ## Adding a benchmark
 

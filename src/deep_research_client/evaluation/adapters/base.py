@@ -14,7 +14,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ..datamodel import AnswerType, EvalSet, EvalTask, MatchStyle
+from ..datamodel import AnswerType, EvalSet, EvalTask
+from ..datamodel_helpers import is_prefix_match
 
 
 class EvalSetAdapter(ABC):
@@ -164,7 +165,16 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
 
     An empty ``rubric`` block is refused for the same reason: it is
     indistinguishable in effect from no rubric at all, so writing one is always
-    a mistake -- an unfinished edit, or the wrong nesting level.
+    a mistake -- an unfinished edit, or the wrong nesting level. (A task with no
+    rubric at all is fine, and scores identically. The asymmetry is about
+    authoring intent: writing the key says a rubric was meant.)
+
+    All three of a rubric's parts are checked, not just the patterns. A topic
+    with no keywords cannot be covered by any report and a topic with a blank
+    keyword is covered by every report including an empty one; a reference
+    claim with a blank description asks the judge to look for nothing. Each is
+    a declared measurement that settles nothing, which is the property the
+    ``prefix`` refusals are about, arrived at by a different one-character slip.
 
     Args:
         tasks: The tasks an adapter produced.
@@ -220,7 +230,14 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
                     f"{source}: task {task.id!r} spot check {spec.name!r} has a "
                     f"pattern that is not a valid regular expression: {exc}"
                 ) from exc
-            if spec.match != MatchStyle.prefix.value:
+            if compiled.match("") is not None:
+                raise ValueError(
+                    f"{source}: task {task.id!r} spot check {spec.name!r} has a "
+                    f"pattern that matches the empty string, so it reports "
+                    f"itself present in a report that says nothing; anchor it "
+                    f"or require at least one character"
+                )
+            if not is_prefix_match(spec):
                 continue
             if spec.expected is None:
                 raise ValueError(
@@ -235,6 +252,35 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
                     f"group, so no value is captured to compare against "
                     f"{spec.expected!r}; add a group around the part that "
                     f"carries the answer"
+                )
+
+        for topic in (task.rubric.expected_topics if task.rubric else None) or []:
+            # The same shape the `prefix` refusals are for: a declared
+            # measurement that cannot measure. No keyword is a topic no report
+            # can ever cover, so every report loses a point it could not win;
+            # an empty-string keyword is a substring of everything, so every
+            # report covers the topic, an empty one included.
+            usable = [kw for kw in topic.keywords if kw.strip()]
+            if not usable:
+                raise ValueError(
+                    f"{source}: task {task.id!r} topic {topic.name!r} has no "
+                    f"usable keywords, so no report can ever cover it"
+                )
+            if len(usable) != len(topic.keywords):
+                raise ValueError(
+                    f"{source}: task {task.id!r} topic {topic.name!r} has a "
+                    f"blank keyword, which is a substring of every report, so "
+                    f"the topic would count as covered by all of them"
+                )
+
+        for claim in (task.rubric.reference_claims if task.rubric else None) or []:
+            # The judge is asked whether the report covers this claim, and is
+            # sent the description as the claim's text.
+            if not claim.description.strip():
+                raise ValueError(
+                    f"{source}: task {task.id!r} reference claim {claim.name!r} "
+                    f"has a blank description, which is what the judge is asked "
+                    f"to look for"
                 )
 
 

@@ -1370,21 +1370,6 @@ def test_a_groupless_exact_check_is_still_a_valid_presence_check(tmp_path):
     assert [c.name for c in task.rubric.spot_checks] == ["brct"]
 
 
-def test_the_bundled_rubrics_pass_the_check_they_are_validated_by():
-    """The guard runs on every adapter's output, this repo's own data included.
-
-    `build_rubric` merges the bundled YAML into tasks that the Monarch adapter
-    then puts through `validate_tasks`, so a bad pattern committed here would
-    break loading rather than scoring. Asserting it directly means a change to
-    the bundled file fails in this file, naming itself.
-    """
-    from deep_research_client.evaluation.adapters.base import check_rubrics
-
-    rubric = build_rubric("gene_function", [], subject="BRCA1")
-    task = EvalTask(id="t", prompt="p", answer_type=AnswerType.REPORT, rubric=rubric)
-    check_rubrics([task], "bundled")
-
-
 def test_the_documented_rubric_example_loads_and_scores(tmp_path):
     """Extracted from the how-to and run, rather than retyped here.
 
@@ -1401,8 +1386,9 @@ def test_the_documented_rubric_example_loads_and_scores(tmp_path):
     doc = (
         Path(__file__).parent.parent / "docs" / "how-to" / "evaluate-providers.md"
     ).read_text(encoding="utf-8")
-    section = doc[doc.index("### Writing a rubric in your own eval set"):]
-    block = re.search(r"```yaml\n(.*?)```", section, re.S)
+    heading = "### Writing a rubric in your own eval set"
+    assert heading in doc, f"the how-to no longer has a {heading!r} section"
+    block = re.search(r"```yaml\n(.*?)```", doc[doc.index(heading):], re.S)
     assert block is not None, "the rubric section lost its YAML example"
 
     path = tmp_path / "questions.yaml"
@@ -1454,3 +1440,98 @@ def test_a_task_with_no_rubric_at_all_is_still_fine(tmp_path):
     )
 
     assert get_adapter("yaml").load(path).tasks[0].rubric is None
+
+
+@pytest.mark.parametrize("block,expected", [
+    # A topic no report can cover: every report loses a point it could not win.
+    ("      expected_topics:\n"
+     "        - name: dna_repair\n"
+     "          keywords: []\n",
+     "no usable keywords"),
+    # A topic every report covers, an empty one included: "" is a substring of
+    # everything.
+    ("      expected_topics:\n"
+     "        - name: dna_repair\n"
+     "          keywords: ['', recombination]\n",
+     "blank keyword"),
+    # A claim the judge is asked to look for, with nothing to look for.
+    ("      reference_claims:\n"
+     "        - name: e3_ligase\n"
+     "          category: molecular_function\n"
+     "          description: '  '\n",
+     "blank description"),
+])
+def test_the_other_two_rubric_parts_are_checked_too(tmp_path, block, expected):
+    """`check_rubrics` compiled patterns and looked at nothing else.
+
+    Each of these is the shape the `prefix` refusals exist for -- a declared
+    measurement that settles nothing -- reached by a different one-character
+    slip in authored YAML.
+    """
+    path = tmp_path / "topics.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: r1\n"
+        "    prompt: Q?\n"
+        "    answer_type: REPORT\n"
+        "    rubric:\n" + block,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=expected):
+        get_adapter("yaml").load(path)
+
+
+def test_a_pattern_that_matches_nothing_at_all_is_refused(tmp_path):
+    """`re.finditer` yields a zero-length match at every position for a pattern
+    that accepts the empty string, so the check reports itself present in a
+    report that says nothing, and `presence_rate` can reach 1.00 for silence."""
+    path = _yaml_with_check(
+        tmp_path,
+        "        - name: anything\n"
+        "          pattern: '\\d*'\n",
+    )
+
+    with pytest.raises(ValueError, match="matches the empty string"):
+        get_adapter("yaml").load(path)
+
+
+@pytest.mark.parametrize("stem,subject", [
+    ("gene_function", None),
+    ("gene_function", "BRCA1"),
+    ("gene_function", "TP53"),
+    ("disease_mechanism", None),
+])
+def test_the_bundled_rubrics_all_pass_the_check_they_are_validated_by(stem, subject):
+    """Every stem and every subject, not just the first of each.
+
+    `build_rubric` merges the bundled YAML into tasks the Monarch adapter puts
+    through `validate_tasks`, so a bad pattern committed under a second subject
+    would break loading rather than scoring -- and would be found by whoever
+    loads that eval set rather than by this file.
+    """
+    from deep_research_client.evaluation.adapters.base import check_rubrics
+
+    rubric = build_rubric(stem, [], subject=subject)
+    task = EvalTask(id="t", prompt="p", answer_type=AnswerType.REPORT, rubric=rubric)
+    check_rubrics([task], "bundled")
+
+
+def test_every_subject_in_the_bundled_spot_checks_is_covered_by_that_test():
+    """The parametrize above names its subjects, so it can fall behind the file.
+
+    This fails when a subject is added to `gene_spot_checks.yaml` without being
+    added there, rather than letting the new subject go unvalidated.
+    """
+    from deep_research_client.evaluation.adapters.monarch import load_rubric_data
+
+    subjects = set(load_rubric_data("gene_spot_checks"))
+    covered = {
+        args[1]
+        for mark in test_the_bundled_rubrics_all_pass_the_check_they_are_validated_by.pytestmark
+        for args in mark.args[1]
+        if args[1] is not None
+    }
+    assert subjects <= covered, (
+        f"subjects in gene_spot_checks.yaml with no coverage: {subjects - covered}"
+    )

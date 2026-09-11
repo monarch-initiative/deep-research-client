@@ -40,7 +40,8 @@ from .models import (
     TopicCoverage,
     TopicCoverageScore,
 )
-from .datamodel import EvalTask, MatchStyle, ReferenceClaim, Rubric, SpotCheck
+from .datamodel import EvalTask, ReferenceClaim, Rubric, SpotCheck
+from .datamodel_helpers import is_prefix_match
 from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
@@ -1022,13 +1023,37 @@ def _reference_claims(task: EvalTask) -> list[ReferenceClaim]:
     return _rubric_of(task).reference_claims or []
 
 
-def _compare_capture(spec: SpotCheck, match: re.Match[str]) -> tuple[bool, bool]:
+def _most_specific(
+    verdicts: list[tuple[re.Match[str], bool, str]],
+) -> tuple[re.Match[str], bool, str] | None:
+    """The occurrence that captured the longest value, or None for an empty list.
+
+    Length is the stand-in for specificity: 17q21.31 is a more specific claim
+    than 17, and GO:0006281 than GO. It is only ever compared within one
+    check's own occurrences, so it never compares one fact's precision against
+    another's.
+
+    >>> import re
+    >>> ms = [(re.match("a", "a"), True, "17"), (re.match("a", "a"), False, "17p13.1")]
+    >>> _most_specific(ms)[2]
+    '17p13.1'
+    >>> _most_specific([]) is None
+    True
+    """
+    return max(verdicts, key=lambda t: len(t[2])) if verdicts else None
+
+
+def _compare_capture(
+    spec: SpotCheck, match: re.Match[str]
+) -> tuple[bool, bool, str]:
     r"""Compare one occurrence of a spot check's pattern against its `expected`.
 
-    Returns ``(correct, compared)``. ``compared`` is False when this occurrence
-    settles nothing -- a presence-only check, or a pattern that matched without
-    capturing a value -- so that the accuracy rate is over the occurrences that
-    actually tested something.
+    Returns ``(correct, compared, captured)``. ``compared`` is False when this
+    occurrence settles nothing -- a presence-only check, or a pattern that
+    matched without capturing a value -- so that the accuracy rate is over the
+    occurrences that actually tested something. ``captured`` is the normalised
+    value that was compared, empty when nothing was, and lets the caller rank
+    occurrences by how specific a claim each one made.
 
     "Group 1 has a non-empty captured value" is the property, and three weaker
     predicates have been wrong here. ``groups()`` is a truthy tuple of Nones
@@ -1047,16 +1072,16 @@ def _compare_capture(spec: SpotCheck, match: re.Match[str]) -> tuple[bool, bool]
     >>> from .datamodel import SpotCheck
     >>> spec = SpotCheck(name="n", pattern=r"(\d+)\s*amino acid", expected="1863")
     >>> _compare_capture(spec, re.search(spec.pattern, "1863 amino acids"))
-    (True, True)
+    (True, True, '1863')
     >>> _compare_capture(spec, re.search(spec.pattern, "999 amino acids"))
-    (False, True)
+    (False, True, '999')
 
     Thousands separators are removed on both sides: a report writing
     "1,863 amino acids" is not disagreeing about the number.
 
     >>> wide = SpotCheck(name="n", pattern=r"([\d,]+)\s*amino acid", expected="1863")
     >>> _compare_capture(wide, re.search(wide.pattern, "1,863 amino acids"))
-    (True, True)
+    (True, True, '1863')
 
     `prefix` is for hierarchical facts -- a locus, an ontology id, a version --
     where a shorter answer is less precise rather than incorrect. A report
@@ -1068,23 +1093,23 @@ def _compare_capture(spec: SpotCheck, match: re.Match[str]) -> tuple[bool, bool]
     >>> loc = SpotCheck(name="n", pattern=r"chromosome (17[pq\d.]*)",
     ...                 expected="17q21.31", match="prefix")
     >>> _compare_capture(loc, re.search(loc.pattern, "chromosome 17"))
-    (True, True)
+    (True, True, '17')
     >>> _compare_capture(loc, re.search(loc.pattern, "chromosome 17p13.1"))
-    (False, True)
+    (False, True, '17p13.1')
     """
     if spec.expected is None:
-        return True, False
+        return True, False, ""
 
     captured = ""
     if match.re.groups and match.group(1) is not None:
         captured = match.group(1).strip().lower().replace(",", "")
     if not captured:
-        return True, False
+        return True, False, ""
 
     wanted = spec.expected.strip().lower().replace(",", "")
-    if spec.match == MatchStyle.prefix.value:
-        return wanted.startswith(captured), True
-    return captured == wanted, True
+    if is_prefix_match(spec):
+        return wanted.startswith(captured), True, captured
+    return captured == wanted, True, captured
 
 
 def score_factual_spot_checks(
@@ -1139,7 +1164,7 @@ def score_factual_spot_checks(
         else:
             present = True
             verdicts = [(m, *_compare_capture(spec, m)) for m in matches]
-            comparable = [(m, ok) for m, ok, did in verdicts if did]
+            comparable = [(m, ok, cap) for m, ok, did, cap in verdicts if did]
 
             if not comparable:
                 # Nothing was compared anywhere: a presence-only check, or a
@@ -1148,12 +1173,40 @@ def score_factual_spot_checks(
                 # does not count agreement that was never tested.
                 found, correct, compared = matches[0].group(0), True, False
             else:
-                # A comparison that succeeded anywhere settles it; otherwise
-                # the first one that actually compared is the verdict, and is
-                # the occurrence worth reporting -- a later non-capturing match
-                # would otherwise hide a disagreement the report really made.
-                hit = next((m for m, ok in comparable if ok), None)
-                found = (hit or comparable[0][0]).group(0)
+                # A comparison that succeeded anywhere settles it -- except
+                # against a more specific one that failed.
+                #
+                # Under `prefix` a correct capture may be a shorter, vaguer
+                # form of the answer, and taking any correct occurrence made
+                # the bundled `chromosome` check unfalsifiable: "Genes on
+                # chromosome 17 include BRCA1 and TP53" captures "17", which
+                # is a valid prefix of 17q21.31, so a report going on to place
+                # BRCA1 at 17p13.1 scored correct. A report on a chromosome-17
+                # tumour suppressor writes the bare number routinely, and this
+                # is one of only two bundled checks that compare anything at
+                # all -- so `compared_count` stayed 2 with one of the two
+                # unable to register a disagreement.
+                #
+                # So a correct occurrence loses to an incorrect one that
+                # captured a strictly longer value: the report made a more
+                # specific claim, and the more specific claim is its answer.
+                # Only under `prefix`, because that is the only style where a
+                # correct capture can be less specific than the answer --
+                # under `exact` a correct capture *is* the answer.
+                right = [t for t in comparable if t[1]]
+                wrong = [t for t in comparable if not t[1]]
+                hit = _most_specific(right)
+                if hit is not None and is_prefix_match(spec):
+                    if any(len(c) > len(hit[2]) for _, _, c in wrong):
+                        hit = None
+
+                # The occurrence that settled it is the one worth reporting:
+                # the most specific agreement, or the disagreement that
+                # overrode it. Reporting the first comparable match instead
+                # showed "chromosome 17" beside a verdict of *incorrect*,
+                # leaving a reader to guess which mention was judged.
+                decisive = hit or _most_specific(wrong) or comparable[0]
+                found = decisive[0].group(0)
                 correct, compared = hit is not None, True
 
         checks.append(FactualSpotCheck(

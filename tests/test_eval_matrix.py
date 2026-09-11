@@ -415,14 +415,23 @@ def _expected_correct_for_first(eval_set: EvalSet) -> int:
 def test_on_scores_reports_an_empty_result_as_a_result(tmp_path, mock_client):
     """The empty call is the contract, not an accident of the code path.
 
-    `on_scores` fires whenever grading ran, including when the selection had
-    no multiple-choice cells -- which is the only way a caller can tell
-    "grading was off" from "grading ran and found nothing to score". The CLI
-    cannot tell the difference (it starts from an empty dict, so the empty
-    call is a no-op for it), so this is the only thing keeping the behaviour
-    alive: folding the call under the `if scores:` that guards
-    `write_scores_tsv` one line above is the obvious tidy-up, and it would
-    delete a documented contract with nothing else failing.
+    `on_scores` fires EXACTLY ONCE per graded run, including with an empty
+    mapping when the selection had no multiple-choice cells. What that buys
+    is uniformity, not information: a caller builds the `MatrixConfig` it
+    passes, so it already holds `grade` and could always infer "grading was
+    off" from no call at all. Firing anyway means a sink wired to this never
+    treats "graded but empty" as a missing event.
+
+    This test is what keeps that alive: folding the call under the
+    `if scores:` that guards `write_scores_tsv` one line above is the obvious
+    tidy-up, and it would delete the contract with nothing else failing.
+
+    (An earlier version of this docstring said the empty call was the only
+    way a caller could tell "grading was off" from "grading ran and found
+    nothing to score", and that the CLI could not tell them apart. Both are
+    false -- `eval_run` prints "Nothing to grade" from `grade` and an empty
+    `scores`. The field comment was corrected and this docstring was MOVED in
+    the same commit, which is the edit a sweep over describers does not read.)
     """
     reports = EvalSet(name="prose", tasks=[
         EvalTask(id="r1", prompt="What mechanisms?", answer_type=AnswerType.REPORT),
@@ -444,7 +453,12 @@ def test_on_scores_reports_an_empty_result_as_a_result(tmp_path, mock_client):
 
 
 def test_on_scores_is_silent_when_grading_is_off(tmp_path, mock_client):
-    """The other half of the distinction the empty call exists to make."""
+    """No call at all when grading did not run -- the other half of once-per.
+
+    Pinned separately because it guards a different mutation from its sibling:
+    firing regardless of `config.grade` fails here, and folding the call under
+    `if scores:` fails there. Neither catches the other's.
+    """
     seen: list[dict] = []
 
     asyncio.run(run_matrix(

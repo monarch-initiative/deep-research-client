@@ -444,3 +444,61 @@ def test_a_zero_size_cap_is_honoured_rather_than_replaced():
 
     assert policy.max_bytes == 0
     assert not policy.decide("results/table.csv", 1).keep
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [
+        (["analysis/subtopic/report.md", "final_report.md"], "final_report.md"),
+        (["final_report.md", "analysis/subtopic/report.md"], "final_report.md"),
+        (["report.md", "final_report.md"], "final_report.md"),
+        (["final_report.md", "report.md"], "final_report.md"),
+        (["analysis/subtopic/report.md"], "analysis/subtopic/report.md"),
+    ],
+)
+def test_the_report_body_is_chosen_independently_of_zip_order(names, expected):
+    """The picker took the first match in server-controlled write order.
+
+    A bundle holding analysis/subtopic/report.md before final_report.md
+    returned the subtopic document as the entire research result, and two root
+    candidates resolved by write order alone.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name in names:
+            archive.writestr(name, f"# {name}")
+
+    config = ProviderConfig(
+        name="openscientist", api_key="k", base_url="https://example.test/", enabled=True
+    )
+    provider = OpenScientistProvider(config)
+    picked, body = provider._extract_markdown_from_artifact_zip(buffer.getvalue(), "j")
+
+    assert picked == expected
+    assert body == f"# {expected}"
+
+
+def test_a_mixed_case_scaffolding_name_still_matches():
+    """Both sides of the comparison are normalized, as everywhere else here."""
+    policy = ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes=(".Codex/",))
+
+    assert not policy.decide("workspace/.codex/state.json", 100).keep
+    assert is_under_directory("A/.CODEX/state.json", [".codex"])
+
+
+def test_a_bare_string_of_directories_is_rejected():
+    """Iterating a string into characters would match nothing, silently."""
+    with pytest.raises(TypeError):
+        is_under_directory("a/.claude/x.md", ".claude/")
+
+
+def test_a_zero_cap_also_drops_a_zero_byte_member():
+    """"Keep nothing" has to include an empty file."""
+
+    class LooseParams:
+        artifact_max_bytes = 0
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert not policy.decide("results/empty.csv", 0).keep
+    assert not policy.decide("results/table.csv", 1).keep

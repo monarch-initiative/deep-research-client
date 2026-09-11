@@ -55,7 +55,10 @@ DEFAULT_BASE_URL = "https://www.openscientist.io"
 # Artifact selection lives in ``artifact_selection`` so it is configurable and
 # reusable. Only the noise rules are still referenced here, by the report-picking
 # path below.
-_REPORT_MARKDOWN_BASENAMES = {"final_report.md", "report.md"}
+# Ordered most canonical first; _REPORT_MARKDOWN_BASENAMES is derived from it
+# so the membership test and the preference order cannot drift apart.
+_REPORT_MARKDOWN_PREFERENCE = {"final_report.md": 0, "report.md": 1}
+_REPORT_MARKDOWN_BASENAMES = frozenset(_REPORT_MARKDOWN_PREFERENCE)
 _ARTIFACT_SOURCE = "openscientist_artifacts_zip"
 
 
@@ -399,6 +402,7 @@ class OpenScientistProvider(ResearchProvider):
                     if n.lower().endswith(".md")
                     and not self._is_noisy_artifact_path(n)
                 ]
+            md_files.sort(key=self._report_candidate_rank)
 
             if not md_files:
                 raise ValueError(
@@ -492,6 +496,36 @@ class OpenScientistProvider(ResearchProvider):
             log = logger.info if decision.rule == "size_cap" else logger.debug
             log("Skipping OpenScientist artifact %s: %s", name, decision.reason)
         return decision.keep
+
+    @staticmethod
+    def _report_candidate_rank(name: str) -> tuple[int, int, str]:
+        """Order report-body candidates, shallowest and most canonical first.
+
+        The picker used to take the first match in ``namelist()`` order, which
+        is whatever order the server wrote the files. Two consequences, both
+        reproduced before this existed: a bundle holding
+        ``analysis/subtopic/report.md`` before ``final_report.md`` returned the
+        subtopic document as the entire research result, and a bundle holding
+        both root ``report.md`` and root ``final_report.md`` resolved by write
+        order alone.
+
+        Depth first, because a nested ``report.md`` is a different document —
+        the same judgement ``_is_root_report_markdown_name`` already encodes on
+        the artifact path. Then canonical name, so ``final_report.md`` beats
+        ``report.md`` at equal depth. Then the path, so the result is
+        reproducible for any bundle.
+
+        Args:
+            name: ZIP member path.
+
+        Returns:
+            A sort key; lower sorts earlier.
+        """
+        normalized = normalize_member_path(name)
+        depth = normalized.count("/")
+        basename = PurePosixPath(normalized).name
+        canonical = _REPORT_MARKDOWN_PREFERENCE.get(basename, len(_REPORT_MARKDOWN_PREFERENCE))
+        return (depth, canonical, normalized)
 
     def _is_report_markdown_name(self, name: str) -> bool:
         """Return whether a ZIP member is report-shaped markdown, at any depth.

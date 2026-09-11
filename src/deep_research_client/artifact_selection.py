@@ -250,7 +250,9 @@ class ArtifactSelectionPolicy:
         if _matches_any(normalized, self.exclude_globs):
             return ArtifactDecision(False, "matched artifact_exclude_globs", rule="exclude_glob")
 
-        if size > self.max_bytes:
+        # ``>=`` at a zero cap: "keep nothing" has to include a zero-byte
+        # member, which ``size > 0`` would let through.
+        if size > self.max_bytes or self.max_bytes <= 0:
             return ArtifactDecision(
                 False,
                 f"{size} bytes exceeds artifact_max_bytes ({self.max_bytes})",
@@ -265,7 +267,9 @@ class ArtifactSelectionPolicy:
         if _matches_any(normalized, self.include_globs):
             return ArtifactDecision(True, "matched artifact_include_globs", rule="include_glob")
 
-        if is_under_directory(normalized, self.scaffolding_prefixes):
+        # ``scaffolding_prefixes`` is normalized by __post_init__, so compare
+        # against it directly rather than re-normalizing once per member.
+        if _is_under_normalized_directories(normalized, self.scaffolding_prefixes):
             return ArtifactDecision(
                 False, "agent scaffolding directory", rule="scaffolding"
             )
@@ -328,17 +332,46 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
         >>> is_under_directory("run/logs/out.csv", ["logs"])
         True
     """
-    normalized = normalize_member_path(name)
+    return _is_under_normalized_directories(
+        normalize_member_path(name), _with_trailing_slashes(directories)
+    )
+
+
+def _is_under_normalized_directories(
+    normalized_name: str, directories: Iterable[str]
+) -> bool:
+    """Segment match against names already lowercased and slash-terminated."""
     return any(
-        normalized.startswith(directory) or f"/{directory}" in normalized
-        for directory in _with_trailing_slashes(directories)
+        normalized_name.startswith(directory) or f"/{directory}" in normalized_name
+        for directory in directories
     )
 
 
 def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
-    """Return directory names each ending in exactly one slash."""
+    """Normalize directory names for segment matching.
+
+    Lowercased and slash-terminated, so both sides of the comparison are
+    normalized the way every other matcher in this module does it — a caller
+    passing ``".Codex/"`` would otherwise match nothing at all.
+
+    Args:
+        directories: Directory names, any case, with or without a trailing
+            slash. A bare string is rejected rather than iterated as
+            characters.
+
+    Returns:
+        The normalized names.
+
+    Raises:
+        TypeError: If given a single string instead of a collection.
+    """
+    if isinstance(directories, str):
+        raise TypeError(
+            "directories must be a collection of names, not a single string; "
+            f"pass [{directories!r}] rather than {directories!r}"
+        )
     return tuple(
-        directory if directory.endswith("/") else f"{directory}/"
+        directory.lower() if directory.endswith("/") else f"{directory.lower()}/"
         for directory in directories
     )
 

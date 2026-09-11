@@ -424,7 +424,11 @@ def test_datamodel_matches_linkml_schema() -> None:
         [gen_pydantic, str(schema)],
         cwd=repo_root,
         capture_output=True,
-        text=True,
+        # Both sides of the comparison below must be decoded the same way:
+        # `text=True` alone would use the machine's locale for the generator's
+        # stdout while the file it is compared against is read as UTF-8, so a
+        # non-ASCII description in the schema would fail this as drift.
+        encoding="utf-8",
     )
     assert completed.returncode == 0, f"gen-pydantic failed:\n{completed.stderr}"
 

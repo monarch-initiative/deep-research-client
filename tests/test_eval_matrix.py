@@ -5,6 +5,7 @@ client, so the output layout, the resume logic and the TSV writers are all
 exercised end to end without reaching a network.
 """
 
+import ast
 import asyncio
 import json
 import os
@@ -938,51 +939,83 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     assert "OK" in done.stdout
 
 
-#: Every constructor that can open a locale-encoded text handle, keyed by
-#: (name, is_method) and giving (encoding position, mode position, binary by
-#: default).
-#:
-#: Enumerated from what the property can be violated *with*, not from what the
-#: code currently happens to call. Three consecutive rounds of review found this
-#: check one construct short of the one that mattered -- first `open`, then
-#: `write_text`, then `os.fdopen`, which is how `atomic_write` writes every
-#: artifact in the package and is the very line whose docstring this invariant
-#: comes from. Deleting its encoding left both guard tests green.
-#:
-#: Positions differ per function, which is why they are spelled out: treating
-#: *any* positional as an encoding is right for ``read_text(encoding, ...)`` and
-#: wrong for ``write_text(data, encoding, ...)``, where the first positional is
-#: the data -- a shortcut that silently exempted every bare write.
-#:
-#: `binary_default` inverts the question: `open` and `os.fdopen` are text unless
-#: told otherwise, while the `tempfile` factories are binary unless told
-#: otherwise, so only a tempfile call that *names* a text mode needs an
-#: encoding.
-_TEXT_IO_SIGNATURES = {
-    # (name, is_method): (encoding_at, mode_at, binary_default)
-    ("read_text", True): (0, None, False),
-    ("write_text", True): (1, None, False),
-    ("open", True): (2, 0, False),          # Path.open(mode, buffering, encoding)
-    ("open", False): (3, 1, False),         # open(file, mode, buffering, encoding)
-    ("fdopen", True): (2, 1, False),        # os.fdopen(fd, mode, buffering, encoding)
-    ("TextIOWrapper", True): (1, None, False),
-    ("NamedTemporaryFile", True): (5, 1, True),
-    ("TemporaryFile", True): (5, 1, True),
-    ("SpooledTemporaryFile", True): (6, 2, True),
-}
+def _positions(func, *, drop_self: bool = False) -> tuple[int, int | None]:
+    """Where ``encoding`` and ``mode`` sit in a call to `func`.
+
+    Read from the signature rather than written down. Hand-copied indices are
+    themselves a claim, and three of the four added in the previous commit were
+    wrong -- `os.fdopen`'s encoding is at 3, not 2, and the `tempfile` factories
+    take `mode` as their *first* parameter rather than a leading file argument.
+    Derived here, they cannot drift from the stdlib or from a future Python.
+
+    `drop_self` is for methods reached through their class: `Path.open` has
+    `self` at 0, which a call like ``p.open("w")`` does not pass.
+    """
+    import inspect
+
+    names = list(inspect.signature(func).parameters)
+    if drop_self:
+        names = names[1:]
+    return names.index("encoding"), (names.index("mode") if "mode" in names else None)
+
+
+def _text_io_signatures() -> dict[tuple[str, bool], tuple[int, int | None, bool]]:
+    """Every constructor that can open a locale-encoded text handle.
+
+    Enumerated from what the property can be violated *with*, not from what the
+    code currently happens to call. Three consecutive rounds of review found the
+    earlier versions of this check one construct short of the one that mattered
+    -- first `open`, then `write_text`, then `os.fdopen`, which is how
+    `atomic_write` writes every artifact in the package and is the very line
+    whose docstring this invariant comes from.
+
+    Both spellings are registered for everything reachable through a module,
+    because ``from tempfile import NamedTemporaryFile`` is an `ast.Name` call
+    and would otherwise be skipped in silence. Only `open` differs between the
+    two, since the builtin carries a leading `file` argument where the bound
+    method carries `self`.
+
+    The third element inverts the question: `open` and `os.fdopen` are text
+    unless told otherwise, while the `tempfile` factories are binary unless told
+    otherwise, so only a tempfile call that *names* a text mode needs an
+    encoding.
+    """
+    import builtins
+    import io
+    import os
+    import tempfile
+
+    table: dict[tuple[str, bool], tuple[int, int | None, bool]] = {
+        ("read_text", True): (*_positions(pathlib.Path.read_text, drop_self=True), False),
+        ("write_text", True): (*_positions(pathlib.Path.write_text, drop_self=True), False),
+        ("open", True): (*_positions(pathlib.Path.open, drop_self=True), False),
+        ("open", False): (*_positions(builtins.open), False),
+    }
+    # Reached through a module, so the receiver is not an argument and the two
+    # spellings share one set of positions.
+    for name, func, binary_default in [
+        ("fdopen", os.fdopen, False),
+        ("TextIOWrapper", io.TextIOWrapper, False),
+        ("NamedTemporaryFile", tempfile.NamedTemporaryFile, True),
+        ("TemporaryFile", tempfile.TemporaryFile, True),
+        ("SpooledTemporaryFile", tempfile.SpooledTemporaryFile, True),
+    ]:
+        entry = (*_positions(func), binary_default)
+        table[(name, True)] = entry
+        table[(name, False)] = entry
+    return table
+
 
 #: Mode strings are drawn from this alphabet. Checked rather than searching for
 #: a "b", because `mode_at` is only a guess for a method call on an unknown
 #: object: `zipfile.ZipFile(p).open("notebook.md")` would otherwise have its
 #: *filename* read as a mode, find the "b" in "notebook", and be skipped -- a
-#: false negative, in the construct the skip list is written about.
-_MODE_CHARACTERS = set("rwxabt+U")
+#: false negative, in the construct the skip is written about.
+_MODE_CHARACTERS = set("rwxabt+")
 
 
-def _is_binary_mode(node) -> bool:
+def _is_binary_mode(node: "ast.expr") -> bool:
     """Whether this argument is a mode string that opens a binary handle."""
-    import ast
-
     if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
         return False
     mode = node.value
@@ -991,84 +1024,129 @@ def _is_binary_mode(node) -> bool:
     return "b" in mode
 
 
+def _zipfile_bindings(tree: "ast.AST") -> set[str]:
+    """Names bound to a `ZipFile` in this module.
+
+    So `zf.open(member)` can be recognised as the bytes-yielding call it is,
+    from the constructor rather than from how the variable is spelled -- a skip
+    list of likely names is a false negative for every other spelling, in the
+    one construct it claims to be about. Both `zipfile.ZipFile(...)` and a
+    direct `ZipFile(...)` import are recognised.
+
+    Module-scoped rather than function-scoped, so a name bound to a ZipFile
+    anywhere in a file exempts `<name>.open(...)` throughout it. That is a known
+    over-reach, kept because narrowing it costs a scope walk for a construct
+    this repo uses twice.
+    """
+    def is_zipfile_call(node: "ast.expr") -> bool:
+        return isinstance(node, ast.Call) and (
+            getattr(node.func, "attr", None) == "ZipFile"
+            or getattr(node.func, "id", None) == "ZipFile"
+        )
+
+    bound = {
+        item.optional_vars.id
+        for stmt in ast.walk(tree)
+        if isinstance(stmt, ast.With)
+        for item in stmt.items
+        if isinstance(item.optional_vars, ast.Name) and is_zipfile_call(item.context_expr)
+    }
+    bound |= {
+        stmt.targets[0].id
+        for stmt in ast.walk(tree)
+        if isinstance(stmt, ast.Assign)
+        and len(stmt.targets) == 1
+        and isinstance(stmt.targets[0], ast.Name)
+        and is_zipfile_call(stmt.value)
+    }
+    return bound
+
+
+def _offenders_in_tree(tree: "ast.AST", where: str, line_offset: int = 0) -> list[str]:
+    """Calls in one parsed tree that open a text handle without an encoding."""
+    signatures = _text_io_signatures()
+    zipfile_handles = _zipfile_bindings(tree)
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        func = node.func
+        if isinstance(func, ast.Attribute):
+            name, is_method = func.attr, True
+            owner = getattr(func.value, "id", "")
+            if (owner, name) == ("os", "open"):
+                continue  # takes and returns a file descriptor
+            if name == "open" and owner in zipfile_handles:
+                continue  # ZipFile.open always yields bytes
+        elif isinstance(func, ast.Name):
+            name, is_method = func.id, False
+        else:
+            continue
+
+        signature = signatures.get((name, is_method))
+        if signature is None:
+            continue
+        encoding_at, mode_at, binary_default = signature
+
+        if any(k.arg == "encoding" for k in node.keywords):
+            continue
+        if len(node.args) > encoding_at:
+            continue  # a positional encoding, in the position it belongs
+
+        mode = next(
+            (k.value for k in node.keywords if k.arg == "mode"),
+            node.args[mode_at] if mode_at is not None and len(node.args) > mode_at
+            else None,
+        )
+        if mode is None:
+            if binary_default:
+                continue  # tempfile defaults to "w+b"; nothing to encode
+        elif _is_binary_mode(mode):
+            continue
+
+        offenders.append(f"{where}:{node.lineno + line_offset} {name}")
+    return offenders
+
+
 def _encoding_offenders(root: pathlib.Path) -> list[str]:
     """Text reads and writes under `root` that do not name an encoding.
 
-    Every construct in `_TEXT_IO_SIGNATURES` can open a handle whose encoding
-    comes from the machine's locale. Binary modes are skipped, since encoding is
-    meaningless there, as is `os.open`, which returns a file descriptor rather
-    than a handle -- named specifically rather than skipping everything called
-    on `os`, since `os.fdopen` is on the same module and very much does take an
-    encoding.
+    Covers module code and doctest bodies alike. Doctests are included because
+    `just test` runs them, so a bare text handle in one is a live violation --
+    and because the two that existed were found by reading rather than by this
+    check, which is the same hand-fix-without-a-guard that produced the check in
+    the first place. `ast` sees a docstring as a string, so their examples are
+    parsed separately and reported against the line they sit on.
     """
-    import ast
+    import doctest
 
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        name = str(path.relative_to(root))
+        offenders.extend(_offenders_in_tree(tree, name))
 
-        # Names bound to a ZipFile, so `zf.open(member)` can be recognised as
-        # the bytes-yielding call it is. Collected from the source rather than
-        # guessed from the variable's spelling: a skip list of likely names is
-        # a false negative for every other spelling, in the one construct it
-        # claims to be about.
-        zipfile_handles = {
-            target.optional_vars.id
-            for stmt in ast.walk(tree)
-            if isinstance(stmt, ast.With)
-            for target in stmt.items
-            if isinstance(target.optional_vars, ast.Name)
-            and isinstance(target.context_expr, ast.Call)
-            and getattr(target.context_expr.func, "attr", "") == "ZipFile"
-        } | {
-            stmt.targets[0].id
-            for stmt in ast.walk(tree)
-            if isinstance(stmt, ast.Assign)
-            and len(stmt.targets) == 1
-            and isinstance(stmt.targets[0], ast.Name)
-            and isinstance(stmt.value, ast.Call)
-            and getattr(stmt.value.func, "attr", "") == "ZipFile"
-        }
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
+        for holder in ast.walk(tree):
+            if not isinstance(
+                holder, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            ):
                 continue
-
-            func = node.func
-            if isinstance(func, ast.Attribute):
-                name, is_method = func.attr, True
-                owner = getattr(func.value, "id", "")
-                if (owner, name) == ("os", "open"):
-                    continue  # takes and returns a file descriptor
-                if name == "open" and owner in zipfile_handles:
-                    continue  # ZipFile.open always yields bytes
-            elif isinstance(func, ast.Name):
-                name, is_method = func.id, False
-            else:
+            docstring = ast.get_docstring(holder, clean=False)
+            if not docstring or ">>>" not in docstring:
                 continue
-
-            signature = _TEXT_IO_SIGNATURES.get((name, is_method))
-            if signature is None:
-                continue
-            encoding_at, mode_at, binary_default = signature
-
-            if any(k.arg == "encoding" for k in node.keywords):
-                continue
-            if len(node.args) > encoding_at:
-                continue  # a positional encoding, in the position it belongs
-
-            mode = next(
-                (k.value for k in node.keywords if k.arg == "mode"),
-                node.args[mode_at] if mode_at is not None and len(node.args) > mode_at
-                else None,
-            )
-            if mode is None:
-                if binary_default:
-                    continue  # tempfile defaults to "w+b"; nothing to encode
-            elif _is_binary_mode(mode):
-                continue
-
-            offenders.append(f"{path.relative_to(root)}:{node.lineno} {name}")
+            # Line of the docstring's opening quote, so offsets land in the file.
+            base = holder.body[0].lineno if holder.body else 1
+            for example in doctest.DocTestParser().get_examples(docstring):
+                try:
+                    example_tree = ast.parse(example.source)
+                except SyntaxError:
+                    continue  # a fragment, or output mistaken for source
+                offenders.extend(
+                    _offenders_in_tree(example_tree, name, base + example.lineno - 1)
+                )
     return offenders
 
 
@@ -1084,8 +1162,6 @@ def test_every_text_read_and_write_in_the_package_names_its_encoding():
     multi-line calls that do pass an encoding and, on its first writing,
     mis-grouped its own `or`/`and` so it never checked writes at all.
     """
-    import pathlib
-
     package = pathlib.Path(__file__).resolve().parent.parent / "src" / "deep_research_client"
     offenders = _encoding_offenders(package)
     assert not offenders, (
@@ -1102,8 +1178,6 @@ def test_the_tests_hold_themselves_to_the_same_rule():
     it, one passing `encoding="utf-8"` for the same `results.tsv` read the
     other did bare.
     """
-    import pathlib
-
     tests = pathlib.Path(__file__).resolve().parent
     offenders = _encoding_offenders(tests)
     assert not offenders, (

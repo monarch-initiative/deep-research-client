@@ -3098,6 +3098,19 @@ def eval_run(
         if len(failed) > 10:
             typer.echo(f"  ... and {len(failed) - 10} more; see results.tsv")
 
+    # Anything neither completed nor failed has no other line to appear on:
+    # the accounting paragraph below is gated on a resume or a replay. Nothing
+    # emits CellStatus.SKIPPED today, so this is how it would surface rather
+    # than vanish if something starts to.
+    other = [c for c in cells
+             if c.status not in (CellStatus.COMPLETED, CellStatus.FAILED)]
+    if other:
+        by_status = Counter(str(c.status) for c in other)
+        typer.echo(
+            "Neither completed nor failed: "
+            + ", ".join(f"{n} {status}" for status, n in sorted(by_status.items()))
+        )
+
     # Three categories, because they are three different things and the remedy
     # differs. A resumed cell was read off disk and carries the *earlier* run's
     # `cached` flag, so counting it as a cache replay describes neither -- and

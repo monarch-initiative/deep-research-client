@@ -433,6 +433,14 @@ def write_results_tsv(layout: RunLayout, cells: Sequence[CellResult]) -> None:
             "model": cell.model_used or "",
             "status": cell.status,
             "disposition": cell.disposition or "",
+            # Three-valued, and empty is not "false". `MCQAnswer.correct`
+            # became Optional so a SCORED cell with no recorded correctness
+            # would stop reading as a wrong answer, and the same change makes
+            # every abstention, provider error and extraction failure render
+            # EMPTY here where they rendered `false` -- correctly, since
+            # `correct` is meaningful only when `disposition` is SCORED, which
+            # is in the next column. A consumer reading empty as "not graded"
+            # gets the right answer; one reading it as "wrong" does not.
             "correct": "" if cell.correct is None else str(cell.correct).lower(),
             "chosen_letter": cell.chosen_letter or "",
             "duration_seconds": "" if cell.duration_seconds is None else f"{cell.duration_seconds:.1f}",
@@ -486,13 +494,22 @@ def score_by_arm(eval_set: EvalSet, cells: Sequence[CellResult]) -> dict[str, MC
 def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
     """Write per-arm aggregate scores.
 
-    Accuracy is never written without coverage beside it: a low accuracy from
-    wrong answers and a low accuracy from declining to answer are different
-    results, and only coverage tells them apart.
+    Two invariants, both about a number not being written where a reader
+    cannot see what moved it:
+
+    - Accuracy is never written without coverage beside it. A low accuracy
+      from wrong answers and a low accuracy from declining to answer are
+      different results, and only coverage tells them apart.
+    - `precision` is empty rather than 0.0000 when nothing was judged, and
+      `unusable` says how many attempted questions left its denominator. A
+      spreadsheet averaging the precision column must not average in an arm
+      that made no attempt, and a deduction from a rate has to be countable
+      from the same row.
     """
     columns = (
         "arm_id", "total", "attempted", "correct", "accuracy", "coverage",
         "precision", "abstained", "extraction_failures", "provider_errors",
+        "unusable",
     )
     lines = ["\t".join(columns)]
     for arm_id, score in sorted(scores.items()):
@@ -504,7 +521,8 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
             # a spreadsheet averaging this column must not average in an arm
             # that made no attempt.
             "" if score.precision is None else f"{score.precision:.4f}",
-            str(score.abstained), str(score.extraction_failures), str(score.provider_errors),
+            str(score.abstained), str(score.extraction_failures),
+            str(score.provider_errors), str(score.unusable),
         ]))
     atomic_write(layout.scores_path, "\n".join(lines) + "\n")
 

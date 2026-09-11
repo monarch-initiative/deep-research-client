@@ -40,6 +40,7 @@ from deep_research_client.evaluation.matrix import (
     safe_segment,
     score_by_arm,
     write_results_tsv,
+    write_scores_tsv,
 )
 
 
@@ -477,6 +478,67 @@ def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):
     assert score.extraction_failures == 0
 
 
+def test_scores_tsv_counts_the_attempts_that_left_precisions_denominator(tmp_path):
+    """A deduction from a rate has to be countable from the same row.
+
+    `unusable` records are in `attempted` and out of `precision`'s
+    denominator, so a reader who divides `correct / attempted` and compares it
+    with the printed precision gets two different numbers. Its sibling harness
+    defect, `EXTRACTION_FAILED`, has had a column here since the file was
+    written; this had a `logger.warning` on stderr while the table it moved
+    went to stdout.
+    """
+    from deep_research_client.evaluation.models import MCQScore
+
+    layout = RunLayout(root=tmp_path / "run")
+    layout.root.mkdir(parents=True, exist_ok=True)
+    write_scores_tsv(layout, {"a": MCQScore(
+        total=3, attempted=2, correct=1, unusable=1,
+        accuracy=1 / 3, coverage=2 / 3, precision=1.0,
+    )})
+
+    header, row = [
+        ln.split("\t")
+        for ln in layout.scores_path.read_text(encoding="utf-8").strip().splitlines()
+    ]
+    cell = dict(zip(header, row))
+    assert cell["unusable"] == "1"
+    assert cell["attempted"] == "2" and cell["precision"] == "1.0000", (
+        "correct/attempted is 0.5 and precision is 1.0; `unusable` is what "
+        "reconciles them"
+    )
+
+
+def test_results_tsv_leaves_correct_empty_for_a_cell_that_was_never_scored(
+    tmp_path, mock_client,
+):
+    """`false` and "never graded" are different, and the column now says so.
+
+    Making `MCQAnswer.correct` Optional so a SCORED cell with no recorded
+    correctness stops reading as a wrong answer also changed what an
+    abstention writes here: empty, where it wrote `false`. That is a change to
+    a published artifact, it is the right rendering, and nothing read this
+    column -- so it went unremarked in the commit that made it.
+    """
+    eval_set = _mcq_eval_set(abstention="Insufficient information to answer this question.")
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("decliner", "last")],
+        MatrixConfig(output_dir=tmp_path / "run", grade=True), client=mock_client,
+    ))
+    assert manifest.cells
+
+    rows = (tmp_path / "run" / "results.tsv").read_text(encoding="utf-8").splitlines()
+    header, *body = [ln.split("\t") for ln in rows]
+    cells = [dict(zip(header, r)) for r in body]
+    assert cells, rows
+    for cell in cells:
+        assert cell["disposition"] == "ABSTAINED"
+        assert cell["correct"] == "", (
+            "an abstention was never graded, so the column must not say false"
+        )
+
+
 def test_a_resumed_cell_with_no_recorded_correctness_is_not_scored_wrong(caplog):
     """Through `score_by_arm`, which is where the collapse actually was.
 
@@ -500,12 +562,19 @@ def test_a_resumed_cell_with_no_recorded_correctness_is_not_scored_wrong(caplog)
                    disposition=ScoreDisposition.SCORED, correct=None),
     ]
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING,
+                         logger="deep_research_client.evaluation.mcq"):
         score = score_by_arm(eval_set, cells)["a"]
 
-    assert (score.total, score.attempted, score.correct) == (2, 1, 1)
+    assert (score.total, score.attempted, score.correct) == (2, 2, 1)
+    assert score.unusable == 1
     assert score.precision == pytest.approx(1.0), (
-        "the unusable record must leave the rate, not read as a wrong answer"
+        "the unusable record must leave precision, not read as a wrong answer"
+    )
+    assert score.coverage == pytest.approx(1.0), (
+        "the provider chose an option on both, so coverage is 2/2 -- taking "
+        "the record out of `attempted` would fix precision by making coverage "
+        "report an attempt that was made as one that was not"
     )
     assert "t2" in caplog.text
 

@@ -771,7 +771,13 @@ class MCQScore(BaseModel):
     """
 
     total: int = Field(..., description="Questions in the eval set")
-    attempted: int = Field(..., description="Questions the provider chose an option for")
+    attempted: int = Field(
+        ...,
+        description=(
+            "Questions the provider chose an option for. Coverage's numerator, "
+            "and NOT precision's denominator -- those differ by `unusable`"
+        ),
+    )
     correct: int = Field(
         ...,
         description=(
@@ -788,6 +794,18 @@ class MCQScore(BaseModel):
         description="Responses no option could be recovered from; a harness defect, not a provider one",
     )
     provider_errors: int = Field(default=0, description="Calls that failed outright")
+    unusable: int = Field(
+        default=0,
+        description=(
+            "Attempted questions whose correctness was never recorded, which "
+            "only a hand-edited or older-format `cell.json` produces. They are "
+            "in `attempted` -- an option was chosen -- and out of `precision`'s "
+            "denominator, because nothing can be said about whether they were "
+            "right. Counted here rather than deducted silently: excluding them "
+            "from `attempted` instead fixed precision by making coverage "
+            "report an attempt that was made as one that was not"
+        ),
+    )
     accuracy: float = Field(
         ...,
         description=(
@@ -797,7 +815,14 @@ class MCQScore(BaseModel):
             "`--grade` table only with at least one disposed cell, so a total "
             "of 0 never reaches a reader, while an attempted of 0 does. A "
             "caller that builds an `MCQScore` by hand can still see this zero "
-            "-- read it against `total`"
+            "-- read it against `total`.\n\n"
+            "Unlike `precision`, this rate keeps `unusable` records in its "
+            "denominator and they cannot be in its numerator, so they cost "
+            "accuracy exactly as a wrong answer would. Deliberate, and the "
+            "same treatment `EXTRACTION_FAILED` gets: accuracy is over every "
+            "question asked, which is LAB-Bench's definition, and a question "
+            "the harness cannot report an answer for was not answered "
+            "correctly"
         ),
     )
     coverage: float = Field(
@@ -806,17 +831,21 @@ class MCQScore(BaseModel):
             "attempted / total, and 0.0 when `total` is 0, for the same "
             "reason as `accuracy`. This is the field that says an arm "
             "attempted nothing, so it is the one `precision` being absent "
-            "sends a reader to"
+            "sends a reader to. Over every question an option was chosen for, "
+            "including the ones `unusable` counts -- those cost precision, not "
+            "coverage"
         ),
     )
     precision: Optional[float] = Field(
         ...,
         description=(
-            "correct / attempted, and None when `attempted` is 0 -- an arm "
+            "correct / (attempted - unusable), and None when that is 0 -- an arm "
             "that errored on every call or abstained on every question has no "
             "precision, and `0.000` in a comparison column reads as 'answered "
             "and got them all wrong'. Rendered as an em dash in the `--grade` "
-            "table and as an empty field in `scores.tsv`.\n\n"
+            "table and as an empty field in `scores.tsv`. The denominator is "
+            "narrower than `attempted`: a record whose correctness was never "
+            "written down is not evidence either way.\n\n"
             "History: this was a float documented as readable-against-"
             "`coverage`. That is the same trade -- a disambiguator beside a "
             "rate -- that the citation lines had just rejected one command "

@@ -362,7 +362,10 @@ def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(capl
     """
     import logging
 
-    with caplog.at_level(logging.WARNING):
+    # Named rather than root: the CLI's `setup_logging` calls `setLevel` on
+    # the package logger and never restores it, and a root-level raise is
+    # consulted after that. `test_provider_fallback` documents why.
+    with caplog.at_level(logging.WARNING, logger="deep_research_client.evaluation.mcq"):
         score = mcq.score_mcq([
             MCQAnswer(task_id="t1", provider="p",
                       disposition=ScoreDisposition.SCORED, correct=True),
@@ -370,11 +373,16 @@ def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(capl
                       disposition=ScoreDisposition.SCORED),
         ])
 
-    assert (score.total, score.attempted, score.correct) == (2, 1, 1)
+    assert (score.total, score.attempted, score.correct) == (2, 2, 1)
+    assert score.unusable == 1
     assert score.accuracy == pytest.approx(0.5), "accuracy is over every question"
     assert score.precision == pytest.approx(1.0), (
         "precision is over answers whose correctness is known; the unusable "
         "record must not read as a wrong one"
+    )
+    assert score.coverage == pytest.approx(1.0), (
+        "an option WAS chosen on both, so coverage is 2/2: the three rates "
+        "have two denominators, and only precision's excludes this record"
     )
     assert "t2" in caplog.text and "correctness" in caplog.text
 

@@ -54,10 +54,10 @@ alone. This part is arithmetic over dispositions and is independent of how the
 dispositions were obtained, so it survives the replacement of the extractor.
 """
 
+import logging
 import random
 import re
 import string
-import logging
 from dataclasses import dataclass
 
 from .datamodel import AnswerSpec, EvalTask, ScoreDisposition
@@ -681,8 +681,17 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
 
     Following Laurent et al. (2024): accuracy is correct over all questions,
     coverage is the fraction attempted, and precision is correct over attempted.
-    A question is "attempted" when an option was actually chosen, so abstentions,
-    provider errors and extraction failures all reduce coverage.
+    A question is "attempted" when an option was actually chosen, so the
+    dispositions that record no choice -- abstentions, provider errors,
+    extraction failures, and a skipped pair -- all reduce coverage.
+
+    Precision's denominator is narrower than coverage's numerator, and the gap
+    is `unusable`: a SCORED record whose correctness was never written down.
+    The provider DID choose an option, so it belongs in `attempted`; nothing
+    can be said about whether it was right, so it cannot be in precision's
+    denominator. Reported as its own count, the way `score_claim_recall` gives
+    `unjudged_claims` and `score_citation_verifiability` gives `unresolvable`,
+    rather than deducted silently from a rate.
 
     Args:
         answers: Graded answers, one per task.
@@ -719,14 +728,19 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     True
 
     A SCORED answer whose correctness was never recorded is unusable, not
-    wrong: it leaves both rates rather than lowering them.
+    wrong. The provider chose an option, so it stays in `attempted` and
+    coverage is honest; it leaves precision's denominator, because nothing can
+    be said about whether it was right; and it costs accuracy, which is over
+    every question asked.
 
     >>> unusable = score_mcq([
     ...     MCQAnswer(task_id="1", provider="p", disposition="SCORED", correct=True),
     ...     MCQAnswer(task_id="2", provider="p", disposition="SCORED"),
     ... ])
-    >>> unusable.total, unusable.attempted, unusable.correct, unusable.precision
-    (2, 1, 1, 1.0)
+    >>> unusable.total, unusable.attempted, unusable.unusable, unusable.correct
+    (2, 2, 1, 1)
+    >>> unusable.coverage, unusable.precision, unusable.accuracy
+    (1.0, 1.0, 0.5)
     """
     total = len(answers)
     # Both counts filter on disposition, and both require a correctness that
@@ -744,15 +758,22 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     scored = [a for a in answers if a.disposition == ScoreDisposition.SCORED]
     unusable = [a for a in scored if a.correct is None]
     if unusable:
-        # Reported rather than absorbed: the record is unusable, and silently
-        # dropping it moves published numbers with nothing naming the cause.
-        # Not a separate field -- it is `total` minus every other count.
+        # Reported rather than absorbed. It was a `logger.warning` alone, on
+        # the argument that the count is `total` minus every other one -- which
+        # is a disposition short (`SKIPPED` lands in none of them either), and
+        # puts the cause on stderr while the number it moved is on stdout. Its
+        # sibling harness defect, `EXTRACTION_FAILED`, gets a column and a
+        # printed note; this now gets the same.
         logger.warning(
-            "%d scored answer(s) carry no recorded correctness and are counted "
-            "in neither attempted nor correct: %s",
+            "%d scored answer(s) carry no recorded correctness: counted in "
+            "attempted, excluded from precision: %s",
             len(unusable), ", ".join(sorted(a.task_id for a in unusable)),
         )
-    attempted = len(scored) - len(unusable)
+    # The provider chose an option, so the question WAS attempted -- excluding
+    # it here fixed precision by moving the same collapse into coverage, which
+    # would then report an attempt that was made as one that was not.
+    attempted = len(scored)
+    judged = attempted - len(unusable)
     # `is True` over truthiness changes nothing here and no test can tell them
     # apart -- `scored` has already filtered the disposition, and None is
     # falsy -- so this is for the reader, the way the sibling count in
@@ -773,8 +794,11 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         ),
         accuracy=correct / total if total else 0.0,
         coverage=attempted / total if total else 0.0,
-        # None, not 0.0: an arm that attempted nothing has no precision, and
-        # this number is printed in a column beside arms that did attempt.
-        precision=correct / attempted if attempted else None,
+        unusable=len(unusable),
+        # Over `judged`, not `attempted`: correctness that was never recorded
+        # is not a wrong answer. None, not 0.0, when nothing was judged -- an
+        # arm with no precision has none, and this number is printed in a
+        # column beside arms that do.
+        precision=correct / judged if judged else None,
         answers=answers,
     )

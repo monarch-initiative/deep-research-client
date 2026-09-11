@@ -240,9 +240,13 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     # commits in a row have changed a rendering and updated the page by hand.
     page = (Path(__file__).parent.parent
             / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
-    prec_cell = row.split()[3]
-    assert prec_cell in page, (
-        f"the how-to does not show {prec_cell!r} in its worked --grade table, "
+    # A DISCRIMINATING slice, not `row.split()[3]` -- that is the em dash
+    # alone, and the page has 33 of them, two in the prose right under the
+    # table this guards. It passed with the worked table deleted outright.
+    # The three rate columns together pin the widths and the dash at once.
+    quoted = row[row.index("0.000"):].split("   0/")[0].rstrip()
+    assert quoted in page, (
+        f"the how-to does not show {quoted!r} in its worked --grade table, "
         f"which is what the command prints for an arm that attempted nothing"
     )
     # The unconditional note: printed under every graded table, and the one

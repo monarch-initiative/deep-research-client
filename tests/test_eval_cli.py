@@ -457,7 +457,7 @@ def test_eval_run_no_cache_forces_a_live_call(tmp_path):
 def test_the_cached_column_marks_which_rows_were_replays(tmp_path):
     """The end-of-run message points at this column, so it has to be there."""
     _run_twice(tmp_path)
-    header, row = (tmp_path / "run2" / "results.tsv").read_text().splitlines()[:2]
+    header, row = (tmp_path / "run2" / "results.tsv").read_text(encoding="utf-8").splitlines()[:2]
     columns = header.split("\t")
     assert "cached" in columns
     assert row.split("\t")[columns.index("cached")] == "true"
@@ -574,7 +574,7 @@ def test_the_identical_arms_note_stays_quiet_when_it_does_not_apply(tmp_path, ar
 
 
 def test_a_failed_cell_is_not_counted_as_measured(tmp_path):
-    """"Only the measured cells describe the provider as it is now."
+    """`Only the measured cells describe the provider as it is now.`
 
     A FAILED cell has cached=None, so it fell into `measured` -- and a cell
     that raised describes nothing. On a resumed run whose remaining cells all

@@ -232,7 +232,7 @@ class TestCyberianProvider:
         import yaml
         assert os.path.exists(workflow_path)
 
-        with open(workflow_path) as f:
+        with open(workflow_path, encoding="utf-8") as f:
             workflow = yaml.safe_load(f)
             assert workflow["name"] == "deep-research"
             assert "subtasks" in workflow

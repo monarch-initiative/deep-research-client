@@ -508,6 +508,7 @@ def _manifest(
     config: "MatrixConfig",
     cells: Sequence[CellResult],
     cache_enabled: bool,
+    cache_dir: str | None,
 ) -> RunManifest:
     """Build the run manifest from the cells finished so far.
 
@@ -530,6 +531,7 @@ def _manifest(
         concurrency=config.concurrency,
         resume_enabled=config.resume,
         cache_enabled=cache_enabled,
+        cache_dir=cache_dir,
         arms=list(arms),
         cells=list(cells),
     )
@@ -569,8 +571,13 @@ async def run_matrix(
         ))
 
     # Whatever the client ended up with, which for a caller-supplied client is
-    # not config.use_cache. Recorded rather than assumed: see `_manifest`.
-    cache_enabled = bool(getattr(getattr(client, "cache_config", None), "enabled", False))
+    # not config.use_cache. Read directly rather than through getattr defaults:
+    # if `cache_config` is ever renamed or wrapped, a default would record
+    # `cache_enabled: false` for every run that used the cache -- the manifest
+    # stating the reverse of what happened, quietly, which is the exact failure
+    # this field was added to remove. Fail fast instead.
+    cache_enabled = bool(client.cache_config.enabled)
+    cache_dir = client.cache_config.directory
     layout = RunLayout(Path(config.output_dir))
     layout.root.mkdir(parents=True, exist_ok=True)
 
@@ -630,7 +637,7 @@ async def run_matrix(
             last_manifest = now
             atomic_write(
                 layout.manifest_path,
-                _manifest(eval_set, arms, layout, config, ordered, cache_enabled)
+                _manifest(eval_set, arms, layout, config, ordered, cache_enabled, cache_dir)
                 .model_dump_json(indent=2, exclude_none=True),
             )
 
@@ -642,7 +649,7 @@ async def run_matrix(
             config.on_cell(cell)
 
     ordered = _ordered(cells)
-    manifest = _manifest(eval_set, arms, layout, config, ordered, cache_enabled)
+    manifest = _manifest(eval_set, arms, layout, config, ordered, cache_enabled, cache_dir)
 
     atomic_write(layout.manifest_path, manifest.model_dump_json(indent=2, exclude_none=True))
     write_results_tsv(layout, ordered)

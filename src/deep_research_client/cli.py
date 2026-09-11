@@ -2989,9 +2989,20 @@ def eval_run(
         raise typer.Exit(1)
     eval_set.tasks = tasks
 
-    # Said after the eval set loads, so it cannot advise on a run that then
-    # refuses to start, and still well before any provider call. It has to
-    # be up front at all because afterwards the answer is not even
+    typer.echo(f"\nEval set: {eval_set.name}")
+    typer.echo(f"  Tasks: {len(tasks)}  x  Arms: {len(arms)}  =  {len(tasks) * len(arms)} cells")
+    for a in arms:
+        model = f":{a.model}" if a.model else ""
+        note = f"  ({a.description})" if a.description else ""
+        typer.echo(f"    {a.id:<20} {a.provider}{model}{note}")
+    if eval_set.is_partial:
+        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
+
+    # Printed after the run is described, so the advice follows the thing it
+    # is about; after the eval set loads, so it cannot advise on a run that
+    # then refuses to start; and before the dry-run return, so it still
+    # arrives before any provider call. It must be up front at all because
+    # afterwards the answer is not even
     # stable. Two arms with the same provider, model and params share a
     # response-cache key, so whether the second replays the first depends on
     # scheduling: at -j 1 it does, and at the default concurrency both usually
@@ -3016,16 +3027,6 @@ def eval_run(
                     f"each of them - or --no-resume --no-cache if this output "
                     f"directory already holds results."
                 )
-
-
-    typer.echo(f"\nEval set: {eval_set.name}")
-    typer.echo(f"  Tasks: {len(tasks)}  x  Arms: {len(arms)}  =  {len(tasks) * len(arms)} cells")
-    for a in arms:
-        model = f":{a.model}" if a.model else ""
-        note = f"  ({a.description})" if a.description else ""
-        typer.echo(f"    {a.id:<20} {a.provider}{model}{note}")
-    if eval_set.is_partial:
-        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
 
     # Printed before the dry-run return and before any provider is called: this
     # note exists to stop someone paying for tasks nothing can grade, so saying
@@ -3107,8 +3108,11 @@ def eval_run(
             f"{len(replayed)} replayed from the response cache, "
             f"{len(resumed)} resumed from a previous run in this directory"
         )
-        remainder = len(cells) - len(measured) - len(replayed) - len(resumed)
-        typer.echo(f"{counts}, {remainder} failed." if remainder else f"{counts}.")
+        # `failed` is read off the statuses rather than derived by subtraction:
+        # the categories happen to be disjoint today, but CellStatus.SKIPPED
+        # exists, and the day something emits it subtraction would call it a
+        # failure.
+        typer.echo(f"{counts}, {len(failed)} failed." if failed else f"{counts}.")
         remedy = (
             "--no-resume --no-cache" if resumed else "--no-cache"
         )

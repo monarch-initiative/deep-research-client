@@ -200,7 +200,7 @@ def test_prompt_saved_is_what_the_provider_was_sent(tmp_path, mock_client):
         MatrixConfig(output_dir=tmp_path / "run"), client=mock_client,
     ))
 
-    prompt = (tmp_path / "run" / "m1" / "a1" / "prompt.md").read_text()
+    prompt = (tmp_path / "run" / "m1" / "a1" / "prompt.md").read_text(encoding="utf-8")
     assert "Which base?" in prompt
     assert "Thymine" in prompt and "Guanine" in prompt
     assert "Answer: X" in prompt
@@ -267,13 +267,13 @@ def test_resume_skips_completed_cells(tmp_path, mock_client, report_eval_set):
     asyncio.run(run_matrix(
         report_eval_set, [ArmSpec(id="a1", provider="mock")], config, client=mock_client,
     ))
-    assert marker.read_text() == "EDITED BY TEST"
+    assert marker.read_text(encoding="utf-8") == "EDITED BY TEST"
 
     asyncio.run(run_matrix(
         report_eval_set, [ArmSpec(id="a1", provider="mock")],
         MatrixConfig(output_dir=run_dir, resume=False), client=mock_client,
     ))
-    assert marker.read_text() != "EDITED BY TEST"
+    assert marker.read_text(encoding="utf-8") != "EDITED BY TEST"
 
 
 def test_failed_cells_are_retried_on_resume(tmp_path, mock_client, report_eval_set):
@@ -308,7 +308,7 @@ def test_manifest_carries_the_provenance_a_score_needs(tmp_path, mock_client):
     assert manifest.partial_reason == "20% withheld"
     assert manifest.client_version
 
-    stored = json.loads((tmp_path / "run" / "manifest.json").read_text())
+    stored = json.loads((tmp_path / "run" / "manifest.json").read_text(encoding="utf-8"))
     assert stored["eval_set_revision"] == "abc123"
 
 
@@ -337,7 +337,7 @@ def test_results_tsv_survives_a_multiline_error(tmp_path):
         error="line one\nline two\twith a tab",
     )])
 
-    lines = layout.results_path.read_text().strip().split("\n")
+    lines = layout.results_path.read_text(encoding="utf-8").strip().split("\n")
     assert len(lines) == 2
     header, row = (line.split("\t") for line in lines)
     assert len(row) == len(header)
@@ -441,7 +441,7 @@ def test_a_question_that_looks_like_an_option_does_not_derail_the_policy(
     ))
 
     # The letter written, which is what the fix changes.
-    response = (run_dir / "ecoli" / "always-a" / "output.md").read_text()
+    response = (run_dir / "ecoli" / "always-a" / "output.md").read_text(encoding="utf-8")
     answered = re.findall(r"^Answer:\s*([A-Z])\s*$", response, re.MULTILINE)
     assert answered, "the mock wrote no answer line at all"
     assert answered[-1] in offered, (
@@ -538,7 +538,7 @@ def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
     ))
 
     score = score_by_arm(eval_set, manifest.cells)["always-a"]
-    rows = (tmp_path / "run" / "scores.tsv").read_text().strip().split("\n")
+    rows = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8").strip().split("\n")
     header, row = (line.split("\t") for line in rows)
     values = dict(zip(header, row))
 
@@ -597,7 +597,7 @@ def test_grading_a_resumed_run_does_not_call_the_provider_again(tmp_path, mock_c
         eval_set, [arm], MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
     ))
     # Untouched: graded from disk, not re-fetched.
-    assert (run_dir / "q0" / "always-a" / "output.md").read_text() == marker
+    assert (run_dir / "q0" / "always-a" / "output.md").read_text(encoding="utf-8") == marker
 
 
 def test_resume_reruns_a_cell_whose_question_changed(tmp_path, mock_client):
@@ -625,8 +625,8 @@ def test_resume_reruns_a_cell_whose_question_changed(tmp_path, mock_client):
         EvalSet(name="v2", tasks=[edited]), [ArmSpec(id="a1", provider="mock")],
         MatrixConfig(output_dir=run_dir), client=mock_client,
     ))
-    assert (run_dir / "m1" / "a1" / "output.md").read_text() != "STALE"
-    assert "Cytosine" in (run_dir / "m1" / "a1" / "prompt.md").read_text()
+    assert (run_dir / "m1" / "a1" / "output.md").read_text(encoding="utf-8") != "STALE"
+    assert "Cytosine" in (run_dir / "m1" / "a1" / "prompt.md").read_text(encoding="utf-8")
 
 
 def test_summary_files_exist_before_the_run_finishes(tmp_path, mock_client):
@@ -680,7 +680,7 @@ def test_cell_files_are_written_atomically(tmp_path, mock_client, report_eval_se
     leftovers = [p for p in run_dir.rglob(".*") if p.is_file()]
     assert leftovers == [], f"temporary files left behind: {leftovers}"
     for cell_json in run_dir.rglob("cell.json"):
-        json.loads(cell_json.read_text())
+        json.loads(cell_json.read_text(encoding="utf-8"))
 
 
 def test_written_files_get_the_mode_an_ordinary_write_would_give(
@@ -726,7 +726,7 @@ def test_atomic_write_preserves_an_existing_files_mode(tmp_path):
 
     atomic_write(path, '{"refreshed": true}')
     assert stat.S_IMODE(path.stat().st_mode) == 0o664
-    assert path.read_text() == '{"refreshed": true}'
+    assert path.read_text(encoding="utf-8") == '{"refreshed": true}'
 
 
 # ---------------------------------------------------------------------------
@@ -831,7 +831,7 @@ def test_the_cache_column_is_written_to_results_tsv(tmp_path, monkeypatch):
         MatrixConfig(output_dir=run_dir), client=client,
     ))
 
-    header, row = (run_dir / "results.tsv").read_text().splitlines()[:2]
+    header, row = (run_dir / "results.tsv").read_text(encoding="utf-8").splitlines()[:2]
     assert "cached" in header.split("\t")
     assert row.split("\t")[header.split("\t").index("cached")] == "false"
 
@@ -866,9 +866,15 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
 
     script = tmp_path / "resume_under_ascii.py"
     script.write_text(
-        "import asyncio, os, sys, locale\n"
-        "assert locale.getpreferredencoding(False).lower() in ('ansi_x3.4-1968', 'ascii'), \\\n"
-        "    f'locale is {locale.getpreferredencoding(False)}, not ASCII'\n"
+        "import asyncio, codecs, os, sys, locale\n"
+        # Exit 77 means "could not get an ASCII interpreter" -- a skip, not a
+        # failure. Normalised through codecs.lookup because the same encoding is
+        # spelt ANSI_X3.4-1968 on glibc and US-ASCII on macOS, and on Windows the
+        # coercion variables do not apply at all.
+        "_enc = codecs.lookup(locale.getpreferredencoding(False)).name\n"
+        "if _enc != 'ascii':\n"
+        "    print(_enc)\n"
+        "    sys.exit(77)\n"
         "os.environ['ENABLE_MOCK_PROVIDER'] = 'true'\n"
         "from pathlib import Path\n"
         "from deep_research_client.client import DeepResearchClient\n"
@@ -904,6 +910,11 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
         [sys.executable, str(script), str(tmp_path)],
         capture_output=True, text=True, env=env,
     )
+    if done.returncode == 77:
+        pytest.skip(
+            "this interpreter cannot be put into an ASCII locale "
+            f"(got {done.stdout.strip()!r}); the structural check still applies"
+        )
     assert done.returncode == 0, (
         "a resumed run died under an ASCII locale:\n"
         + done.stdout[-2000:] + done.stderr[-2000:]
@@ -911,39 +922,100 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     assert "OK" in done.stdout
 
 
+def _encoding_offenders(root) -> list[str]:
+    """Text reads and writes in `root` that do not name an encoding.
+
+    Covers `read_text`/`write_text` and `open`, in both its builtin and
+    `path.open` forms. `open` is here because it is the form the offenders were
+    actually written in -- `with open(yaml_path) as f` in `adapters/monarch.py`
+    -- and a check that missed it would leave its own blind spot exactly where
+    the defect had already appeared once.
+
+    Binary modes are skipped, since encoding is meaningless there, as are
+    `os.open` (an int fd) and `zipfile` members. A positional encoding
+    (`read_text("utf-8")`, legal since the signature is
+    `read_text(encoding=None, ...)`) counts as naming one, so a correct call is
+    not reported.
+    """
+    import ast
+
+    offenders: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                name = func.attr
+                # os.open takes a file descriptor; zf.open yields bytes.
+                owner = getattr(func.value, "id", "")
+                if owner in {"os", "zf", "zipfile"}:
+                    continue
+            elif isinstance(func, ast.Name):
+                name = func.id
+            else:
+                continue
+
+            if name not in {"read_text", "write_text", "open"}:
+                continue
+            if any(k.arg == "encoding" for k in node.keywords):
+                continue
+
+            if name == "open":
+                # Mode is the second positional or the `mode` keyword.
+                mode = next(
+                    (k.value for k in node.keywords if k.arg == "mode"),
+                    node.args[1] if len(node.args) > 1 else None,
+                )
+                if isinstance(mode, ast.Constant) and "b" in str(mode.value):
+                    continue
+            elif node.args:
+                # A positional encoding is still naming one.
+                continue
+
+            offenders.append(f"{path.relative_to(root)}:{node.lineno} {name}")
+    return offenders
+
+
 def test_every_text_read_and_write_in_the_package_names_its_encoding():
     """The write side was argued for; the read side was never written down.
 
     Structural rather than behavioural, deliberately: the failure needs a
-    non-UTF-8 locale to appear, so a reader added under a UTF-8 default would
-    pass every other test in this file and break only on someone else's
+    non-UTF-8 interpreter to appear, so a reader added under a UTF-8 default
+    would pass every other test in this file and break only on someone else's
     machine.
 
     Parsed rather than grepped, because a line-based check both missed the
     multi-line calls that do pass an encoding and, on its first writing,
-    mis-grouped its own `or`/`and` so it never tested writes at all.
+    mis-grouped its own `or`/`and` so it never checked writes at all.
     """
-    import ast
     import pathlib
 
     package = pathlib.Path(__file__).resolve().parent.parent / "src" / "deep_research_client"
-    offenders = []
-    for path in sorted(package.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in {"read_text", "write_text"}
-                and not any(k.arg == "encoding" for k in node.keywords)
-            ):
-                offenders.append(
-                    f"{path.relative_to(package)}:{node.lineno} {node.func.attr}"
-                )
-
+    offenders = _encoding_offenders(package)
     assert not offenders, (
         "these read or write text without naming an encoding, so the bytes "
         f"depend on the machine's locale: {', '.join(offenders)}"
+    )
+
+
+def test_the_tests_hold_themselves_to_the_same_rule():
+    """The suite that proves the property was full of bare reads itself.
+
+    Under the locale the subprocess test above creates, this suite would have
+    failed on its own fixtures -- and two files had already drifted apart about
+    it, one passing `encoding="utf-8"` for the same `results.tsv` read the
+    other did bare.
+    """
+    import pathlib
+
+    tests = pathlib.Path(__file__).resolve().parent
+    offenders = _encoding_offenders(tests)
+    assert not offenders, (
+        "test files read or write text without naming an encoding: "
+        f"{', '.join(offenders)}"
     )
 
 
@@ -970,3 +1042,6 @@ def test_the_manifest_records_the_cache_state_the_client_actually_had(
         MatrixConfig(output_dir=tmp_path / "run"), client=client,
     ))
     assert manifest.cache_enabled is False
+    # Which cache, too: a run whose replays came from a per-project directory
+    # has a different provenance from one that used the shared default.
+    assert manifest.cache_dir == str(tmp_path / "cache")

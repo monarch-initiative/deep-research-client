@@ -260,7 +260,7 @@ class TsvAdapter(EvalSetAdapter):
         delimiter = str(options.get("delimiter", default_delimiter))
         separator = str(options.get("list_separator", "|"))
 
-        with path.open(newline="") as handle:
+        with path.open(newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle, delimiter=delimiter))
         if not rows:
             raise ValueError(f"{path}: no rows found")

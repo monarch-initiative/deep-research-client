@@ -536,6 +536,12 @@ classes:
           settings that decide whether a cell was measured in this run, and
           unlike the cache it leaves no trace on the cells themselves.
         range: boolean
+      cache_dir:
+        description: >-
+          The response cache directory the run used, when it is not the
+          client's default. A run whose replays came from a per-project cache
+          has a different provenance from one that used the shared default, and
+          `cache_enabled` alone does not say which.
       cache_enabled:
         description: >-
           Whether the response cache was consulted. Recoverable per cell from

@@ -1352,6 +1352,48 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#artifact-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Artifact selection
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Artifact selection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keeping-openscientist-agent-transcripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Keeping OpenScientist agent transcripts
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cached-results-from-before-this-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cached results from before this change
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transcript-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Transcript statistics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#adding-custom-providers" class="md-nav__link">
     <span class="md-ellipsis">
       Adding Custom Providers
@@ -2222,6 +2264,48 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#artifact-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Artifact selection
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Artifact selection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keeping-openscientist-agent-transcripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Keeping OpenScientist agent transcripts
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cached-results-from-before-this-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cached results from before this change
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transcript-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Transcript statistics
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#adding-custom-providers" class="md-nav__link">
     <span class="md-ellipsis">
       Adding Custom Providers
@@ -2567,15 +2651,20 @@ params = OpenScientistParams(
     timeout=3600,                  # Max wait time (1-2 hours recommended)
     save_artifacts=True,           # Preserve useful ZIP artifacts
     artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
+    artifact_keep_runtime=False,   # Also keep logs, transcripts, stdout/stderr
+    artifact_extra_extensions=[],  # Extend the extension allowlist
+    artifact_include_globs=[],     # Force-keep these paths
+    artifact_exclude_globs=[],     # Always drop these paths
 )
 </code></pre>
+<p>See <a href="#artifact-selection">Artifact selection</a> for what the last four do.</p>
 <h3 id="characteristics_5">Characteristics</h3>
 <ul>
 <li><strong>Cost</strong>: Variable (uses Claude under the hood)</li>
 <li><strong>Speed</strong>: 10-60+ minutes (iterative multi-step research)</li>
 <li><strong>Capabilities</strong>: PubMed search, code execution, hypothesis-driven research</li>
 <li><strong>Citations</strong>: PMID format with deduplication</li>
-<li><strong>Artifacts</strong>: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as <code>ResearchArtifact</code> entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default.</li>
+<li><strong>Artifacts</strong>: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as <code>ResearchArtifact</code> entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see <a href="#artifact-selection">Artifact selection</a>.</li>
 </ul>
 <h3 id="when-to-use">When to Use</h3>
 <ul>
@@ -3004,6 +3093,170 @@ call, so <code>--check</code> reports the auth method and plan without spending 
 <p>The one failure the CLI does not always report cleanly is a spent usage limit
 mid-run, which can stall rather than fail. The timeout message points at
 <code>providers --check</code> for that reason.</p>
+<h2 id="artifact-selection">Artifact selection</h2>
+<p>Providers that return a bundle of files — currently OpenScientist's artifacts
+ZIP — decide which members become <code>ResearchArtifact</code> entries. The defaults keep
+what most callers want (figures, small structured data, rendered reports) and
+drop agent scaffolding, but "noise" is a judgement about the consumer, not about
+the file: a knowledge base recording <em>how</em> a run reached its answer wants the
+agent transcripts that a report-only consumer does not.</p>
+<p>So the decision is data, not code. <code>ArtifactSelectionParams</code> supplies the knobs
+and any provider can inherit them:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>save_artifacts</code></td>
+<td><code>True</code></td>
+<td>Preserve artifacts at all</td>
+</tr>
+<tr>
+<td><code>artifact_max_bytes</code></td>
+<td>5 MB</td>
+<td>Per-file size cap</td>
+</tr>
+<tr>
+<td><code>artifact_keep_runtime</code></td>
+<td><code>False</code></td>
+<td>Keep logs, agent transcripts, captured stdout/stderr; also allows <code>.log</code>, <code>.txt</code>, <code>.jsonl</code>, <code>.ndjson</code></td>
+</tr>
+<tr>
+<td><code>artifact_extra_extensions</code></td>
+<td><code>[]</code></td>
+<td>Extend the extension allowlist</td>
+</tr>
+<tr>
+<td><code>artifact_include_globs</code></td>
+<td><code>[]</code></td>
+<td>Force-keep matching paths</td>
+</tr>
+<tr>
+<td><code>artifact_exclude_globs</code></td>
+<td><code>[]</code></td>
+<td>Always drop matching paths</td>
+</tr>
+</tbody>
+</table>
+<p>Precedence, highest first:</p>
+<ol>
+<li><code>artifact_exclude_globs</code> — an explicit deny always wins.</li>
+<li><code>artifact_max_bytes</code> — the size cap applies even to an explicit include,
+   because it is what keeps a bundle out of memory. Raise the cap rather than
+   globbing around it — up to 50 MB, which the field enforces as a hard
+   ceiling. A member larger than that cannot be preserved by any setting. The
+   field's minimum is 1, so there is no "keep nothing" setting here; set
+   <code>save_artifacts=False</code> for that.</li>
+<li>The report body the provider already returned as the result markdown.</li>
+<li><code>artifact_include_globs</code> — an explicit allow bypasses every remaining default.</li>
+<li>Default denies: scaffolding directories (<code>.git/</code>, <code>.claude/</code>, <code>node_modules/</code>,
+   …), nested archives, and — unless <code>artifact_keep_runtime</code> — runtime records.</li>
+<li>The extension allowlist, plus <code>artifact_extra_extensions</code>, plus any <code>image/*</code>
+   media type.</li>
+</ol>
+<p>Globs are <code>fnmatch</code> patterns matched against the lowercased, bundle-relative
+path. <code>*</code> crosses <code>/</code>, so <code>*.json</code> matches <code>provenance/iter1_transcript.json</code>.</p>
+<p>A comma separates patterns, which means a pattern cannot contain one — <code>[a,b]</code>
+is a valid <code>fnmatch</code> character class, so <code>artifact_include_globs="data[a,b]/*"</code>
+becomes two patterns that match nothing. Pass a list to use a comma inside a
+pattern; a list element is never split. That escape hatch is a Python one:
+<code>--param</code> splits on the first <code>=</code> only, so every CLI value arrives as a string
+and is always split on commas.</p>
+<p>From Python, where a list setting can be something other than a string, it
+must be a <em>re-readable collection</em>. A generator or other one-shot iterator is
+refused rather than read: a params object outlives the policy built from it,
+so the second reader would get no patterns at all and say nothing about it.
+<code>bytes</code> is refused for the same reason — iterating it yields integers, not
+names. Neither shape is reachable from <code>--param</code>, which only ever produces a
+string.</p>
+<p>Extensions are normalized wherever they are set, so <code>csv</code>, <code>.csv</code> and <code>.CSV</code>
+all mean the same thing; the paths they are matched against are lowercased
+first, so an unnormalized uppercase spelling would otherwise match nothing.
+The list-element-never-split rule applies to them as well as to globs, so
+<code>artifact_extra_extensions=["csv,tsv"]</code> is one extension named <code>.csv,tsv</code>
+rather than two — pass <code>["csv", "tsv"]</code> or the string <code>"csv,tsv"</code>.</p>
+<p>Surrounding whitespace is stripped, and empty and duplicate entries are
+dropped, from a list as well as from a string. That matters more than it
+sounds: an empty runtime fragment is a substring of every filename, so a stray
+blank left by <code>"stderr,".split(",")</code> would otherwise drop the entire bundle.</p>
+<p>A params model applies that cleaning to a string but stores a list as given,
+so <code>OpenScientistParams(artifact_include_globs=" a , , a ")</code> reads back as
+<code>["a"]</code> while <code>OpenScientistParams(artifact_include_globs=[" a ", ""])</code> still
+reads back as <code>[" a ", ""]</code>. Since <code>--param</code> only ever produces a string, a CLI
+value is clean at construction; a list from Python is cleaned when the policy
+is built. Either way the policy's setting is the one that selects.</p>
+<h3 id="keeping-openscientist-agent-transcripts">Keeping OpenScientist agent transcripts</h3>
+<p>OpenScientist writes its agent transcripts to <code>provenance/iter&lt;N&gt;_transcript.json</code>
+and <code>provenance/report_transcript.json</code>. They are dropped by default:</p>
+<pre><code class="language-python">params = OpenScientistParams(artifact_keep_runtime=True)
+</code></pre>
+<p>or, to take the transcripts without the container logs:</p>
+<pre><code class="language-python">params = OpenScientistParams(
+    artifact_include_globs=[&quot;provenance/*_transcript.json&quot;],
+)
+</code></pre>
+<p>Both work through the CLI, where list-valued parameters accept a
+comma-separated string:</p>
+<pre><code class="language-bash">deep-research &quot;...&quot; --provider openscientist \
+  --param artifact_keep_runtime=true
+
+deep-research &quot;...&quot; --provider openscientist \
+  --param 'artifact_include_globs=provenance/*_transcript.json'
+</code></pre>
+<p>Note that transcripts can be large and, being a record of everything the agent
+did, are worth reading before they are committed anywhere public.</p>
+<h3 id="cached-results-from-before-this-change">Cached results from before this change</h3>
+<p>OpenScientist's cache version was bumped when the report-body picker became
+deterministic and scaffolding-aware, so entries written before that are no
+longer matched and the next run is live. Nothing is deleted — the old entries
+stay on disk and <code>list-cache</code> / <code>search-cache</code> still show them — they are just
+not served.</p>
+<p>Falcon's cache version is unchanged. The two used to share one string, so the
+split keeps Falcon's cached runs, whose behaviour this did not touch.</p>
+<h2 id="transcript-statistics">Transcript statistics</h2>
+<p>Once transcripts are preserved they can be mined for the shape of a run rather
+than read line by line:</p>
+<pre><code class="language-bash">deep-research-client transcript-stats path/to/provenance/
+deep-research-client transcript-stats run_artifacts/ --format text
+deep-research-client transcript-stats run_artifacts/ --format json --output stats.json
+</code></pre>
+<p>A directory is searched recursively for <code>*transcript*.json</code>; a named file is
+read whatever it is called. Several transcripts merge into one summary, which
+is what you want for a job that writes one per iteration plus one for report
+generation.</p>
+<p>What it reports:</p>
+<ul>
+<li><strong>Tools</strong> — distinct tools called, call counts, failures per tool, MCP server,
+  and summed durations where the transcript records them.</li>
+<li><strong>Skills</strong> — every named skill invoked, with counts.</li>
+<li><strong>Shell, searches, files</strong> — programs run (wrappers and leading environment
+  assignments skipped, so <code>sudo FOO=1 apt-get …</code> reports <code>apt-get</code>), distinct
+  web-search queries, and paths touched by change kind.</li>
+<li><strong>Models, subagents, tasks, token usage</strong> — merged across entry types.</li>
+<li><strong>Available but unused</strong> — tools the session declared at init and never
+  called. The gap is usually more informative than either list alone.</li>
+<li><strong>Unclassified entries</strong> — entries the <em>producer</em> could not classify, and
+  entry types this summarizer has no handling for, counted separately. Both are
+  drift signals; neither is silently dropped.</li>
+</ul>
+<p>In Python:</p>
+<pre><code class="language-python">from deep_research_client.transcript_stats import summarize_artifacts
+
+stats = summarize_artifacts(result.artifacts)   # non-transcripts ignored
+print(stats.distinct_tools, stats.skills_used)
+print(stats.render_markdown())
+</code></pre>
+<p>Tool names are normalized across agent backends: one backend emits
+<code>mcp__github__search_issues</code> while another emits <code>github.search_issues</code> with a
+separate <code>namespace</code> field, and both aggregate to <code>search_issues</code>. A dotted
+prefix is stripped only when it matches the server the entry itself reports, so
+a tool whose name genuinely contains a dot is left alone.</p>
+<p>The summarizer reads decoded JSON and needs no agent SDK installed.</p>
 <h2 id="adding-custom-providers">Adding Custom Providers</h2>
 <p>Create a new provider in <code>src/deep_research_client/providers/</code>:</p>
 <pre><code class="language-python">from . import ResearchProvider

@@ -3101,7 +3101,10 @@ def eval_run(
     # Anything neither completed nor failed has no other line to appear on:
     # the accounting paragraph below is gated on a resume or a replay. Nothing
     # emits CellStatus.SKIPPED today, so this is how it would surface rather
-    # than vanish if something starts to.
+    # than vanish if something starts to -- and so it is deliberately untested:
+    # reaching it needs a hand-built manifest, not a run. `use_enum_values=True`
+    # on ConfiguredBaseModel makes `c.status` a plain str, so this renders the
+    # same spelling results.tsv carries.
     other = [c for c in cells
              if c.status not in (CellStatus.COMPLETED, CellStatus.FAILED)]
     if other:

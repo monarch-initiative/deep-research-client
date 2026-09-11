@@ -173,6 +173,16 @@ class ClaimRecallScore(BaseModel):
     claim_recall: float = Field(
         ..., description="matched / claims the judge ruled on (see unjudged_claims)"
     )
+    judged_chars: Optional[int] = Field(
+        default=None, description="Characters of the report sent to the judge."
+    )
+    report_chars: Optional[int] = Field(
+        default=None,
+        description=(
+            "Characters the report actually had. Greater than `judged_chars` "
+            "means a claim may be covered in a tail the judge never saw."
+        ),
+    )
     total_extracted_claims: Optional[int] = Field(default=None)
     claim_precision: Optional[float] = Field(default=None, description="matched / total extracted claims (if computed)")
     matches: list[ClaimMatch] = Field(default_factory=list, description="Per-claim match details")
@@ -219,6 +229,18 @@ class RACEScore(BaseModel):
 
     dimensions: list[RACEDimension] = Field(default_factory=list)
     overall_explanation: Optional[str] = None
+    judged_chars: Optional[int] = Field(
+        default=None,
+        description="Characters of the report sent to the judge.",
+    )
+    report_chars: Optional[int] = Field(
+        default=None,
+        description=(
+            "Characters the report actually had. Greater than `judged_chars` "
+            "means the tail was not read, so coverage is understated -- the "
+            "same thing `is_partial` says about an eval set, one layer down."
+        ),
+    )
 
     @property
     def scored_dimensions(self) -> list[RACEDimension]:

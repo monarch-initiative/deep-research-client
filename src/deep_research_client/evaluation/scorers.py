@@ -46,6 +46,9 @@ from ..validation.extraction import find_reference_ids
 logger = logging.getLogger(__name__)
 
 # Truncation limits for LLM context windows
+#: Characters of a report sent to a judge. Truncation is recorded on the score
+#: as `judged_chars` against `report_chars`, because a report longer than this
+#: is judged on its opening only -- coverage understated with nothing saying so.
 MAX_REPORT_CHARS = 12000
 MAX_ABSTRACT_CHARS = 3000
 MAX_DESCRIPTION_CHARS = 500
@@ -401,6 +404,8 @@ async def score_claim_recall(
     total = len(ground_truth_claims)
 
     return ClaimRecallScore(
+        judged_chars=len(report_text),
+        report_chars=len(dr_output.raw_markdown),
         total_ground_truth_claims=total,
         matched_claims=matched_count,
         unjudged_claims=total - len(judged),
@@ -512,7 +517,11 @@ async def score_race(
                 )
             )
 
-    return RACEScore(dimensions=dimensions)
+    return RACEScore(
+        dimensions=dimensions,
+        judged_chars=len(report_text),
+        report_chars=len(dr_output.raw_markdown),
+    )
 
 
 # ---------------------------------------------------------------------------

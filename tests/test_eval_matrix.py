@@ -7,6 +7,7 @@ exercised end to end without reaching a network.
 
 import ast
 import asyncio
+import functools
 import json
 import os
 import pathlib
@@ -959,6 +960,7 @@ def _positions(func, *, drop_self: bool = False) -> tuple[int, int | None]:
     return names.index("encoding"), (names.index("mode") if "mode" in names else None)
 
 
+@functools.cache
 def _text_io_signatures() -> dict[tuple[str, bool], tuple[int, int | None, bool]]:
     """Every constructor that can open a locale-encoded text handle.
 
@@ -981,7 +983,11 @@ def _text_io_signatures() -> dict[tuple[str, bool], tuple[int, int | None, bool]
     encoding.
     """
     import builtins
+    import bz2
+    import codecs
+    import gzip
     import io
+    import lzma
     import os
     import tempfile
 
@@ -991,6 +997,20 @@ def _text_io_signatures() -> dict[tuple[str, bool], tuple[int, int | None, bool]
         ("open", True): (*_positions(pathlib.Path.open, drop_self=True), False),
         ("open", False): (*_positions(builtins.open), False),
     }
+    # `open` is resolved by owner where the owner is a module, because only the
+    # bound-method form drops a leading argument: `p.open("w", 1)` puts the
+    # encoding at 2 while `io.open(p, "w", 1)` puts it at 3, and `codecs.open`
+    # and `lzma.open` are different again. Keying on the name alone gave every
+    # `module.open(...)` Path's layout, so `io.open(p, "w", 1)` was exempted as
+    # though its buffering argument were a positional encoding.
+    for owner, opener, binary_default in [
+        ("io", io.open, False),
+        ("codecs", codecs.open, False),
+        ("gzip", gzip.open, True),
+        ("bz2", bz2.open, True),
+        ("lzma", lzma.open, True),
+    ]:
+        table[(f"{owner}.open", True)] = (*_positions(opener), binary_default)
     # Reached through a module, so the receiver is not an argument and the two
     # spellings share one set of positions.
     for name, func, binary_default in [
@@ -1073,6 +1093,7 @@ def _offenders_in_tree(tree: "ast.AST", where: str, line_offset: int = 0) -> lis
             continue
 
         func = node.func
+        owner = ""
         if isinstance(func, ast.Attribute):
             name, is_method = func.attr, True
             owner = getattr(func.value, "id", "")
@@ -1085,7 +1106,11 @@ def _offenders_in_tree(tree: "ast.AST", where: str, line_offset: int = 0) -> lis
         else:
             continue
 
-        signature = signatures.get((name, is_method))
+        signature = None
+        if is_method and name == "open" and owner:
+            signature = signatures.get((f"{owner}.open", True))
+        if signature is None:
+            signature = signatures.get((name, is_method))
         if signature is None:
             continue
         encoding_at, mode_at, binary_default = signature
@@ -1139,7 +1164,15 @@ def _encoding_offenders(root: pathlib.Path) -> list[str]:
                 continue
             # Line of the docstring's opening quote, so offsets land in the file.
             base = holder.body[0].lineno if holder.body else 1
-            for example in doctest.DocTestParser().get_examples(docstring):
+            try:
+                examples = doctest.DocTestParser().get_examples(docstring)
+            except ValueError:
+                # A malformed example -- a continuation line with inconsistent
+                # indentation, say. Reporting that as an encoding offence would
+                # be the guard failing for a reason other than the thing it
+                # tests; `just test` will complain about the docstring itself.
+                continue
+            for example in examples:
                 try:
                     example_tree = ast.parse(example.source)
                 except SyntaxError:

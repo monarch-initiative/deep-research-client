@@ -365,7 +365,7 @@ def test_every_disposition_is_countable_from_one_score(disposition, caplog):
     assert score.unusable <= score.attempted
 
 
-def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one(caplog):
+def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one():
     """The mixture every describer of the em dash used to rule out.
 
     Three places said when precision is absent, and all three said it as a
@@ -379,16 +379,18 @@ def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one(caplog):
     rest, `score_mcq`'s own summary names it, and no describer of the number
     did.
     """
-    # Captured, not because the message is under test here, but so five
-    # unusable records do not print a warning to stderr on every plain run.
-    with caplog.at_level(logging.WARNING,
-                         logger="deep_research_client.evaluation.mcq"):
-        mixed = mcq.score_mcq(
-            [MCQAnswer(task_id=f"d{i}", provider="p",
-                       disposition=ScoreDisposition.ABSTAINED) for i in range(5)]
-            + [MCQAnswer(task_id=f"u{i}", provider="p",
-                         disposition=ScoreDisposition.SCORED) for i in range(5)]
-        )
+    # No `caplog.at_level` wrapper here. One was added on the theory that it
+    # stopped the five unusable records printing a warning to stderr; measured
+    # both ways, the warning appears zero times either way, because pytest's
+    # logging plugin installs its own capture handler for every test phase and
+    # `at_level` only moves levels -- it does not remove a handler or suppress
+    # a record.
+    mixed = mcq.score_mcq(
+        [MCQAnswer(task_id=f"d{i}", provider="p",
+                   disposition=ScoreDisposition.ABSTAINED) for i in range(5)]
+        + [MCQAnswer(task_id=f"u{i}", provider="p",
+                     disposition=ScoreDisposition.SCORED) for i in range(5)]
+    )
     assert (mixed.total, mixed.attempted, mixed.unusable) == (10, 5, 5)
     assert mixed.precision is None, "nothing was judged, so there is no rate"
     assert mixed.coverage == pytest.approx(0.5), (

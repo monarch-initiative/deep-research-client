@@ -3271,10 +3271,13 @@ def eval_run(
         )
     if scores:
         typer.echo("\nMultiple-choice scores:\n")
-        # One width for the five places that format a rate column -- the three
-        # headers and both precision branches -- where it was written out each
-        # time, which is how a six-space literal came to sit beside a `:>7`.
-        # The how-to's hand-aligned table is a sixth, pinned by a test.
+        # One width for the seven places that format a rate column: the
+        # three headers, both precision branches, and `accuracy` and
+        # `coverage` on the row line. It was written out at each of them,
+        # which is how a six-space literal came to sit beside a `:>7`. The
+        # how-to's hand-aligned table is an eighth, pinned by a test.
+        # (Counted from the `{w}` occurrences below, not from memory: this
+        # said three, then five, and both were short.)
         w = _RATE_WIDTH
         typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):

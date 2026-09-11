@@ -272,24 +272,24 @@ class MatrixConfig:
     cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
-    #: Called with the per-arm scores whenever `grade` is on, including with
-    #: an EMPTY mapping when the selection had no multiple-choice cells to
-    #: score. That call is deliberate and is the only way a caller can tell
-    #: "grading was off" from "grading ran and found nothing to score" -- the
-    #: CLI does not need the distinction (it starts from an empty dict, so
-    #: the empty call is a no-op for it) but it is the contract, and
-    #: `test_on_scores_reports_an_empty_result_as_a_result` pins it. It is
+    #: Called with the per-arm scores EXACTLY ONCE per graded run, including
+    #: with an empty mapping when the selection had no multiple-choice cells
+    #: to score. What that buys is uniformity, not information: a caller
+    #: already holds `config.grade`, since it built the config, so it could
+    #: always infer "grading was off" from no call at all. Firing anyway means
+    #: a sink wired to this -- a list, a `dict.update`, a metrics push --
+    #: never has to treat "graded but empty" as a missing event. It is
     #: therefore NOT folded under the `if scores:` that guards
-    #: `write_scores_tsv` beside it. What an empty mapping does NOT tell a
-    #: caller is why: "grading was off" and "run_matrix raised before it got
-    #: here" both look like no call at all, so a caller that needs to tell
-    #: those apart reads `config.grade` and whether `run_matrix` returned, as
-    #: the CLI does. A caller that needs the numbers takes them from here
-    #: rather than calling `score_by_arm` again: grading is not
-    #: idempotent in its OUTPUT -- `score_mcq` logs one warning per arm whose
-    #: records carry no correctness -- so a second pass over the same cells
-    #: recomputes identical numbers and emits a second identical warning. The
-    #: CLI did exactly that, and the arm id added to make those warnings
+    #: `write_scores_tsv` beside it; the two `on_scores` tests in
+    #: tests/test_eval_matrix.py hold that fold open by asserting one event
+    #: for a graded run with nothing to score and none for an ungraded one.
+    #:
+    #: A caller that needs the numbers takes them from here rather than
+    #: calling `score_by_arm` again: grading is not idempotent in its
+    #: OUTPUT -- `score_mcq` logs one warning per arm whose records carry
+    #: no correctness -- so a second pass over the same cells recomputes
+    #: identical numbers and emits a second identical warning. The CLI did
+    #: exactly that, and the arm id added to make those warnings
     #: distinguishable could not: the duplicate is the SAME arm.
     on_scores: Callable[[dict[str, MCQScore]], None] | None = field(
         default=None, repr=False

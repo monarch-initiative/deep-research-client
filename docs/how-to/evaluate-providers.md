@@ -394,6 +394,14 @@ right — and anything in between for a mixture. Five questions declined and
 five answered with no recorded correctness, out of ten, prints `cov 0.500`
 beside the dash.
 
+What does say which happened is `scores.tsv`, which carries one column per
+disposition — `abstained`, `provider_errors`, `extraction_failures`,
+`skipped` — plus `unusable`, which is not a disposition but a subset of
+`attempted`. Those four and `attempted` account for `total` exactly, so an
+arm's row says where each of its questions went. The notes under the table
+cover only the two harness defects, `unusable` and `extraction_failures`; an
+arm that declined every question gets the dash and no note.
+
 Answers with no recorded correctness have a count of their own. `scores.tsv`
 carries an `unusable` column, and a graded run with any such answers prints a
 note under the table saying so — the same treatment `extraction_failures`

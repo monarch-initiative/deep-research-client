@@ -432,7 +432,7 @@ def test_a_graded_run_warns_once_per_arm_and_not_twice(tmp_path):
     # disagree about which rates moved. The note names three; the warning
     # named two until this assertion existed.
     for rate in ("attempted", "precision", "accuracy"):
-        assert rate in warnings[0], (rate, warnings[0])
+        assert all(rate in m for m in warnings), (rate, warnings)
 
 
 def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):

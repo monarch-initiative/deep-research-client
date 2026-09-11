@@ -2022,23 +2022,40 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # the no-closer bound rather than by a handler, which is the point.
     ("a run of openers deeper than the stack", "[" * 12000, None),
     # Bounded, so the scan enters `raw_decode` -- which descends one frame per
-    # bracket and raises. The only case that escapes when the main loop's
-    # handler is removed. A closed nest rather than `"[" * 10000 + "]"`: that
+    # bracket and raises. The only case that ESCAPES when the main loop's
+    # handler is removed; the brace case below notices too, by answering
+    # None instead. A closed nest rather than `"[" * 10000 + "]"`: that
     # shape discriminates the same handler and costs five seconds to this
     # one's six milliseconds, because it retries at every opener.
     ("a bounded nest deeper than the stack", "[" * 10000 + "]" * 10000, None),
-    # Braces fail `raw_decode` immediately instead, so this reaches the bound
-    # and the mine. The innermost `{}` is what comes back; an empty dict
-    # carries no verdict, so every caller reads it the way it reads None.
+    # Braces fail `raw_decode` immediately instead, so this goes to the mine.
+    # The innermost `{}` comes back; an empty dict carries no verdict, so
+    # every caller reads it the way it reads None.
     #
-    # 1,200 is between this function's two recursion budgets -- `raw_decode`
-    # gives out around 10,000 and the mine's Python recursion around 999 --
-    # which is worth knowing before re-sizing it. Measured rather than
-    # reasoned: the answer is `{}` at every `sys.setrecursionlimit` from 150
-    # to 3,000 and on both interpreters CI runs (3.12.3 and 3.13.12), the
-    # mine makes 998 calls, and its `RecursionError` handler does not fire. Wrapping `_decode_candidates` to watch it DOES flip the
-    # answer to None, because the wrapper spends a frame per level -- so an
-    # instrument put here to check this comment will contradict it.
+    # HOW it comes back is not the mine, and getting that wrong sends a reader
+    # to the opposite answer -- so, traced rather than assumed. The mine peels
+    # one level per call, and `{}` is 1,199 levels down; the mine bottoms out
+    # at ~998 (the Python recursion budget) with the text still 204 braces
+    # deep. What finds `{}` is the MAIN LOOP's `RecursionError` handler in
+    # that deepest frame: it sets `inside_unclosed` and advances one
+    # character, so the scan walks forward, and at the 203rd character the
+    # remainder is literally `{}`, which parses at depth 1. `record()` files
+    # it as salvage and every frame above propagates it. Instrumented, that
+    # is exactly one successful `raw_decode`, at index 203 of a 408-character
+    # slice.
+    #
+    # Two things follow. The answer does not depend on either budget -- it is
+    # `{}` at every `sys.setrecursionlimit` from 150 to 3,000 and on both
+    # interpreters CI builds (3.12.3, 3.13.12) -- because wherever the mine
+    # bottoms out, the forward walk starts there. And this case DISCRIMINATES the main-loop
+    # handler: remove it and the answer is None. The bracket case above is the
+    # only one that *escapes* without that handler, which is not the same as
+    # being the only one that notices.
+    #
+    # The 998 was counted frame-free (a module-global incremented inside
+    # `_decode_candidates`). A wrapper spends a frame per level, halves the
+    # budget and flips the answer to None -- so the obvious instrument
+    # contradicts this comment, and the obvious instrument is wrong.
     ("a bounded brace nest deeper than the stack", "{" * 1200 + "}" * 1200, {}),
     # Malformed AND deep: the repair fails and mining it recursed. Escapes
     # only when every handler is removed, so it pins the set rather than any

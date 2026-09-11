@@ -407,12 +407,21 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # alternative was escaping as a scoring error, so this is recorded
             # rather than fixed.
             #
-            # It needs ~10,000 levels of nesting, which is where `raw_decode`
-            # gives out. That is NOT the budget the mine below runs against:
-            # the mine is Python recursion, which gives out at ~999 frames.
-            # Both bisected on both interpreters CI runs -- 9,998 and 999 on
-            # 3.12.3, 9,999 and 999 on 3.13.12 -- since a budget quoted from
-            # one version is a claim about the other. Two branches of one
+            # Reached two ways, by two budgets an order of magnitude apart.
+            # From the top: ~10,000 levels of nesting, where `raw_decode`
+            # gives out. From inside the mine: ~999 Python frames down, where
+            # the recursion itself gives out, with a far shallower reply --
+            # which is what the brace-nest test case exercises, and where the
+            # forward walk below finds a value the mine could not reach.
+            #
+            # Bisected at 9,998 / 999 on CPython 3.12.3 and 9,999 / 999 on
+            # 3.13.12, the builds CI runs. Measurements of those builds, not
+            # properties of this function: the first is `Py_C_RECURSION_LIMIT`,
+            # which is platform- and build-dependent and has moved within a
+            # minor version before, and the second is `sys.getrecursionlimit()`,
+            # which any embedding caller can change. `requires-python` admits
+            # 3.14, which CI does not build. Nothing here depends on either
+            # number -- they are for a reader sizing a case. Two branches of one
             # function, two limits an order of magnitude apart, and a case
             # sized against the wrong one lands between them.
             inside_unclosed = True
@@ -551,8 +560,10 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     A third version of this sentence then said the mistake made the bound look
     "about six times worse", which is 12,000 divided by 2048: characters over
     tokens, in the paragraph arguing that the two measure different things.
-    2048 tokens is roughly 6,000-9,000 characters of JSON-ish text, so the
-    overstatement was nearer 1.5x.
+    A fourth said "nearer 1.5x", which is a ratio of LENGTHS quoted as the
+    factor a quadratic bound was off by. The constant is the part that
+    matters and it is above; no factor is quoted here now, because three
+    versions running have got one wrong.
 
     And `max_tokens` bounds a reply THIS CLIENT asked for. Every scorer takes
     an `llm_client` from its caller and `eval score` accepts `--llm-base-url`,

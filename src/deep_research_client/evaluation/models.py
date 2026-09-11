@@ -353,6 +353,11 @@ class RACEScore(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+#: Several field descriptions in this module carry a `History:` paragraph
+#: below a blank line. That is deliberate and not cruft: each one records a
+#: reading the field previously invited and a number it produced, and each was
+#: written after that reading cost a round. The statement a consumer needs is
+#: always the first sentence, so a reader can stop there.
 class CitationExistence(BaseModel):
     """Result of checking whether a single citation resolves to a real paper.
 

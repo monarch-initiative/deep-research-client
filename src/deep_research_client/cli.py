@@ -3270,12 +3270,15 @@ def eval_run(
         w = _RATE_WIDTH
         typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
-            # An em dash where an arm attempted nothing: `prec 0.000` in a
-            # column beside arms that answered reads as "got them all wrong",
-            # and the arm that abstained on every question, or whose every
-            # response the extractor could not read, or whose endpoint was
-            # down all run, is exactly the one a comparison must not read that
-            # way. `cov 0.000` is beside it and does say so -- but that is a
+            # An em dash where there is nothing to take a rate over:
+            # `prec 0.000` in a column beside arms that answered reads as "got
+            # them all wrong", and the arm that abstained on every question,
+            # or whose every response the extractor could not read, or whose
+            # endpoint was down all run, or whose every answer came back with
+            # no recorded correctness, is exactly the one a comparison must
+            # not read that way. The last has `cov 1.000` beside the dash --
+            # it answered; we cannot say whether it was right -- and the note
+            # below the table is what reconciles the two. `cov 0.000` is beside it and does say so -- but that is a
             # disambiguator next to a rate, which is what the citation lines
             # stopped doing, and there it was in the same sentence rather than
             # an adjacent column.

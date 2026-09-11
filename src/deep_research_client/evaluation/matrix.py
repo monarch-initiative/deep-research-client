@@ -503,8 +503,13 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
     - `precision` is empty rather than 0.0000 when nothing was judged, and
       `unusable` says how many attempted questions left its denominator. A
       spreadsheet averaging the precision column must not average in an arm
-      that made no attempt, and a deduction from a rate has to be countable
-      from the same row.
+      that had nothing to be precise about, and a deduction from a rate has
+      to be countable from the same row.
+
+    The count columns are no longer disjoint: `unusable` is a subset of
+    `attempted`, where `abstained`, `extraction_failures` and
+    `provider_errors` partition what is left of `total`. Summing all six
+    double-counts.
     """
     columns = (
         "arm_id", "total", "attempted", "correct", "accuracy", "coverage",
@@ -519,7 +524,9 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
             f"{score.accuracy:.4f}", f"{score.coverage:.4f}",
             # Empty rather than 0.0000, for the reason the CLI prints a dash:
             # a spreadsheet averaging this column must not average in an arm
-            # that made no attempt.
+            # that had nothing to be precise about -- which is not the same as
+            # one that made no attempt, since an arm can attempt everything
+            # and still have no established correctness.
             "" if score.precision is None else f"{score.precision:.4f}",
             str(score.abstained), str(score.extraction_failures),
             str(score.provider_errors), str(score.unusable),

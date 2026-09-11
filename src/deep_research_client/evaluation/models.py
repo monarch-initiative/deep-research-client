@@ -758,8 +758,10 @@ class MCQAnswer(BaseModel):
             "that was never established -- every disposition but SCORED, and "
             "a SCORED record whose correctness is missing, which only a "
             "hand-edited or older-format `cell.json` produces. `score_mcq` "
-            "counts such a record in neither `attempted` nor `correct`, and "
-            "logs it: it is not evidence of a wrong answer"
+            "counts such a record in `attempted` -- an option WAS chosen, so "
+            "coverage must say so -- and out of both `correct` and "
+            "`precision`'s denominator, where it is not evidence either way. "
+            "See `MCQScore.unusable`, which counts them"
         ),
     )
     error: Optional[str] = Field(default=None, description="Provider error, when the call failed")
@@ -769,7 +771,9 @@ class MCQScore(BaseModel):
     """Aggregate multiple-choice score, following LAB-Bench's metric definitions.
 
     Accuracy is over all questions, coverage is the fraction attempted, and
-    precision is over attempted questions only. Reporting accuracy without
+    precision is over the attempted questions whose correctness was actually
+    established -- `attempted - unusable`, which equals `attempted` unless a
+    record came back with no correctness at all. Reporting accuracy without
     coverage hides whether a low score means wrong answers or declined ones.
 
     >>> s = MCQScore(total=10, attempted=8, correct=6, accuracy=0.6,
@@ -847,10 +851,14 @@ class MCQScore(BaseModel):
     precision: Optional[float] = Field(
         ...,
         description=(
-            "correct / (attempted - unusable), and None when that is 0 -- an arm "
-            "that errored on every call or abstained on every question has no "
-            "precision, and `0.000` in a comparison column reads as 'answered "
-            "and got them all wrong'. Rendered as an em dash in the `--grade` "
+            "correct / (attempted - unusable), and None when that is 0. Four "
+            "ways there: every call errored, every question was declined, "
+            "every response was unreadable by the extractor, or every "
+            "attempted answer came back with no recorded correctness -- the "
+            "only one of the four with `coverage` above zero, since the "
+            "provider did answer and we cannot say whether it was right. "
+            "`0.000` in a comparison column would read as 'answered and got "
+            "them all wrong'. Rendered as an em dash in the `--grade` "
             "table and as an empty field in `scores.tsv`. The denominator is "
             "narrower than `attempted`: a record whose correctness was never "
             "written down is not evidence either way.\n\n"

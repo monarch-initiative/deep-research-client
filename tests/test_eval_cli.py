@@ -9,6 +9,7 @@ know, and a message nothing asserts on is a message that can quietly disappear.
 Everything here runs through the mock provider, so no network and no spend.
 """
 
+import re
 from pathlib import Path
 
 import httpx
@@ -243,11 +244,13 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
 
     Precision is correct-over-attempted, so an arm that attempted nothing has
     none. It printed `0.000` in a column beside arms that did attempt, which
-    reads as "answered and got them all wrong" -- and the three ways in are
-    the ordinary ones: every question declined, every response unreadable by
-    the provisional extractor, or an endpoint down for the whole run (a failed
+    reads as "answered and got them all wrong" -- and the ways in are the
+    ordinary ones: every question declined, every response unreadable by the
+    provisional extractor, an endpoint down for the whole run (a failed
     multiple-choice cell is given PROVIDER_ERROR precisely so the arm appears
-    rather than vanishing from the comparison).
+    rather than vanishing from the comparison), or every attempted answer
+    carrying no recorded correctness, which is the only one of them with
+    coverage above zero.
 
     The reasoning offered for leaving it was that `cov 0.000` sits beside it
     and does say so. That is the same trade -- a disambiguator next to a rate
@@ -292,7 +295,11 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     # alone, and the page has 33 of them, two in the prose right under the
     # table this guards. It passed with the worked table deleted outright.
     # The three rate columns together pin the widths and the dash at once.
-    quoted = row[row.index("0.000"):].split("   0/")[0].rstrip()
+    # Split on the n column by shape, not on the literal "   0/" -- that
+    # depended on `correct` rendering as " 0" under `:>2`, so a fixture with
+    # ten or more correct answers would silently swallow the rest of the row
+    # rather than fail.
+    quoted = re.split(r"\s+\d+/", row[row.index("0.000"):])[0].rstrip()
     assert quoted in page, (
         f"the how-to does not show {quoted!r} in its worked --grade table, "
         f"which is what the command prints for an arm that attempted nothing"

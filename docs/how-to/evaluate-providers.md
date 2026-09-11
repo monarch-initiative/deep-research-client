@@ -335,9 +335,10 @@ the extractor is being fooled by restated options. `decliner` and `silent` must
 both show zero coverage, for different reasons: declining is not answering, and
 neither is saying nothing.
 
-Neither has a precision. It is over answers attempted, and these two attempted
-nothing, so the column shows an em dash rather than `0.000` — which in a
-comparison would read as "answered and got them all wrong". `silent` is why
+Neither has a precision. It is over the answers attempted whose correctness
+was actually established, and these two attempted nothing, so the column shows
+an em dash rather than `0.000` — which in a comparison would read as "answered
+and got them all wrong". `silent` is why
 this matters most: its responses are ones the provisional extractor could not
 read, which is a limitation of this harness rather than a result from the
 provider, and the first of the two notes below the table says so. The second
@@ -377,7 +378,17 @@ report this client cannot judge, not a report that invented twelve references.
 The rate is absent rather than zero whenever nothing was checkable, on this
 line and on every other score line, so a measured zero always means a measured
 zero. That holds across commands: `eval run`'s precision column is an em dash
-for an arm that attempted nothing.
+whenever there is nothing to take a rate over. Two ways there — an arm that
+attempted nothing, and an arm that attempted everything but whose answers came
+back with no recorded correctness. The second shows `cov 1.000` beside the
+dash, which is not a contradiction: the provider answered, and the harness
+cannot say whether it was right.
+
+That second case has a count of its own. `scores.tsv` carries an `unusable`
+column, and a graded run whose arms have any prints a note under the table
+saying so — the same treatment `extraction_failures` gets, and for the same
+reason: a harness record gap that moves a published rate has to say so where
+the rate is printed. Only a hand-edited or older-format run produces them.
 
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:

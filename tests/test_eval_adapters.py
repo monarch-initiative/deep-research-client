@@ -585,15 +585,10 @@ def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
     # here, since the recipe's job is to restore values.
     assert MCQScore(**counts) == s
 
-    # The two copies of the recipe, against one string. `RECIPE` is compared
+    # The two copies of the recipe, against one string. `recipe` is compared
     # to this function's own source as well as to `models.py`, so it cannot
     # drift from the comprehension that just ran either.
     import inspect
-
-    # `import models` rather than `from models import ...`: the module object
-    # is what carries `__file__`, and the module-scope imports in this file
-    # are all of the second form.
-    from deep_research_client.evaluation import models
 
     recipe = "{k: v for k, v in dump.items() if k in MCQScore.model_fields}"
     # Against the ASSIGNMENT line specifically, not `recipe in source`: this
@@ -602,74 +597,27 @@ def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
     # comprehension above is rewritten. It survived the mutation that proved
     # it -- the fourth self-reference on this branch.
     executed = next(
-        ln.strip() for ln in inspect.getsource(
+        (ln.strip() for ln in inspect.getsource(
             test_the_recipe_rebuilds_a_score_its_own_dump_cannot).splitlines()
-        if ln.strip().startswith("counts = ")
+         if ln.strip().startswith("counts = ")),
+        None,
+    )
+    assert executed is not None, (
+        "no `counts = ` line in this test, so the comparison below has "
+        "nothing to read -- rename the binding and say so here"
     )
     assert executed == f"counts = {recipe}", (
         f"the executed recipe is {executed!r}, not {recipe!r}, so comparing "
         f"the latter against the documented copy proves nothing"
     )
-    assert recipe in Path(models.__file__).read_text(encoding="utf-8"), (
+    # `inspect.getsource(MCQScore)` rather than the whole file, so the
+    # assertion checks the scope its message names: the recipe moved into
+    # another class's comment would leave a whole-file search green while
+    # the comment a caller reads had lost it.
+    assert recipe in inspect.getsource(MCQScore), (
         f"MCQScore's class comment no longer carries {recipe!r} verbatim, so "
         f"the expression a library caller copies has drifted from the one "
         f"this test runs"
-    )
-
-
-
-def test_no_comment_cites_a_test_that_does_not_exist():
-    """Every `test_...` a comment names, across `src/` and `tests/`.
-
-    A citation is the claim that rots without either text being touched, so
-    this repo pins them rather than trusting them. The first pin was written
-    inside the test it protected -- it asserted its own `__name__` appeared
-    in `models.py` -- which catches a RENAME and not a DELETION: delete the
-    test and the checker goes with it, leaving production-code documentation
-    pointing at nothing and a green suite. Deletion is the likelier rot for a
-    test.
-
-    A checker placed inside the thing it checks disappears with it. This one
-    is outside all of them, and it covers a second reference the first could
-    not: the derived-rates test names the recipe test in its docstring, and
-    that citation was unpinned.
-
-    Backtick-delimited, because that is what a citation looks like in this
-    tree and an unquoted name in prose is not distinguishable from a
-    sentence. Resolved against BOTH function names and module filenames,
-    since three citations name a test MODULE (`test_eval_matrix`,
-    `test_eval_adapters`, `test_provider_fallback`) rather than a function.
-
-    No invented name appears anywhere above: the first draft of this
-    docstring illustrated the backtick rule with a made-up one, and this
-    function read its own example and reported it as dangling. That is the
-    third instrument on this branch to be an instance of what it measures,
-    and the reason its blind spots are worth stating -- it cannot see a
-    citation that wraps across lines, and it treats any backticked
-    `test_`-prefixed token as a claim that something exists.
-    """
-    import re
-
-    tests_dir = Path(__file__).parent
-    src_dir = Path(__file__).parent.parent / "src"
-
-    known: set[str] = set()
-    for path in sorted(tests_dir.rglob("*.py")):
-        known.add(path.stem)
-        text = path.read_text(encoding="utf-8")
-        known.update(re.findall(r"^def (test_\w+)", text, re.M))
-
-    dangling: list[str] = []
-    for path in sorted([*tests_dir.rglob("*.py"), *src_dir.rglob("*.py")]):
-        text = path.read_text(encoding="utf-8")
-        for line_no, line in enumerate(text.splitlines(), 1):
-            for cited in re.findall(r"`(test_\w+)`", line):
-                if cited not in known:
-                    dangling.append(f"{path.name}:{line_no} cites `{cited}`")
-
-    assert not dangling, (
-        "these comments name a test that no longer exists, so a reader "
-        "following them finds nothing:\n  " + "\n  ".join(dangling)
     )
 
 

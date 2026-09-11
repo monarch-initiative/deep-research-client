@@ -1747,3 +1747,140 @@ def test_the_evidence_named_is_the_most_specific_disagreement():
     assert score.checks[0].correct is False
     # The trailing period is inside the match: `.` is in the character class.
     assert score.checks[0].found_in_report == "chromosome 17p13.1."
+
+
+@pytest.mark.parametrize("reply,key,expected,why", [
+    # An array closed with a brace, then the real verdict. `_balanced_span`
+    # answered None for "closed with the wrong bracket" as well as for "never
+    # closed", and the caller read None as the latter -- mining the whole
+    # remainder as salvage, which demotes the genuine verdict and lets the
+    # breakdown answer. The RACE dimension was recorded as 2 where the judge
+    # said 5: a number inside the scale, indistinguishable from a measurement.
+    ('{"criteria": [{"score": 2}, {"score": 1}} {"score": 5}', "score", 5,
+     "an array closed with a brace"),
+    ('{"criteria": {"supported": false}] {"supported": true}', "supported", True,
+     "an object closed with a bracket"),
+    # A reply that is only a mismatched container still yields what it holds.
+    ('{"criteria": [{"score": 2}}', "score", 2, "only a mismatched container"),
+])
+def test_a_mismatched_bracket_bounds_the_damage_rather_than_erasing_it(
+    reply, key, expected, why,
+):
+    """Where the damage stops is the caller's question, not why it is damaged.
+
+    Two distinct answers were collapsed into one `None`, and the caller needed
+    to tell them apart -- the shape this function has now been wrong in four
+    times, each a proxy or a collapsed domain rather than the property itself.
+    """
+    from deep_research_client.evaluation import scorers
+
+    result = scorers._extract_json_object(reply, key=key)
+    assert result is not None, why
+    assert result[key] == expected, why
+
+
+def test_the_two_citation_scorers_agree_about_an_identifier_neither_resolves():
+    """A real PMC article is not a fabricated citation.
+
+    Verifiability recorded an identifier kind it has no resolver for as
+    `exists=False, lookup_failed=False`, so it counted against the rate: a
+    report citing a real PMC article and a real GEO series printed `0/2 (0.00)`
+    -- both invented -- one line above the alignment line saying neither could
+    be checked. Distinct from an identifier that would not normalise, which is
+    a property of the report's own text and still counts against it.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = ("FGFR3 drives achondroplasia (PMC11000121). "
+            "Expression was deposited under GSE68086.")
+    out = parse_dr_output(task, body, "test")
+
+    verifiability = asyncio.run(scorers.score_citation_verifiability(out))
+    alignment = asyncio.run(scorers.score_citation_alignment(out))
+
+    assert verifiability.total_citations == 2
+    # Excluded from the rate, not counted against it: the discriminating
+    # assertion, since `verifiability` is 0.00 either way -- once because
+    # nothing was checkable, once because everything was called fabricated.
+    assert verifiability.unresolvable == 2
+    assert alignment.unresolvable == 2
+
+
+def test_an_unnormalisable_citation_still_counts_against_the_report():
+    """The other side of the same line: a reference the report's own text
+    mangled is the report's problem, and must not be excluded with it."""
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.models import DROutput, ExtractedCitation
+
+    out = DROutput(
+        task_id="t", provider="test", raw_markdown="A claim.",
+        extracted_citations=[ExtractedCitation(raw_reference="[17]", normalized_id="")],
+    )
+    score = asyncio.run(scorers.score_citation_verifiability(out))
+
+    assert score.total_citations == 1
+    assert score.unresolvable == 0, "not excluded -- the report's own reference list"
+    assert score.verifiability == 0.0
+
+
+def test_repeated_citations_are_not_weighted():
+    """`total_citations`' description said nothing de-duplicates, which is the
+    opposite of what the extractor does.
+
+    `find_reference_ids` keys on the normalised identifier and records a
+    `count` of mentions precisely because the repeats are discarded, so a PMID
+    cited ten times is one lookup and one count. The sentence was written while
+    *correcting* that field's description, which is the worst place to invert a
+    claim: it is the line a reader consults to decide whether repeats are
+    weighted.
+    """
+    from deep_research_client.evaluation.scorers import extract_citations_from_markdown
+
+    cited_once = extract_citations_from_markdown("A claim (PMID:7913883).")
+    cited_thrice = extract_citations_from_markdown(
+        "A (PMID:7913883). B (PMID:7913883). C (PMID:7913883)."
+    )
+    assert [c.normalized_id for c in cited_once] == ["PMID:7913883"]
+    assert [c.normalized_id for c in cited_thrice] == ["PMID:7913883"]
+
+
+def test_a_reply_of_unclosed_openers_is_read_rather_than_raising():
+    """The unclosed branch recursed on the whole remainder, so the depth was
+    the number of consecutive unclosed openers.
+
+    Every call site is inside an `except Exception`, so a RecursionError would
+    have degraded into a recorded scoring error rather than a crash -- which is
+    the worse report of the same thing, by the argument the array test makes.
+    """
+    from deep_research_client.evaluation import scorers
+
+    reply = "{" * 2000 + '{"supported": true}'
+    result = scorers._extract_json_object(reply, key="supported")
+
+    assert result == {"supported": True}
+
+
+def test_a_readable_wrapper_beats_something_scavenged_from_an_unclosed_container():
+    """Where the unclosed-region tier actually changes the answer.
+
+    A value found after a container that never closes is inside it, so it is
+    salvage -- ranked below even a key nested in a readable top-level object.
+    With only one candidate the tier makes no difference, which is why the
+    obvious cut-off-reply cases cannot see it: this needs a readable wrapper
+    whose verdict disagrees with the scavenged one.
+    """
+    from deep_research_client.evaluation import scorers
+
+    reply = '{"wrapper": {"supported": true}} {"criteria": {"supported": false}'
+    result = scorers._extract_json_object(reply, key="supported")
+
+    assert result == {"supported": True}, (
+        "the wrapper is readable; the other object is inside a container that "
+        "never closes"
+    )

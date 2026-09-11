@@ -343,7 +343,9 @@ class CitationExistence(BaseModel):
         default=False,
         description=(
             "Whether nothing was learned about this citation -- a timeout, a "
-            "5xx, a connection error. Distinct from `error`, which is also set "
+            "5xx, a connection error, or an identifier of a kind this scorer "
+            "has no resolver for, which is never looked up at all. Distinct "
+            "from `error`, which is also set "
             "for an authoritative negative: NCBI reports an unknown PMID as a "
             "per-uid error, and that is a fabricated citation rather than a "
             "failed lookup. Only `lookup_failed` leaves the verifiability rate."
@@ -362,13 +364,16 @@ class CitationVerifiabilityScore(BaseModel):
     total_citations: int = Field(
         ...,
         description=(
-            "Every citation found in the report. Not 'unique' -- nothing "
-            "dedupes, so a report citing one fabricated PMID ten times is ten "
-            "lookups and ten counts against `verifiability`, where citing it "
-            "once is one. And not 'checked': the checked count is "
+            "Distinct citations found in the report. `find_reference_ids` "
+            "de-duplicates on the normalised identifier and records a `count` "
+            "of textual mentions, so a PMID cited ten times is one lookup and "
+            "one count here -- repeated citations are not weighted. Not "
+            "'checked', though: the checked count is "
             "`total_citations - unresolvable`, which is what `verifiability` "
             "is over and what the CLI prints. The sibling name in `FACTScore` "
-            "carried the same mismatch."
+            "carried the same mismatch. (An earlier correction of this "
+            "description asserted that nothing de-duplicates, which was the "
+            "opposite of what the extractor does.)"
         ),
     )
     verified_exist: int = Field(..., description="Citations that resolve to real papers")
@@ -436,13 +441,15 @@ class CitationAlignmentScore(BaseModel):
     unresolvable: int = Field(
         default=0,
         description=(
-            "Citation-claim pairs with no paper title to align against, so "
-            "nothing could be compared: a lookup that failed, or a record that "
-            "resolved and carries no title. A citation the registry says does "
-            "not exist is NOT here -- that is a finding, and counts against "
-            "`alignment_rate`. Recorded because 0/0 (0.00) otherwise reads the "
-            "same for a PubMed outage as for a report whose citations support "
-            "nothing."
+            "Citation-claim pairs nothing could be compared for: a lookup "
+            "that failed, a record that resolved and carries no title, or a "
+            "citation this scorer never looks up at all -- one with no "
+            "identifier, one that would not normalise, or one of a kind it has "
+            "no resolver for, such as a PMC accession or a GEO series. A "
+            "citation the registry says does not exist is NOT here -- that is "
+            "a finding, and counts against `alignment_rate`. Recorded because "
+            "0/0 (0.00) otherwise reads the same for a PubMed outage as for a "
+            "report whose citations support nothing."
         ),
     )
     alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")

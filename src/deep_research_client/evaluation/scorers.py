@@ -184,7 +184,19 @@ def _nested_with_key(obj: object, key: str) -> dict | None:
 
 
 def _balanced_span(text: str, start: int) -> int | None:
-    """Index just past the bracket matching ``text[start]``, or None if unclosed.
+    """Index just past the region the bracket at ``text[start]`` encloses.
+
+    None only when the bracket never closes at all. A bracket closed by the
+    *wrong* one ends its region at that closer: the text is damaged either way,
+    and the caller's question is where the damage stops, not why it is damaged.
+
+    Answering None for both was a two-valued answer to a three-valued question.
+    The caller read None as "never closed" and mined the whole remainder as
+    salvage, so an ordinary confusion -- an array closed with a brace --
+    demoted the genuine verdict after it and let a per-criterion breakdown
+    answer instead. That is precisely the outcome the salvage tiering was built
+    to avoid, reached by the one shape where the two Nones meant different
+    things.
 
     String-aware, because a brace inside a string value is not a brace: counting
     them naively is the defect `raw_decode` was brought in to remove, and this
@@ -197,6 +209,11 @@ def _balanced_span(text: str, start: int) -> int | None:
     21
     >>> _balanced_span('{"a": 1', 0) is None
     True
+
+    A mismatched closer bounds the region rather than erasing it:
+
+    >>> _balanced_span('{"a": [1} tail', 0)
+    9
     """
     closers = {"{": "}", "[": "]"}
     if text[start] not in closers:
@@ -220,7 +237,10 @@ def _balanced_span(text: str, start: int) -> int | None:
             stack.append(closers[char])
         elif char in "}]":
             if not stack or stack[-1] != char:
-                return None
+                # Closed with the wrong bracket. The region ends here: past
+                # this point the text is no longer inside the damaged
+                # container, so whatever follows is top-level again.
+                return i + 1
             stack.pop()
             if not stack:
                 return i + 1
@@ -238,8 +258,9 @@ def _without_trailing_commas(text: str) -> str:
 
     String-aware, so a comma inside a string value survives.
 
-    The comma becomes a space rather than being removed, so every other offset
-    in the text is unchanged and the result can be compared with the original.
+    The comma becomes a space rather than being removed, so every offset in the
+    text is unchanged: a span measured on the original still addresses the same
+    characters in the repaired copy.
 
     >>> _without_trailing_commas('{"a": 1,}')
     '{"a": 1 }'
@@ -293,11 +314,23 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
     mined for salvage and stepped over.
 
     Returns:
-        ``(top_level, salvage)``, each in document order.
+        ``(top_level, salvage)``. `top_level` is in document order; `salvage`
+        is not, since a mined container contributes its own top-level values
+        before its own salvage. Nothing reads that order -- the tier that
+        consults salvage says so in as many words -- but the two statements
+        should not disagree.
     """
     decoder = json.JSONDecoder()
     top_level: list[Any] = []
     salvage: list[Any] = []
+    # Set once the scan enters a container that never closes. Nothing after
+    # that point is top-level, because the container has no end to be after.
+    inside_unclosed = False
+
+    def file(value: Any) -> None:
+        """Put a decoded value in the tier the scan is currently in."""
+        (salvage if inside_unclosed else top_level).append(value)
+
     i = 0
     while i < len(text):
         if text[i] not in "{[":
@@ -308,24 +341,30 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         except json.JSONDecodeError:
             span = _balanced_span(text, i)
             if span is None:
-                # Never closed -- a reply cut off mid-object, say. Step one
-                # character so a value nested inside it stays reachable; it is
-                # salvage, since nothing here can be read as a whole.
-                inner_top, inner_salvage = _decode_candidates(text[i + 1 :])
-                salvage.extend(inner_top)
-                salvage.extend(inner_salvage)
-                break
+                # Never closed -- a reply cut off mid-object, say. The scan
+                # carries on in place so a value inside it stays reachable, and
+                # everything from here on is salvage. Recursing on the
+                # remainder instead made the depth the number of consecutive
+                # unclosed openers, so a reply with a thousand of them raised
+                # RecursionError -- turning an unjudged measurement into an
+                # error, which is the worse report of the same thing.
+                inside_unclosed = True
+                i += 1
+                continue
             try:
                 repaired = json.loads(_without_trailing_commas(text[i:span]))
             except json.JSONDecodeError:
+                # Damaged beyond a trailing comma, but bounded: mine it and
+                # step over it. The recursion here is bounded by how deeply
+                # malformed containers nest, not by the length of the reply.
                 inner_top, inner_salvage = _decode_candidates(text[i + 1 : span - 1])
-                salvage.extend(inner_top)
-                salvage.extend(inner_salvage)
+                for value in (*inner_top, *inner_salvage):
+                    salvage.append(value)
             else:
-                top_level.append(repaired)
+                file(repaired)
             i = span
             continue
-        top_level.append(parsed)
+        file(parsed)
         i = end  # never rescan inside a value already read
     return top_level, salvage
 
@@ -333,9 +372,11 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
 def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     """Extract a JSON object from text, handling nested braces.
 
-    Every top-level ``{...}`` object in the reply is a candidate. With ``key``,
-    the first that carries it wins; if none does, the search descends into them
-    before falling back to the first object found.
+    Every ``{...}`` object at the top level of the reply is a candidate; an
+    array is decoded and stepped over rather than mined, so its members are
+    reachable only through the descent. With ``key``, the first candidate that
+    carries it wins; if none does, the search descends before falling back to
+    the first object found.
 
     Three things have been wrong here, and they compound:
 
@@ -1108,9 +1149,24 @@ async def score_citation_verifiability(
         elif cid.startswith("DOI:"):
             meta = await resolve_doi(cid, pubmed_client)
         else:
+            # An identifier this scorer has no resolver for -- the extractor
+            # also emits PMC accessions and GEO accessions, which are real,
+            # resolvable identifiers that simply are not looked up here.
+            # Nothing was learned about the citation, so it leaves the rate.
+            #
+            # It used to count against verifiability, so a report citing a real
+            # PMC article and a real GEO series printed `0/2 (0.00)` -- both
+            # invented -- one line above the alignment line saying neither
+            # could be checked. Its sibling was taught this distinction one
+            # commit ago; the two scorers read the same reference list and
+            # should not disagree about whether citing it is a defect.
+            #
+            # Distinct from an identifier that would not normalise, which is a
+            # property of the report's own text and still counts against it.
             results.append(CitationExistence(
                 citation_id=cid, exists=False,
-                error="Unknown citation type", lookup_failed=False,
+                error=f"No resolver for this identifier kind: {cid.split(':')[0]}",
+                lookup_failed=True,
             ))
             continue
 
@@ -1207,7 +1263,9 @@ async def score_citation_alignment(
                 # prevent. Its sibling scorer counts exactly these two as
                 # findings, and the two scorers read the same reference list:
                 # they should not disagree about whether it has citations in
-                # it.
+                # it. Three ways in, not two: an identifier that would not
+                # normalise, one of a kind neither scorer resolves, and a
+                # citation with no identifier at all.
                 unresolvable += 1
                 continue
 

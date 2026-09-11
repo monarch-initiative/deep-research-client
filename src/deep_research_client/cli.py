@@ -3542,7 +3542,7 @@ def eval_score(
                 # PubMed was down reads as an alignment rate over everything.
                 # Worded for both things this counts: a lookup that failed, and
                 # a real record that carries no title to align a claim against.
-                line += f", {ca.unresolvable} with no title to align against"
+                line += f", {ca.unresolvable} with nothing to align against"
             typer.echo(line)
         if isc.factual_spot_checks:
             sc = isc.factual_spot_checks

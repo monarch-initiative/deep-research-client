@@ -801,7 +801,7 @@ def test_eval_score_reports_alignment_lookups_that_failed(tmp_path, monkeypatch)
     alignment = next(
         ln for ln in result.stdout.splitlines() if "Citation-Claim Alignment" in ln
     )
-    assert "1 with no title to align against" in alignment
+    assert "1 with nothing to align against" in alignment
 
 
 def test_a_keyless_local_endpoint_is_not_refused(tmp_path, monkeypatch):
@@ -941,5 +941,16 @@ def test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is(tmp_path):
     for page in ("docs/reference/cli.md", "docs/how-to/evaluate-providers.md"):
         text = (root / page).read_text(encoding="utf-8")
         assert "--llm-base-url" in text, page
-        assert "401" in text, f"{page} does not say what happens against a proxy"
-        assert "placeholder" in text, f"{page} does not say a placeholder is sent"
+        # Both facts in ONE paragraph. Asserting them over the whole page let
+        # "placeholder" be satisfied by an unrelated `--template PATH | Template
+        # file with variable placeholders` row, so only the "401" half
+        # discriminated and rewording the real paragraph to say "Unauthorized"
+        # would have left this green on a stale page.
+        paragraphs = [p for p in text.split("\n\n") if "--llm-base-url" in p]
+        assert any(
+            "401" in p and "placeholder" in p for p in paragraphs
+        ), (
+            f"{page} has no --llm-base-url paragraph saying both that a "
+            f"placeholder key is sent and that a key-checking endpoint "
+            f"answers 401"
+        )

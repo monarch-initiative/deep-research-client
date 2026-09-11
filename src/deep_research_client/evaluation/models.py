@@ -378,14 +378,14 @@ class CitationExistence(BaseModel):
         default=None,
         description=(
             "Why this citation has the `exists` it has, when there is anything "
-            "to say. Not only 'why it did not resolve', which is what this "
-            "said and is what it is easiest to read it as: the no-resolver "
-            "branch sets it (`No resolver for this identifier kind: PMC`) on "
-            "a citation that very likely does resolve and that `lookup_failed` "
-            "describes as never attempted. Set on an authoritative negative "
-            "too, which is the opposite of a failed lookup. `exists` and "
-            "`lookup_failed` are the fields to branch on; this one is for a "
-            "human reading `--output`."
+            "to say. `exists` and `lookup_failed` are the fields to branch on; "
+            "this one is for a human reading `--output`.\n\n"
+            "History: it said 'why the citation did not resolve', which is "
+            "also the easiest way to misread it. The no-resolver branch sets "
+            "it (`No resolver for this identifier kind: PMC`) on a citation "
+            "that very likely does resolve and that `lookup_failed` describes "
+            "as never attempted, and an authoritative negative sets it too, "
+            "which is the opposite of a failed lookup."
         ),
     )
     lookup_failed: bool = Field(

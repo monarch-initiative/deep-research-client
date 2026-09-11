@@ -10,6 +10,7 @@ Tests cover:
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1998,7 +1999,7 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     calls = 0
     real = json.JSONDecoder.raw_decode
 
-    def counted(self: json.JSONDecoder, s: str, idx: int = 0) -> tuple:
+    def counted(self: json.JSONDecoder, s: str, idx: int = 0) -> tuple[Any, int]:
         nonlocal calls
         calls += 1
         return real(self, s, idx)
@@ -2027,8 +2028,17 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # one's six milliseconds, because it retries at every opener.
     ("a bounded nest deeper than the stack", "[" * 10000 + "]" * 10000, None),
     # Braces fail `raw_decode` immediately instead, so this reaches the bound
-    # and the mine. The innermost `{}` is what the mine recovers; an empty
-    # dict carries no verdict, so the caller reads it the same way as None.
+    # and the mine. The innermost `{}` is what comes back; an empty dict
+    # carries no verdict, so every caller reads it the way it reads None.
+    #
+    # 1,200 is between this function's two recursion budgets -- `raw_decode`
+    # gives out around 10,000 and the mine's Python recursion around 999 --
+    # which is worth knowing before re-sizing it. Measured rather than
+    # reasoned: the answer is `{}` at every `sys.setrecursionlimit` from 150
+    # to 3,000, the mine makes 998 calls, and its `RecursionError` handler
+    # does not fire. Wrapping `_decode_candidates` to watch it DOES flip the
+    # answer to None, because the wrapper spends a frame per level -- so an
+    # instrument put here to check this comment will contradict it.
     ("a bounded brace nest deeper than the stack", "{" * 1200 + "}" * 1200, {}),
     # Malformed AND deep: the repair fails and mining it recursed. Escapes
     # only when every handler is removed, so it pins the set rather than any

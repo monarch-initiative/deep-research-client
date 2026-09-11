@@ -403,10 +403,16 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # "damaged". Everything after such a preamble is demoted to
             # salvage, so a genuine later verdict can lose to a value mined
             # out of a valid-but-deep preamble -- the outranking the tiering
-            # exists to prevent, reached by the one route it cannot see. It
-            # needs ~1,500 levels of nesting, and the alternative was
-            # escaping as a scoring error, so this is recorded rather than
-            # fixed.
+            # exists to prevent, reached by the one route it cannot see. The
+            # alternative was escaping as a scoring error, so this is recorded
+            # rather than fixed.
+            #
+            # It needs ~10,000 levels of nesting, which is where `raw_decode`
+            # gives out (measured by bisection on this interpreter). That is
+            # NOT the budget the mine below runs against: the mine is Python
+            # recursion, which gives out at ~999 frames. Two branches of one
+            # function, two limits an order of magnitude apart, and a case
+            # sized against the wrong one lands between them.
             inside_unclosed = True
             i += 1
             continue
@@ -423,10 +429,9 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 # -- take six seconds at a 12,000-character reply, measured,
                 # where it used to fail fast with a RecursionError. (Measured
                 # at that size, not bounded by it: MAX_REPORT_CHARS truncates
-                # the report sent to the judge, not the reply that comes
-                # back.) The cost of the
-                # skip is a trailing comma left unrepaired inside text already
-                # declared unreadable.
+                # the report sent to the judge, not the reply that comes back.)
+                # The cost of the skip is a trailing comma left unrepaired
+                # inside text already declared unreadable.
                 #
                 # It does not on its own make the loop linear, and saying so
                 # hid the sibling opener for a round: `raw_decode` is the
@@ -468,7 +473,10 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 #
                 # The mine recurses, so it can reach the limit again -- and
                 # malformed containers nest as deeply as a reply is long, so
-                # that is caught rather than asserted away.
+                # that is caught rather than asserted away. Recovering from a
+                # RecursionError and immediately recursing is safe here: the
+                # interpreter's old fatal-error-on-overflow path is gone in
+                # 3.12, and `requires-python` is >=3.12.
                 try:
                     inner_top, inner_salvage = _decode_candidates(
                         text[i + 1 : span - 1]
@@ -532,12 +540,22 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
       somewhere after them, since neither the bound above nor the skip inside
       `_decode_candidates` applies. Bounded by the length of the reply.
 
-    "The length of the reply" is `max_tokens`, set where the judge is called
-    and currently 2048 -- NOT `MAX_REPORT_CHARS`, which two earlier versions
-    of this paragraph cited. That constant truncates the report sent *to* the
-    judge; it says nothing about what comes back. The two are different
-    numbers for different things and the mistake makes this bound look about
-    six times worse than it is.
+    The length is in CHARACTERS -- the scan steps one at a time -- and what
+    bounds it is `max_tokens`, set where the judge is called and currently
+    2048, NOT `MAX_REPORT_CHARS`, which two earlier versions of this paragraph
+    cited. That constant truncates the report sent *to* the judge and says
+    nothing about what comes back.
+
+    A third version of this sentence then said the mistake made the bound look
+    "about six times worse", which is 12,000 divided by 2048: characters over
+    tokens, in the paragraph arguing that the two measure different things.
+    2048 tokens is roughly 6,000-9,000 characters of JSON-ish text, so the
+    overstatement was nearer 1.5x.
+
+    And `max_tokens` bounds a reply THIS CLIENT asked for. Every scorer takes
+    an `llm_client` from its caller and `eval score` accepts `--llm-base-url`,
+    so an endpoint that ignores it, or a library caller driving `score_race`
+    directly, is not bounded by it at all.
 
     ``raw_decode`` does the scanning rather than a brace counter, so a closing
     brace inside a string value no longer ends the object early -- an

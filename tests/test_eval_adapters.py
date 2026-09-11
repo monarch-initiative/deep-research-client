@@ -331,6 +331,40 @@ def test_empty_score_does_not_divide_by_zero():
     assert score.precision is None
 
 
+@pytest.mark.parametrize("disposition", list(ScoreDisposition))
+def test_every_disposition_is_countable_from_one_score(disposition, caplog):
+    """The counts account for `total`, which `scores.tsv` is read by column.
+
+    `write_scores_tsv` documented `abstained`, `extraction_failures` and
+    `provider_errors` as partitioning what is left of `total`. There are five
+    dispositions: a `SKIPPED` answer landed in none of those three and in no
+    column, so the ONLY way a reader of the file could have noticed a skipped
+    pair was a subtraction the docstring told them was always zero. Nothing
+    emits `SKIPPED` today, which is why it went unnoticed and not why it was
+    acceptable.
+
+    Parametrized over the enum rather than over a list of names: a sixth
+    member added later fails here until it has a home.
+    """
+    with caplog.at_level(logging.WARNING,
+                         logger="deep_research_client.evaluation.mcq"):
+        score = mcq.score_mcq([
+            MCQAnswer(task_id=f"t{i}", provider="p", disposition=disposition)
+            for i in range(3)
+        ])
+
+    accounted = (
+        score.attempted + score.abstained + score.extraction_failures
+        + score.provider_errors + score.skipped
+    )
+    assert accounted == score.total == 3, (
+        f"{disposition} is in no count, so a reader of scores.tsv cannot "
+        f"reach it: {score.model_dump()}"
+    )
+    # `unusable` is a subset of `attempted`, not a sixth part of `total`.
+    assert score.unusable <= score.attempted
+
+
 def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one(caplog):
     """The mixture every describer of the em dash used to rule out.
 
@@ -371,7 +405,7 @@ def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one(caplog):
 
 
 def test_precision_is_nullable_but_not_omittable():
-    """Absent means "attempted nothing", so it cannot also mean "nobody said".
+    """Absent means "nothing was judged", so it cannot also mean "nobody said".
 
     Making it `Optional[float] = Field(default=None)` left the one field in
     this model whose absence carries a specific meaning as the only one a

@@ -3282,10 +3282,11 @@ def eval_run(
             # established. `prec 0.000` in a column beside arms that answered
             # reads as "got them all wrong", and an arm with nothing to be
             # precise about is exactly the one a comparison must not read
-            # that way. Which case it is comes from the per-disposition
-            # columns in `scores.tsv` -- `abstained`, `provider_errors`,
-            # `extraction_failures`, `unusable` -- and from nothing on this
-            # surface.
+            # that way. Which case it is comes from `scores.tsv`, and from
+            # nothing on this surface: one column per disposition
+            # (`abstained`, `provider_errors`, `extraction_failures`,
+            # `skipped`), plus `unusable`, which is not a disposition but a
+            # subset of `attempted`.
             #
             # History: this was stated as a list of causes, three times with
             # three different counts. The causes COMPOSE -- every question

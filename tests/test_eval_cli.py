@@ -403,14 +403,29 @@ def test_a_graded_run_warns_once_per_arm_and_not_twice(tmp_path):
     assert out.exit_code == 0, out.stdout
     # The condition really was reproduced -- without this the count below
     # passes just as well when nothing is unusable and nothing is logged.
-    assert "unusable" in (run_dir / "scores.tsv").read_text(encoding="utf-8")
+    # Read as a VALUE, not as a substring: `unusable` is one of
+    # `write_scores_tsv`'s column names, so `"unusable" in scores.tsv` is
+    # true of every file it writes and was a pre-check that could not fail.
+    scores = (run_dir / "scores.tsv").read_text(encoding="utf-8")
+    header, *rows = [ln.split("\t") for ln in scores.strip().splitlines()]
+    by_arm = {r[0]: dict(zip(header, r)) for r in rows}
+    assert {a: by_arm[a]["unusable"] for a in ("alpha", "beta")} == {
+        "alpha": "1", "beta": "1",
+    }
     assert "no correctness" in out.stdout
 
     warnings = [m for m in records if "no recorded correctness" in m]
     assert len(warnings) == 2, (
         f"one warning per arm, not one per arm per pass over the cells: {warnings}"
     )
-    assert sorted(m.split(":")[0] for m in warnings) == ["arm alpha", "arm beta"]
+    # `startswith`, not `split(":")[0]` and not a fixed-width slice: the
+    # first read the arm id as everything before the FIRST colon, which stops
+    # discriminating the moment an id contains one (`safe_segment` exists
+    # because ids do), and the second silently compared "arm beta: " with a
+    # trailing space against the shorter id.
+    alpha, beta = sorted(warnings)
+    assert alpha.startswith("arm alpha:"), alpha
+    assert beta.startswith("arm beta:"), beta
     # And it costs what the stdout note says it costs. These are two
     # disclosures of the same records on two streams, and stderr is the one a
     # user is left with when the table is redirected -- so they must not

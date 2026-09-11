@@ -809,6 +809,7 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         provider_errors=sum(
             1 for a in answers if a.disposition == ScoreDisposition.PROVIDER_ERROR
         ),
+        skipped=sum(1 for a in answers if a.disposition == ScoreDisposition.SKIPPED),
         accuracy=correct / total if total else 0.0,
         coverage=attempted / total if total else 0.0,
         unusable=len(unusable),

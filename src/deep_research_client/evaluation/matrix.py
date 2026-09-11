@@ -280,8 +280,12 @@ class MatrixConfig:
     #: the empty call is a no-op for it) but it is the contract, and
     #: `test_on_scores_reports_an_empty_result_as_a_result` pins it. It is
     #: therefore NOT folded under the `if scores:` that guards
-    #: `write_scores_tsv` beside it. A caller that needs the numbers takes
-    #: them from here rather than calling `score_by_arm` again: grading is not
+    #: `write_scores_tsv` beside it. What an empty mapping does NOT tell a
+    #: caller is why: "grading was off" and "run_matrix raised before it got
+    #: here" both look like no call at all, so a caller that needs to tell
+    #: those apart reads `config.grade` and whether `run_matrix` returned, as
+    #: the CLI does. A caller that needs the numbers takes them from here
+    #: rather than calling `score_by_arm` again: grading is not
     #: idempotent in its OUTPUT -- `score_mcq` logs one warning per arm whose
     #: records carry no correctness -- so a second pass over the same cells
     #: recomputes identical numbers and emits a second identical warning. The
@@ -524,15 +528,23 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
       that had nothing to be precise about, and a deduction from a rate has
       to be countable from the same row.
 
-    The count columns are no longer disjoint: `unusable` is a subset of
-    `attempted`, where `abstained`, `extraction_failures` and
-    `provider_errors` partition what is left of `total`. Summing all six
-    double-counts.
+    The count columns are not all disjoint. `attempted`, `abstained`,
+    `extraction_failures`, `provider_errors` and `skipped` DO account for
+    `total` -- one per disposition, so the subtraction a spreadsheet does is
+    exact. `unusable` is a subset of `attempted`, not a sixth part of it, so
+    summing all six double-counts.
+
+    History: the three failure counts were documented as partitioning what is
+    left of `total`, and `ScoreDisposition` has five members -- `SKIPPED` was
+    in none of them and in no column, so the only way a reader of this file
+    could have noticed a skipped pair was a subtraction this docstring told
+    them was always zero. Nothing emits `SKIPPED` today; the column is here
+    so that the day something does, the file says so rather than losing it.
     """
     columns = (
         "arm_id", "total", "attempted", "correct", "accuracy", "coverage",
         "precision", "abstained", "extraction_failures", "provider_errors",
-        "unusable",
+        "skipped", "unusable",
     )
     lines = ["\t".join(columns)]
     for arm_id, score in sorted(scores.items()):
@@ -547,7 +559,8 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
             # questions and still have no established correctness on any.
             "" if score.precision is None else f"{score.precision:.4f}",
             str(score.abstained), str(score.extraction_failures),
-            str(score.provider_errors), str(score.unusable),
+            str(score.provider_errors), str(score.skipped),
+            str(score.unusable),
         ]))
     atomic_write(layout.scores_path, "\n".join(lines) + "\n")
 

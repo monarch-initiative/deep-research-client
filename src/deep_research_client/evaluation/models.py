@@ -339,6 +339,8 @@ class RACEScore(BaseModel):
         measured branch, and `overall_score` -- a mean over an empty list
         after its own filter -- printed `overall=0.00`, which is the reading
         the branch exists to prevent. Two accessors, one question.
+        (`overall_score` is `None` over an empty list now, not 0.0; the
+        `0.00` above is what the defect printed.)
 
         >>> degenerate = RACEScore(dimensions=[
         ...     RACEDimension(dimension="comprehensiveness", score=3.0, max_score=0.0),
@@ -862,6 +864,20 @@ class MCQScore(BaseModel):
         description="Responses no option could be recovered from; a harness defect, not a provider one",
     )
     provider_errors: int = Field(default=0, description="Calls that failed outright")
+    skipped: int = Field(
+        default=0,
+        description=(
+            "Pairs a filter excluded, which nothing emits today. Counted "
+            "anyway so the four disposition counts ACCOUNT FOR `total` "
+            "alongside `attempted`: without it, `scores.tsv` had no column "
+            "for `SKIPPED` and no way to reach it, since its writer "
+            "documented the other three as partitioning the remainder -- "
+            "which told a reader the subtraction was always zero. The "
+            "invariant is `attempted + abstained + extraction_failures + "
+            "provider_errors + skipped == total`, and `unusable` is a subset "
+            "of `attempted` rather than a sixth part of it"
+        ),
+    )
     unusable: int = Field(
         default=0,
         description=(

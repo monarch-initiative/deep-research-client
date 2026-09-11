@@ -493,8 +493,12 @@ def test_race_records_an_unscored_dimension_rather_than_a_middling_one(monkeypat
     assert all(d.score is None for d in score.dimensions)
     assert score.scored_dimensions == []
     assert score.unscored_count == len(score.dimensions)
-    # 0.0 rather than 0.6, and unscored_count says which it is.
-    assert score.overall_score == 0.0
+    # None rather than 0.6, and rather than the 0.0 this used to pin: the
+    # artifact is a surface too, and `eval score --output` dumps the model
+    # without the CLI's gate, so a float here wrote a measured-looking zero
+    # for a report nothing was measured on.
+    assert score.overall_score is None
+    assert score.model_dump()["overall_score"] is None
 
 
 def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim(monkeypatch):

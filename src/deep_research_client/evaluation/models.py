@@ -309,8 +309,16 @@ class RACEScore(BaseModel):
     )
 
     @property
-    def scored_dimensions(self) -> list["RACEDimension"]:
+    def scored_dimensions(self) -> list[RACEDimension]:
         """The dimensions the judge actually returned a score for.
+
+        The one derivation here that is NOT a `computed_field`, deliberately:
+        it returns model objects, so serialising it would copy every scored
+        `RACEDimension` into the JSON beside `dimensions`. A consumer needs
+        the COUNT, not the objects, and can take it as
+        `len(dimensions) - unscored_count` -- both of which the artifact
+        carries. Recorded because three siblings do carry the decorator and
+        the odd one out otherwise reads as an oversight.
 
         A dimension whose judge call failed used to be recorded as 3.0 out of 5,
         indistinguishable from a genuine middling verdict -- so a run where the
@@ -355,19 +363,25 @@ class RACEScore(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def overall_score(self) -> float:
-        """Mean over the dimensions that were actually scored.
+    def overall_score(self) -> Optional[float]:
+        """Mean over the dimensions that were actually scored, or None.
 
-        0.0 when none were, which `unscored_count` distinguishes from a report
-        that genuinely scored zero.
+        None when none were scored, matching `RACEDimension.normalized_score`
+        and `MCQScore.precision`: a rate that reaches a reader over a zero
+        denominator is absent rather than zero, because no adjacent field
+        reliably travels with it. `unscored_count` says how many are missing,
+        but it is a disambiguator beside a rate -- the trade the citation
+        lines and the `--grade` precision column both rejected.
 
-        A float where `RACEDimension.normalized_score` and `MCQScore.precision`
-        are Optional, and the difference is deliberate: the line is where the
-        number is RENDERED. A rate that reaches a reader over a zero
-        denominator becomes None, because no adjacent column or field reliably
-        travels with it; one that cannot reach a reader stays a float with its
-        boundary documented. This zero cannot: the CLI gates on
-        `scored_dimensions` before formatting it.
+        This was a float, on the argument that the zero could not reach a
+        reader because the CLI gates on `scored_dimensions` before formatting
+        it. Making it a `computed_field` in the same commit retired that
+        argument without retiring the sentence: `eval score --output` dumps
+        the whole result and does NOT go through the gate, so a report whose
+        judge was unreachable wrote `overall_score: 0.0` into the artifact --
+        a measured-looking zero for a report nothing was measured on. Once a
+        surface is added, every rule about what may reach a reader applies to
+        it.
 
         A `computed_field`, with `unscored_count`, so the headline RACE number
         and the count that distinguishes "the judge was down" from "a terrible
@@ -378,6 +392,15 @@ class RACEScore(BaseModel):
         ...     RACEDimension(dimension="d", score=4.0, max_score=5.0)]).model_dump()
         >>> dumped["overall_score"], dumped["unscored_count"]
         (0.8, 0)
+
+        The artifact says "not measured" where the terminal does:
+
+        >>> down = RACEScore(dimensions=[
+        ...     RACEDimension(dimension="d", score=None, max_score=5.0),
+        ...     RACEDimension(dimension="e", score=None, max_score=5.0)])
+        >>> dumped = down.model_dump()
+        >>> print(dumped["overall_score"], dumped["unscored_count"])
+        None 2
         """
         # The `if` is TYPE NARROWING, not a runtime guard, and cannot be
         # deleted: `scored_dimensions` already filters on exactly this
@@ -390,7 +413,7 @@ class RACEScore(BaseModel):
             if d.normalized_score is not None
         ]
         if not scored:
-            return 0.0
+            return None
         return sum(scored) / len(scored)
 
 

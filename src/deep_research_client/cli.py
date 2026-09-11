@@ -3598,8 +3598,9 @@ def eval_score(
         if not race.scored_dimensions:
             # The sixth line of this shape, and the one found by enumerating
             # scorers rather than lines: RACE has no citation count to reach
-            # it from. `overall_score` is 0.0 over an empty list and the four
-            # dimensions are always emitted, so a judge that could not be
+            # it from. `overall_score` WAS 0.0 over an empty list (it is None
+            # now) and the four dimensions are always emitted, so a judge that
+            # could not be
             # reached -- an endpoint that is down, a rate limit, the 401 this
             # command warns a custom `--llm-base-url` will answer -- printed
             # `overall=0.00 over 0/4 dimensions`: a rate over a zero
@@ -3609,6 +3610,8 @@ def eval_score(
             overall = (f"  RACE: not measured, 0/{len(race.dimensions)} "
                        f"dimensions scored")
         else:
+            # Safe to format: `overall_score` is None exactly when
+            # `scored_dimensions` is empty, which is the branch above.
             overall = f"  RACE: overall={race.overall_score:.2f}"
             if race.unscored_count:
                 # Without this, "every dimension failed" and "a genuinely

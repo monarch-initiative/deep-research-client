@@ -306,6 +306,60 @@ def _make_cells_unusable(run_dir: Path) -> list[str]:
     return arms
 
 
+def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
+    tmp_path,
+):
+    """Built from the command, the way the `eval score` sibling guard is.
+
+    The note gained "and against accuracy, which is over every question
+    asked"; the worked transcript went on quoting the wording from before it,
+    so the page showed a sentence the command could no longer produce -- in
+    the transcript the surrounding prose teaches line by line. The guard that
+    should have caught it asserted the four words "no recoverable answer",
+    which survive any rewording of the rest.
+
+    The sibling `unusable` note had its accuracy clause asserted in the same
+    commit that added both. This one had none, and it is the one the page
+    quotes.
+    """
+    path = _write(tmp_path / "mcq.yaml",
+                  "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
+                  "    ideal: Thymine\n    distractors: [Guanine, Cytosine]\n")
+    # `none` never states an answer, so the extractor recovers nothing --
+    # the page's `silent` arm, which is the row the prose is about.
+    arms = _write(tmp_path / "arms.yaml",
+                  "arms:\n  - id: silent\n    provider: mock\n"
+                  "    params:\n      answer_policy: none\n")
+
+    out = runner.invoke(app, [
+        "eval", "run", str(path), "--arms", str(arms), "--grade",
+        "--output-dir", str(tmp_path / "run")])
+    assert out.exit_code == 0, out.stdout
+
+    # The condition really was reproduced: an extraction failure, not an
+    # abstention -- otherwise the note never prints and everything below
+    # passes on an empty string.
+    scores = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8")
+    header, row = [ln.split("\t") for ln in scores.strip().splitlines()]
+    assert dict(zip(header, row))["extraction_failures"] == "1"
+
+    printed = out.stdout.split("no recoverable answer")[1]
+    printed = printed.split("scores.tsv.")[0] + "scores.tsv."
+    assert "against accuracy" in printed, (
+        f"the note no longer names accuracy, which these responses cost: {printed!r}"
+    )
+
+    page = (Path(__file__).parent.parent
+            / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
+    # Compare word sequences: the page hard-wraps the sentence at a different
+    # width from the terminal, so only the wording is common to both.
+    assert " ".join(printed.split()) in " ".join(page.split()), (
+        "the how-to's worked transcript quotes an extraction-failures note "
+        "the command does not print; it reads:\n"
+        + " ".join(printed.split())
+    )
+
+
 def test_a_graded_run_warns_once_per_arm_and_not_twice(tmp_path):
     """The scores are computed once and read twice, not computed twice.
 
@@ -415,7 +469,7 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     page = (Path(__file__).parent.parent
             / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
     # A DISCRIMINATING slice, not `row.split()[3]` -- that is the em dash
-    # alone, and the page has 33 of them, two in the prose right under the
+    # alone, and the page is full of them, two in the prose right under the
     # table this guards. It passed with the worked table deleted outright.
     # The three rate columns together pin the widths and the dash at once.
     # Split on the n column by shape, not on the literal "   0/" -- that
@@ -436,6 +490,9 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     # fixture -- this arm abstains, so it has no extraction failures and the
     # command rightly stays quiet about them.
     assert "no recoverable answer" not in result.stdout
+    # Only that the page HAS the note; its wording is built from the command
+    # and compared in `test_the_page_quotes_the_extraction_failures_note_as_
+    # the_command_prints_it`, because this arm cannot produce one.
     assert "no recoverable answer" in page
 
     # And in the artifact, where a spreadsheet would average the column.

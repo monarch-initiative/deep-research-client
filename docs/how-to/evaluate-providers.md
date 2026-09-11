@@ -320,8 +320,9 @@ ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
   echoing                0.325   1.000   0.325   13/40
   silent                 0.000   0.000       —    0/40
 
-  Some responses had no recoverable answer. Those count against coverage but
-  are a harness limitation, not a provider result; see the extraction_failures
+  Some responses had no recoverable answer. Those count against coverage and
+  against accuracy, which is over every question asked -- but they are a
+  harness limitation, not a provider result; see the extraction_failures
   column in scores.tsv.
 
   These come from a provisional regex extractor, not an LLM judge. It has
@@ -336,14 +337,14 @@ both show zero coverage, for different reasons: declining is not answering, and
 neither is saying nothing.
 
 Neither has a precision. It is over the answers attempted whose correctness
-was actually established, and these two attempted nothing, so the column shows
-an em dash rather than `0.000` — which in a comparison would read as
+was actually established, and these two attempted nothing, so the column
+shows an em dash rather than `0.000` — which in a comparison would read as
 "answered and got them all wrong". `silent` is why this matters most: its
-responses are ones the provisional extractor could not
-read, which is a limitation of this harness rather than a result from the
-provider, and the first of the two notes below the table says so. The second
-is printed after every graded run and is the one that qualifies the whole
-table: these numbers come from the provisional extractor, not a judge.
+responses are ones the provisional extractor could not read, which is a
+limitation of this harness rather than a result from the provider, and the
+extraction-failures note below the table says so. The last note is printed
+after every graded run and qualifies the whole table: these numbers come
+from the provisional extractor, not a judge.
 
 ## Score a saved report
 
@@ -397,8 +398,9 @@ Answers with no recorded correctness have a count of their own. `scores.tsv`
 carries an `unusable` column, and a graded run with any such answers prints a
 note under the table saying so — the same treatment `extraction_failures`
 gets, and for the same reason: a harness record gap that moves a published
-rate has to say so where the rate is printed. Only a hand-edited or
-older-format run produces them.
+rate has to say so where the rate is printed. Like an unreadable response,
+they lower accuracy exactly as a wrong answer would, since accuracy is over
+every question asked. Only a hand-edited or older-format run produces them.
 
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:

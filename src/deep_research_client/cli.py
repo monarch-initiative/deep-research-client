@@ -3234,10 +3234,17 @@ def _truncation_note(judged_chars: int | None, report_chars: int | None) -> str:
     ''
     >>> _truncation_note(None, 40000)
     ''
+
+    Nothing judged is not a truncated judgement: claim recall with no reference
+    claims asks the judge nothing, and "judged on 0 of 29,000 characters" reads
+    as a judge that gave up rather than one that was never called.
+
+    >>> _truncation_note(0, 29000)
+    ''
     """
     if judged_chars is None or report_chars is None:
         return ""
-    if judged_chars >= report_chars:
+    if judged_chars <= 0 or judged_chars >= report_chars:
         return ""
     return f" (judged on {judged_chars:,} of {report_chars:,} characters)"
 
@@ -3312,17 +3319,28 @@ def eval_score(
     wants_judge = not (no_fact and no_recall and no_race)
 
     # Built only when a judge-backed scorer will actually run. AsyncOpenAI
-    # raises on an empty key at *construction*, so building it unconditionally
-    # made `--no-fact --no-recall --no-race` -- the remedy this command's own
-    # warning offers -- traceback before any scoring, leaving no way to get the
-    # intrinsic scores without a key at all.
+    # raises OpenAIError on an empty key at *construction*, so building it
+    # unconditionally made `--no-fact --no-recall --no-race` -- the remedy this
+    # command's own warning offers -- traceback before any scoring, leaving no
+    # way to get the intrinsic scores without a key at all.
     llm_client = None
     if wants_judge:
+        if not api_key and llm_base_url:
+            # A key is the default endpoint's requirement, not the judge's. A
+            # local OpenAI-compatible server -- vLLM, Ollama, LM Studio --
+            # accepts any string, and refusing here took away a configuration
+            # that worked before the construction was made lazy. The SDK still
+            # needs something non-empty, so it gets a placeholder that names
+            # itself if it ever reaches a server that does check.
+            api_key = "not-required-by-this-endpoint"
         if not api_key:
             typer.echo(
                 f"{llm_api_key_env} is not set, so the judge-backed scorers "
-                f"cannot run. Re-run with --no-fact --no-recall --no-race for "
-                f"the intrinsic scores, which need no API key."
+                f"cannot run. Either set it (or point --llm-api-key-env at a "
+                f"variable that is set), pass --llm-base-url for a local "
+                f"endpoint that needs no key, or re-run with --no-fact "
+                f"--no-recall --no-race for the intrinsic scores, which need "
+                f"no API key."
             )
             raise typer.Exit(1)
         llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
@@ -3341,9 +3359,16 @@ def eval_score(
     typer.echo(f"\n{'='*60}")
     typer.echo(f"Task: {result.task_id} | Provider: {result.provider}")
     if result.fact_score:
-        typer.echo(f"  FACT: accuracy={result.fact_score.citation_accuracy:.2f}, "
-                   f"effective_citations={result.fact_score.effective_citations}/"
-                   f"{result.fact_score.total_citations}")
+        fact = result.fact_score
+        line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
+                f"effective_citations={fact.effective_citations}/"
+                f"{fact.total_citations}")
+        if fact.unjudged_citations:
+            # The fourth score line to say what it could not measure. A report
+            # citing only DOIs printed 0.00 over 0/0 and looked like a report
+            # whose citations support nothing.
+            line += f", {fact.unjudged_citations} not judged"
+        typer.echo(line)
     if result.claim_recall_score:
         # The fraction is the rate's own numerator and denominator: recall is
         # over the claims the judge ruled on, so printing it against the full

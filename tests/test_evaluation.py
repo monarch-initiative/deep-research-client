@@ -915,3 +915,337 @@ def test_a_presence_only_check_records_no_expected_value():
 
     assert by_name["mentions_ring"].expected is None
     assert by_name["length"].expected == "1863"
+
+
+# Response bodies NCBI actually returns, stubbed at the transport rather than by
+# monkeypatching `fetch_pubmed_metadata`. The earlier fakes for these tests
+# returned `lookup_failed` themselves, which re-implemented the very
+# classification under test: they pinned the scorer's filter and left the
+# response-shape mapping -- the half that was wrong -- uncovered in both
+# directions.
+_PUBMED_BODIES = {
+    # A uid NCBI does not know. The authoritative negative, and the single
+    # thing the verifiability scorer exists to detect.
+    "unknown uid": (
+        {"result": {"99999999": {"error": "cannot get document summary"}}},
+        {"exists": False, "lookup_failed": False},
+    ),
+    # A top-level failure. 200 OK, valid JSON, nothing about the uid --
+    # `raise_for_status` cannot see it, and this is the shape a burst of
+    # citation lookups hits when NCBI rate-limits.
+    "top-level esummary error": (
+        {"esummaryresult": ["Invalid db name", "Empty id list"]},
+        {"exists": False, "lookup_failed": True},
+    ),
+    "rate-limit envelope": (
+        {"error": "API rate limit exceeded"},
+        {"exists": False, "lookup_failed": True},
+    ),
+    # A record came back, so the uid is real, even though the summary carries
+    # no title. `exists = bool(title)` reported this as a fabricated citation.
+    "record with no title": (
+        {"result": {"99999999": {"title": "", "pubdate": "2019"}}},
+        {"exists": True, "lookup_failed": False},
+    ),
+    "real record": (
+        {"result": {"99999999": {"title": "A real paper", "pubdate": "2019 Jan"}}},
+        {"exists": True, "lookup_failed": False},
+    ),
+}
+
+
+@pytest.mark.parametrize("scenario", sorted(_PUBMED_BODIES))
+def test_every_pubmed_response_shape_is_classified(scenario):
+    """Each shape says explicitly whether the lookup succeeded.
+
+    The classification covered a per-uid error and an exception and defaulted
+    everything else to "the lookup succeeded", which is the side that counts a
+    citation as fabricated. An NCBI rate limit therefore reported every
+    citation in a report as hallucinated.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+
+    body, expected = _PUBMED_BODIES[scenario]
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+
+    async def fetch():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.fetch_pubmed_metadata("PMID:99999999", client)
+
+    meta = asyncio.run(fetch())
+    assert meta["exists"] is expected["exists"], scenario
+    assert meta["lookup_failed"] is expected["lookup_failed"], scenario
+
+
+def test_a_transport_error_is_a_failed_lookup():
+    """The other half: an exception is not an authoritative negative."""
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+
+    def boom(request):
+        raise httpx.ConnectTimeout("no route to host")
+
+    async def fetch():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(boom)) as client:
+            return await scorers.fetch_pubmed_metadata("PMID:7913883", client)
+
+    meta = asyncio.run(fetch())
+    assert meta["lookup_failed"] is True
+    assert meta["exists"] is False
+
+
+def test_a_rate_limited_batch_is_not_a_report_that_invented_its_references():
+    """The consequence, on the number a user would publish.
+
+    Nine real citations and one invented one, with NCBI rate-limiting: every
+    lookup returns the envelope shape, so the whole report was reported as
+    0.00 verifiable -- indistinguishable from a report whose references are
+    entirely fabricated.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"error": "API rate limit exceeded"})
+    )
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = " ".join(f"A claim [PMID:1000000{i}]." for i in range(9))
+    out = parse_dr_output(task, body, "test")
+
+    async def score():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.score_citation_verifiability(out, client)
+
+    result = asyncio.run(score())
+    assert result.total_citations == 9
+    assert result.unresolvable == 9, "every lookup failed, none was answered"
+    assert result.verified_exist == 0
+
+
+def test_a_fabricated_citation_still_drags_a_rate_full_of_real_ones():
+    """The discriminating case, which a single-citation test cannot show.
+
+    With one citation the empty-`checkable` guard returns 0.00 under both the
+    old filter and the new one. The defect's real signature is nine real and
+    one invented scoring 1.00; this pins 0.90 instead.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    def route(request):
+        if "99999999" in str(request.url):
+            return httpx.Response(200, json={
+                "result": {"99999999": {"error": "cannot get document summary"}}})
+        uid = str(request.url).split("id=")[1].split("&")[0]
+        return httpx.Response(200, json={
+            "result": {uid: {"title": "A real paper", "pubdate": "2019 Jan"}}})
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = " ".join(f"A claim [PMID:1000000{i}]." for i in range(9)) \
+        + " An invented one [PMID:99999999]."
+    out = parse_dr_output(task, body, "test")
+
+    async def score():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(route)) as client:
+            return await scorers.score_citation_verifiability(out, client)
+
+    result = asyncio.run(score())
+    assert result.total_citations == 10
+    assert result.unresolvable == 0, "nothing failed; one answer was 'no such paper'"
+    assert result.verifiability == pytest.approx(0.9)
+
+
+@pytest.mark.parametrize("scenario,meta,expect_checked,expect_unresolvable", [
+    # A real paper whose summary carries no title. The lookup succeeded and the
+    # paper exists; there is simply nothing to align a claim against, so it
+    # leaves the rate rather than being scored a misalignment.
+    ("real record, no title",
+     {"exists": True, "title": None, "year": 2019, "lookup_failed": False},
+     0, 1),
+    # A uid the registry does not know. A paper that does not exist supports
+    # nothing, so it counts against alignment.
+    ("fabricated pmid",
+     {"exists": False, "title": None, "year": None,
+      "error": "cannot get document summary", "lookup_failed": False},
+     1, 0),
+    # Nothing was learned at all.
+    ("failed lookup",
+     {"exists": False, "title": None, "year": None,
+      "error": "ConnectTimeout", "lookup_failed": True},
+     0, 1),
+])
+def test_alignment_tells_three_kinds_of_missing_title_apart(
+    scenario, meta, expect_checked, expect_unresolvable, monkeypatch,
+):
+    """"No title" is true of three different things, and only one of them is
+    the report's fault."""
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def fake_pubmed(pmid, client=None):
+        return meta
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_metadata", fake_pubmed)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "FGFR3 causes achondroplasia [PMID:7913883].", "test")
+
+    score = asyncio.run(scorers.score_citation_alignment(out))
+    assert score.total_checked == expect_checked, scenario
+    assert score.unresolvable == expect_unresolvable, scenario
+
+
+@pytest.mark.parametrize("preamble", [
+    '{"thinking": "the abstract mentions FGFR3"}',   # a judge that narrates
+    '{"model": "gpt-4o-mini", "object": "chat"}',    # a wrapper's envelope
+])
+@pytest.mark.parametrize("scorer", ["fact", "recall", "race"])
+def test_a_verdict_after_a_parseable_preamble_is_still_a_verdict(
+    monkeypatch, preamble, scorer,
+):
+    """Trying every balanced run fixed only half of this.
+
+    The loop returned the first candidate that *parsed*, and a narration object
+    parses -- so `{"thinking": ...} {"matched": true}`, the shape the change was
+    written for, still took the no-verdict path. The measurement left the
+    denominator and turned up as an `unjudged_claims` or `unscored_count`
+    nobody could explain, on a judge that had answered correctly.
+
+    All three judge-backed scorers, because each has its own verdict key and
+    each had to be told about it separately -- the "fixed one instance, not its
+    siblings" shape this branch has hit before.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    verdicts = {
+        "fact": '{"supported": true, "explanation": "yes"}',
+        "recall": '{"matched": true, "best_matching_text": "FGFR3"}',
+        "race": '{"score": 4, "explanation": "good"}',
+    }
+
+    async def narrating_judge(*args, **kwargs):
+        return f"{preamble} then {verdicts[scorer]}"
+
+    monkeypatch.setattr(scorers, "_llm_judge", narrating_judge)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = "FGFR3 causes achondroplasia (PMID:7913883)."
+    out = parse_dr_output(task, body, "test")
+
+    if scorer == "recall":
+        claims = [ReferenceClaim(name="fgfr3", category="mechanism",
+                                 description="FGFR3 mutations cause achondroplasia")]
+        score = asyncio.run(scorers.score_claim_recall(out, claims, object()))
+        assert score.unjudged_claims == 0
+        assert score.claim_recall == 1.0
+    elif scorer == "race":
+        score = asyncio.run(scorers.score_race(out, task, object()))
+        assert score.unscored_count == 0
+        assert all(d.score == 4.0 for d in score.dimensions)
+    else:
+        async def abstract(pmid, client=None):
+            return "FGFR3 mutations cause achondroplasia."
+
+        monkeypatch.setattr(scorers, "fetch_pubmed_abstract", abstract)
+        score = asyncio.run(scorers.score_fact(out, object()))
+        assert score.total_citations == 1
+        assert score.citation_accuracy == 1.0
+
+
+def test_a_reply_with_no_verdict_anywhere_is_still_unjudged():
+    """The key must not turn every parseable object into a verdict: a reply
+    that never answers is still a lost measurement, not a negative one."""
+
+    from deep_research_client.evaluation import scorers
+
+    assert scorers._extract_json_object('{"verdict": "yes"}', key="matched") == {
+        "verdict": "yes"
+    }
+    assert scorers._extract_json_object("no json at all", key="matched") is None
+
+
+@pytest.mark.parametrize("raw,expect_score", [
+    (4, 4.0),
+    (4.5, 4.5),
+    ("4", 4.0),      # a judge that quotes its number is still answering
+    (1, 1.0),
+    (5, 5.0),
+    (9, None),       # off the scale it was given
+    (0, None),
+    (-3, None),
+    ("excellent", None),
+])
+def test_a_score_off_the_scale_is_unscored_not_clamped(monkeypatch, raw, expect_score):
+    """`min(max(float(score), 1.0), 5.0)` made a judge answering 9 a confident 5.
+
+    Clamping invents a value the judge never gave, and it does so in the
+    direction that flatters the report -- an out-of-range answer became the top
+    of the scale. The rest of this scorer had already settled that a reply it
+    cannot read leaves the average rather than landing somewhere in it.
+    """
+    import asyncio
+    import json as json_mod
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def judge(*args, **kwargs):
+        return json_mod.dumps({"score": raw, "explanation": "why"})
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    score = asyncio.run(scorers.score_race(out, task, object()))
+
+    assert {d.score for d in score.dimensions} == {expect_score}
+    if expect_score is None:
+        assert score.unscored_count == len(score.dimensions)
+        assert "outside 1-5" in score.dimensions[0].explanation
+
+
+def test_claim_recall_with_no_reference_claims_records_nothing_judged():
+    """The early return recorded `judged_chars` as the truncation length.
+
+    Both fields are filled in so they are not sometimes-absent for two
+    different reasons, but the *value* said a report's first 12,000 characters
+    had been read when no judge was asked anything. On a long report that
+    printed "judged on 12,000 of 29,000 characters" beside a 0/0 -- a claim
+    about work that never happened.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    long_report = "FGFR3 drives achondroplasia. " * 1000
+    assert len(long_report) > scorers.MAX_REPORT_CHARS
+    out = parse_dr_output(task, long_report, "test")
+
+    score = asyncio.run(scorers.score_claim_recall(out, [], object()))
+
+    assert score.judged_chars == 0, "no judge was asked anything"
+    assert score.report_chars == len(long_report)

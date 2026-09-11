@@ -785,7 +785,17 @@ deep-research-client eval score report.md --source questions.yaml --task-id fgfr
 # Intrinsic scores only: no LLM judge, no API spend
 deep-research-client eval score report.md --source questions.yaml \
   --no-fact --no-recall --no-race
+
+# A local OpenAI-compatible judge, which needs no API key
+deep-research-client eval score report.md --source questions.yaml \
+  --llm-base-url http://localhost:8000/v1 --llm-model my-local-model
 ```
+
+`eval score` refuses to start when a judge-backed score is enabled and no API
+key is set, rather than running the intrinsic scores and then failing at the
+judge. Set `OPENAI_API_KEY`, point `--llm-api-key-env` at a variable that is
+set, pass `--llm-base-url` for an endpoint that needs no key, or turn the
+judge-backed scores off with the three flags above.
 
 ---
 

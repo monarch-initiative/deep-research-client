@@ -355,6 +355,18 @@ deep-research-client eval score report.md --source questions.yaml \
   --no-fact --no-recall --no-race
 ```
 
+The three judge-backed scores need an API key, and the command refuses to start
+without one rather than running everything and failing at the judge. Three ways
+past it: set `OPENAI_API_KEY`, point `--llm-api-key-env` at a variable that is
+set, or turn the judge-backed scores off with the flags above. A local
+OpenAI-compatible endpoint needs no key at all — pass `--llm-base-url` and the
+check is skipped:
+
+```bash
+deep-research-client eval score report.md --source questions.yaml \
+  --llm-base-url http://localhost:8000/v1 --llm-model my-local-model
+```
+
 ## Rubrics
 
 Report tasks are scored against a rubric — reference claims to recall, facts to

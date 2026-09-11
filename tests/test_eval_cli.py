@@ -739,8 +739,17 @@ def test_eval_score_reports_a_report_the_judge_only_partly_saw(tmp_path, monkeyp
     monkeypatch.setattr(scorers, "_llm_judge", judge)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
 
+    # With a reference claim, so claim recall actually asks the judge something
+    # and truncates like RACE does; without one it judges nothing, and nothing
+    # judged is not a truncated judgement.
     path = _write(tmp_path / "t.yaml",
-                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n"
+                  "    answer_type: REPORT\n"
+                  "    rubric:\n"
+                  "      reference_claims:\n"
+                  "        - name: fgfr3\n"
+                  "          category: mechanism\n"
+                  "          description: FGFR3 mutations cause achondroplasia.\n")
     long_report = "FGFR3 drives achondroplasia. " * 1000
     assert len(long_report) > scorers.MAX_REPORT_CHARS
     report = _write(tmp_path / "r.md", long_report)
@@ -793,3 +802,83 @@ def test_eval_score_reports_alignment_lookups_that_failed(tmp_path, monkeypatch)
         ln for ln in result.stdout.splitlines() if "Citation-Claim Alignment" in ln
     )
     assert "1 could not be looked up" in alignment
+
+
+def test_a_keyless_local_endpoint_is_not_refused(tmp_path, monkeypatch):
+    """`--llm-base-url` exists for vLLM, Ollama and LM Studio, which take any key.
+
+    Making the client construction lazy fixed a traceback and introduced this:
+    the command began exiting 1 whenever the key env var was empty, whatever
+    `--llm-base-url` said, and offered as its remedy "turn off the judge you
+    just configured". The refusal belongs to the default endpoint, not to the
+    judge.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"score": 4, "explanation": "ok"}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--llm-base-url", "http://localhost:8000/v1",
+        "--no-fact", "--no-recall", "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "RACE" in result.stdout
+
+
+def test_the_keyless_refusal_names_every_way_out(tmp_path, monkeypatch):
+    """Against the default endpoint the refusal stands, but it used to offer
+    only one of the three remedies the command actually has."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
+
+    assert result.exit_code == 1
+    assert "--llm-api-key-env" in result.stdout
+    assert "--llm-base-url" in result.stdout
+    assert "--no-fact --no-recall --no-race" in result.stdout
+
+
+def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
+    """The fourth score line with no unmeasured count.
+
+    `score_fact` drops every pair whose verdict is None and reports
+    `total_citations` over what is left, so a report citing only DOIs -- whose
+    abstracts this scorer cannot fetch -- printed `accuracy=0.00,
+    effective_citations=0/0`, which reads as a report whose citations support
+    nothing. Its three siblings were fixed; this one was not touched.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"supported": true, "explanation": "yes"}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    # Only DOIs: nothing this scorer can fetch an abstract for.
+    report = _write(tmp_path / "r.md",
+                    "FGFR3 drives achondroplasia (DOI:10.1038/ng1234). "
+                    "It is dominant (DOI:10.1038/ng5678).")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-recall", "--no-race", "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    fact_line = next(ln for ln in result.stdout.splitlines() if "FACT:" in ln)
+    assert "2 not judged" in fact_line

@@ -147,16 +147,27 @@ async def fetch_pubmed_abstract(pmid: str, client: httpx.AsyncClient | None = No
 # ---------------------------------------------------------------------------
 
 
-def _extract_json_object(text: str) -> dict | None:
+def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     """Extract a JSON object from text, handling nested braces.
 
-    Every balanced ``{...}`` run is tried, not only the first: a judge that
-    narrates before answering -- ``{"thinking": "..."} {"supported": true}``,
-    or a chat wrapper that prefixes an envelope -- otherwise took the
-    no-verdict path with its verdict sitting in the text. That is now a lost
-    measurement rather than an invented one, so it is a coverage cost rather
-    than a wrong answer, but it would surface as an `unjudged_claims` count
-    nobody could explain.
+    Every balanced ``{...}`` run is tried, not only the first. With ``key``,
+    the first candidate that both parses *and* carries that key wins; without
+    it, the first that parses.
+
+    ``key`` is what makes this useful, and leaving it out was a defect of its
+    own. A judge that narrates before answering --
+    ``{"thinking": "..."} {"supported": true}``, or a chat wrapper that
+    prefixes an envelope -- produces two parseable objects, and taking the
+    first returned the narration. The caller's ``result.get("supported") is
+    not None`` was then False, so the reply still took the no-verdict path
+    with its verdict sitting in the text, which is exactly what trying every
+    run was meant to stop. Each caller knows which key it asked for, so each
+    passes it.
+
+    That is a lost measurement rather than an invented one -- it shrinks a
+    denominator instead of inventing an answer -- but it would surface as an
+    `unjudged_claims` count nobody could explain, on a judge that was
+    answering correctly.
 
     >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
     {'a': 1, 'b': {'c': 2}}
@@ -164,11 +175,28 @@ def _extract_json_object(text: str) -> dict | None:
     True
     >>> _extract_json_object('{"supported": true, "explanation": "yes"}')
     {'supported': True, 'explanation': 'yes'}
+
+    The narrating judge, with and without the key:
+
     >>> _extract_json_object('{"thinking": "hmm"} then {"supported": true}')
     {'thinking': 'hmm'}
+    >>> _extract_json_object('{"thinking": "hmm"} then {"supported": true}',
+    ...                      key="supported")
+    {'supported': True}
+
+    A run that does not parse is skipped either way:
+
     >>> _extract_json_object('not json {oops} but {"supported": false}')
     {'supported': False}
+
+    When no candidate carries the key, the first that parses is returned, so
+    the caller sees the judge's actual reply rather than nothing and can report
+    it in the explanation:
+
+    >>> _extract_json_object('{"verdict": "yes"}', key="supported")
+    {'verdict': 'yes'}
     """
+    first: dict | None = None
     for start, char in enumerate(text):
         if char != "{":
             continue
@@ -180,10 +208,17 @@ def _extract_json_object(text: str) -> dict | None:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(text[start : i + 1])
+                        parsed = json.loads(text[start : i + 1])
                     except json.JSONDecodeError:
                         break  # try the next opening brace
-    return None
+                    if not isinstance(parsed, dict):
+                        break
+                    if key is None or key in parsed:
+                        return parsed
+                    if first is None:
+                        first = parsed
+                    break
+    return first
 
 
 async def _llm_judge(prompt: str, llm_client: Any, model: str = "gpt-4o-mini") -> str:
@@ -273,7 +308,7 @@ async def score_fact(
             )
             try:
                 result_text = await _llm_judge(prompt, llm_client, model=model)
-                result = _extract_json_object(result_text)
+                result = _extract_json_object(result_text, key="supported")
                 if result and result.get("supported") is not None:
                     supported = result.get("supported")
                     explanation = result.get("explanation", "")
@@ -317,6 +352,11 @@ async def score_fact(
                 )
 
     # Compute aggregate scores
+    # A verdict of None means the pair was never judged -- a DOI, whose
+    # abstract this scorer cannot fetch, a PMID with no abstract, or a reply
+    # with no verdict in it. Those leave the rate, as they always have; what is
+    # new is that the count is reported, so that "nothing was judged" and
+    # "nothing was supported" stop rendering as the same 0.00.
     checkable = [v for v in verifications if v.supported is not None]
     total = len(checkable)
     verified = sum(1 for v in checkable if v.supported)
@@ -326,6 +366,7 @@ async def score_fact(
         verified_citations=verified,
         citation_accuracy=verified / total if total > 0 else 0.0,
         effective_citations=verified,
+        unjudged_citations=len(verifications) - total,
         verifications=verifications,
     )
 
@@ -356,10 +397,14 @@ async def score_claim_recall(
     """
     if not ground_truth_claims:
         # Provenance recorded here too, so the two fields are not
-        # sometimes-absent for two different reasons.
+        # sometimes-absent for two different reasons. `judged_chars` is 0
+        # rather than the truncation length: no judge was asked anything, so
+        # saying a report's first 12,000 characters were read would be a claim
+        # about work that never happened -- and would print a truncation note
+        # for a scorer that did not truncate.
         return ClaimRecallScore(
             total_ground_truth_claims=0, matched_claims=0, claim_recall=0.0,
-            judged_chars=min(len(dr_output.raw_markdown), MAX_REPORT_CHARS),
+            judged_chars=0,
             report_chars=len(dr_output.raw_markdown),
         )
 
@@ -384,7 +429,7 @@ async def score_claim_recall(
         )
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
-            result = _extract_json_object(result_text)
+            result = _extract_json_object(result_text, key="matched")
             if result and result.get("matched") is not None:
                 matched = result.get("matched")
                 best_text = result.get("best_matching_text")
@@ -466,6 +511,21 @@ _RACE_DIMENSIONS = [
 ]
 
 
+def _in_scale(raw: object) -> bool:
+    """Whether a judge's `score` is a number on the 1-5 scale it was asked for.
+
+    >>> [_in_scale(v) for v in (1, 3.5, 5, "4")]
+    [True, True, True, True]
+    >>> [_in_scale(v) for v in (0, 9, -1, "excellent", None, [4])]
+    [False, False, False, False, False, False]
+    """
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return 1.0 <= value <= 5.0
+
+
 async def score_race(
     dr_output: DROutput,
     task: EvalTask,
@@ -512,10 +572,20 @@ async def score_race(
         )
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
-            result = _extract_json_object(result_text)
-            if result and result.get("score") is not None:
-                score = min(max(float(result["score"]), 1.0), 5.0)
+            result = _extract_json_object(result_text, key="score")
+            raw = result.get("score") if result else None
+            if result is not None and raw is not None and _in_scale(raw):
+                score = float(raw)
                 explanation = result.get("explanation", "")
+            elif raw is not None:
+                # A judge answering 9 on a 1-5 scale is not a confident 5, and
+                # one answering "excellent" is not a number at all. Clamping
+                # turned both into the top of the scale -- a value the judge
+                # never gave, in the one dimension the clamp guaranteed would
+                # look best. Recorded as unscored, like any other reply this
+                # cannot read.
+                score = None
+                explanation = f"Judge returned a score outside 1-5: {raw!r}"
             else:
                 # No parseable verdict is not a middling verdict. Recorded as
                 # unscored so it leaves the average rather than dragging it to
@@ -611,7 +681,25 @@ async def fetch_pubmed_metadata(
         resp.raise_for_status()
         data = resp.json()
 
-        result_data = data.get("result", {}).get(numeric_id, {})
+        result_data = data.get("result", {}).get(numeric_id)
+        if result_data is None:
+            # A 200 whose body says nothing about this uid. That is what NCBI
+            # returns for a *top-level* failure -- `{"esummaryresult": ["Invalid
+            # db name", ...]}`, a rate-limit envelope, an error page that still
+            # parses as JSON -- and `raise_for_status` cannot see it, because
+            # the status is 200. Nothing was learned about the citation, so it
+            # is a failed lookup.
+            #
+            # Defaulting it to "not a failed lookup" was the round-twenty defect
+            # by the one route that fix did not enumerate, and by the route a
+            # burst of citation lookups is likeliest to take: rate-limited by
+            # NCBI, every citation in the report reported as fabricated.
+            return {
+                "exists": False, "title": None, "year": None,
+                "error": f"no result entry for {numeric_id} in the response",
+                "lookup_failed": True,
+            }
+
         if "error" in result_data:
             # NCBI reports an unknown uid as a per-uid `error`. That is the
             # authoritative negative -- the single thing this scorer exists to
@@ -622,7 +710,7 @@ async def fetch_pubmed_metadata(
                 "error": result_data["error"], "lookup_failed": False,
             }
 
-        title = result_data.get("title", "")
+        title = result_data.get("title") or None
         pubdate = result_data.get("pubdate", "")
         year = None
         if pubdate:
@@ -630,7 +718,15 @@ async def fetch_pubmed_metadata(
             if year_match:
                 year = int(year_match.group(1))
 
-        return {"exists": bool(title), "title": title, "year": year}
+        # A record came back, so the uid is real: `exists` is about the record,
+        # not about the title. It was `bool(title)`, which reported a real paper
+        # whose summary happens to carry no title as a fabricated citation --
+        # the same conflation, one field along. A missing title costs alignment
+        # its comparison, and alignment says so itself.
+        return {
+            "exists": True, "title": title, "year": year,
+            "lookup_failed": False,
+        }
     except Exception as e:
         # Transport: a timeout, a 5xx, a connection error. Nothing was learned
         # about the citation, so it is excluded from the rate rather than
@@ -676,7 +772,16 @@ async def resolve_doi(
         resp.raise_for_status()
         data = resp.json()
 
-        message = data.get("message", {})
+        message = data.get("message")
+        if not message:
+            # 200 with no work record: the same "answered, but not about this
+            # identifier" shape as NCBI's top-level error above.
+            return {
+                "exists": False, "title": None, "year": None,
+                "error": "no work record in the CrossRef response",
+                "lookup_failed": True,
+            }
+
         title_list = message.get("title", [])
         title = title_list[0] if title_list else None
 
@@ -686,7 +791,12 @@ async def resolve_doi(
         if date_parts and date_parts[0]:
             year = date_parts[0][0]
 
-        return {"exists": bool(title), "title": title, "year": year}
+        # CrossRef returned the work, so the DOI resolves, whether or not the
+        # record carries a title.
+        return {
+            "exists": True, "title": title, "year": year,
+            "lookup_failed": False,
+        }
     except Exception as e:
         logger.warning("Failed to resolve DOI %s: %s", doi, e)
         return {
@@ -826,18 +936,21 @@ async def score_citation_alignment(
                 continue
 
             title = meta.get("title")
-            if meta.get("lookup_failed"):
-                # A timeout, a 5xx, a connection error: nothing was learned
-                # about this citation, so it leaves the rate rather than
-                # counting against it. Counted rather than dropped, because a
-                # PubMed outage otherwise reports 0/0 (0.00), where "nothing
-                # was checkable" and "nothing aligned" render identically.
+            if meta.get("lookup_failed") or (meta.get("exists") and not title):
+                # Two ways to learn nothing. A failed lookup -- a timeout, a
+                # 5xx, a body that answers about no uid at all -- and a record
+                # that resolves but carries no title, which is a real paper
+                # with nothing to align a claim against. Both leave the rate
+                # rather than counting against it. Counted rather than dropped,
+                # because a PubMed outage otherwise reports 0/0 (0.00), where
+                # "nothing was checkable" and "nothing aligned" render
+                # identically.
                 unresolvable += 1
                 continue
 
             if not title:
-                # The lookup succeeded and there is no paper to align against:
-                # NCBI reporting an unknown uid, or CrossRef answering 404.
+                # The lookup succeeded and said there is no such paper: NCBI
+                # reporting an unknown uid, or CrossRef answering 404.
                 # That is the authoritative negative, and a citation to a paper
                 # that does not exist supports nothing -- so it counts against
                 # alignment rather than leaving the rate.

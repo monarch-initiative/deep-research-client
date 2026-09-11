@@ -7,6 +7,12 @@ so a TSV of two columns is a valid benchmark.
 YAML is the fuller format - it can carry distractors, rubrics and provenance.
 TSV is for the case where the questions came out of a spreadsheet and there is
 nothing more to say about them.
+
+`rubric` is YAML-only in practice: it has to be a mapping, and a TSV cell is a
+string. It is in the shared key list all the same, so a TSV with a `rubric`
+column is refused by name rather than silently filed into task metadata - which
+is what used to happen to a YAML `rubric:` block, and produced a scorecard of
+zeros with nothing saying the rubric had been ignored.
 """
 
 import csv

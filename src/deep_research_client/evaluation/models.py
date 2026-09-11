@@ -119,6 +119,18 @@ class FACTScore(BaseModel):
     verified_citations: int = Field(..., description="Citations that support their claims")
     citation_accuracy: float = Field(..., description="verified / total")
     effective_citations: int = Field(..., description="Count of verifiably supported citations")
+    unjudged_citations: int = Field(
+        default=0,
+        description=(
+            "Citation-claim pairs the judge returned no verdict on, and which "
+            "are therefore in none of the counts above: a DOI, whose abstract "
+            "this scorer cannot fetch; a PMID with no abstract; a reply with "
+            "no verdict in it. Recorded for the same reason as its three "
+            "siblings -- a report whose citations are all DOIs otherwise "
+            "reports accuracy 0.00 over 0 of 0, which reads as a report whose "
+            "citations support nothing."
+        ),
+    )
     verifications: list[CitationVerification] = Field(default_factory=list, description="Individual verification results")
 
 

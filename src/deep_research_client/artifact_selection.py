@@ -192,6 +192,23 @@ class ArtifactDecision:
     reason: str
     rule: str = ""
 
+    def __post_init__(self) -> None:
+        """Reject a slug that is not in :data:`ARTIFACT_RULES`.
+
+        Validated here rather than by a test that enumerates outcomes,
+        because such a list is a second hand-maintained copy of the same
+        thing — which is how ``media_type`` came to be undocumented. A new
+        branch in :meth:`ArtifactSelectionPolicy.decide` now fails the moment
+        any test reaches it.
+
+        Raises:
+            ValueError: If ``rule`` is neither empty nor a known slug.
+        """
+        if self.rule and self.rule not in ARTIFACT_RULES:
+            raise ValueError(
+                f"unknown decision rule {self.rule!r}; add it to ARTIFACT_RULES"
+            )
+
     def __bool__(self) -> bool:
         return self.keep
 

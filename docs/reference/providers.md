@@ -778,6 +778,17 @@ deep-research "..." --provider openscientist \
 Note that transcripts can be large and, being a record of everything the agent
 did, are worth reading before they are committed anywhere public.
 
+### Cached results from before this change
+
+OpenScientist's cache version was bumped when the report-body picker became
+deterministic and scaffolding-aware, so entries written before that are no
+longer matched and the next run is live. Nothing is deleted — the old entries
+stay on disk and `list-cache` / `search-cache` still show them — they are just
+not served.
+
+Falcon's cache version is unchanged. The two used to share one string, so the
+split keeps Falcon's cached runs, whose behaviour this did not touch.
+
 ## Transcript statistics
 
 Once transcripts are preserved they can be mined for the shape of a run rather

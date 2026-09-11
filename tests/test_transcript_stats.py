@@ -888,3 +888,24 @@ def test_the_distinct_query_list_is_derived_from_the_counts():
 
     assert stats.web_searches == ["a", "b"]
     assert json.loads(stats.model_dump_json())["web_searches"] == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    "declared,expected",
+    [
+        (["Bash", "Read"], ["Bash", "Read"]),
+        ("Bash", []),
+        (None, []),
+        (42, []),
+    ],
+)
+def test_a_malformed_tools_field_does_not_become_phantom_tools(declared, expected):
+    """`"tools": "Bash"` would otherwise declare B, a, s and h.
+
+    Transcript content is provider-produced JSON, so a malformed field is
+    skipped rather than raised on — the rest of the summary is still worth
+    having.
+    """
+    stats = summarize_transcript([{"type": "session_init", "tools": declared}])
+
+    assert stats.available_tools == expected

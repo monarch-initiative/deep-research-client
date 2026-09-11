@@ -185,6 +185,16 @@ class TranscriptStats(BaseModel):
         Derived from :attr:`web_search_counts` rather than stored beside it:
         two fields holding the same data can disagree, and every renderer
         would then need a fallback for the case where they do.
+
+        Output-only. It appears in ``model_dump`` for a reader, but the model
+        will not take it back — the counts carry the data, so a round-tripped
+        dump reconstructs it. (``extra="forbid"``, the house style next door
+        in ``BaseProviderParams``, is unavailable here for that reason: it
+        would make the model reject its own dump.)
+
+        May include :data:`NO_QUERY_RECORDED`, which stands in for a search
+        the transcript recorded without a query — so a "distinct queries"
+        count can include one entry that is not a query.
         """
         return sorted(self.web_search_counts)
 
@@ -717,9 +727,9 @@ class _Accumulator:
             self.models.add(str(model))
 
     def _on_session_init(self, entry: dict[str, Any]) -> None:
-        self.available_tools.update(str(t) for t in entry.get("tools") or ())
-        self.available_skills.update(str(c) for c in entry.get("slash_commands") or ())
-        self.available_agents.update(str(a) for a in entry.get("agents") or ())
+        self.available_tools.update(_as_names(entry.get("tools")))
+        self.available_skills.update(_as_names(entry.get("slash_commands")))
+        self.available_agents.update(_as_names(entry.get("agents")))
         model = entry.get("model")
         if model:
             self.models.add(str(model))
@@ -793,6 +803,34 @@ _Accumulator._HANDLERS = {
     "web_search": _Accumulator._on_web_search,
 }
 """Recognized entry types. A type absent here is counted as unrecognized."""
+
+
+def _as_names(value: Any) -> tuple[str, ...]:
+    """Read a declared-name list, refusing to iterate a bare string.
+
+    ``{"tools": "Bash"}`` would otherwise contribute four available tools —
+    ``B``, ``a``, ``s``, ``h`` — straight into ``unused_available_tools``.
+    Transcript content is provider-produced JSON rather than a caller's
+    argument, so this returns nothing rather than raising: a malformed field
+    should not stop the rest of the summary.
+
+    Args:
+        value: The field as decoded, of any shape.
+
+    Returns:
+        The names, or empty for anything that is not a list of them.
+
+    Example:
+        >>> _as_names(["Bash", "Read"])
+        ('Bash', 'Read')
+        >>> _as_names("Bash")
+        ()
+        >>> _as_names(None)
+        ()
+    """
+    if isinstance(value, str) or not isinstance(value, (list, tuple, set)):
+        return ()
+    return tuple(str(item) for item in value)
 
 
 def _is_number(value: Any) -> TypeGuard[float]:
@@ -963,7 +1001,9 @@ def _render_markdown(stats: TranscriptStats) -> str:
             heading = f"### Web searches ({total}, {len(stats.web_searches)} distinct)"
         lines.extend([heading, ""])
         for query in stats.web_searches:
-            count = stats.web_search_counts.get(query, 1)
+            # Not .get(): web_searches *is* sorted(web_search_counts), so a
+            # missing key is unreachable and a default would say otherwise.
+            count = stats.web_search_counts[query]
             suffix = f" (x{count})" if count > 1 else ""
             lines.append(f"- {_md(query)}{suffix}")
         lines.append("")

@@ -16,6 +16,7 @@ from deep_research_client.artifact_selection import (
     DEFAULT_SCAFFOLDING_DIRECTORIES,
     DEFAULT_SCAFFOLDING_PREFIXES,
     RUNTIME_EXTENSIONS,
+    ArtifactDecision,
     ArtifactSelectionPolicy,
     _with_trailing_slashes,
     is_under_directory,
@@ -682,3 +683,19 @@ def test_the_image_keep_is_the_one_the_enumeration_omitted():
 
     assert decision.keep
     assert decision.rule == "media_type"
+
+
+def test_an_undocumented_rule_slug_is_rejected_at_construction():
+    """The set and the returns are held together by the type, not by a list.
+
+    A test that enumerates outcomes is a second hand-maintained copy of the
+    same thing, which is how `media_type` came to be undocumented. Validating
+    here means a new decide branch fails the moment any test reaches it.
+    """
+    with pytest.raises(ValueError, match="unknown decision rule"):
+        ArtifactDecision(keep=False, reason="something", rule="not_a_real_rule")
+
+
+def test_a_decision_may_still_carry_no_slug():
+    """The empty default stays legal for a decision built outside decide."""
+    assert ArtifactDecision(keep=True, reason="hand-built").rule == ""

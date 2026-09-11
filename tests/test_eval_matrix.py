@@ -365,6 +365,50 @@ def test_score_by_arm_ignores_report_cells():
     assert scores["a1"].accuracy == pytest.approx(1.0)
 
 
+def test_on_scores_reports_an_empty_result_as_a_result(tmp_path, mock_client):
+    """The empty call is the contract, not an accident of the code path.
+
+    `on_scores` fires whenever grading ran, including when the selection had
+    no multiple-choice cells -- which is the only way a caller can tell
+    "grading was off" from "grading ran and found nothing to score". The CLI
+    cannot tell the difference (it starts from an empty dict, so the empty
+    call is a no-op for it), so this is the only thing keeping the behaviour
+    alive: folding the call under the `if scores:` that guards
+    `write_scores_tsv` one line above is the obvious tidy-up, and it would
+    delete a documented contract with nothing else failing.
+    """
+    reports = EvalSet(name="prose", tasks=[
+        EvalTask(id="r1", prompt="What mechanisms?", answer_type=AnswerType.REPORT),
+    ])
+    seen: list[dict] = []
+
+    asyncio.run(run_matrix(
+        reports, [_mock_arm("a", "first")],
+        MatrixConfig(output_dir=tmp_path / "run", grade=True,
+                     on_scores=seen.append),
+        client=mock_client,
+    ))
+
+    assert seen == [{}], (
+        "a graded run with nothing to score must still report its result"
+    )
+    # And the empty mapping is not written out as an arm-less scores file.
+    assert not (tmp_path / "run" / "scores.tsv").exists()
+
+
+def test_on_scores_is_silent_when_grading_is_off(tmp_path, mock_client):
+    """The other half of the distinction the empty call exists to make."""
+    seen: list[dict] = []
+
+    asyncio.run(run_matrix(
+        _mcq_eval_set(2), [_mock_arm("a", "first")],
+        MatrixConfig(output_dir=tmp_path / "run", on_scores=seen.append),
+        client=mock_client,
+    ))
+
+    assert seen == [], "grading did not run, so there is no result to report"
+
+
 def test_score_by_arm_is_empty_without_multiple_choice_tasks():
     eval_set = EvalSet(name="reports", tasks=[
         EvalTask(id="r1", prompt="Q?", answer_type=AnswerType.REPORT),

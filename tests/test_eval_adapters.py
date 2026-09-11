@@ -331,7 +331,7 @@ def test_empty_score_does_not_divide_by_zero():
     assert score.precision is None
 
 
-def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one():
+def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one(caplog):
     """The mixture every describer of the em dash used to rule out.
 
     Three places said when precision is absent, and all three said it as a
@@ -345,12 +345,16 @@ def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one():
     rest, `score_mcq`'s own summary names it, and no describer of the number
     did.
     """
-    mixed = mcq.score_mcq(
-        [MCQAnswer(task_id=f"d{i}", provider="p",
-                   disposition=ScoreDisposition.ABSTAINED) for i in range(5)]
-        + [MCQAnswer(task_id=f"u{i}", provider="p",
-                     disposition=ScoreDisposition.SCORED) for i in range(5)]
-    )
+    # Captured, not because the message is under test here, but so five
+    # unusable records do not print a warning to stderr on every plain run.
+    with caplog.at_level(logging.WARNING,
+                         logger="deep_research_client.evaluation.mcq"):
+        mixed = mcq.score_mcq(
+            [MCQAnswer(task_id=f"d{i}", provider="p",
+                       disposition=ScoreDisposition.ABSTAINED) for i in range(5)]
+            + [MCQAnswer(task_id=f"u{i}", provider="p",
+                         disposition=ScoreDisposition.SCORED) for i in range(5)]
+        )
     assert (mixed.total, mixed.attempted, mixed.unusable) == (10, 5, 5)
     assert mixed.precision is None, "nothing was judged, so there is no rate"
     assert mixed.coverage == pytest.approx(0.5), (

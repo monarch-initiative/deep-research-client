@@ -3278,26 +3278,31 @@ def eval_run(
         w = _RATE_WIDTH
         typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
-            # An em dash where there is nothing to take a rate over --
-            # that is, where no attempted answer had its correctness
+            # An em dash where no attempted answer had its correctness
             # established. `prec 0.000` in a column beside arms that answered
             # reads as "got them all wrong", and an arm with nothing to be
             # precise about is exactly the one a comparison must not read
-            # that way.
+            # that way. Which case it is comes from the per-disposition
+            # columns in `scores.tsv` -- `abstained`, `provider_errors`,
+            # `extraction_failures`, `unusable` -- and from nothing on this
+            # surface.
             #
-            # Stated as that condition rather than as a list of causes,
-            # because the causes compose: every question declined, the
-            # endpoint down all run, every response unreadable, the pair
-            # skipped, every attempted answer carrying no recorded
-            # correctness -- and any mixture. So the `cov` beside the dash is
-            # not a fixed pair of values, and cannot be used to tell the
-            # cases apart: 0.000 when nothing was attempted, 1.000 when
-            # everything was and none of it was usable, and anything between
-            # for a mixture. Reading `cov` as the disambiguator is the trade
-            # the citation lines rejected one command over, and there the
-            # disambiguator was at least in the same sentence rather than an
-            # adjacent column. The note below the table is what says which
-            # happened.
+            # History: this was stated as a list of causes, three times with
+            # three different counts. The causes COMPOSE -- every question
+            # declined, the endpoint down all run, every response unreadable,
+            # the pair skipped, every attempted answer carrying no recorded
+            # correctness, and any mixture -- so no count was a partition and
+            # two cases fell through all three. Hence the condition above.
+            # Two surfaces were then read as saying which case it is, and
+            # neither does. `cov` does not: it is 0.000 when nothing was
+            # attempted, 1.000 when everything was and none of it usable, and
+            # anything between for a mixture -- and reading it that way is
+            # the disambiguator-beside-a-rate trade the citation lines
+            # rejected one command over, where it was at least in the same
+            # sentence rather than an adjacent column. The notes below the
+            # table do not either: one prints for `unusable` and one for
+            # `extraction_failures`, the two HARNESS defects, so an arm that
+            # declined everything gets the dash and no note at all.
             prec = (f"{'—':>{w}}" if score.precision is None
                     else f"{score.precision:>{w}.3f}")
             typer.echo(
@@ -3600,13 +3605,13 @@ def eval_score(
             # scorers rather than lines: RACE has no citation count to reach
             # it from. `overall_score` WAS 0.0 over an empty list (it is None
             # now) and the four dimensions are always emitted, so a judge that
-            # could not be
-            # reached -- an endpoint that is down, a rate limit, the 401 this
-            # command warns a custom `--llm-base-url` will answer -- printed
-            # `overall=0.00 over 0/4 dimensions`: a rate over a zero
-            # denominator with a suffix to disambiguate it, which is exactly
-            # what the citation lines stopped doing. All four fail together,
-            # so this is the commonest RACE failure, not the rarest.
+            # could not be reached -- an endpoint that is down, a rate limit,
+            # the 401 this command warns a custom `--llm-base-url` will
+            # answer -- printed `overall=0.00 over 0/4 dimensions`: a rate
+            # over a zero denominator with a suffix to disambiguate it, which
+            # is exactly what the citation lines stopped doing. All four fail
+            # together, so this is the commonest RACE failure, not the
+            # rarest.
             overall = (f"  RACE: not measured, 0/{len(race.dimensions)} "
                        f"dimensions scored")
         else:

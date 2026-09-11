@@ -682,10 +682,10 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     Following Laurent et al. (2024): accuracy is correct over all questions,
     coverage is the fraction attempted, and precision is correct over
     attempted. That last is the paper's definition; ours is narrower by
-    `unusable`, for the reason two paragraphs down.
-    A question is "attempted" when an option was actually chosen, so the
-    dispositions that record no choice -- abstentions, provider errors,
-    extraction failures, and a skipped pair -- all reduce coverage.
+    `unusable`, for the reason in the next paragraph. A question is
+    "attempted" when an option was actually chosen, so the dispositions that
+    record no choice -- abstentions, provider errors, extraction failures,
+    and a skipped pair -- all reduce coverage.
 
     Precision's denominator is narrower than coverage's numerator, and the gap
     is `unusable`: a SCORED record whose correctness was never written down.
@@ -782,7 +782,8 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         shown = ", ".join(ids[:5]) + more
         logger.warning(
             "arm %s: %d scored answer(s) carry no recorded correctness, so "
-            "they are in `attempted` and out of `precision`: %s",
+            "they are in `attempted`, out of `precision`, and lowering "
+            "`accuracy` as a wrong answer would: %s",
             unusable[0].provider, len(ids), shown,
         )
     # The provider chose an option, so the question WAS attempted -- excluding

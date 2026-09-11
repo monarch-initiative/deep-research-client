@@ -272,10 +272,15 @@ class MatrixConfig:
     cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
-    #: Called with the per-arm scores whenever `grade` is on -- with an empty
-    #: mapping when the selection had no multiple-choice cells to score, which
-    #: is a result and not a non-event: it is what the CLI's "nothing to
-    #: grade" message reads. A caller that needs the numbers takes
+    #: Called with the per-arm scores whenever `grade` is on, including with
+    #: an EMPTY mapping when the selection had no multiple-choice cells to
+    #: score. That call is deliberate and is the only way a caller can tell
+    #: "grading was off" from "grading ran and found nothing to score" -- the
+    #: CLI does not need the distinction (it starts from an empty dict, so
+    #: the empty call is a no-op for it) but it is the contract, and
+    #: `test_on_scores_reports_an_empty_result_as_a_result` pins it. It is
+    #: therefore NOT folded under the `if scores:` that guards
+    #: `write_scores_tsv` beside it. A caller that needs the numbers takes
     #: them from here rather than calling `score_by_arm` again: grading is not
     #: idempotent in its OUTPUT -- `score_mcq` logs one warning per arm whose
     #: records carry no correctness -- so a second pass over the same cells

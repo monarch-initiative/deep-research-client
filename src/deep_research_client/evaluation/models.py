@@ -916,7 +916,7 @@ class MCQScore(BaseModel):
             "declined, the endpoint down all run, every response unreadable "
             "by the extractor, the pair skipped, or any mixture of those), or "
             "attempt and have every attempt come back with no recorded "
-            "correctness, or land anywhere between. So `coverage` beside the "
+            "correctness. So `coverage` beside the "
             "dash is not one of two values: 0.000 when nothing was "
             "attempted, 1.000 when everything was and none of it was usable, "
             "and anything in between for a mixture -- five declined and five "

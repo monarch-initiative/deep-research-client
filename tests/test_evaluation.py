@@ -2054,9 +2054,8 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # interpreters CI builds (3.12.3, 3.13.12) -- because wherever the mine
     # bottoms out, the forward walk starts there. And this case DISCRIMINATES
     # the main-loop handler: remove it and the answer is None. The bracket
-    # case above is the
-    # only one that *escapes* without that handler, which is not the same as
-    # being the only one that notices.
+    # case above is the only one that *escapes* without that handler, which
+    # is not the same as being the only one that notices.
     #
     # The 998 was counted frame-free (a module-global incremented inside
     # `_decode_candidates`). A wrapper spends a frame per level, halves the

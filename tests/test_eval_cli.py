@@ -411,6 +411,13 @@ def test_a_graded_run_warns_once_per_arm_and_not_twice(tmp_path):
         f"one warning per arm, not one per arm per pass over the cells: {warnings}"
     )
     assert sorted(m.split(":")[0] for m in warnings) == ["arm alpha", "arm beta"]
+    # And it costs what the stdout note says it costs. These are two
+    # disclosures of the same records on two streams, and stderr is the one a
+    # user is left with when the table is redirected -- so they must not
+    # disagree about which rates moved. The note names three; the warning
+    # named two until this assertion existed.
+    for rate in ("attempted", "precision", "accuracy"):
+        assert rate in warnings[0], (rate, warnings[0])
 
 
 def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):

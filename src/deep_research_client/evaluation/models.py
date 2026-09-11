@@ -336,16 +336,17 @@ class CitationExistence(BaseModel):
     exists: Optional[bool] = Field(
         ...,
         description=(
-            "Whether the citation resolved to a real paper: True, False when "
-            "the registry says it does not exist, and None when nothing was "
-            "established -- an outage, or an identifier kind this scorer has "
-            "no resolver for, or a body that answered about no identifier. A "
-            "`bool` answering a three-valued question meant "
-            "the per-citation record of a real PMC article read "
-            "`exists: false` in `--output`, so a consumer reading the obvious "
-            "field got exactly the answer the aggregate was fixed to stop "
-            "giving. `lookup_failed` still discriminates; nothing obliges a "
-            "reader to consult it."
+            "Whether the citation resolved to a real paper. True; False when "
+            "the registry says it does not exist; None when nothing was "
+            "established -- a lookup that raised, a 200 whose body answers "
+            "about no identifier, or an identifier kind this scorer has no "
+            "resolver for and never attempts.\n\n"
+            "History: a `bool` answering a three-valued question meant the "
+            "per-citation record of a real PMC article read `exists: false` "
+            "in `--output`, so a consumer reading the obvious field got "
+            "exactly the answer the aggregate was fixed to stop giving. "
+            "`lookup_failed` still discriminates; nothing obliges a reader to "
+            "consult it."
         ),
     )
     title: Optional[str] = Field(default=None, description="Paper title if retrieved")

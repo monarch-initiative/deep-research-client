@@ -831,6 +831,36 @@ def test_a_doi_crossref_does_not_know_is_a_negative_not_a_failed_lookup():
     assert meta["error"], "an authoritative negative should carry its reason"
 
 
+def test_a_200_from_crossref_with_no_work_record_establishes_nothing():
+    """The sibling shape of NCBI's rate-limit envelope, and the one
+    `lookup_failed=True` path with no test.
+
+    CrossRef answering 200 with no `message` has answered about no identifier:
+    a proxy's courtesy page, a malformed response, a throttle. Read as a
+    negative it says the DOI is fabricated, which is the failure mode the
+    three-valued `exists` exists for -- reached through the resolver nobody
+    tested rather than the one everybody did. Asserted here on the resolver's
+    own two keys, since that is where the distinction is made.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+
+    async def resolve():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.resolve_doi("DOI:10.1038/whatever", client)
+
+    meta = asyncio.run(resolve())
+    assert meta["lookup_failed"] is True, (
+        "a body that answers about no work is not evidence the DOI is fake"
+    )
+    assert meta["error"]
+
+
 @pytest.mark.parametrize("report,expect_correct,expect_found", [
     # The defect: a report on BRCA1 that mentions TP53's locus first. `re.search`
     # stopped at the first occurrence, so a report that stated BRCA1's own locus
@@ -1910,7 +1940,7 @@ def test_a_mismatch_inside_a_later_closing_container_costs_the_verdict():
     ) is None
 
 
-def test_a_run_of_unclosed_openers_does_not_stall_the_scorer():
+def test_a_run_of_unclosed_openers_does_not_stall_the_scorer(monkeypatch):
     """Removing the recursion moved the cost rather than removing it.
 
     Every unclosed opener drove a `_balanced_span` scan to the end of the text,
@@ -1920,26 +1950,110 @@ def test_a_run_of_unclosed_openers_does_not_stall_the_scorer():
     report and `score_claim_recall` one per claim, so a single degenerate arm
     could stall a matrix cell with nothing to show for it.
 
-    Timed rather than asserted on wall clock alone: the bound is that the work
-    is linear in the reply, so quadrupling the input must not multiply the time
-    by sixteen. A generous ceiling, because this runs on shared CI.
+    Counted, not timed. The first version of this test asserted that quadrupling
+    the input did not multiply the wall clock by forty -- while its own docstring
+    named sixteen as the failure condition, quadratic work over n openers being
+    n squared over two. Sixteen is under forty, so it passed with the fix it was
+    named for reverted: the only guard on the change could not fail for it. The
+    property the fix actually changed is how many times the bound is measured,
+    and that does not depend on the machine.
     """
-    import time
+    from deep_research_client.evaluation import scorers
+
+    calls = 0
+    real = scorers._balanced_span
+
+    def counted(text: str, start: int):
+        nonlocal calls
+        calls += 1
+        return real(text, start)
+
+    monkeypatch.setattr(scorers, "_balanced_span", counted)
+    # A closer at the end, so the run is not short-circuited by the
+    # no-closer bound -- this is the skip's own property, measured alone.
+    # (The innermost `{}` is salvage, and the salvage tier takes it; what this
+    # test is about is how the answer was reached, not what it is.)
+    scorers._extract_json_object("{" * 4000 + "}", key="score")
+    assert calls == 1, (
+        f"the bound was measured {calls} times for 4000 openers; the "
+        f"per-opener scan is quadratic again"
+    )
+
+
+def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener():
+    """The shape truncation actually produces, and the one the skip misses.
+
+    The skip above only applies once the scan is already inside an unclosed
+    container, and it spares `_balanced_span`, not `raw_decode`. A run of `[`
+    is valid JSON continuation, so `raw_decode` descends one level per bracket
+    and fails at the end -- once per opener, quadratic, and reached by a
+    different route than the braces the skip was measured on. An opener with no
+    closer left after it cannot begin a complete container, which rules the
+    whole run out in one comparison.
+    """
+    import json
 
     from deep_research_client.evaluation import scorers
 
-    def elapsed(openers: int) -> float:
-        text = "{" * openers
-        start = time.perf_counter()
-        scorers._extract_json_object(text, key="score")
-        return time.perf_counter() - start
+    calls = 0
+    real = json.JSONDecoder.raw_decode
 
-    small = max(elapsed(1000), 1e-4)
-    large = elapsed(4000)
-    assert large < small * 40, (
-        f"4x the input took {large / small:.1f}x the time; the per-opener scan "
-        f"is quadratic again"
-    )
+    def counted(self, s, idx=0):
+        nonlocal calls
+        calls += 1
+        return real(self, s, idx)
+
+    # Patched on the class: `_decode_candidates` builds its own decoder.
+    json.JSONDecoder.raw_decode = counted
+    try:
+        assert scorers._extract_json_object("[" * 8000, key="score") is None
+        assert calls == 0, f"{calls} decode attempts on a reply with no closer"
+        calls = 0
+        # The bound rules out only openers that provably cannot close: a reply
+        # that does close is still read.
+        assert scorers._extract_json_object('{"score": 4}', key="score") == {"score": 4}
+        assert calls == 1
+    finally:
+        json.JSONDecoder.raw_decode = real
+
+
+@pytest.mark.parametrize("scenario,reply,expected", [
+    # `raw_decode` descends one frame per level. A judge cut off mid-array by
+    # `max_tokens` is the ordinary way to reach this.
+    ("a run of openers deeper than the stack", "[" * 12000, None),
+    # The same run with a closer after it, so the no-closer bound does not
+    # short-circuit it and `raw_decode` is actually entered. Without this the
+    # case above is answered by the bound and the handler is never reached.
+    ("a run of openers that a stray closer keeps in play", "[" * 12000 + "]", None),
+    # Bounded, and too deep to repair or to mine.
+    ("a bounded nest deeper than the stack", "{" * 6000 + "}" * 6000, None),
+    ("a bounded nest of the other opener", "[" * 6000 + "]" * 6000, None),
+    # Malformed AND deep: the repair fails, and mining it recursed.
+    ("a malformed bounded nest", "{oops" * 2000 + "}" * 2000, None),
+    # Read successfully and then descended: the verdict is still found, and
+    # the descent is where the deep reply broke last.
+    ("a verdict under a deep wrapper",
+     '{"w":' * 3000 + '{"score": 4}' + "}" * 3000, {"score": 4}),
+])
+def test_a_reply_nested_deeper_than_the_stack_is_unreadable_not_an_error(
+    scenario, reply, expected,
+):
+    """`RecursionError` is not a `JSONDecodeError`, so it escaped the extractor.
+
+    The three callers wrap in `except Exception`, so a reply nested past the
+    stack was recorded as a scoring error -- an unjudged measurement reported
+    as a failure, which is exactly what removing the recursion from the scan
+    was for. Returning None instead lets the regex fallback have its turn.
+
+    Parametrized over five shapes because the depth broke *four* recursive
+    consumers, not one: `raw_decode`, the trailing-comma repair, the mine that
+    recurses into a malformed container, and `_nested_with_key`'s descent over
+    the value after it was read. A fix for any one of them leaves the rest, and
+    the last is reached only once decoding has already succeeded.
+    """
+    from deep_research_client.evaluation import scorers
+
+    assert scorers._extract_json_object(reply, key="score") == expected
 
 
 def test_a_repair_inside_an_unclosed_container_is_given_up_deliberately():

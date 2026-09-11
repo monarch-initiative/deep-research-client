@@ -167,19 +167,45 @@ def _nested_with_key(obj: object, key: str) -> dict | None:
     {'score': 4}
     >>> _nested_with_key({"a": 1}, "score") is None
     True
+
+    The ordering the paragraph above describes, pinned rather than asserted --
+    first key wins over a later one, first element over a later one, and a
+    child over its parent's next sibling:
+
+    >>> _nested_with_key(
+    ...     {"analysis": {"supported": False}, "verdict": {"supported": True}},
+    ...     "supported")
+    {'supported': False}
+    >>> _nested_with_key({"items": [{"score": 1}, {"score": 2}]}, "score")
+    {'score': 1}
+    >>> _nested_with_key({"a": {"b": {"score": 9}}, "c": {"score": 1}}, "score")
+    {'score': 9}
+
+    Iterative, over an explicit stack. The recursive version descended one
+    frame per level of the decoded value, so a judge reply nested deeper than
+    the stack allows raised RecursionError *after* the decoder had read it --
+    the fourth place a deep reply broke a recursive consumer, and the one no
+    amount of care in the decoder can reach. Depth is a property of the reply,
+    not of the parser that read it.
+
+    >>> deep: Any = {"score": 1}
+    >>> for _ in range(5000):
+    ...     deep = {"wrapper": deep}
+    >>> _nested_with_key(deep, "score")
+    {'score': 1}
     """
-    if isinstance(obj, dict):
-        if key in obj:
-            return obj
-        children: list[Any] = list(obj.values())
-    elif isinstance(obj, list):
-        children = list(obj)
-    else:
-        return None
-    for child in children:
-        found = _nested_with_key(child, key)
-        if found is not None:
-            return found
+    # Pre-order, document-ordered: a node is answered before its children, and
+    # `reversed` puts the first child on top of the stack so siblings are
+    # visited left to right -- the order the recursive version had.
+    stack: list[object] = [obj]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            if key in current:
+                return current
+            stack.extend(reversed(list(current.values())))
+        elif isinstance(current, list):
+            stack.extend(reversed(current))
     return None
 
 
@@ -344,27 +370,61 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         """Put a decoded value in the tier the scan is currently in."""
         (salvage if inside_unclosed else top_level).append(value)
 
+    # A container needs a closer to be complete, so an opener with none left
+    # after it cannot begin one. A reply that simply runs out -- the shape
+    # truncation produces -- has no closer at all, and this turns the whole
+    # run into one comparison instead of one descent per opener. Sound rather
+    # than heuristic: it rules out only openers that provably cannot close.
+    last_closer = max(text.rfind("}"), text.rfind("]"))
+
     i = 0
     while i < len(text):
+        if i > last_closer:
+            break
         if text[i] not in "{[":
             i += 1
             continue
         try:
             parsed, end = decoder.raw_decode(text, i)
+        except RecursionError:
+            # `raw_decode` descends one frame per nesting level, so a reply
+            # nested deeper than the stack allows raises this instead of
+            # returning -- and `RecursionError` is not a `JSONDecodeError`, so
+            # it escaped this function entirely and the callers' bare
+            # `except Exception` recorded it as a scoring error. That is the
+            # outcome removing the recursion from this loop existed to
+            # prevent: an unjudged measurement reported as an error, when
+            # returning None lets the regex fallback have its turn.
+            #
+            # Unreadable, which is what `inside_unclosed` means to the tiers
+            # below -- "the scan is inside something it could not read", not
+            # specifically "something with no `}`".
+            inside_unclosed = True
+            i += 1
+            continue
         except json.JSONDecodeError:
             if inside_unclosed:
                 # Already inside a container with no end. Whatever is here is
                 # salvage whichever way it is bounded, so there is nothing to
                 # decide and `raw_decode` alone finds the well-formed values.
                 #
-                # Skipping the bound here is what keeps this loop out of
-                # quadratic time: `_balanced_span` scans to the end of the text
-                # when nothing closes, and calling it at every subsequent
-                # opener made a reply that degenerates into a run of braces --
-                # an ordinary LLM failure -- take six seconds at
-                # MAX_REPORT_CHARS, measured, where it used to fail fast with a
-                # RecursionError. The cost of the skip is a trailing comma left
-                # unrepaired inside text already declared unreadable.
+                # Skipping the bound keeps `_balanced_span` off this path:
+                # it scans to the end of the text when nothing closes, and
+                # calling it at every subsequent opener made a reply that
+                # degenerates into a run of braces -- an ordinary LLM failure
+                # -- take six seconds at MAX_REPORT_CHARS, measured, where it
+                # used to fail fast with a RecursionError. The cost of the
+                # skip is a trailing comma left unrepaired inside text already
+                # declared unreadable.
+                #
+                # It does not on its own make the loop linear, and saying so
+                # hid the sibling opener for a round: `raw_decode` is the
+                # other per-opener cost, a run of `[` is valid JSON
+                # continuation rather than an immediate decode error, and the
+                # skip does not touch it. The no-closer bound above is what
+                # covers that, and what is left after both -- unclosed
+                # openers with a stray closer somewhere after them -- is
+                # quadratic in the run, bounded by the reply's length.
                 i += 1
                 continue
             span = _balanced_span(text, i)
@@ -381,11 +441,24 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 continue
             try:
                 repaired = json.loads(_without_trailing_commas(text[i:span]))
+            except RecursionError:
+                # Bounded, and nested deeper than the parser can descend.
+                # Mining it recurses the same way, so the container
+                # contributes nothing and the scan steps over it -- the same
+                # answer as "damaged beyond repair", reached without the stack.
+                pass
             except json.JSONDecodeError:
                 # Damaged beyond a trailing comma, but bounded: mine it and
                 # step over it. The recursion here is bounded by how deeply
-                # malformed containers nest, not by the length of the reply.
-                inner_top, inner_salvage = _decode_candidates(text[i + 1 : span - 1])
+                # malformed containers nest, not by the length of the reply --
+                # and malformed containers nest as deeply as a reply is long,
+                # so it is caught rather than asserted away.
+                try:
+                    inner_top, inner_salvage = _decode_candidates(
+                        text[i + 1 : span - 1]
+                    )
+                except RecursionError:
+                    inner_top, inner_salvage = [], []
                 salvage.extend(inner_top)
                 salvage.extend(inner_salvage)
             else:
@@ -1240,7 +1313,13 @@ async def score_citation_verifiability(
     # authoritative, a short list reads as incomplete.
     total = len(results)
     checkable = [r for r in results if not r.lookup_failed]
-    verified = sum(1 for r in checkable if r.exists)
+    # `is True` rather than truthiness. This changes no number and no test can
+    # tell the two spellings apart: the constructor above derives `exists=None`
+    # from `lookup_failed` and `checkable` filters on `lookup_failed`, so
+    # nothing here is ever None. Written for the reader -- `exists` is
+    # three-valued, and truthiness over a three-valued field is the exact shape
+    # that put `exists: false` on a real PMC article one field along.
+    verified = sum(1 for r in checkable if r.exists is True)
 
     # Year distribution
     year_dist: dict[int, int] = {}

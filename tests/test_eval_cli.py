@@ -801,7 +801,7 @@ def test_eval_score_reports_alignment_lookups_that_failed(tmp_path, monkeypatch)
     alignment = next(
         ln for ln in result.stdout.splitlines() if "Citation-Claim Alignment" in ln
     )
-    assert "1 could not be looked up" in alignment
+    assert "1 with no title to align against" in alignment
 
 
 def test_a_keyless_local_endpoint_is_not_refused(tmp_path, monkeypatch):
@@ -882,3 +882,38 @@ def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.stdout
     fact_line = next(ln for ln in result.stdout.splitlines() if "FACT:" in ln)
     assert "2 not judged" in fact_line
+    # And over the judged pairs, which is the rate's own denominator. Printing
+    # it over every pair would let a reader divide and get a different number
+    # from the one beside it.
+    assert "effective_citations=0/0" in fact_line
+
+
+def test_a_placeholder_key_is_announced_rather_than_sent_silently(tmp_path, monkeypatch):
+    """The skip is keyed on "a custom base URL", not on "needs no key".
+
+    The commonest custom base URL after localhost is a corporate or cloud
+    proxy, which does check keys. Silently substituting a placeholder there
+    trades one pre-flight message naming three remedies for a 401 inside every
+    judge call, after the report has been read and the intrinsic scorers have
+    run. The skip stays -- the local case is why it exists -- but it says so.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"score": 4, "explanation": "ok"}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--llm-base-url", "https://llm.corp.example/v1",
+        "--no-fact", "--no-recall", "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "placeholder key" in result.stdout
+    assert "answer 401" in result.stdout

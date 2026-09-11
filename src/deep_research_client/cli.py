@@ -3332,7 +3332,19 @@ def eval_score(
             # that worked before the construction was made lazy. The SDK still
             # needs something non-empty, so it gets a placeholder that names
             # itself if it ever reaches a server that does check.
+            #
+            # Said aloud, because the condition is "a custom base URL" while
+            # the thing it stands for is "an endpoint that needs no key". The
+            # commonest custom base URL after localhost is a corporate or
+            # cloud proxy, which does check -- and silently sending a
+            # placeholder there trades one pre-flight message for a 401 inside
+            # every judge call, after the report has been read.
             api_key = "not-required-by-this-endpoint"
+            typer.echo(
+                f"{llm_api_key_env} is not set; sending a placeholder key "
+                f"because --llm-base-url was given. A local endpoint will "
+                f"accept it; an endpoint that checks keys will answer 401."
+            )
         if not api_key:
             typer.echo(
                 f"{llm_api_key_env} is not set, so the judge-backed scorers "
@@ -3360,9 +3372,13 @@ def eval_score(
     typer.echo(f"Task: {result.task_id} | Provider: {result.provider}")
     if result.fact_score:
         fact = result.fact_score
+        # Over the pairs the judge ruled on, which is the rate's own
+        # denominator; the rest are named separately so a reader who divides
+        # gets the number printed.
+        judged_pairs = fact.total_citations - fact.unjudged_citations
         line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
                 f"effective_citations={fact.effective_citations}/"
-                f"{fact.total_citations}")
+                f"{judged_pairs}")
         if fact.unjudged_citations:
             # The fourth score line to say what it could not measure. A report
             # citing only DOIs printed 0.00 over 0/0 and looked like a report
@@ -3420,7 +3436,9 @@ def eval_score(
             if ca.unresolvable:
                 # Its sibling above prints this; without it here, a run where
                 # PubMed was down reads as an alignment rate over everything.
-                line += f", {ca.unresolvable} could not be looked up"
+                # Worded for both things this counts: a lookup that failed, and
+                # a real record that carries no title to align a claim against.
+                line += f", {ca.unresolvable} with no title to align against"
             typer.echo(line)
         if isc.factual_spot_checks:
             sc = isc.factual_spot_checks

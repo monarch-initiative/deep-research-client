@@ -115,9 +115,26 @@ class FACTScore(BaseModel):
     0.8
     """
 
-    total_citations: int = Field(..., description="Total citation-claim pairs checked")
+    total_citations: int = Field(
+        ...,
+        description=(
+            "Every citation-claim pair found in the report. Held "
+            "`len(checkable)` until `unjudged_citations` was added beside it "
+            "and made the mismatch visible: the one name in this model that "
+            "did not mean what it says. The accuracy denominator is "
+            "`total_citations - unjudged_citations`."
+        ),
+    )
     verified_citations: int = Field(..., description="Citations that support their claims")
-    citation_accuracy: float = Field(..., description="verified / total")
+    citation_accuracy: float = Field(
+        ...,
+        description=(
+            "verified / judged, where judged is "
+            "`total_citations - unjudged_citations`. Not over "
+            "`total_citations`: a pair the judge never ruled on is not a pair "
+            "whose citation failed to support its claim."
+        ),
+    )
     effective_citations: int = Field(..., description="Count of verifiably supported citations")
     unjudged_citations: int = Field(
         default=0,
@@ -408,10 +425,13 @@ class CitationAlignmentScore(BaseModel):
     unresolvable: int = Field(
         default=0,
         description=(
-            "Citation-claim pairs whose paper title could not be retrieved, so "
-            "nothing could be aligned. Recorded because 0/0 (0.00) otherwise "
-            "reads the same for a PubMed outage as for a report whose "
-            "citations support nothing."
+            "Citation-claim pairs with no paper title to align against, so "
+            "nothing could be compared: a lookup that failed, or a record that "
+            "resolved and carries no title. A citation the registry says does "
+            "not exist is NOT here -- that is a finding, and counts against "
+            "`alignment_rate`. Recorded because 0/0 (0.00) otherwise reads the "
+            "same for a PubMed outage as for a report whose citations support "
+            "nothing."
         ),
     )
     alignment_rate: float = Field(..., description="Fraction of checked citations where title aligns with claim")

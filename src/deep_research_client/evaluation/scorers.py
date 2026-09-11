@@ -148,27 +148,62 @@ async def fetch_pubmed_abstract(pmid: str, client: httpx.AsyncClient | None = No
 # ---------------------------------------------------------------------------
 
 
+def _nested_with_key(obj: Any, key: str) -> dict | None:
+    """First dict at or below ``obj`` that has ``key`` at its own top level.
+
+    Searched only when no top-level object in a reply carries the key, so that
+    a wrapper -- ``{"response": {"supported": true}}`` -- is still read, without
+    letting a key buried in a preamble outrank a later top-level verdict.
+
+    >>> _nested_with_key({"response": {"supported": True}}, "supported")
+    {'supported': True}
+    >>> _nested_with_key({"items": [{"x": 1}, {"score": 4}]}, "score")
+    {'score': 4}
+    >>> _nested_with_key({"a": 1}, "score") is None
+    True
+    """
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj
+        children: list[Any] = list(obj.values())
+    elif isinstance(obj, list):
+        children = list(obj)
+    else:
+        return None
+    for child in children:
+        found = _nested_with_key(child, key)
+        if found is not None:
+            return found
+    return None
+
+
 def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     """Extract a JSON object from text, handling nested braces.
 
-    Every balanced ``{...}`` run is tried, not only the first. With ``key``,
-    the first candidate that both parses *and* carries that key wins; without
-    it, the first that parses.
+    Every top-level ``{...}`` object in the reply is a candidate. With ``key``,
+    the first that carries it wins; if none does, the search descends into them
+    before falling back to the first object found.
 
-    ``key`` is what makes this useful, and leaving it out was a defect of its
-    own. A judge that narrates before answering --
-    ``{"thinking": "..."} {"supported": true}``, or a chat wrapper that
-    prefixes an envelope -- produces two parseable objects, and taking the
-    first returned the narration. The caller's ``result.get("supported") is
-    not None`` was then False, so the reply still took the no-verdict path
-    with its verdict sitting in the text, which is exactly what trying every
-    run was meant to stop. Each caller knows which key it asked for, so each
-    passes it.
+    Three things have been wrong here, and they compound:
 
-    That is a lost measurement rather than an invented one -- it shrinks a
-    denominator instead of inventing an answer -- but it would surface as an
-    `unjudged_claims` count nobody could explain, on a judge that was
-    answering correctly.
+    1. Only the first ``{...}`` run was tried. A judge that narrates before
+       answering -- ``{"thinking": "..."} {"supported": true}`` -- took the
+       no-verdict path with its verdict sitting in the text.
+    2. Then every run was tried, but the first that *parsed* won, so the
+       narration object still won. Each caller now passes the key it asked
+       for; a reply that never answers is still unjudged, which is a lost
+       measurement rather than an invented one.
+    3. Then the scan resumed one character after a parsed object, which is a
+       brace *inside* it -- so a key nested in a preamble outranked a later
+       top-level verdict. ``{"evidence": {"supported": false}}`` followed by
+       ``{"supported": true}`` returned **false**: not a missing verdict but
+       the opposite one, counted against the provider. The scan now advances
+       past each decoded object, and nesting is consulted only when no
+       top-level object answers.
+
+    ``raw_decode`` does the scanning rather than a brace counter, so a closing
+    brace inside a string value no longer ends the object early -- an
+    explanation mentioning "a } brace" lost the verdict entirely.
 
     >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
     {'a': 1, 'b': {'c': 2}}
@@ -185,41 +220,66 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     ...                      key="supported")
     {'supported': True}
 
-    A run that does not parse is skipped either way:
+    A key inside a preamble does not outrank a top-level verdict:
+
+    >>> _extract_json_object('{"evidence": {"supported": false}} '
+    ...                      '{"supported": true}', key="supported")
+    {'supported': True}
+
+    But a wrapper whose only content is the verdict is still read:
+
+    >>> _extract_json_object('{"response": {"supported": true}}', key="supported")
+    {'supported': True}
+
+    A run that does not parse is skipped, and one nested inside it is still
+    reachable:
 
     >>> _extract_json_object('not json {oops} but {"supported": false}')
     {'supported': False}
+    >>> _extract_json_object('{oops {"supported": true}}', key="supported")
+    {'supported': True}
 
-    When no candidate carries the key, the first that parses is returned, so
-    the caller sees the judge's actual reply rather than nothing and can report
-    it in the explanation:
+    A brace inside a string value no longer truncates the object:
+
+    >>> _extract_json_object('{"explanation": "a } brace", "supported": true}',
+    ...                      key="supported")["supported"]
+    True
+
+    When nothing carries the key, the first object found is returned, so the
+    caller can quote the judge's actual reply rather than nothing:
 
     >>> _extract_json_object('{"verdict": "yes"}', key="supported")
     {'verdict': 'yes'}
     """
-    first: dict | None = None
-    for start, char in enumerate(text):
-        if char != "{":
+    decoder = json.JSONDecoder()
+    candidates: list[dict] = []
+    i = 0
+    while i < len(text):
+        if text[i] != "{":
+            i += 1
             continue
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        parsed = json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        break  # try the next opening brace
-                    if not isinstance(parsed, dict):
-                        break
-                    if key is None or key in parsed:
-                        return parsed
-                    if first is None:
-                        first = parsed
-                    break
-    return first
+        try:
+            parsed, end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            # Not an object here. Advance one character rather than skipping
+            # the run, so an object nested inside unparseable text is found.
+            i += 1
+            continue
+        candidates.append(parsed)
+        i = end  # never rescan inside an object already read
+
+    if not candidates:
+        return None
+    if key is None:
+        return candidates[0]
+    for candidate in candidates:
+        if key in candidate:
+            return candidate
+    for candidate in candidates:
+        nested = _nested_with_key(candidate, key)
+        if nested is not None:
+            return nested
+    return candidates[0]
 
 
 async def _llm_judge(prompt: str, llm_client: Any, model: str = "gpt-4o-mini") -> str:
@@ -358,16 +418,19 @@ async def score_fact(
     # with no verdict in it. Those leave the rate, as they always have; what is
     # new is that the count is reported, so that "nothing was judged" and
     # "nothing was supported" stop rendering as the same 0.00.
-    checkable = [v for v in verifications if v.supported is not None]
-    total = len(checkable)
-    verified = sum(1 for v in checkable if v.supported)
+    judged = [v for v in verifications if v.supported is not None]
+    verified = sum(1 for v in judged if v.supported)
 
     return FACTScore(
-        total_citations=total,
+        # Every pair found, so the name means what it says. The rate is over
+        # the judged ones, and the difference is reported rather than folded
+        # into the total -- which is how a report citing only DOIs used to
+        # print `0/0` in the format of a measured zero.
+        total_citations=len(verifications),
         verified_citations=verified,
-        citation_accuracy=verified / total if total > 0 else 0.0,
+        citation_accuracy=verified / len(judged) if judged else 0.0,
         effective_citations=verified,
-        unjudged_citations=len(verifications) - total,
+        unjudged_citations=len(verifications) - len(judged),
         verifications=verifications,
     )
 
@@ -515,11 +578,20 @@ _RACE_DIMENSIONS = [
 def _in_scale(raw: object) -> bool:
     """Whether a judge's `score` is a number on the 1-5 scale it was asked for.
 
+    `bool` is rejected before the conversion, because it is a subclass of
+    `int`: `float(True)` is 1.0, which sits *inside* the scale, so a judge
+    replying `{"score": true}` was recorded as a genuine bottom-of-scale
+    score and counted in the average. `true` is no more a number than
+    "excellent" is, and unlike a 9 nothing downstream could tell it from a
+    measurement.
+
     >>> [_in_scale(v) for v in (1, 3.5, 5, "4")]
     [True, True, True, True]
-    >>> [_in_scale(v) for v in (0, 9, -1, "excellent", None, [4])]
-    [False, False, False, False, False, False]
+    >>> [_in_scale(v) for v in (0, 9, -1, "excellent", None, [4], True, False)]
+    [False, False, False, False, False, False, False, False]
     """
+    if isinstance(raw, bool):
+        return False
     try:
         value = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -586,7 +658,13 @@ async def score_race(
                 # look best. Recorded as unscored, like any other reply this
                 # cannot read.
                 score = None
+                said = result.get("explanation", "") if result else ""
                 explanation = f"Judge returned a score outside 1-5: {raw!r}"
+                if said:
+                    # Kept, not replaced: the dimension is unscored either way,
+                    # and the judge's reasoning is the only thing left to
+                    # diagnose a mis-prompted judge with.
+                    explanation += f" -- it said: {said}"
             else:
                 # No parseable verdict is not a middling verdict. Recorded as
                 # unscored so it leaves the average rather than dragging it to
@@ -766,8 +844,11 @@ async def resolve_doi(
             # is False, and stated rather than left to the default: every caller
             # that draws this distinction reads the key, and a branch that
             # carries neither key is one rename away from being read as either.
+            # `error` too, so a fabricated DOI reaches `--output` with a reason
+            # beside it, the way a fabricated PMID carries NCBI's.
             return {
                 "exists": False, "title": None, "year": None,
+                "error": "CrossRef does not know this DOI",
                 "lookup_failed": False,
             }
         resp.raise_for_status()

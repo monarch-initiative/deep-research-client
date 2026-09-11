@@ -825,6 +825,10 @@ def test_a_doi_crossref_does_not_know_is_a_negative_not_a_failed_lookup():
     meta = asyncio.run(resolve())
     assert meta["exists"] is False
     assert meta["lookup_failed"] is False, "a 404 is the finding, not an outage"
+    # And it says why, the way NCBI's unknown-uid negative does. Without this
+    # a fabricated DOI reached `--output` as exists: false with no reason
+    # beside it, while a fabricated PMID carried NCBI's own message.
+    assert meta["error"], "an authoritative negative should carry its reason"
 
 
 @pytest.mark.parametrize("report,expect_correct,expect_found", [
@@ -941,6 +945,13 @@ _PUBMED_BODIES = {
         {"error": "API rate limit exceeded"},
         {"exists": False, "lookup_failed": True},
     ),
+    # A result dict that answers about other uids but not this one, which is
+    # what a batched or mis-ordered esummary looks like.
+    "other uids only": (
+        {"result": {"uids": ["12345678"],
+                    "12345678": {"title": "Someone else's paper"}}},
+        {"exists": False, "lookup_failed": True},
+    ),
     # A record came back, so the uid is real, even though the summary carries
     # no title. `exists = bool(title)` reported this as a fabricated citation.
     "record with no title": (
@@ -1030,6 +1041,10 @@ def test_a_rate_limited_batch_is_not_a_report_that_invented_its_references():
 
     result = asyncio.run(score())
     assert result.total_citations == 9
+    # This is the discriminating assertion: `verifiability` is 0.00 under both
+    # the old behaviour and the new one, because the empty-`checkable` guard
+    # returns 0.0 either way. What changed is whether these nine are excluded
+    # from the rate or reported as nine fabricated references.
     assert result.unresolvable == 9, "every lookup failed, none was answered"
     assert result.verified_exist == 0
 
@@ -1329,6 +1344,12 @@ def test_the_specificity_rule_does_not_reach_an_exact_check():
     ("real record with a title",
      {"result": {"99999999": {"title": "FGFR3 mutations cause achondroplasia",
                               "pubdate": "2019"}}}, 1, 0),
+    # A real record carrying no title: the paper exists, so it is not a
+    # finding, but there is nothing to align a claim against. This chain was
+    # created by the same change that keyed alignment on `lookup_failed`, and
+    # is the one it is easiest to get backwards.
+    ("real record with no title",
+     {"result": {"99999999": {"title": "", "pubdate": "2019"}}}, 0, 1),
 ])
 def test_alignment_reads_the_same_responses_the_lookup_does(
     scenario, body, expect_checked, expect_unresolvable,
@@ -1361,3 +1382,107 @@ def test_alignment_reads_the_same_responses_the_lookup_does(
     result = asyncio.run(score())
     assert result.total_checked == expect_checked, scenario
     assert result.unresolvable == expect_unresolvable, scenario
+
+
+@pytest.mark.parametrize("reply,expected,why", [
+    # A key nested inside a preamble must not outrank a later top-level
+    # verdict. The scan resumed one character after a parsed object, which is a
+    # brace *inside* it, so this returned False -- not a missing verdict but
+    # the opposite one, counted against the provider.
+    ('Analysis: {"evidence": {"supported": false, "note": "about mice"}} '
+     'Verdict: {"supported": true, "explanation": "it does"}',
+     True, "a nested key before a top-level verdict"),
+    # But a wrapper whose only content is the verdict is still read, which is
+    # why the answer is "prefer top level" rather than "never descend".
+    ('{"response": {"supported": true}}', True, "a wrapper around the verdict"),
+    # An object nested inside unparseable text is still reachable.
+    ('{oops {"supported": true}}', True, "a malformed outer run"),
+    # A closing brace inside a string value used to end the object early, and
+    # the whole verdict was lost.
+    ('{"explanation": "the set {a} and a } brace", "supported": true}',
+     True, "a brace inside a string value"),
+])
+def test_the_top_level_verdict_wins_over_one_buried_in_a_preamble(
+    reply, expected, why,
+):
+    """Failing into the wrong verdict is worse than failing out of one.
+
+    The two earlier fixes here moved a narrating judge from "no verdict" to
+    "the narration is the verdict" to "the key inside the narration is the
+    verdict" -- the last of which answers the opposite question confidently.
+    """
+    from deep_research_client.evaluation import scorers
+
+    result = scorers._extract_json_object(reply, key="supported")
+    assert result is not None, why
+    assert result["supported"] is expected, why
+
+
+def test_a_boolean_score_is_not_a_score_of_one(monkeypatch):
+    """`bool` is a subclass of `int`, so `float(True)` is 1.0 -- inside the
+    scale, and so indistinguishable downstream from a measured bottom mark.
+
+    The same class as the clamp removed beside it: a reply that is not a number
+    became a number, and this one lands where nothing can tell.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def judge(*args, **kwargs):
+        return '{"score": true, "explanation": "very good"}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    score = asyncio.run(scorers.score_race(out, task, object()))
+
+    assert all(d.score is None for d in score.dimensions)
+    assert score.unscored_count == len(score.dimensions)
+    # And the judge's own words survive, since they are all there is to
+    # diagnose a mis-prompted judge with.
+    assert "very good" in score.dimensions[0].explanation
+
+
+def test_fact_total_citations_counts_every_pair_not_just_the_judged_ones(monkeypatch):
+    """It held `len(checkable)`, so the one name in the model that did not
+    mean what it says.
+
+    Harmless while nothing else reported the difference; `unjudged_citations`
+    beside it made a reader's arithmetic wrong -- ten pairs in the report, a
+    `total_citations` of eight and an `unjudged_citations` of two invites
+    "then six were judged". The rate stays over the judged ones, which is what
+    a rate about whether citations support their claims can be over.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def judge(*args, **kwargs):
+        return '{"supported": true, "explanation": "yes"}'
+
+    async def abstract(pmid, client=None):
+        return "FGFR3 mutations cause achondroplasia."
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.setattr(scorers, "fetch_pubmed_abstract", abstract)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    # Two PMIDs the judge rules on, two DOIs whose abstracts cannot be fetched.
+    out = parse_dr_output(
+        task,
+        "A claim (PMID:7913883). Another (PMID:12345678). "
+        "A third (DOI:10.1038/ng1234). A fourth (DOI:10.1038/ng5678).",
+        "test",
+    )
+
+    score = asyncio.run(scorers.score_fact(out, object()))
+
+    assert score.total_citations == 4, "every pair the report carries"
+    assert score.unjudged_citations == 2, "the two DOIs"
+    assert score.citation_accuracy == 1.0, "over the two that were judged"
+    assert score.total_citations - score.unjudged_citations == 2

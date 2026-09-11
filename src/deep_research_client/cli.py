@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .transcript_stats import TranscriptStats
     from .validation import (
         ReferenceValidationReport,
         ReferenceValidator,
@@ -1595,6 +1596,109 @@ def edison_trajectory(
         logger.error(f"Error: {e}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+
+class TranscriptStatsFormat(str, Enum):
+    """Output formats for the transcript-stats command."""
+
+    MARKDOWN = "markdown"
+    JSON = "json"
+    TEXT = "text"
+
+
+@app.command(name="transcript-stats")
+def transcript_stats_command(
+    paths: Annotated[List[Path], typer.Argument(
+        help="Transcript JSON files, or directories searched for *transcript*.json")],
+    output_format: Annotated[TranscriptStatsFormat, typer.Option(
+        "--format", help="Output format")] = TranscriptStatsFormat.MARKDOWN,
+    output: Annotated[Optional[Path], typer.Option(
+        help="Write to this file instead of stdout")] = None,
+):
+    """Summarize what an agent did, from its saved transcripts.
+
+    Mines agent transcripts for the shape of a run: which tools were called
+    and how often, which skills fired, what failed, which shell programs and
+    web searches were used, and which declared tools were never touched.
+
+    Transcripts are preserved by providers that support artifact selection;
+    for OpenScientist they need `--param artifact_keep_runtime=true`, since
+    they are dropped by default.
+    """
+    from .transcript_stats import summarize_paths
+
+    try:
+        stats = summarize_paths(paths)
+    except (OSError, ValueError) as e:
+        # OSError covers an unreadable file as well as a missing one, matching
+        # the --output path below; FileNotFoundError is one of its subclasses,
+        # as json.JSONDecodeError is of ValueError.
+        logger.error(f"Could not read transcripts: {e}")
+        raise typer.Exit(1)
+
+    if not stats.entries:
+        logger.warning("No transcript entries found in the given paths")
+
+    if output_format is TranscriptStatsFormat.JSON:
+        content = stats.model_dump_json(indent=2)
+    elif output_format is TranscriptStatsFormat.TEXT:
+        content = _format_transcript_stats_text(stats)
+    else:
+        content = stats.render_markdown()
+
+    if output:
+        try:
+            output.write_text(content, encoding="utf-8")
+        except OSError as e:
+            # Match the command's other failure paths: a missing directory
+            # exits 1 rather than raising a traceback at the user.
+            logger.error(f"Could not write {output}: {e}")
+            raise typer.Exit(1)
+        logger.info(f"Transcript summary saved to: {output}")
+    else:
+        typer.echo(content)
+
+
+def _format_transcript_stats_text(stats: "TranscriptStats") -> str:
+    """Render a transcript summary as compact terminal text."""
+    lines = [
+        f"transcripts   {len(stats.sources)}",
+        f"entries       {stats.entries}",
+        f"tool calls    {stats.tool_calls} ({len(stats.tools)} distinct, "
+        f"{stats.failed_tool_calls} failed)",
+    ]
+    if stats.tools:
+        width = max(len(tool.name) for tool in stats.tools)
+        lines.append("")
+        lines.append("tools:")
+        lines.extend(
+            f"  {tool.name:<{width}}  {tool.calls:>4}"
+            + (f"  ({tool.failures} failed)" if tool.failures else "")
+            for tool in stats.tools
+        )
+    if stats.skill_counts:
+        lines.append("")
+        lines.append("skills:")
+        lines.extend(f"  {skill}  {count}" for skill, count in stats.skill_counts.items())
+    if stats.shell_commands:
+        lines.append("")
+        lines.append(
+            "shell:  "
+            + ", ".join(f"{p} ({c})" for p, c in stats.shell_commands.items())
+        )
+    if stats.web_searches:
+        # Same guard as the markdown renderer: "1 (1 distinct)" reads as though
+        # something had been deduplicated.
+        total = sum(stats.web_search_counts.values())
+        distinct = len(stats.web_searches)
+        suffix = f" ({distinct} distinct)" if total != distinct else ""
+        lines.append("")
+        lines.append(f"web searches:  {total}{suffix}")
+    unused = stats.unused_available_tools
+    if unused:
+        lines.append("")
+        lines.append(f"declared but unused ({len(unused)}):  " + ", ".join(unused))
+    return "\n".join(lines)
 
 
 @app.command()

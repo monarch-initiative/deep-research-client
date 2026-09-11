@@ -113,6 +113,9 @@ deep-research-client research "Machine learning trends 2024" --output report.md
 # Retrieve an existing Edison trajectory by ID
 deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 --output edison-report.md
 
+# Summarize what an agent did, from its saved transcripts
+deep-research-client transcript-stats run_artifacts/provenance/
+
 # Save citations to separate file
 deep-research-client research "AI trends 2024" --output report.md --separate-citations
 

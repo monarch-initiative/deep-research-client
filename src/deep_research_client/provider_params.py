@@ -1,7 +1,9 @@
 """Provider-specific parameter models using Pydantic for validation."""
 
 from typing import Optional, Literal, List, Type, Any, Dict
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+
+from .artifact_selection import DEFAULT_MAX_BYTES, split_name_list
 from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseToolset
 
 
@@ -251,12 +253,122 @@ class MockParams(BaseProviderParams):
     )
 
 
-class OpenScientistParams(BaseProviderParams):
+class ArtifactSelectionParams(BaseProviderParams):
+    """Artifact-bundle knobs shared by providers that return a file bundle.
+
+    A provider that downloads a bundle of files (an OpenScientist artifacts
+    ZIP, for example) has to decide which members are artifacts worth keeping
+    and which are agent scaffolding. Subclass this instead of
+    :class:`BaseProviderParams` to get that decision under caller control;
+    :class:`~.artifact_selection.ArtifactSelectionPolicy.from_params` reads
+    these fields and documents the precedence between them.
+
+    The defaults keep the curated set: figures, small structured data, and
+    rendered reports. Runtime records — logs, agent transcripts, captured
+    stdout/stderr — are dropped unless asked for, because they are large and
+    usually uninteresting. They are provenance for some consumers, which is
+    what ``artifact_keep_runtime`` is for.
+
+    List fields accept a comma-separated string, so they are reachable through
+    a CLI ``--param key=value`` pair:
+    ``--param 'artifact_include_globs=provenance/*.json,figures/*'`` (quoted,
+    so the shell does not expand the ``*`` against the working directory
+    first)
+    """
+
+    save_artifacts: bool = Field(
+        default=True,
+        description=(
+            "Download and preserve useful provider artifacts such as figures, "
+            "small structured data files, and rendered reports."
+        )
+    )
+    artifact_max_bytes: int = Field(
+        default=DEFAULT_MAX_BYTES,
+        ge=1,
+        le=50 * 1024 * 1024,
+        description=(
+            "Maximum uncompressed bytes to preserve for a single artifact file. "
+            "Applies to every artifact, including ones matched by "
+            "artifact_include_globs."
+        )
+    )
+    artifact_keep_runtime: bool = Field(
+        default=False,
+        description=(
+            "Keep runtime records normally treated as noise: logs, agent "
+            "transcripts, and captured stdout/stderr. Also extends the "
+            "extension allowlist with .log, .txt, .jsonl, and .ndjson."
+        )
+    )
+    artifact_extra_extensions: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional file extensions to preserve, with or without a leading "
+            "dot (e.g. '.yaml,txt'). Extends the built-in allowlist rather than "
+            "replacing it."
+        )
+    )
+    artifact_include_globs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "fnmatch patterns, matched against the lowercased bundle-relative "
+            "path, that are preserved regardless of the default filters. '*' "
+            "crosses directory separators, so '*.json' matches nested files. "
+            "The size limit still applies. A comma separates patterns, so one "
+            "cannot contain a comma: pass a list for 'data[a,b]/*'."
+        )
+    )
+    artifact_exclude_globs: List[str] = Field(
+        default_factory=list,
+        description=(
+            "fnmatch patterns that are always dropped. Takes precedence over "
+            "artifact_include_globs and over every default. A comma separates "
+            "patterns, so one cannot contain a comma: pass a list instead."
+        )
+    )
+
+    @field_validator(
+        "artifact_extra_extensions",
+        "artifact_include_globs",
+        "artifact_exclude_globs",
+        mode="before",
+    )
+    @classmethod
+    def split_comma_separated(cls, value: Any) -> Any:
+        """Accept a comma-separated string for list-valued artifact fields.
+
+        CLI ``--param`` pairs arrive as strings, so without this the artifact
+        knobs would be unreachable from the command line.
+
+        Delegates to :func:`~.artifact_selection.split_name_list`, which
+        ``ArtifactSelectionPolicy.from_params`` also uses, so the two doors
+        into the same settings cannot come to read a string differently.
+
+        Args:
+            value: Raw field value, possibly a comma-separated string.
+
+        Returns:
+            A list of trimmed entries when given a string; the value unchanged
+            otherwise, so pydantic still reports genuinely bad input.
+        """
+        if isinstance(value, str):
+            return list(split_name_list(value))
+        return value
+
+
+class OpenScientistParams(ArtifactSelectionParams):
     """Parameters specific to OpenScientist research provider.
 
     OpenScientist runs iterative hypothesis-driven research jobs that
     take 10-60+ minutes to complete. The provider submits a job, polls
     for completion, and downloads the final report.
+
+    Artifact selection is inherited from :class:`ArtifactSelectionParams`.
+    OpenScientist writes its agent transcripts to
+    ``provenance/iter<N>_transcript.json`` and
+    ``provenance/report_transcript.json``; ``artifact_keep_runtime=True``
+    preserves them.
     """
 
     max_iterations: int = Field(
@@ -284,19 +396,6 @@ class OpenScientistParams(BaseProviderParams):
         ge=60,
         le=7200,
         description="Maximum seconds to wait for job completion"
-    )
-    save_artifacts: bool = Field(
-        default=True,
-        description=(
-            "Download and preserve useful OpenScientist artifacts such as figures, "
-            "small structured data files, and rendered reports."
-        )
-    )
-    artifact_max_bytes: int = Field(
-        default=5 * 1024 * 1024,
-        ge=1,
-        le=50 * 1024 * 1024,
-        description="Maximum uncompressed bytes to preserve for a single artifact file"
     )
 
 

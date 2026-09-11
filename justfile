@@ -34,7 +34,7 @@ install:
 
 # Run all tests
 [group('model development')]
-test: pytest mypy format
+test: pytest doctest mypy format
 
 test-full: test pytest-integration
 

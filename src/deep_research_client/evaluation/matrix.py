@@ -472,7 +472,11 @@ def score_by_arm(eval_set: EvalSet, cells: Sequence[CellResult]) -> dict[str, MC
             provider=cell.arm_id,
             chosen_letter=cell.chosen_letter,
             disposition=cell.disposition,
-            correct=bool(cell.correct),
+            # NOT `bool(cell.correct)`. `CellResult.correct` is Optional and
+            # documented as meaningful only when SCORED, so collapsing it here
+            # turned "never established" into "wrong" -- three states into two,
+            # in the bridge between two models rather than in either of them.
+            correct=cell.correct,
             error=cell.error,
         ))
 

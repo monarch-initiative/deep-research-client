@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from deep_research_client.evaluation import mcq
 from deep_research_client.evaluation.adapters import (
@@ -37,7 +38,7 @@ from deep_research_client.evaluation.datamodel import (
     ScoreDisposition,
     SpotCheck,
 )
-from deep_research_client.evaluation.models import DROutput, MCQAnswer
+from deep_research_client.evaluation.models import DROutput, MCQAnswer, MCQScore
 from deep_research_client.evaluation.scorers import (
     score_factual_spot_checks,
     score_topic_coverage,
@@ -327,6 +328,55 @@ def test_empty_score_does_not_divide_by_zero():
     assert (score.accuracy, score.coverage) == (0.0, 0.0)
     # Absent rather than zero: there were no attempts to be precise about.
     assert score.precision is None
+
+
+def test_precision_is_nullable_but_not_omittable():
+    """Absent means "attempted nothing", so it cannot also mean "nobody said".
+
+    Making it `Optional[float] = Field(default=None)` left the one field in
+    this model whose absence carries a specific meaning as the only one a
+    producer could drop by accident -- its siblings are still required -- and
+    the renderer keys on `is None` alone, so a hand-built score that forgot it
+    prints an em dash for an arm that attempted eight questions.
+    """
+    with pytest.raises(ValidationError):
+        MCQScore(total=10, attempted=8, correct=6, accuracy=0.6, coverage=0.8)
+    # Still nullable where it means something.
+    assert MCQScore(total=1, attempted=0, correct=0, accuracy=0.0,
+                    coverage=0.0, precision=None).precision is None
+
+
+def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(caplog):
+    """The other direction of the same disagreement, and the worse one.
+
+    `CellResult.correct` is Optional and documented as meaningful only when
+    SCORED; `score_by_arm` bridged it with `bool(...)`, so a resumed cell
+    carrying SCORED and no correctness became a wrong answer -- counted in
+    `attempted`, absent from `correct`, lowering accuracy and precision.
+
+    Its sibling defect announced itself (`precision 2.0` is outside the range
+    a reader can believe); this one publishes a number in range, which is the
+    shape nobody catches by reading the output. It is unusable, not wrong: out
+    of both counts, and logged, because silently dropping a record moves a
+    published number with nothing naming the cause.
+    """
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        score = mcq.score_mcq([
+            MCQAnswer(task_id="t1", provider="p",
+                      disposition=ScoreDisposition.SCORED, correct=True),
+            MCQAnswer(task_id="t2", provider="p",
+                      disposition=ScoreDisposition.SCORED),
+        ])
+
+    assert (score.total, score.attempted, score.correct) == (2, 1, 1)
+    assert score.accuracy == pytest.approx(0.5), "accuracy is over every question"
+    assert score.precision == pytest.approx(1.0), (
+        "precision is over answers whose correctness is known; the unusable "
+        "record must not read as a wrong one"
+    )
+    assert "t2" in caplog.text and "correctness" in caplog.text
 
 
 def test_a_correct_flag_on_an_answer_that_was_never_scored_does_not_count():

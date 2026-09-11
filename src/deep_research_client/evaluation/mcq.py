@@ -57,10 +57,13 @@ dispositions were obtained, so it survives the replacement of the extractor.
 import random
 import re
 import string
+import logging
 from dataclasses import dataclass
 
 from .datamodel import AnswerSpec, EvalTask, ScoreDisposition
 from .models import MCQAnswer, MCQScore
+
+logger = logging.getLogger(__name__)
 
 #: Letters assigned to options, in order.
 _LETTERS = string.ascii_uppercase
@@ -714,19 +717,48 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     (2, 0, 0.0)
     >>> errored.precision is None
     True
+
+    A SCORED answer whose correctness was never recorded is unusable, not
+    wrong: it leaves both rates rather than lowering them.
+
+    >>> unusable = score_mcq([
+    ...     MCQAnswer(task_id="1", provider="p", disposition="SCORED", correct=True),
+    ...     MCQAnswer(task_id="2", provider="p", disposition="SCORED"),
+    ... ])
+    >>> unusable.total, unusable.attempted, unusable.correct, unusable.precision
+    (2, 1, 1, 1.0)
     """
     total = len(answers)
-    attempted = sum(1 for a in answers if a.disposition == ScoreDisposition.SCORED)
-    # Filtered by disposition on BOTH counts. `correct` alone relied on
-    # `MCQAnswer.correct` being set only on the SCORED path -- true of every
-    # producer here, asserted in that model's docstring, and enforced nowhere,
-    # so an answer carrying `ABSTAINED` with `correct=True` (constructible in
-    # code, and what a hand-edited or older-format `cell.json` yields on
-    # resume) gave `precision 2.0` and `accuracy > coverage`, silently.
-    correct = sum(
-        1 for a in answers
-        if a.correct and a.disposition == ScoreDisposition.SCORED
-    )
+    # Both counts filter on disposition, and both require a correctness that
+    # was actually established. `correct` once relied on `MCQAnswer.correct`
+    # being set only on the SCORED path -- asserted in that model's docstring
+    # and enforced nowhere -- so the two fields could disagree in two
+    # directions, and each one publishes a wrong number:
+    #
+    #   ABSTAINED + correct=True   -> `precision 2.0`, which announces itself
+    #   SCORED    + correct=None   -> a real answer counted WRONG, in range
+    #
+    # The second is the one a reader cannot recognise, and it is what
+    # `score_by_arm` produced from a resumed cell before it stopped calling
+    # `bool()` on a three-valued field.
+    scored = [a for a in answers if a.disposition == ScoreDisposition.SCORED]
+    unusable = [a for a in scored if a.correct is None]
+    if unusable:
+        # Reported rather than absorbed: the record is unusable, and silently
+        # dropping it moves published numbers with nothing naming the cause.
+        # Not a separate field -- it is `total` minus every other count.
+        logger.warning(
+            "%d scored answer(s) carry no recorded correctness and are counted "
+            "in neither attempted nor correct: %s",
+            len(unusable), ", ".join(sorted(a.task_id for a in unusable)),
+        )
+    attempted = len(scored) - len(unusable)
+    # `is True` over truthiness changes nothing here and no test can tell them
+    # apart -- `scored` has already filtered the disposition, and None is
+    # falsy -- so this is for the reader, the way the sibling count in
+    # `score_citation_verifiability` is. Said out loud rather than implied to
+    # be load-bearing.
+    correct = sum(1 for a in scored if a.correct is True)
 
     return MCQScore(
         total=total,

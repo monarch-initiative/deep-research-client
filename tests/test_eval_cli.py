@@ -228,6 +228,34 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     assert row is not None, result.stdout
     assert "0.000   0.000" in row, f"the arm must still show a measured zero coverage: {row}"
     assert "—" in row, f"precision over no attempts must be absent, not zero: {row}"
+    # Aligned under its header, not merely present. The dash branch once wrote
+    # six literal spaces where its sibling formats to `:>7`, so the width lived
+    # in a place that could drift from the header it has to line up with.
+    header = next(ln for ln in table.splitlines() if "prec" in ln)
+    assert row.index("—") == header.index("prec") + len("prec") - 1, (
+        f"the dash is not right-aligned under the prec header:\n{header}\n{row}"
+    )
+    # The page teaches this row; build the claim from the command and assert
+    # the page carries it, the way the `eval score` sibling guard does. Two
+    # commits in a row have changed a rendering and updated the page by hand.
+    page = (Path(__file__).parent.parent
+            / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
+    prec_cell = row.split()[3]
+    assert prec_cell in page, (
+        f"the how-to does not show {prec_cell!r} in its worked --grade table, "
+        f"which is what the command prints for an arm that attempted nothing"
+    )
+    # The unconditional note: printed under every graded table, and the one
+    # that qualifies the whole thing. The page omitted it while quoting the
+    # other.
+    assert "provisional regex extractor" in result.stdout
+    assert "provisional regex extractor" in page
+    # The conditional one belongs to the page's `silent` row, not to this
+    # fixture -- this arm abstains, so it has no extraction failures and the
+    # command rightly stays quiet about them.
+    assert "no recoverable answer" not in result.stdout
+    assert "no recoverable answer" in page
+
     # And in the artifact, where a spreadsheet would average the column.
     scores = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8")
     header, *rows = [ln.split("\t") for ln in scores.strip().splitlines()]

@@ -333,6 +333,12 @@ class RACEScore(BaseModel):
         boundary documented. This zero cannot: the CLI gates on
         `scored_dimensions` before formatting it.
         """
+        # The `if` is TYPE NARROWING, not a runtime guard, and cannot be
+        # deleted: `scored_dimensions` already filters on exactly this
+        # predicate, so it drops nothing -- but without it the comprehension
+        # is `list[Optional[float]]` and `sum` fails mypy. Four unreachable
+        # branches have been removed from this branch on fail-fast grounds and
+        # this one reads like a fifth.
         scored = [
             d.normalized_score for d in self.scored_dimensions
             if d.normalized_score is not None
@@ -707,11 +713,23 @@ class MCQAnswer(BaseModel):
     ``correct`` is only meaningful when ``disposition`` is SCORED. An abstention
     is not a wrong answer, and neither a provider failure nor an extraction
     failure says anything about whether the provider knew the answer, so all
-    three leave ``correct`` false while being counted separately.
+    three leave ``correct`` unset while being counted separately.
 
     >>> a = MCQAnswer(task_id="t1", provider="falcon", chosen_letter="B",
     ...               disposition="SCORED", correct=True)
     >>> a.correct
+    True
+
+    Three-valued, and it was a `bool` defaulting False. `score_by_arm` bridges
+    `CellResult.correct`, which is `Optional[bool]`, into this one -- and did
+    it with `bool(cell.correct)`, so a resumed cell carrying SCORED with no
+    recorded correctness became a WRONG answer: counted in `attempted`, absent
+    from `correct`, lowering both accuracy and precision with nothing saying
+    so. That is the worse half of the disagreement fixed one commit earlier.
+    `ABSTAINED` with `correct=True` gave `precision 2.0`, which announces
+    itself; a real answer scored wrong produces a number in range.
+
+    >>> MCQAnswer(task_id="t1", provider="p", disposition="SCORED").correct is None
     True
     """
 
@@ -720,7 +738,17 @@ class MCQAnswer(BaseModel):
     chosen_letter: Optional[str] = Field(default=None, description="Option letter the provider chose")
     chosen_text: Optional[str] = Field(default=None, description="Text of the chosen option")
     disposition: ScoreDisposition = Field(..., description="What became of this task-provider pair")
-    correct: bool = Field(default=False, description="Whether the chosen option was the ideal answer")
+    correct: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether the chosen option was the ideal answer, and None when "
+            "that was never established -- every disposition but SCORED, and "
+            "a SCORED record whose correctness is missing, which only a "
+            "hand-edited or older-format `cell.json` produces. `score_mcq` "
+            "counts such a record in neither `attempted` nor `correct`, and "
+            "logs it: it is not evidence of a wrong answer"
+        ),
+    )
     error: Optional[str] = Field(default=None, description="Provider error, when the call failed")
 
 
@@ -739,7 +767,16 @@ class MCQScore(BaseModel):
 
     total: int = Field(..., description="Questions in the eval set")
     attempted: int = Field(..., description="Questions the provider chose an option for")
-    correct: int = Field(..., description="Questions answered correctly")
+    correct: int = Field(
+        ...,
+        description=(
+            "Questions answered correctly AND scored. The second half is the "
+            "invariant `score_mcq`'s numerator filter introduced: a record "
+            "carrying `correct=True` on any other disposition is not counted, "
+            "so `correct <= attempted <= total` holds by construction rather "
+            "than by convention"
+        ),
+    )
     abstained: int = Field(default=0, description="Questions the provider declined")
     extraction_failures: int = Field(
         default=0,
@@ -768,7 +805,7 @@ class MCQScore(BaseModel):
         ),
     )
     precision: Optional[float] = Field(
-        default=None,
+        ...,
         description=(
             "correct / attempted, and None when `attempted` is 0 -- an arm "
             "that errored on every call or abstained on every question has no "

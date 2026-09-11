@@ -3271,7 +3271,10 @@ def eval_run(
             # disambiguator next to a rate, which is what the citation lines
             # stopped doing, and there it was in the same sentence rather than
             # an adjacent column.
-            prec = "      —" if score.precision is None else f"{score.precision:>7.3f}"
+            # `:>7` on both branches: the width is the header's, and six
+            # literal spaces made it a fourth place that has to agree.
+            prec = (f"{'—':>7}" if score.precision is None
+                    else f"{score.precision:>7.3f}")
             typer.echo(
                 f"  {arm_id:<20} {score.accuracy:>7.3f} {score.coverage:>7.3f} "
                 f"{prec}   {score.correct:>2}/{score.total}"

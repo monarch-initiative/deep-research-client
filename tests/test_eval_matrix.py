@@ -477,6 +477,39 @@ def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):
     assert score.extraction_failures == 0
 
 
+def test_a_resumed_cell_with_no_recorded_correctness_is_not_scored_wrong(caplog):
+    """Through `score_by_arm`, which is where the collapse actually was.
+
+    `CellResult.correct` is `Optional[bool]` and documented as meaningful only
+    when SCORED; `MCQAnswer.correct` was a plain `bool`, and the bridge between
+    them called `bool()`. Three states became two in neither model but in the
+    line joining them, which is why it survived a test that builds `MCQAnswer`
+    directly -- so this one starts from the cells, the way a resume does.
+    """
+    import logging
+
+    eval_set = EvalSet(name="x", tasks=[
+        EvalTask(id="t1", prompt="?", answer_type=AnswerType.MULTIPLE_CHOICE),
+        EvalTask(id="t2", prompt="?", answer_type=AnswerType.MULTIPLE_CHOICE),
+    ])
+    cells = [
+        CellResult(task_id="t1", arm_id="a", status=CellStatus.COMPLETED,
+                   disposition=ScoreDisposition.SCORED, correct=True),
+        # The shape an older-format or hand-edited cell.json yields.
+        CellResult(task_id="t2", arm_id="a", status=CellStatus.COMPLETED,
+                   disposition=ScoreDisposition.SCORED, correct=None),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        score = score_by_arm(eval_set, cells)["a"]
+
+    assert (score.total, score.attempted, score.correct) == (2, 1, 1)
+    assert score.precision == pytest.approx(1.0), (
+        "the unusable record must leave the rate, not read as a wrong answer"
+    )
+    assert "t2" in caplog.text
+
+
 def test_always_last_arm_abstains_on_every_question(tmp_path, mock_client):
     """With an abstention offered last, 'always last' must read as declining."""
     eval_set = _mcq_eval_set(abstention="Insufficient information to answer this question.")

@@ -323,6 +323,10 @@ ENABLE_MOCK_PROVIDER=true deep-research-client eval run LitQA2 \
   Some responses had no recoverable answer. Those count against coverage but
   are a harness limitation, not a provider result; see the extraction_failures
   column in scores.tsv.
+
+  These come from a provisional regex extractor, not an LLM judge. It has
+  produced plausible-looking but wrong numbers before; treat them as a quick
+  look, not as a result.
 ```
 
 `always-a` gives a chance baseline — 0.325 on these questions, since the number
@@ -336,7 +340,9 @@ nothing, so the column shows an em dash rather than `0.000` — which in a
 comparison would read as "answered and got them all wrong". `silent` is why
 this matters most: its responses are ones the provisional extractor could not
 read, which is a limitation of this harness rather than a result from the
-provider, and the note the command prints below the table says so.
+provider, and the first of the two notes below the table says so. The second
+is printed after every graded run and is the one that qualifies the whole
+table: these numbers come from the provisional extractor, not a judge.
 
 ## Score a saved report
 

@@ -148,12 +148,18 @@ async def fetch_pubmed_abstract(pmid: str, client: httpx.AsyncClient | None = No
 # ---------------------------------------------------------------------------
 
 
-def _nested_with_key(obj: Any, key: str) -> dict | None:
+def _nested_with_key(obj: object, key: str) -> dict | None:
     """First dict at or below ``obj`` that has ``key`` at its own top level.
 
     Searched only when no top-level object in a reply carries the key, so that
     a wrapper -- ``{"response": {"supported": true}}`` -- is still read, without
     letting a key buried in a preamble outrank a later top-level verdict.
+
+    Document-ordered, with no notion of which nested object is the verdict: in
+    ``{"analysis": {"supported": false}, "verdict": {"supported": true}}`` the
+    analysis answers. The ordering problem the top-level rule solves has no
+    equivalent solution one level in, so the descent is a last resort rather
+    than a parser.
 
     >>> _nested_with_key({"response": {"supported": True}}, "supported")
     {'supported': True}
@@ -201,6 +207,13 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
        past each decoded object, and nesting is consulted only when no
        top-level object answers.
 
+    The scan is linear while values parse, since it advances past each decoded
+    span. It is not linear on a reply that does not: a judge cut off by
+    `max_tokens` leaves unclosed braces, and each one drives `raw_decode` to
+    the end of the text before failing. Bounded by MAX_REPORT_CHARS-sized
+    replies, so not worth complicating the loop for -- noted because the claim
+    matters more than the cost.
+
     ``raw_decode`` does the scanning rather than a brace counter, so a closing
     brace inside a string value no longer ends the object early -- an
     explanation mentioning "a } brace" lost the verdict entirely.
@@ -231,6 +244,19 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     >>> _extract_json_object('{"response": {"supported": true}}', key="supported")
     {'supported': True}
 
+    An array is not a candidate and neither are its members, so a breakdown
+    emitted as a list does not outrank the verdict after it:
+
+    >>> _extract_json_object('[{"criterion": "depth", "score": 2}] {"score": 4}',
+    ...                      key="score")
+    {'score': 4}
+
+    But a reply that is only an array still has its verdict found, through the
+    descent rather than as a top-level candidate:
+
+    >>> _extract_json_object('[{"score": 3}]', key="score")
+    {'score': 3}
+
     A run that does not parse is skipped, and one nested inside it is still
     reachable:
 
@@ -252,34 +278,48 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     {'verdict': 'yes'}
     """
     decoder = json.JSONDecoder()
-    candidates: list[dict] = []
+    # Objects at the top level of the reply, in order. Arrays are decoded but
+    # are not candidates themselves and neither are their members: scanning
+    # only for `{` walked past a `[` one character at a time and collected each
+    # member as a peer of a later verdict, so a judge emitting a per-criterion
+    # breakdown as an array -- `[{"criterion": ..., "score": 2}, ...]` then
+    # `{"score": 4}` -- had a RACE dimension recorded from the breakdown. That
+    # is the defect this scan was rewritten to fix, reached through a bracket
+    # instead of a brace.
+    top_level: list[dict] = []
+    # Everything decoded, arrays included, for the descent below. An array is
+    # still where the verdict lives when the reply is *only* an array.
+    decoded: list[Any] = []
     i = 0
     while i < len(text):
-        if text[i] != "{":
+        if text[i] not in "{[":
             i += 1
             continue
         try:
             parsed, end = decoder.raw_decode(text, i)
         except json.JSONDecodeError:
-            # Not an object here. Advance one character rather than skipping
-            # the run, so an object nested inside unparseable text is found.
+            # Not a value here. Advance one character rather than skipping the
+            # run, so a value nested inside unparseable text is still found.
             i += 1
             continue
-        candidates.append(parsed)
-        i = end  # never rescan inside an object already read
+        decoded.append(parsed)
+        if isinstance(parsed, dict):
+            top_level.append(parsed)
+        i = end  # never rescan inside a value already read
 
-    if not candidates:
-        return None
     if key is None:
-        return candidates[0]
-    for candidate in candidates:
+        return top_level[0] if top_level else None
+    for candidate in top_level:
         if key in candidate:
             return candidate
-    for candidate in candidates:
-        nested = _nested_with_key(candidate, key)
+    for value in decoded:
+        nested = _nested_with_key(value, key)
         if nested is not None:
             return nested
-    return candidates[0]
+    # Nothing anywhere carries the key -- not at the top level and not nested.
+    # The judge's actual reply is returned so the caller can quote it in the
+    # explanation rather than reporting nothing at all.
+    return top_level[0] if top_level else None
 
 
 async def _llm_judge(prompt: str, llm_client: Any, model: str = "gpt-4o-mini") -> str:
@@ -658,7 +698,10 @@ async def score_race(
                 # look best. Recorded as unscored, like any other reply this
                 # cannot read.
                 score = None
-                said = result.get("explanation", "") if result else ""
+                # Truncated and coerced for the same reason `result_text` is
+                # below: a judge that puts an object here would otherwise
+                # render its repr into the explanation at full length.
+                said = str(result.get("explanation", ""))[:200] if result else ""
                 explanation = f"Judge returned a score outside 1-5: {raw!r}"
                 if said:
                     # Kept, not replaced: the dimension is unscored either way,
@@ -1107,7 +1150,7 @@ def _reference_claims(task: EvalTask) -> list[ReferenceClaim]:
 def _most_specific(
     verdicts: list[tuple[re.Match[str], bool, str]],
 ) -> tuple[re.Match[str], bool, str]:
-    """The occurrence of a non-empty list that captured the longest value.
+    r"""The occurrence of a non-empty list that captured the longest value.
 
     Used only on the *correct* occurrences of one check, where length does mean
     specificity: under `prefix` every correct capture is a prefix of the same

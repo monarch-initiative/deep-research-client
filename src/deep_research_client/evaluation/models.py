@@ -359,7 +359,18 @@ class CitationVerifiabilityScore(BaseModel):
     0.8
     """
 
-    total_citations: int = Field(..., description="Total unique citations checked")
+    total_citations: int = Field(
+        ...,
+        description=(
+            "Every citation found in the report. Not 'unique' -- nothing "
+            "dedupes, so a report citing one fabricated PMID ten times is ten "
+            "lookups and ten counts against `verifiability`, where citing it "
+            "once is one. And not 'checked': the checked count is "
+            "`total_citations - unresolvable`, which is what `verifiability` "
+            "is over and what the CLI prints. The sibling name in `FACTScore` "
+            "carried the same mismatch."
+        ),
+    )
     verified_exist: int = Field(..., description="Citations that resolve to real papers")
     unresolvable: int = Field(
         default=0,

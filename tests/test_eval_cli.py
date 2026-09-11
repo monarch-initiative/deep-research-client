@@ -868,12 +868,22 @@ def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
     monkeypatch.setattr(scorers, "_llm_judge", judge)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
 
+    async def abstract(pmid, client=None):
+        return "FGFR3 mutations cause achondroplasia."
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_abstract", abstract)
+
     path = _write(tmp_path / "t.yaml",
                   "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
-    # Only DOIs: nothing this scorer can fetch an abstract for.
+    # Two PMIDs the judge rules on and two DOIs, whose abstracts this scorer
+    # cannot fetch. A mix, not four DOIs: with nothing judged, `total_citations`
+    # and the judged count coincide at 0, so the line reads `0/0` whichever
+    # number it is printed over and the assertion below cannot tell them apart.
     report = _write(tmp_path / "r.md",
-                    "FGFR3 drives achondroplasia (DOI:10.1038/ng1234). "
-                    "It is dominant (DOI:10.1038/ng5678).")
+                    "FGFR3 drives achondroplasia (PMID:7913883). "
+                    "It is dominant (PMID:12345678). "
+                    "Growth is affected (DOI:10.1038/ng1234). "
+                    "So is the skull (DOI:10.1038/ng5678).")
 
     result = runner.invoke(app, [
         "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
@@ -882,10 +892,10 @@ def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.stdout
     fact_line = next(ln for ln in result.stdout.splitlines() if "FACT:" in ln)
     assert "2 not judged" in fact_line
-    # And over the judged pairs, which is the rate's own denominator. Printing
-    # it over every pair would let a reader divide and get a different number
-    # from the one beside it.
-    assert "effective_citations=0/0" in fact_line
+    # Over the judged pairs, which is the rate's own denominator. Printed over
+    # every pair it would read 2/4 beside an accuracy of 1.00, letting a reader
+    # divide and get a different number from the one next to it.
+    assert "effective_citations=2/2" in fact_line
 
 
 def test_a_placeholder_key_is_announced_rather_than_sent_silently(tmp_path, monkeypatch):
@@ -917,3 +927,19 @@ def test_a_placeholder_key_is_announced_rather_than_sent_silently(tmp_path, monk
     assert result.exit_code == 0, result.stdout
     assert "placeholder key" in result.stdout
     assert "answer 401" in result.stdout
+
+
+def test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is(tmp_path):
+    """The runtime note landed a round before the pages describing the flag.
+
+    Both docs presented the condition as the thing it stands for -- "an endpoint
+    that needs no key" -- while the code skips for any custom base URL. A reader
+    configuring a corporate proxy learned it from a 401, not from the page that
+    documents the flag.
+    """
+    root = Path(__file__).parent.parent
+    for page in ("docs/reference/cli.md", "docs/how-to/evaluate-providers.md"):
+        text = (root / page).read_text(encoding="utf-8")
+        assert "--llm-base-url" in text, page
+        assert "401" in text, f"{page} does not say what happens against a proxy"
+        assert "placeholder" in text, f"{page} does not say a placeholder is sent"

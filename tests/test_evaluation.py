@@ -1573,3 +1573,78 @@ def test_every_bundled_subject_is_scored_not_only_loaded():
     assert subjects <= covered, (
         f"subjects in gene_spot_checks.yaml never scored: {subjects - covered}"
     )
+
+
+@pytest.mark.parametrize("reply,expected,why", [
+    # A breakdown emitted as an array, then the verdict. The scan only ever
+    # started at `{`, so it walked past the `[` one character at a time and
+    # collected each member as a peer of the later verdict -- the defect the
+    # scan was rewritten to fix, reached through a bracket instead of a brace.
+    ('[{"criterion": "citations", "score": 2}, {"criterion": "depth", "score": 5}] '
+     'Overall: {"score": 4, "explanation": "good"}',
+     4, "an array breakdown before the verdict"),
+    # An array is not a candidate, but a reply that is *only* an array still
+    # has its verdict found -- through the descent, not as a top-level peer.
+    ('[{"score": 3, "explanation": "ok"}]', 3, "a reply that is only an array"),
+    # Nested arrays are no different.
+    ('{"criteria": [{"score": 2}]} {"score": 5}', 5, "an array inside an object"),
+])
+def test_an_array_in_the_reply_does_not_outrank_the_verdict(reply, expected, why):
+    """`score` is a generic key, so a per-criterion breakdown carries it too.
+
+    Reading the dimension from the breakdown records a number that is inside
+    the scale, where nothing downstream can tell it from a measurement -- the
+    same class as a boolean score, reached from the other side.
+    """
+    from deep_research_client.evaluation import scorers
+
+    result = scorers._extract_json_object(reply, key="score")
+    assert result is not None, why
+    assert result["score"] == expected, why
+
+
+def test_a_race_dimension_is_scored_from_the_verdict_not_the_breakdown(monkeypatch):
+    """The consequence, through the scorer rather than the helper."""
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def judge(*args, **kwargs):
+        return ('Per criterion:\n'
+                '[{"criterion": "citations", "score": 2},\n'
+                ' {"criterion": "depth", "score": 1}]\n\n'
+                'Overall: {"score": 5, "explanation": "excellent"}')
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    score = asyncio.run(scorers.score_race(out, task, object()))
+
+    assert {d.score for d in score.dimensions} == {5.0}
+    assert score.unscored_count == 0
+
+
+@pytest.mark.parametrize("reply", [
+    '[{"criterion": "depth", "note": "thorough"}]',   # array, no verdict key
+    '[1, 2, 3]',                                      # array of scalars
+])
+def test_an_array_is_never_returned_as_the_verdict(reply):
+    """The fallback returns the judge's reply so the caller can quote it, and
+    the caller then does `result.get(...)`.
+
+    An array collected as a top-level candidate would be handed back from that
+    fallback, and a list has no `.get` -- the scorer's `except` would turn a
+    reply with no verdict into an error rather than an unjudged measurement,
+    which is a worse report of the same thing. The declared return type is
+    `dict | None` and it has to hold.
+    """
+    from deep_research_client.evaluation import scorers
+
+    result = scorers._extract_json_object(reply, key="score")
+    assert result is None or isinstance(result, dict)
+    assert scorers._extract_json_object(reply) is None or isinstance(
+        scorers._extract_json_object(reply), dict
+    )

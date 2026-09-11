@@ -362,6 +362,11 @@ set, or turn the judge-backed scores off with the flags above. A local
 OpenAI-compatible endpoint needs no key at all — pass `--llm-base-url` and the
 check is skipped:
 
+Note that *any* `--llm-base-url` skips it, not only a local one. The command
+cannot tell a keyless endpoint from one that checks keys, so it sends a
+placeholder and prints a line saying so; point it at a proxy that does check
+and every judge call will answer 401.
+
 ```bash
 deep-research-client eval score report.md --source questions.yaml \
   --llm-base-url http://localhost:8000/v1 --llm-model my-local-model

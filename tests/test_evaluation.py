@@ -1980,7 +1980,7 @@ def test_a_run_of_unclosed_openers_does_not_stall_the_scorer(monkeypatch):
     )
 
 
-def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener():
+def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatch):
     """The shape truncation actually produces, and the one the skip misses.
 
     The skip above only applies once the scan is already inside an unclosed
@@ -1998,38 +1998,55 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener():
     calls = 0
     real = json.JSONDecoder.raw_decode
 
-    def counted(self, s, idx=0):
+    def counted(self: json.JSONDecoder, s: str, idx: int = 0) -> tuple:
         nonlocal calls
         calls += 1
         return real(self, s, idx)
 
-    # Patched on the class: `_decode_candidates` builds its own decoder.
-    json.JSONDecoder.raw_decode = counted
-    try:
-        assert scorers._extract_json_object("[" * 8000, key="score") is None
-        assert calls == 0, f"{calls} decode attempts on a reply with no closer"
-        calls = 0
-        # The bound rules out only openers that provably cannot close: a reply
-        # that does close is still read.
-        assert scorers._extract_json_object('{"score": 4}', key="score") == {"score": 4}
-        assert calls == 1
-    finally:
-        json.JSONDecoder.raw_decode = real
+    # On the class, since `_decode_candidates` builds its own decoder -- and
+    # through monkeypatch, so a failing assertion still restores the stdlib
+    # rather than leaving every later test counting into a dead closure.
+    monkeypatch.setattr(json.JSONDecoder, "raw_decode", counted)
+    assert scorers._extract_json_object("[" * 8000, key="score") is None
+    assert calls == 0, f"{calls} decode attempts on a reply with no closer"
+    calls = 0
+    # The bound rules out only openers that provably cannot close: a reply
+    # that does close is still read.
+    assert scorers._extract_json_object('{"score": 4}', key="score") == {"score": 4}
+    assert calls == 1
 
 
 @pytest.mark.parametrize("scenario,reply,expected", [
-    # `raw_decode` descends one frame per level. A judge cut off mid-array by
-    # `max_tokens` is the ordinary way to reach this.
+    # A judge cut off mid-array is the ordinary way to reach this. Answered by
+    # the no-closer bound rather than by a handler, which is the point.
     ("a run of openers deeper than the stack", "[" * 12000, None),
-    # The same run with a closer after it, so the no-closer bound does not
-    # short-circuit it and `raw_decode` is actually entered. Without this the
-    # case above is answered by the bound and the handler is never reached.
-    ("a run of openers that a stray closer keeps in play", "[" * 12000 + "]", None),
-    # Bounded, and too deep to repair or to mine.
-    ("a bounded nest deeper than the stack", "{" * 6000 + "}" * 6000, None),
-    ("a bounded nest of the other opener", "[" * 6000 + "]" * 6000, None),
-    # Malformed AND deep: the repair fails, and mining it recursed.
-    ("a malformed bounded nest", "{oops" * 2000 + "}" * 2000, None),
+    # Bounded, so the scan enters `raw_decode` -- which descends one frame per
+    # bracket and raises. The only case that escapes when the main loop's
+    # handler is removed. A closed nest rather than `"[" * 10000 + "]"`: that
+    # shape discriminates the same handler and costs five seconds to this
+    # one's six milliseconds, because it retries at every opener.
+    ("a bounded nest deeper than the stack", "[" * 10000 + "]" * 10000, None),
+    # Braces fail `raw_decode` immediately instead, so this reaches the bound
+    # and the mine. The innermost `{}` is what the mine recovers; an empty
+    # dict carries no verdict, so the caller reads it the same way as None.
+    ("a bounded brace nest deeper than the stack", "{" * 1200 + "}" * 1200, {}),
+    # Malformed AND deep: the repair fails and mining it recursed. Escapes
+    # only when every handler is removed, so it pins the set rather than any
+    # one of them.
+    ("a malformed bounded nest", "{oops" * 1200 + "}" * 1200, None),
+    # A SHALLOW trailing comma the repair fixes, with a deep value behind it:
+    # `raw_decode` fails without descending, so the depth is met by
+    # `json.loads` on the repaired text. This is the only shape that reaches
+    # that handler, which is why the claim that it was unreachable alone was
+    # wrong.
+    ("a repaired container whose value is deeper than the stack",
+     '{"a": [1,], "b": ' + "[" * 10000 + "]" * 10000 + "}", None),
+    # The same, with a readable verdict in another branch of that container.
+    # Discarding the container whole -- which is what this handler used to do
+    # -- threw the verdict away with the depth; mining it does not.
+    ("a verdict in a readable branch of a too-deep container",
+     '{"a": [1,], "verdict": {"score": 4}, "b": ' + "[" * 10000 + "]" * 10000 + "}",
+     {"score": 4}),
     # Read successfully and then descended: the verdict is still found, and
     # the descent is where the deep reply broke last.
     ("a verdict under a deep wrapper",
@@ -2045,11 +2062,18 @@ def test_a_reply_nested_deeper_than_the_stack_is_unreadable_not_an_error(
     as a failure, which is exactly what removing the recursion from the scan
     was for. Returning None instead lets the regex fallback have its turn.
 
-    Parametrized over five shapes because the depth broke *four* recursive
-    consumers, not one: `raw_decode`, the trailing-comma repair, the mine that
-    recurses into a malformed container, and `_nested_with_key`'s descent over
-    the value after it was read. A fix for any one of them leaves the rest, and
-    the last is reached only once decoding has already succeeded.
+    Parametrized because the depth broke *four* recursive consumers, not one:
+    `raw_decode`, the trailing-comma repair, the mine that recurses into a
+    malformed container, and `_nested_with_key`'s descent over the value after
+    it was read. A fix for any one of them leaves the rest, and the last is
+    reached only once decoding has already succeeded.
+
+    Every size here is the cheapest that still discriminates, measured: the
+    set runs in about a second where the first version of it took nine, and
+    every case was checked against removing each handler in turn. The two
+    10,000-character shapes are deeper than this client's own judge can
+    return -- `max_tokens` is 2048 -- so they are robustness for a different
+    endpoint or a different caller, not a reproduction of a seen reply.
     """
     from deep_research_client.evaluation import scorers
 

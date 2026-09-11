@@ -188,7 +188,7 @@ def _nested_with_key(obj: object, key: str) -> dict | None:
     amount of care in the decoder can reach. Depth is a property of the reply,
     not of the parser that read it.
 
-    >>> deep: Any = {"score": 1}
+    >>> deep = {"score": 1}
     >>> for _ in range(5000):
     ...     deep = {"wrapper": deep}
     >>> _nested_with_key(deep, "score")
@@ -397,8 +397,16 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # returning None lets the regex fallback have its turn.
             #
             # Unreadable, which is what `inside_unclosed` means to the tiers
-            # below -- "the scan is inside something it could not read", not
-            # specifically "something with no `}`".
+            # below -- with a caveat worth stating, since this branch is the
+            # one place the flag is set for something that may be perfectly
+            # well-formed: it means "could not read it *this deep*", not
+            # "damaged". Everything after such a preamble is demoted to
+            # salvage, so a genuine later verdict can lose to a value mined
+            # out of a valid-but-deep preamble -- the outranking the tiering
+            # exists to prevent, reached by the one route it cannot see. It
+            # needs ~1,500 levels of nesting, and the alternative was
+            # escaping as a scoring error, so this is recorded rather than
+            # fixed.
             inside_unclosed = True
             i += 1
             continue
@@ -412,8 +420,11 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 # it scans to the end of the text when nothing closes, and
                 # calling it at every subsequent opener made a reply that
                 # degenerates into a run of braces -- an ordinary LLM failure
-                # -- take six seconds at MAX_REPORT_CHARS, measured, where it
-                # used to fail fast with a RecursionError. The cost of the
+                # -- take six seconds at a 12,000-character reply, measured,
+                # where it used to fail fast with a RecursionError. (Measured
+                # at that size, not bounded by it: MAX_REPORT_CHARS truncates
+                # the report sent to the judge, not the reply that comes
+                # back.) The cost of the
                 # skip is a trailing comma left unrepaired inside text already
                 # declared unreadable.
                 #
@@ -441,23 +452,37 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 continue
             try:
                 repaired = json.loads(_without_trailing_commas(text[i:span]))
-            except RecursionError:
-                # Bounded, and nested deeper than the parser can descend.
-                # Mining it recurses the same way, so the container
-                # contributes nothing and the scan steps over it -- the same
-                # answer as "damaged beyond repair", reached without the stack.
-                pass
-            except json.JSONDecodeError:
-                # Damaged beyond a trailing comma, but bounded: mine it and
-                # step over it. The recursion here is bounded by how deeply
-                # malformed containers nest, not by the length of the reply --
-                # and malformed containers nest as deeply as a reply is long,
-                # so it is caught rather than asserted away.
+            except (json.JSONDecodeError, RecursionError):
+                # Damaged beyond a trailing comma, or nested deeper than the
+                # parser descends. From here those are the same thing -- a
+                # bounded container this parser cannot read -- so both mine it
+                # and step over it.
+                #
+                # The depth case used to `pass` instead, on the argument that
+                # mining recurses the same way and reaches the same answer. It
+                # does not: `pass` discards the container whole, so a verdict
+                # sitting in a *readable* branch of a container that is too
+                # deep somewhere else went with it. `{"a": [1,], "verdict":
+                # {"score": 4}, "b": <10,000 deep>}` answered None where the
+                # mine finds the verdict.
+                #
+                # The mine recurses, so it can reach the limit again -- and
+                # malformed containers nest as deeply as a reply is long, so
+                # that is caught rather than asserted away.
                 try:
                     inner_top, inner_salvage = _decode_candidates(
                         text[i + 1 : span - 1]
                     )
                 except RecursionError:
+                    # Not individually observable, and said out loud rather
+                    # than implied otherwise: the mine bottoms out at the
+                    # recursion limit inside a nested frame's `json.loads`,
+                    # which that frame's own handler above already catches, so
+                    # removing this one changes no measured result. Kept
+                    # because it guards the call at its own site -- the
+                    # recursion here is bounded only by how deeply malformed
+                    # containers nest, which is the reply's length over a
+                    # constant.
                     inner_top, inner_salvage = [], []
                 salvage.extend(inner_top)
                 salvage.extend(inner_salvage)
@@ -496,12 +521,23 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
        past each decoded object, and nesting is consulted only when no
        top-level object answers.
 
-    The scan is linear while values parse, since it advances past each decoded
-    span. It is not linear on a reply that does not: a judge cut off by
-    `max_tokens` leaves unclosed braces, and each one drives `raw_decode` to
-    the end of the text before failing. Bounded by MAX_REPORT_CHARS-sized
-    replies, so not worth complicating the loop for -- noted because the claim
-    matters more than the cost.
+    Cost, which three rewrites of this paragraph have got wrong in a different
+    way each time, so stated per shape:
+
+    - Linear while values parse -- the scan advances past each decoded span.
+    - Constant for a reply that simply runs out, which is what truncation
+      produces: no closer anywhere means no opener can begin a container, and
+      one comparison rules out the whole run.
+    - Quadratic in the run only for unclosed openers with a stray closer
+      somewhere after them, since neither the bound above nor the skip inside
+      `_decode_candidates` applies. Bounded by the length of the reply.
+
+    "The length of the reply" is `max_tokens`, set where the judge is called
+    and currently 2048 -- NOT `MAX_REPORT_CHARS`, which two earlier versions
+    of this paragraph cited. That constant truncates the report sent *to* the
+    judge; it says nothing about what comes back. The two are different
+    numbers for different things and the mistake makes this bound look about
+    six times worse than it is.
 
     ``raw_decode`` does the scanning rather than a brace counter, so a closing
     brace inside a string value no longer ends the object early -- an

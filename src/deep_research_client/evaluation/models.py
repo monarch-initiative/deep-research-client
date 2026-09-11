@@ -352,7 +352,18 @@ class CitationExistence(BaseModel):
     title: Optional[str] = Field(default=None, description="Paper title if retrieved")
     year: Optional[int] = Field(default=None, description="Publication year if retrieved")
     error: Optional[str] = Field(
-        default=None, description="Why the citation did not resolve, if it didn't"
+        default=None,
+        description=(
+            "Why this citation has the `exists` it has, when there is anything "
+            "to say. Not only 'why it did not resolve', which is what this "
+            "said and is what it is easiest to read it as: the no-resolver "
+            "branch sets it (`No resolver for this identifier kind: PMC`) on "
+            "a citation that very likely does resolve and that `lookup_failed` "
+            "describes as never attempted. Set on an authoritative negative "
+            "too, which is the opposite of a failed lookup. `exists` and "
+            "`lookup_failed` are the fields to branch on; this one is for a "
+            "human reading `--output`."
+        ),
     )
     lookup_failed: bool = Field(
         default=False,

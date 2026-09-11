@@ -1525,13 +1525,13 @@ def test_every_subject_in_the_bundled_spot_checks_is_covered_by_that_test():
     """
     from deep_research_client.evaluation.adapters.monarch import load_rubric_data
 
+    from .rubric_coverage import parametrized_subjects
+
     subjects = set(load_rubric_data("gene_spot_checks"))
-    covered = {
-        args[1]
-        for mark in test_the_bundled_rubrics_all_pass_the_check_they_are_validated_by.pytestmark
-        for args in mark.args[1]
-        if args[1] is not None
-    }
+    covered = parametrized_subjects(
+        test_the_bundled_rubrics_all_pass_the_check_they_are_validated_by, 1
+    )
     assert subjects <= covered, (
-        f"subjects in gene_spot_checks.yaml with no coverage: {subjects - covered}"
+        f"subjects in gene_spot_checks.yaml with no coverage at load: "
+        f"{subjects - covered}"
     )

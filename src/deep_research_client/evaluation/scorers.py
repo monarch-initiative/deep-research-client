@@ -1106,22 +1106,40 @@ def _reference_claims(task: EvalTask) -> list[ReferenceClaim]:
 
 def _most_specific(
     verdicts: list[tuple[re.Match[str], bool, str]],
-) -> tuple[re.Match[str], bool, str] | None:
-    """The occurrence that captured the longest value, or None for an empty list.
+) -> tuple[re.Match[str], bool, str]:
+    """The occurrence of a non-empty list that captured the longest value.
 
-    Length is the stand-in for specificity: 17q21.31 is a more specific claim
-    than 17, and GO:0006281 than GO. It is only ever compared within one
-    check's own occurrences, so it never compares one fact's precision against
-    another's.
+    Used only on the *correct* occurrences of one check, where length does mean
+    specificity: under `prefix` every correct capture is a prefix of the same
+    `expected`, so they are prefixes of one another and the longest is the most
+    precise; under `exact` they are all equal to it and the choice is
+    immaterial.
+
+    The values compared are already normalised (lowercased, thousands
+    separators stripped), so length is a character count on the compared form
+    -- fine for the hierarchical facts `prefix` is documented for, where a
+    longer value is a longer path, and meaningless for a numeric fact, where
+    18630 is not a more precise 1863. Numeric facts are `exact`, where the
+    choice among equal correct captures is immaterial.
+
+    It must not be read as a general specificity ranking. A check's occurrences
+    are not all about the same fact -- the bundled pattern is
+    `chromosome\s+(17...)`, not scoped to the subject gene -- so comparing an
+    incorrect capture's length against a correct one compares two different
+    facts' precision, which is how a correct TP53 report came to be scored
+    wrong on BRCA1's longer locus. The disagreement rule next door uses
+    containment for that reason.
+
+    Requires a non-empty list rather than returning None for an empty one: both
+    callers have already established that theirs is non-empty, and an Optional
+    return meant a third fallback that could not fire.
 
     >>> import re
     >>> ms = [(re.match("a", "a"), True, "17"), (re.match("a", "a"), False, "17p13.1")]
     >>> _most_specific(ms)[2]
     '17p13.1'
-    >>> _most_specific([]) is None
-    True
     """
-    return max(verdicts, key=lambda t: len(t[2])) if verdicts else None
+    return max(verdicts, key=lambda t: len(t[2]))
 
 
 def _compare_capture(
@@ -1276,9 +1294,35 @@ def score_factual_spot_checks(
                 # under `exact` a correct capture *is* the answer.
                 right = [t for t in comparable if t[1]]
                 wrong = [t for t in comparable if not t[1]]
-                hit = _most_specific(right)
+                hit = _most_specific(right) if right else None
+
+                # Under `prefix` a correct capture may be a vaguer form of the
+                # answer, so a disagreement that *extends* it is the report's
+                # real claim and overrides it. `17p13.1` extends a bare `17`,
+                # so a report saying "Genes on chromosome 17 include BRCA1"
+                # before placing BRCA1 at 17p13.1 is wrong; `17q21.31` does
+                # not extend `17p13.1`, so a TP53 report that states TP53's
+                # own locus and also mentions BRCA1's stays right.
+                #
+                # Containment, not length. Length was the first predicate
+                # tried, and it condemned whichever gene had the shorter
+                # expected string: TP53 expects 17p13.1 (7) and BRCA1's
+                # 17q21.31 (8) is longer, so a correct TP53 report was scored
+                # a factual error with the other gene's locus printed as the
+                # evidence. That is the mirror of the defect the previous
+                # predicate had, and the property `prefix` is defined by --
+                # "a shorter answer is less precise, a different arm is still
+                # wrong" -- is about containment all along.
+                #
+                # Not under `exact`, where a correct capture *is* the answer
+                # and nothing can extend it meaningfully.
+                overrode: tuple[re.Match[str], bool, str] | None = None
                 if hit is not None and is_prefix_match(spec):
-                    if any(len(c) > len(hit[2]) for _, _, c in wrong):
+                    overrode = next(
+                        (t for t in wrong if t[2] != hit[2] and t[2].startswith(hit[2])),
+                        None,
+                    )
+                    if overrode is not None:
                         hit = None
 
                 # The occurrence that settled it is the one worth reporting:
@@ -1286,7 +1330,18 @@ def score_factual_spot_checks(
                 # overrode it. Reporting the first comparable match instead
                 # showed "chromosome 17" beside a verdict of *incorrect*,
                 # leaving a reader to guess which mention was judged.
-                decisive = hit or _most_specific(wrong) or comparable[0]
+                # `right` and `wrong` partition a non-empty list, and the
+                # override only fires when `wrong` is non-empty -- so reaching
+                # the last arm means `wrong` has something in it. Written as a
+                # chain of branches rather than an `or` with a third fallback,
+                # because that fallback could not fire and a reader was left
+                # guessing which case it guarded.
+                if hit is not None:
+                    decisive = hit
+                elif overrode is not None:
+                    decisive = overrode
+                else:
+                    decisive = _most_specific(wrong)
                 found = decisive[0].group(0)
                 correct, compared = hit is not None, True
 

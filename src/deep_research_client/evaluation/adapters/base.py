@@ -230,12 +230,20 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
                     f"{source}: task {task.id!r} spot check {spec.name!r} has a "
                     f"pattern that is not a valid regular expression: {exc}"
                 ) from exc
+            # Catches the realistic slip -- `\d*`, `x?`, `a|` -- which matches
+            # empty anywhere, so `re.finditer` yields a zero-length match at
+            # every position and the check is present in any text at all. It is
+            # narrower than the property: a pattern that matches empty only in
+            # context (`\b`, `(?=x)`, `(?<=a)b*`) passes here and can still
+            # produce a zero-length match. Said rather than implied, because a
+            # guard on this branch that claimed more than it checked is how
+            # several of these were found.
             if compiled.match("") is not None:
                 raise ValueError(
                     f"{source}: task {task.id!r} spot check {spec.name!r} has a "
-                    f"pattern that matches the empty string, so it reports "
-                    f"itself present in a report that says nothing; anchor it "
-                    f"or require at least one character"
+                    f"pattern that matches the empty string anywhere, so it "
+                    f"reports itself present in a report that says nothing; "
+                    f"anchor it or require at least one character"
                 )
             if not is_prefix_match(spec):
                 continue

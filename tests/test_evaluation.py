@@ -1266,7 +1266,7 @@ def test_claim_recall_with_no_reference_claims_records_nothing_judged():
     assert score.report_chars == len(long_report)
 
 
-@pytest.mark.parametrize("report,expect_correct,expect_found", [
+@pytest.mark.parametrize("subject,report,expect_correct,expect_found", [
     # The regression "any occurrence is correct" introduced. A bare
     # "chromosome 17" captures "17", which is a valid prefix of 17q21.31, so a
     # correct-by-vagueness occurrence outranked the report's actual, wrong
@@ -1274,39 +1274,69 @@ def test_claim_recall_with_no_reference_claims_records_nothing_judged():
     # number routinely, which made this check unable to register a wrong locus
     # at all -- while still counting in `compared_count` as one of only two
     # bundled checks that compare anything.
-    ("Genes on chromosome 17 include BRCA1 and TP53. "
+    ("BRCA1",
+     "Genes on chromosome 17 include BRCA1 and TP53. "
      "BRCA1 is located at chromosome 17p13.1.", False, "chromosome 17p13.1"),
     # The fix must not undo the case it was built for: here the more specific
     # claim is the correct one, so it still wins over the earlier wrong arm.
-    ("BRCA1 works with TP53, on chromosome 17p13.1. "
+    ("BRCA1",
+     "BRCA1 works with TP53, on chromosome 17p13.1. "
      "BRCA1 is on chromosome 17q21.31.", True, "chromosome 17q21.31"),
     # And `prefix` still accepts a less precise answer when that is all the
     # report says -- the whole reason the style exists.
-    ("BRCA1 is on chromosome 17.", True, "chromosome 17"),
+    ("BRCA1", "BRCA1 is on chromosome 17.", True, "chromosome 17"),
     # A vague mention beside a correct specific one reports the specific one.
-    ("Genes on chromosome 17 include BRCA1. BRCA1 is at chromosome 17q21.31.",
+    ("BRCA1",
+     "Genes on chromosome 17 include BRCA1. BRCA1 is at chromosome 17q21.31.",
      True, "chromosome 17q21.31"),
     # Two equally specific claims that contradict each other: the override is
-    # for a *strictly* more specific disagreement, so an equally precise wrong
-    # mention does not beat a right one. There is no principled winner between
-    # claims of the same precision, and `prefix` is the forgiving style by
-    # construction -- recorded here so the choice is deliberate rather than an
-    # artifact of which comparison happens to be written first.
-    ("Some sources say chromosome 17p21.31. BRCA1 is at chromosome 17q21.31.",
+    # for a disagreement that *extends* the agreement, so an equally precise
+    # wrong mention does not beat a right one -- neither extends the other.
+    # There is no principled winner between claims of the same precision, and
+    # `prefix` is the forgiving style by construction; recorded here so the
+    # choice is deliberate rather than an artifact of the predicate.
+    ("BRCA1",
+     "Some sources say chromosome 17p21.31. BRCA1 is at chromosome 17q21.31.",
      True, "chromosome 17q21.31"),
+    # The mirror, which a length-based override got wrong. TP53 expects
+    # 17p13.1 (7 characters) and BRCA1's 17q21.31 is longer (8), so "a wrong
+    # capture that is strictly longer overrides" condemned a correct TP53
+    # report for mentioning BRCA1's locus -- printing the other gene's locus
+    # as the evidence. 17q21.31 does not *extend* 17p13.1, so containment
+    # leaves this alone. The BRCA1 cases above cannot see it: BRCA1 happens to
+    # be the gene with the longer expected string.
+    ("TP53",
+     "TP53 lies on chromosome 17p13.1 and encodes p53. It acts with BRCA1, "
+     "which is encoded at chromosome 17q21.31.", True, "chromosome 17p13.1"),
+    # And TP53's own vague-then-wrong case, so the rule is pinned from both
+    # sides for both subjects rather than only for the longer one.
+    ("TP53",
+     "Genes on chromosome 17 include TP53. TP53 is at chromosome 17q21.31.",
+     False, "chromosome 17q21.31"),
+    # A report that states the right locus keeps it even with a vaguer mention
+    # and another gene's locus in the same text -- the reason `hit` is the most
+    # specific agreement rather than the first one.
+    ("BRCA1",
+     "Chromosome 17 carries both. BRCA1 is at chromosome 17q21.31, "
+     "TP53 at chromosome 17p13.1.", True, "chromosome 17q21.31"),
 ])
 def test_a_specific_disagreement_outranks_a_vague_agreement(
-    report, expect_correct, expect_found,
+    subject, report, expect_correct, expect_found,
 ):
     """Under `prefix`, a correct capture can be a vaguer form of the answer, so
-    "any occurrence is correct" let context override the report's own claim."""
+    "any occurrence is correct" let context override the report's own claim.
+
+    The override is containment, not length: a disagreement counts only when it
+    *extends* the agreement. Both proxies tried before it were right for the
+    example in the bug report and wrong for its mirror.
+    """
     from deep_research_client.evaluation.adapters.monarch import build_rubric
     from deep_research_client.evaluation.runner import parse_dr_output
     from deep_research_client.evaluation.scorers import score_factual_spot_checks
 
     task = EvalTask(
-        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
-        rubric=build_rubric("gene_function", [], subject="BRCA1"),
+        id=subject.lower(), prompt="?", answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject=subject),
     )
     score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
     check = next(c for c in score.checks if c.fact_name == "chromosome")
@@ -1319,8 +1349,15 @@ def test_a_specific_disagreement_outranks_a_vague_agreement(
 
 def test_the_specificity_rule_does_not_reach_an_exact_check():
     """Under `exact` a correct capture *is* the answer, so nothing can be more
-    specific than it; a longer wrong capture elsewhere is a second, different
-    claim, not a more precise version of the same one."""
+    specific than it; a wrong capture elsewhere is a second, different claim,
+    not a more precise version of the same one.
+
+    The assertion below reads as unremarkable -- a correct report scores
+    correct -- so what it is for is worth saying: dropping the
+    `is_prefix_match(spec)` condition on the override makes it fail. It is the
+    only thing keeping a rule built for hierarchical facts out of the checks
+    that are not hierarchical.
+    """
     from deep_research_client.evaluation.runner import parse_dr_output
     from deep_research_client.evaluation.scorers import score_factual_spot_checks
 
@@ -1486,3 +1523,53 @@ def test_fact_total_citations_counts_every_pair_not_just_the_judged_ones(monkeyp
     assert score.unjudged_citations == 2, "the two DOIs"
     assert score.citation_accuracy == 1.0, "over the two that were judged"
     assert score.total_citations - score.unjudged_citations == 2
+
+
+def test_the_occurrence_reported_is_the_one_that_overrode_the_agreement():
+    """Not merely the longest disagreement in the report.
+
+    The two coincide for the bundled locus checks, because every capture from
+    `chromosome\\s+(17...)` extends every shorter one. With a pattern whose
+    captures are not all nested, a longer unrelated disagreement is not the one
+    that settled the verdict, and printing it would point a reader at the wrong
+    sentence -- the defect this field was fixed for one round earlier.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="go", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="process", pattern=r"term ([A-Za-z0-9.:]+)",
+            expected="GO:0006281", match="prefix",
+        )]),
+    )
+    # "GO:" agrees vaguely; "GO:0006915" extends it and disagrees, so it is the
+    # verdict. "UNRELATEDLONGTERM" also disagrees and is longer, but extends
+    # nothing -- it is a different fact, not a more precise version of this one.
+    report = ("Annotated under term GO: broadly. Specifically term GO:0006915. "
+              "See also term UNRELATEDLONGTERM.")
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    assert score.checks[0].correct is False
+    # The trailing period is inside the match: `.` is in the character class.
+    assert score.checks[0].found_in_report == "term GO:0006915."
+
+
+def test_every_bundled_subject_is_scored_not_only_loaded():
+    """The load-time parametrize has a guard against falling behind the rubric
+    file; the scoring one did not, which is the weaker half to leave unguarded.
+
+    Loading a subject proves its patterns compile. Only running them against a
+    correct report proves they match what they are about -- which is how three
+    of BRCA1's ten checks were found broken.
+    """
+    from deep_research_client.evaluation.adapters.monarch import load_rubric_data
+
+    from .rubric_coverage import parametrized_subjects
+
+    subjects = set(load_rubric_data("gene_spot_checks"))
+    covered = parametrized_subjects(test_the_bundled_rubrics_pass_against_a_correct_report, 0)
+    assert subjects <= covered, (
+        f"subjects in gene_spot_checks.yaml never scored: {subjects - covered}"
+    )

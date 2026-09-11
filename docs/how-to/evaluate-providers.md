@@ -421,11 +421,9 @@ commonest phrasing in the literature; `prefix` accepts it, while a report
 saying 17p13.1 is still scored wrong, which a presence-only check could not
 tell apart from silence.
 
-Patterns are compiled when the eval set loads, not when a report is scored, so
-a typo is reported by `eval load` before any provider is paid. `match: prefix`
-is refused at the same point when it has nothing to compare — no capturing
-group, or no `expected` — because the comparison it asks for cannot happen and
-the check would silently become a presence-only one.
+A rubric is checked when the eval set loads, not when a report is scored, so a
+typo is reported by `eval load` before any provider is paid. The full list of
+refusals is below.
 
 A check whose pattern matches but captures nothing (any group that can match
 the empty string) counts as present and is left out of the accuracy rate. It
@@ -441,8 +439,7 @@ chromosome 17 include BRCA1" captures `17`, which is a valid prefix, and
 without that rule it would excuse a report that went on to place BRCA1 at
 17p13.1. Either way the detail reports the occurrence that settled it.
 
-Patterns are compiled when the eval set loads, and so are the rest of a
-rubric's parts. `eval load` refuses, before any provider is paid:
+`eval load` refuses:
 
 | Refused | Because |
 | --- | --- |

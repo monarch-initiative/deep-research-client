@@ -1,7 +1,7 @@
 """Small predicates over the generated data model.
 
-`datamodel.py` is generated from `evaluation.yaml` by `gen-pydantic`, so hand
--written helpers over it live here rather than being lost on the next
+`datamodel.py` is generated from `evaluation.yaml` by `gen-pydantic`, so
+hand-written helpers over it live here rather than being lost on the next
 regeneration.
 """
 

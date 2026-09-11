@@ -10,8 +10,12 @@
 
 BRCA1:
   - name: chromosome
-    pattern: chromosome\s+(17[qp]?\d*\.?\d*)
-    expected: "17"
+    # Anchored on the locus, not the bare number: capturing 17q21.31 and
+    # comparing it against "17" marked a report naming the real locus wrong
+    # while a vaguer "chromosome 17" was marked right - the check rewarded
+    # imprecision. Both spellings are accepted.
+    pattern: chromosome\s+(17(?:q21(?:\.31)?)?)\b
+    expected: 17q21.31
   - name: protein_length
     pattern: (\d{3,4})\s*amino\s*acid
     expected: "1863"
@@ -22,7 +26,11 @@ BRCA1:
     pattern: \bhomologous\s+recombination\b
     expected: homologous recombination
   - name: ring_domain
-    pattern: \bRING\s*(finger)?\s*domain\b
+    # Non-capturing: an optional *capturing* group that does not participate
+    # gives groups() == (None,), which is truthy, and used to crash the scorer
+    # on the commonest phrasing. There is nothing to compare here anyway - the
+    # pattern is the expected value.
+    pattern: \bRING\s*(?:finger\s*)?domain\b
     expected: RING domain
   - name: brct_domain
     pattern: \bBRCT\b
@@ -34,16 +42,19 @@ BRCA1:
     pattern: \bRAD51\b
     expected: RAD51
   - name: cancer_type
-    pattern: \b(breast|ovarian)\s+cancer\b
-    expected: breast/ovarian cancer
+    # Non-capturing: the group captured "breast" or "ovarian" and was compared
+    # against "breast/ovarian cancer", so this check was wrong for every report
+    # ever written. Naming either cancer is the test.
+    pattern: \b(?:breast|ovarian)\s+cancer\b
+    expected: breast or ovarian cancer
   - name: parp_inhibitor
     pattern: \bPARP\s*inhibitor
     expected: PARP inhibitor
 
 TP53:
   - name: chromosome
-    pattern: chromosome\s+(17[qp]?\d*\.?\d*)
-    expected: "17"
+    pattern: chromosome\s+(17(?:p13(?:\.1)?)?)\b
+    expected: 17p13.1
   - name: protein_name
     pattern: \bp53\b
     expected: p53

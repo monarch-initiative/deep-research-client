@@ -263,8 +263,17 @@ async def score_fact(
                     supported = result.get("supported", False)
                     explanation = result.get("explanation", "")
                 else:
-                    supported = "true" in result_text.lower()[:50]
-                    explanation = result_text[:200]
+                    # No verdict. `"true" in result_text[:50]` scored a judge
+                    # that replied in prose on whether those four letters
+                    # happened to appear: "It is not true that this abstract
+                    # supports the claim" was read as support. That is the
+                    # invent-an-answer defect the multiple-choice extractor
+                    # documents, and unlike an unfetchable abstract it landed
+                    # in `checkable`, counting as a *verified* citation.
+                    supported = None
+                    explanation = (
+                        "Judge returned no parseable verdict: " + result_text[:200]
+                    )
 
                 verifications.append(
                     CitationVerification(
@@ -354,9 +363,14 @@ async def score_claim_recall(
                 best_text = result.get("best_matching_text")
                 explanation = result.get("explanation", "")
             else:
-                matched = "true" in result_text.lower()[:50]
+                # As above: no verdict is not a verdict of "no". Left unmatched
+                # *and* unscored, so it shrinks the denominator rather than
+                # being counted as a claim the report failed to cover.
+                matched = None
                 best_text = None
-                explanation = result_text[:200]
+                explanation = (
+                    "Judge returned no parseable verdict: " + result_text[:200]
+                )
 
             matches.append(
                 ClaimMatch(
@@ -373,18 +387,24 @@ async def score_claim_recall(
                 ClaimMatch(
                     ground_truth_claim_name=gt_claim.name,
                     ground_truth_claim_description=gt_claim.description[:200],
-                    matched=False,
+                    matched=None,
                     explanation=f"Error: {e}",
                 )
             )
 
-    matched_count = sum(1 for m in matches if m.matched)
+    # Recall is over the claims the judge actually ruled on. Counting an
+    # unanswered claim as unmatched made recall fall with the judge's uptime --
+    # a provider scored for an outage. `score_fact` already divides by the
+    # citations it could check; this is the same argument.
+    judged = [m for m in matches if m.matched is not None]
+    matched_count = sum(1 for m in judged if m.matched)
     total = len(ground_truth_claims)
 
     return ClaimRecallScore(
         total_ground_truth_claims=total,
         matched_claims=matched_count,
-        claim_recall=matched_count / total if total > 0 else 0.0,
+        unjudged_claims=total - len(judged),
+        claim_recall=matched_count / len(judged) if judged else 0.0,
         matches=matches,
     )
 
@@ -464,17 +484,21 @@ async def score_race(
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
             result = _extract_json_object(result_text)
-            if result:
-                score = float(result.get("score", 3))
+            if result and result.get("score") is not None:
+                score = min(max(float(result["score"]), 1.0), 5.0)
                 explanation = result.get("explanation", "")
             else:
-                score = 3.0
-                explanation = result_text[:200]
+                # No parseable verdict is not a middling verdict. Recorded as
+                # unscored so it leaves the average rather than dragging it to
+                # the middle -- a judge outage used to report 3.0 out of 5 for
+                # every dimension of every report.
+                score = None
+                explanation = "Judge returned no parseable score: " + result_text[:200]
 
             dimensions.append(
                 RACEDimension(
                     dimension=dim_name,
-                    score=min(max(score, 1.0), 5.0),
+                    score=score,
                     max_score=5.0,
                     explanation=explanation,
                 )
@@ -482,7 +506,10 @@ async def score_race(
         except Exception as e:
             logger.warning("Failed to score dimension %s: %s", dim_name, e)
             dimensions.append(
-                RACEDimension(dimension=dim_name, score=3.0, max_score=5.0, explanation=f"Error: {e}")
+                RACEDimension(
+                    dimension=dim_name, score=None, max_score=5.0,
+                    explanation=f"Error: {e}",
+                )
             )
 
     return RACEScore(dimensions=dimensions)
@@ -666,19 +693,27 @@ async def score_citation_verifiability(
         if year:
             years.append(int(year))
 
-    verified = sum(1 for r in results if r.exists)
+    # A lookup that errored is not a citation that does not exist: a CrossRef
+    # outage used to report every DOI in a report as hallucinated. Excluded
+    # from the rate, and counted so the number can say what it did not cover.
     total = len(results)
+    checkable = [r for r in results if r.error is None]
+    verified = sum(1 for r in checkable if r.exists)
 
     # Year distribution
     year_dist: dict[int, int] = {}
     for y in years:
         year_dist[y] = year_dist.get(y, 0) + 1
+    # Upper middle element for an even-length list rather than the mean of the
+    # two middles. Kept as-is -- a publication year should be a year that
+    # exists -- but named so the field is not read as a true median.
     median_year = sorted(years)[len(years) // 2] if years else None
 
     return CitationVerifiabilityScore(
         total_citations=total,
         verified_exist=verified,
-        verifiability=verified / total if total > 0 else 0.0,
+        unresolvable=total - len(checkable),
+        verifiability=verified / len(checkable) if checkable else 0.0,
         year_distribution=year_dist,
         median_year=median_year,
         citations=results,
@@ -823,12 +858,25 @@ def score_factual_spot_checks(
             present, found, correct = False, None, False
         else:
             present, found = True, match.group(0)
+            compared = False
             if spec.expected is None:
                 # Presence-only check: appearing is the whole test.
                 correct = True
-            elif match.groups():
-                correct = match.group(1).strip().lower() == spec.expected.strip().lower()
+            elif match.lastindex:
+                # `lastindex` is None when no group participated, where
+                # `groups()` would be a truthy tuple of Nones -- and an optional
+                # group that did not participate has no captured value to
+                # compare. `\bRING\s*(finger)?\s*domain\b` against "a RING
+                # domain" is the bundled case: groups() is (None,), which is
+                # truthy, so this branch ran and `.strip()` raised on None.
+                # That crash reached score_intrinsic, whose `except Exception`
+                # discarded all four intrinsic scores for a correct report.
+                captured = match.group(1)
+                correct = captured.strip().lower() == spec.expected.strip().lower()
+                compared = True
             else:
+                # A pattern with no participating group cannot disagree with
+                # `expected`; appearing is the whole test, as above.
                 correct = True
 
         checks.append(FactualSpotCheck(
@@ -837,18 +885,29 @@ def score_factual_spot_checks(
             found_in_report=found,
             correct=correct,
             present=present,
+            compared=compared if present else False,
         ))
 
     present_count = sum(1 for c in checks if c.present)
     correct_count = sum(1 for c in checks if c.correct)
     total = len(checks)
 
+    # Accuracy is over the checks that actually compared something. A
+    # presence-only check is `correct` whenever it matched, so including it
+    # here reports agreement that was never tested -- the same "a number where
+    # there was no question" the multiple-choice path refuses.
+    compared_checks = [c for c in checks if c.compared]
+    compared_correct = sum(1 for c in compared_checks if c.correct)
+
     return FactualSpotCheckScore(
         total_checks=total,
         present_count=present_count,
         correct_count=correct_count,
+        compared_count=len(compared_checks),
         presence_rate=present_count / total if total > 0 else 0.0,
-        accuracy_rate=correct_count / present_count if present_count > 0 else 0.0,
+        accuracy_rate=(
+            compared_correct / len(compared_checks) if compared_checks else 0.0
+        ),
         checks=checks,
     )
 

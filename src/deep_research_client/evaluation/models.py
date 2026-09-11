@@ -136,7 +136,14 @@ class ClaimMatch(BaseModel):
 
     ground_truth_claim_name: str
     ground_truth_claim_description: str = ""
-    matched: bool = Field(..., description="Whether the DR output covers this claim")
+    matched: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether the DR output covers this claim. None when the judge could "
+            "not be asked or returned no parseable verdict -- distinct from "
+            "False, which is a ruling that the report does not cover it."
+        ),
+    )
     best_matching_text: Optional[str] = Field(default=None, description="Best matching text from DR output")
     similarity_score: Optional[float] = Field(default=None, description="Semantic similarity score")
     explanation: Optional[str] = Field(default=None, description="LLM explanation of match")
@@ -155,7 +162,17 @@ class ClaimRecallScore(BaseModel):
 
     total_ground_truth_claims: int
     matched_claims: int
-    claim_recall: float = Field(..., description="matched / total ground truth claims")
+    unjudged_claims: int = Field(
+        default=0,
+        description=(
+            "Claims the judge could not rule on. Excluded from `claim_recall`: "
+            "counting them as uncovered made recall fall with the judge's "
+            "uptime, scoring a provider for someone else's outage."
+        ),
+    )
+    claim_recall: float = Field(
+        ..., description="matched / claims the judge ruled on (see unjudged_claims)"
+    )
     total_extracted_claims: Optional[int] = Field(default=None)
     claim_precision: Optional[float] = Field(default=None, description="matched / total extracted claims (if computed)")
     matches: list[ClaimMatch] = Field(default_factory=list, description="Per-claim match details")
@@ -170,14 +187,23 @@ class RACEDimension(BaseModel):
     """
 
     dimension: str = Field(..., description="E.g. comprehensiveness, accuracy, organization, terminology")
-    score: float
+    score: Optional[float] = Field(
+        default=None,
+        description=(
+            "The judge's score, or None when it could not be asked or returned "
+            "nothing parseable. None rather than a mid-scale default: a 3.0 "
+            "written on failure is indistinguishable from a genuine 3."
+        ),
+    )
     max_score: float = 5.0
     explanation: Optional[str] = None
 
     @property
     def normalized_score(self) -> float:
-        """Return score normalized to 0-1 range."""
-        return self.score / self.max_score if self.max_score > 0 else 0.0
+        """Return score normalized to 0-1 range, or 0.0 if unscored."""
+        if self.score is None or self.max_score <= 0:
+            return 0.0
+        return self.score / self.max_score
 
 
 class RACEScore(BaseModel):
@@ -195,11 +221,38 @@ class RACEScore(BaseModel):
     overall_explanation: Optional[str] = None
 
     @property
+    def scored_dimensions(self) -> list[RACEDimension]:
+        """The dimensions the judge actually returned a score for.
+
+        A dimension whose judge call failed used to be recorded as 3.0 out of 5,
+        indistinguishable from a genuine middling verdict -- so a run where the
+        endpoint was down reported mid-scale quality for every report.
+
+        >>> s = RACEScore(dimensions=[
+        ...     RACEDimension(dimension="comprehensiveness", score=4.0, max_score=5.0),
+        ...     RACEDimension(dimension="accuracy", score=None, max_score=5.0),
+        ... ])
+        >>> len(s.scored_dimensions), s.unscored_count
+        (1, 1)
+        """
+        return [d for d in self.dimensions if d.score is not None]
+
+    @property
+    def unscored_count(self) -> int:
+        """Dimensions the judge could not be asked about, or did not answer."""
+        return len(self.dimensions) - len(self.scored_dimensions)
+
+    @property
     def overall_score(self) -> float:
-        """Weighted average of normalized dimension scores."""
-        if not self.dimensions:
+        """Weighted average over the dimensions that were actually scored.
+
+        0.0 when none were, which `unscored_count` distinguishes from a report
+        that genuinely scored zero.
+        """
+        scored = self.scored_dimensions
+        if not scored:
             return 0.0
-        return sum(d.normalized_score for d in self.dimensions) / len(self.dimensions)
+        return sum(d.normalized_score for d in scored) / len(scored)
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +285,22 @@ class CitationVerifiabilityScore(BaseModel):
 
     total_citations: int = Field(..., description="Total unique citations checked")
     verified_exist: int = Field(..., description="Citations that resolve to real papers")
-    verifiability: float = Field(..., description="Fraction of citations that are real (verified_exist / total)")
+    unresolvable: int = Field(
+        default=0,
+        description=(
+            "Citations whose lookup errored. Excluded from `verifiability`: a "
+            "CrossRef or PubMed outage otherwise reports every DOI in the "
+            "report as hallucinated."
+        ),
+    )
+    verifiability: float = Field(
+        ...,
+        description=(
+            "Fraction of the citations that could be looked up which resolve to "
+            "real papers. Read with `unresolvable`, which distinguishes "
+            "'all fabricated' from 'none checkable'."
+        ),
+    )
     year_distribution: dict[int, int] = Field(default_factory=dict, description="Publication year -> count")
     median_year: Optional[int] = Field(default=None, description="Median publication year")
     citations: list[CitationExistence] = Field(default_factory=list, description="Per-citation results")
@@ -292,6 +360,14 @@ class FactualSpotCheck(BaseModel):
     found_in_report: Optional[str] = Field(default=None, description="Value found in DR output, if any")
     correct: Optional[bool] = Field(default=None, description="Whether report value matches expected")
     present: bool = Field(default=False, description="Whether the fact is mentioned at all")
+    compared: bool = Field(
+        default=False,
+        description=(
+            "Whether this check actually compared a captured value against "
+            "`expected`. False for a presence-only check, which is `correct` "
+            "whenever it matched and so cannot be evidence of accuracy."
+        ),
+    )
 
 
 class FactualSpotCheckScore(BaseModel):
@@ -305,8 +381,25 @@ class FactualSpotCheckScore(BaseModel):
     total_checks: int
     present_count: int = Field(..., description="Facts mentioned in the report")
     correct_count: int = Field(..., description="Facts correctly stated")
+    compared_count: int = Field(
+        default=0,
+        description=(
+            "Checks that actually compared a captured value against an expected "
+            "one. A check whose pattern captures nothing cannot disagree with "
+            "its expected value, so counting it as accuracy inflates the rate: "
+            "nine presence-only checks and one wrong accuracy check reported "
+            "0.9 accurate."
+        ),
+    )
     presence_rate: float = Field(..., description="present / total")
-    accuracy_rate: float = Field(..., description="correct / present (accuracy of stated facts)")
+    accuracy_rate: float = Field(
+        ...,
+        description=(
+            "correct / compared, over the checks that made a comparison. 0.0 "
+            "when nothing was comparable -- read it with compared_count, which "
+            "distinguishes 'wrong about everything' from 'measured nothing'."
+        ),
+    )
     checks: list[FactualSpotCheck] = Field(default_factory=list)
 
 

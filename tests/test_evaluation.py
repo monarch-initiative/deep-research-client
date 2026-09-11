@@ -17,6 +17,8 @@ from deep_research_client.evaluation.datamodel import (
     EvidenceItem,
     OntologyTerm,
     ReferenceClaim,
+    Rubric,
+    SpotCheck,
 )
 from deep_research_client.evaluation.adapters.monarch import (
     GroundTruthEntity,
@@ -298,3 +300,238 @@ class TestRunner:
     def test_generate_all_tasks(self, sample_disease_entity, sample_gene_entity):
         tasks = generate_tasks(sample_disease_entity) + generate_tasks(sample_gene_entity)
         assert len(tasks) == 4  # 3 disease + 1 gene
+
+
+# ---------------------------------------------------------------------------
+# Bundled rubrics against the scorer that reads them
+# ---------------------------------------------------------------------------
+
+#: A report stating every BRCA1 fact in the bundled rubric correctly. Written
+#: in the ordinary phrasing rather than to suit the patterns -- "a RING domain",
+#: not "a RING finger domain" -- because the phrasing was the crash.
+_CORRECT_BRCA1_REPORT = """
+BRCA1 is a tumour suppressor encoded on chromosome 17q21.31. The protein is
+1863 amino acids long and localises to the nucleus. It heterodimerises with
+BARD1 to form an E3 ubiquitin ligase, and its N-terminal RING domain mediates
+that interaction while its BRCT repeats bind phosphopeptides. BRCA1 acts in the
+homologous recombination repair pathway together with RAD51. Germline
+loss-of-function variants predispose to breast cancer and ovarian cancer, and
+such tumours are sensitive to PARP inhibitor therapy.
+"""
+
+_CORRECT_TP53_REPORT = """
+TP53 lies on chromosome 17p13.1 and encodes p53, a tumor suppressor and
+sequence-specific transcription factor whose DNA binding activity is essential.
+p53 accumulates in the nucleus and drives an apoptosis signaling pathway,
+inducing cell cycle arrest in response to DNA damage. It is the most frequently
+mutated gene in human cancer.
+"""
+
+
+@pytest.mark.parametrize("gene,report", [
+    ("BRCA1", _CORRECT_BRCA1_REPORT),
+    ("TP53", _CORRECT_TP53_REPORT),
+])
+def test_the_bundled_rubrics_pass_against_a_correct_report(gene, report):
+    """The one artifact claiming to measure accuracy, run against the scorer.
+
+    Nothing exercised this file: `score_factual_spot_checks`' doctests build
+    inline checks written to work, and `build_rubric`'s doctest asserts only
+    that names are present. Three of BRCA1's ten checks were broken --
+    `ring_domain` crashed the scorer on the commonest phrasing, `cancer_type`
+    compared a captured "breast" against "breast/ovarian cancer" and so was
+    wrong for every report ever written, and `chromosome` captured 17q21.31 and
+    compared it against a bare "17", marking a precise report wrong and a vague
+    one right.
+    """
+    from deep_research_client.evaluation.adapters.monarch import build_rubric
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id=gene.lower(), prompt=f"What does {gene} do?",
+        answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject=gene),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    missing = [c.fact_name for c in score.checks if not c.present]
+    assert not missing, f"a correct report did not mention: {missing}"
+
+    wrong = [
+        (c.fact_name, c.expected, c.found_in_report)
+        for c in score.checks if c.compared and not c.correct
+    ]
+    assert not wrong, f"a correct report was scored wrong on: {wrong}"
+    assert score.presence_rate == 1.0
+
+
+def test_accuracy_is_reported_over_the_checks_that_compared_something():
+    """A presence-only check is `correct` whenever it matched.
+
+    Counting those as accuracy meant a rubric of nine presence-only checks and
+    one wrong accuracy check reported 0.9 accurate -- agreement that was never
+    tested, which is the "number with no question behind it" the
+    multiple-choice path refuses.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="mixed", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[
+            SpotCheck(name="presence", pattern=r"\btumour suppressor\b",
+                      expected="tumour suppressor"),
+            SpotCheck(name="accuracy", pattern=r"chromosome\s+(\S+)",
+                      expected="17q21.31"),
+        ]),
+    )
+    report = "A tumour suppressor on chromosome 11p15.5."
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    assert score.present_count == 2
+    assert score.compared_count == 1, "only one check compared a captured value"
+    # Wrong about the one thing it could be wrong about.
+    assert score.accuracy_rate == 0.0
+
+
+def test_an_optional_group_that_did_not_participate_is_not_a_captured_value():
+    """The scorer half of the RING-domain crash, pinned independently.
+
+    The rubric fix (a non-capturing group) and the scorer fix (`lastindex`
+    rather than `groups()`) each prevent the crash on their own, so reverting
+    either alone leaves the bundled-rubric test green. This exercises the
+    scorer directly, which is also the library-caller path: anyone building a
+    `SpotCheck` in code can write an optional capturing group, and
+    `groups()` on a non-participating one is `(None,)` -- truthy, so the
+    comparison branch ran and `.strip()` raised on None.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="optional", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[
+            SpotCheck(name="optional_group",
+                      pattern=r"\bRING\s*(finger)?\s*domain\b",
+                      expected="RING domain"),
+        ]),
+    )
+    out = parse_dr_output(task, "BRCA1 has a RING domain.", "test")
+
+    score = score_factual_spot_checks(out, task)  # must not raise
+    check = score.checks[0]
+    assert check.present
+    assert check.correct, "nothing was captured, so nothing can disagree"
+    assert not check.compared, "a non-participating group is not a comparison"
+    assert score.compared_count == 0
+
+
+# ---------------------------------------------------------------------------
+# A judge that fails must not produce a plausible number
+# ---------------------------------------------------------------------------
+
+
+def test_race_records_an_unscored_dimension_rather_than_a_middling_one():
+    """A judge outage used to report 3.0 out of 5 for every dimension.
+
+    Indistinguishable from a genuine 3, so a run against a dead endpoint
+    reported mid-scale quality for every report in the matrix.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def dead_judge(*args, **kwargs):
+        raise RuntimeError("judge endpoint unreachable")
+
+    task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    original = scorers._llm_judge
+    scorers._llm_judge = dead_judge
+    try:
+        score = asyncio.run(scorers.score_race(out, task, llm_client=object()))
+    finally:
+        scorers._llm_judge = original
+
+    assert score.dimensions, "the dimensions should still be listed"
+    assert all(d.score is None for d in score.dimensions)
+    assert score.scored_dimensions == []
+    assert score.unscored_count == len(score.dimensions)
+    # 0.0 rather than 0.6, and unscored_count says which it is.
+    assert score.overall_score == 0.0
+
+
+def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim():
+    """Recall used to fall with the judge's uptime.
+
+    An exception recorded `matched=False` and divided by the full ground-truth
+    count, so a provider was scored for someone else's outage.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def dead_judge(*args, **kwargs):
+        raise RuntimeError("judge endpoint unreachable")
+
+    claims = [
+        ReferenceClaim(name="c1", category="molecular_function",
+                       description="First claim."),
+        ReferenceClaim(name="c2", category="molecular_function",
+                       description="Second claim."),
+    ]
+    task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    original = scorers._llm_judge
+    scorers._llm_judge = dead_judge
+    try:
+        score = asyncio.run(
+            scorers.score_claim_recall(out, claims, llm_client=object())
+        )
+    finally:
+        scorers._llm_judge = original
+
+    assert score.total_ground_truth_claims == 2
+    assert score.unjudged_claims == 2
+    assert all(m.matched is None for m in score.matches)
+    assert score.claim_recall == 0.0  # nothing judged, not "covered nothing"
+
+
+def test_a_judge_reply_without_a_verdict_is_not_read_as_a_verdict():
+    """`"true" in result_text[:50]` scored prose on whether four letters appear.
+
+    "It is not true that this abstract supports the claim" was read as support,
+    and unlike an unfetchable abstract it landed in the checkable set, counting
+    as a *verified* citation.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def prose_judge(*args, **kwargs):
+        return "It is not true that this abstract supports the claim."
+
+    claims = [ReferenceClaim(name="c1", category="molecular_function",
+                             description="First claim.")]
+    task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    original = scorers._llm_judge
+    scorers._llm_judge = prose_judge
+    try:
+        score = asyncio.run(
+            scorers.score_claim_recall(out, claims, llm_client=object())
+        )
+    finally:
+        scorers._llm_judge = original
+
+    assert score.matches[0].matched is None, (
+        "a reply containing the letters 'true' is not a verdict of true"
+    )
+    assert score.unjudged_claims == 1

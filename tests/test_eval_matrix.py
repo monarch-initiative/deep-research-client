@@ -99,8 +99,7 @@ def test_load_arms_round_trips_provider_params(tmp_path):
         "  - id: agent\n    provider: claude_code\n"
         "  - id: agent-noweb\n    provider: claude_code\n"
         "    description: Closed-book control\n"
-        "    params:\n      allowed_tools: []\n"
-    , encoding="utf-8")
+        "    params:\n      allowed_tools: []\n", encoding="utf-8")
     arms = load_arms(path)
     assert [a.id for a in arms] == ["agent", "agent-noweb"]
     assert _arm_params(arms[0]) == {}
@@ -920,7 +919,12 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     }
     done = subprocess.run(
         [sys.executable, str(script), str(tmp_path)],
-        capture_output=True, text=True, env=env,
+        capture_output=True, env=env,
+        # The parent decodes the child's output, so `text=True` alone would use
+        # the *parent's* locale -- the sixth locale-dependent construct in this
+        # repo, inside the test that exists for locale-dependence. On a failure
+        # the tail printed is a traceback over a prompt containing µ and °C.
+        encoding="utf-8", errors="replace",
     )
     if done.returncode == 77:
         pytest.skip(
@@ -934,41 +938,98 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     assert "OK" in done.stdout
 
 
-#: Where a positional ``encoding`` sits, and where ``mode`` sits, per call form.
-#: Positions differ per function, which is the whole point: treating *any*
-#: positional as an encoding is right for ``read_text(encoding, ...)`` and wrong
-#: for ``write_text(data, encoding, ...)``, where the first positional is the
-#: data -- so that shortcut exempted every bare write and switched off the half
-#: of this check its own name promises.
+#: Every constructor that can open a locale-encoded text handle, keyed by
+#: (name, is_method) and giving (encoding position, mode position, binary by
+#: default).
+#:
+#: Enumerated from what the property can be violated *with*, not from what the
+#: code currently happens to call. Three consecutive rounds of review found this
+#: check one construct short of the one that mattered -- first `open`, then
+#: `write_text`, then `os.fdopen`, which is how `atomic_write` writes every
+#: artifact in the package and is the very line whose docstring this invariant
+#: comes from. Deleting its encoding left both guard tests green.
+#:
+#: Positions differ per function, which is why they are spelled out: treating
+#: *any* positional as an encoding is right for ``read_text(encoding, ...)`` and
+#: wrong for ``write_text(data, encoding, ...)``, where the first positional is
+#: the data -- a shortcut that silently exempted every bare write.
+#:
+#: `binary_default` inverts the question: `open` and `os.fdopen` are text unless
+#: told otherwise, while the `tempfile` factories are binary unless told
+#: otherwise, so only a tempfile call that *names* a text mode needs an
+#: encoding.
 _TEXT_IO_SIGNATURES = {
-    # name, is_method -> (encoding position, mode position or None)
-    ("read_text", True): (0, None),
-    ("write_text", True): (1, None),
-    ("open", True): (2, 0),       # Path.open(mode, buffering, encoding, ...)
-    ("open", False): (3, 1),      # open(file, mode, buffering, encoding, ...)
+    # (name, is_method): (encoding_at, mode_at, binary_default)
+    ("read_text", True): (0, None, False),
+    ("write_text", True): (1, None, False),
+    ("open", True): (2, 0, False),          # Path.open(mode, buffering, encoding)
+    ("open", False): (3, 1, False),         # open(file, mode, buffering, encoding)
+    ("fdopen", True): (2, 1, False),        # os.fdopen(fd, mode, buffering, encoding)
+    ("TextIOWrapper", True): (1, None, False),
+    ("NamedTemporaryFile", True): (5, 1, True),
+    ("TemporaryFile", True): (5, 1, True),
+    ("SpooledTemporaryFile", True): (6, 2, True),
 }
+
+#: Mode strings are drawn from this alphabet. Checked rather than searching for
+#: a "b", because `mode_at` is only a guess for a method call on an unknown
+#: object: `zipfile.ZipFile(p).open("notebook.md")` would otherwise have its
+#: *filename* read as a mode, find the "b" in "notebook", and be skipped -- a
+#: false negative, in the construct the skip list is written about.
+_MODE_CHARACTERS = set("rwxabt+U")
+
+
+def _is_binary_mode(node) -> bool:
+    """Whether this argument is a mode string that opens a binary handle."""
+    import ast
+
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        return False
+    mode = node.value
+    if not mode or not set(mode) <= _MODE_CHARACTERS:
+        return False  # not a mode at all; treat the call as text
+    return "b" in mode
 
 
 def _encoding_offenders(root: pathlib.Path) -> list[str]:
     """Text reads and writes under `root` that do not name an encoding.
 
-    Covers `read_text`, `write_text` and `open`, the last in both its builtin
-    and `path.open` forms. `open` is here because it is the form the offenders
-    were actually written in -- `with open(yaml_path) as f` in
-    `adapters/monarch.py` -- and a check that missed it would leave its blind
-    spot exactly where the defect had already appeared once.
-
-    Binary modes are skipped, since encoding is meaningless there, as are
-    `os.open` (which takes a file descriptor) and `zipfile` members (bytes).
-    Those two are recognised by the name they are called on, so an unusual
-    spelling is reported rather than skipped -- a false positive that someone
-    reads, not a false negative nobody sees.
+    Every construct in `_TEXT_IO_SIGNATURES` can open a handle whose encoding
+    comes from the machine's locale. Binary modes are skipped, since encoding is
+    meaningless there, as is `os.open`, which returns a file descriptor rather
+    than a handle -- named specifically rather than skipping everything called
+    on `os`, since `os.fdopen` is on the same module and very much does take an
+    encoding.
     """
     import ast
 
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        # Names bound to a ZipFile, so `zf.open(member)` can be recognised as
+        # the bytes-yielding call it is. Collected from the source rather than
+        # guessed from the variable's spelling: a skip list of likely names is
+        # a false negative for every other spelling, in the one construct it
+        # claims to be about.
+        zipfile_handles = {
+            target.optional_vars.id
+            for stmt in ast.walk(tree)
+            if isinstance(stmt, ast.With)
+            for target in stmt.items
+            if isinstance(target.optional_vars, ast.Name)
+            and isinstance(target.context_expr, ast.Call)
+            and getattr(target.context_expr.func, "attr", "") == "ZipFile"
+        } | {
+            stmt.targets[0].id
+            for stmt in ast.walk(tree)
+            if isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and isinstance(stmt.value, ast.Call)
+            and getattr(stmt.value.func, "attr", "") == "ZipFile"
+        }
+
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -976,8 +1037,11 @@ def _encoding_offenders(root: pathlib.Path) -> list[str]:
             func = node.func
             if isinstance(func, ast.Attribute):
                 name, is_method = func.attr, True
-                if getattr(func.value, "id", "") in {"os", "zf", "zipfile"}:
-                    continue
+                owner = getattr(func.value, "id", "")
+                if (owner, name) == ("os", "open"):
+                    continue  # takes and returns a file descriptor
+                if name == "open" and owner in zipfile_handles:
+                    continue  # ZipFile.open always yields bytes
             elif isinstance(func, ast.Name):
                 name, is_method = func.id, False
             else:
@@ -986,20 +1050,23 @@ def _encoding_offenders(root: pathlib.Path) -> list[str]:
             signature = _TEXT_IO_SIGNATURES.get((name, is_method))
             if signature is None:
                 continue
-            encoding_at, mode_at = signature
+            encoding_at, mode_at, binary_default = signature
 
             if any(k.arg == "encoding" for k in node.keywords):
                 continue
             if len(node.args) > encoding_at:
                 continue  # a positional encoding, in the position it belongs
 
-            if mode_at is not None:
-                mode = next(
-                    (k.value for k in node.keywords if k.arg == "mode"),
-                    node.args[mode_at] if len(node.args) > mode_at else None,
-                )
-                if isinstance(mode, ast.Constant) and "b" in str(mode.value):
-                    continue
+            mode = next(
+                (k.value for k in node.keywords if k.arg == "mode"),
+                node.args[mode_at] if mode_at is not None and len(node.args) > mode_at
+                else None,
+            )
+            if mode is None:
+                if binary_default:
+                    continue  # tempfile defaults to "w+b"; nothing to encode
+            elif _is_binary_mode(mode):
+                continue
 
             offenders.append(f"{path.relative_to(root)}:{node.lineno} {name}")
     return offenders

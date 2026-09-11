@@ -199,7 +199,7 @@ Machine learning is a subset of artificial intelligence (AI) that enables system
 1. Wikipedia - Machine Learning
 2. DeepMind Research"""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -240,7 +240,7 @@ Test query
 
 Some content here."""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -263,7 +263,7 @@ Simple question
 
 Simple answer"""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -441,7 +441,7 @@ This is a document that doesn't follow our standard sections.
 
 It just has regular markdown content."""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 

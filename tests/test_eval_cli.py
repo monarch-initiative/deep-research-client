@@ -602,3 +602,28 @@ def test_a_failed_cell_is_not_counted_as_measured(tmp_path):
         f"a failed cell was counted as measured: {summary}"
     )
     assert "1 failed" in summary
+
+
+def test_a_fresh_run_reports_how_many_cells_failed(tmp_path):
+    """The accounting paragraph is gated on a resume or a replay.
+
+    So on a fresh run -- the first run, and every `--no-resume --no-cache`
+    re-run -- it never prints, and dropping the count from the failure header
+    left a 50-failure run showing ten lines and no total at all.
+    """
+    path = _write(tmp_path / "rep.yaml",
+                  "tasks:\n" + "".join(
+                      f"  - id: t{i}\n    prompt: Probe {i}?\n" for i in range(12)))
+    arms = _write(tmp_path / "arms.yaml",
+                  "arms:\n  - id: broken\n    provider: mock\n"
+                  "    params:\n      error_type: transient\n")
+    result = runner.invoke(app, [
+        "eval", "run", str(path), "--arms", str(arms),
+        "--output-dir", str(tmp_path / "run")])
+    assert result.exit_code == 0
+
+    assert "12 failed:" in result.stdout
+    # And says so when the list is truncated, which it silently was.
+    assert "and 2 more" in result.stdout
+    # The accounting paragraph is absent on a fresh run, which is the premise.
+    assert "measured in this run" not in result.stdout

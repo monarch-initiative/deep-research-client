@@ -107,8 +107,7 @@ def test_duplicate_task_ids_are_rejected(tmp_path):
     path.write_text(
         "tasks:\n"
         "  - id: same\n    prompt: first\n"
-        "  - id: same\n    prompt: second\n"
-    , encoding="utf-8")
+        "  - id: same\n    prompt: second\n", encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate task ids: same"):
         get_adapter("yaml").load(path)
 
@@ -701,8 +700,7 @@ def test_an_adapter_actually_applies_the_uniqueness_guard(tmp_path):
     path.write_text(
         "tasks:\n"
         "  - id: same\n    prompt: first\n"
-        "  - id: same\n    prompt: second\n"
-    , encoding="utf-8")
+        "  - id: same\n    prompt: second\n", encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate task ids: same"):
         get_adapter("yaml").load(path)
 
@@ -918,8 +916,7 @@ def test_distractors_duplicating_each_other_are_allowed(tmp_path):
     path = tmp_path / "dupe_distractors.yaml"
     path.write_text(
         "tasks:\n  - id: q1\n    prompt: Which base?\n"
-        "    ideal: Thymine\n    distractors: [Guanine, Guanine]\n"
-    , encoding="utf-8")
+        "    ideal: Thymine\n    distractors: [Guanine, Guanine]\n", encoding="utf-8")
     eval_set = get_adapter("yaml").load(path)
     assert len(mcq.present_choices(eval_set.tasks[0])) == 3
 

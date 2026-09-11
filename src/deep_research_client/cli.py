@@ -3081,12 +3081,22 @@ def eval_run(
     ))
 
     cells = manifest.cells or []
+    # Both counts read off the statuses. `completed` was `len(cells) - len(failed)`,
+    # which is the subtraction rejected below for the same reason: CellStatus
+    # has a SKIPPED member, and the day something emits it that arithmetic
+    # would report a skipped cell as completed.
     failed = [c for c in cells if c.status == CellStatus.FAILED]
-    typer.echo(f"\n{len(cells) - len(failed)}/{len(cells)} cells completed")
+    completed_cells = [c for c in cells if c.status == CellStatus.COMPLETED]
+    typer.echo(f"\n{len(completed_cells)}/{len(cells)} cells completed")
     if failed:
-        typer.echo("Failed:")
+        # The count belongs here rather than only in the accounting paragraph
+        # below, which is gated on a resume or a replay and so never prints on
+        # a fresh run -- the run where every cell failing is most likely.
+        typer.echo(f"{len(failed)} failed:")
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
+        if len(failed) > 10:
+            typer.echo(f"  ... and {len(failed) - 10} more; see results.tsv")
 
     # Three categories, because they are three different things and the remedy
     # differs. A resumed cell was read off disk and carries the *earlier* run's

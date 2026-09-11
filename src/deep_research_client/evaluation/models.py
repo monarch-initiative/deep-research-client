@@ -829,10 +829,11 @@ class MCQScore(BaseModel):
     """Aggregate multiple-choice score, following LAB-Bench's metric definitions.
 
     Accuracy is over all questions, coverage is the fraction attempted, and
-    precision is over the attempted questions whose correctness was actually
-    established -- `attempted - unusable`, which equals `attempted` unless a
-    record came back with no correctness at all. Reporting accuracy without
-    coverage hides whether a low score means wrong answers or declined ones.
+    precision is over `judged` -- the attempted questions whose correctness
+    was actually established, `attempted - unusable`, which equals
+    `attempted` unless a record came back with no correctness at all.
+    Reporting accuracy without coverage hides whether a low score means wrong
+    answers or declined ones.
 
     Every task has exactly one disposition, so `attempted` and the four
     failure counts partition `total`; a score whose counts do not add up is
@@ -976,18 +977,25 @@ class MCQScore(BaseModel):
 
     @property
     def judged(self) -> int:
-        """Attempted questions whose correctness was actually established.
+        """`attempted - unusable`: precision's denominator.
 
-        `attempted - unusable`, and precision's denominator. It was computed
-        in the rate, again in the validator, and restated in four
-        descriptions -- two independent computations of one definition, which
-        is the same second-source-of-truth shape as a stored copy of a
-        derived value, one notch weaker.
+        A plain `@property`, not a `computed_field`, and the reason is the
+        `extra="forbid"` trade above: every computed field is one more key
+        `model_dump()` emits and the constructor then refuses, so each one
+        widens the gap that already stops this model reloading from its own
+        dump. `judged` buys nothing there -- a consumer subtracts the two
+        counts, exactly as this does, from columns the dump already carries.
 
-        A plain `@property`, not a `computed_field`: it would otherwise join
-        `model_dump()` and so `--output`, and the artifact's columns are a
-        published format. A consumer derives it the way this does, from two
-        columns the file already carries.
+        History: the definition was computed in the rate, again in the
+        validator, and restated in four descriptions -- two independent
+        computations of one definition, the second-source-of-truth shape one
+        notch weaker than a stored copy. The first version of this paragraph
+        gave a different reason, that a `computed_field` would reach
+        `--output`: no `--output` in this CLI carries an `MCQScore` (`eval
+        score` dumps an `EvalResult`, which has no MCQ member; `eval run`'s
+        flag is `--output-dir`), and `scores.tsv` is written from an explicit
+        column tuple read off attributes, so it would not have gained a
+        column either.
         """
         return self.attempted - self.unusable
 
@@ -1009,9 +1017,9 @@ class MCQScore(BaseModel):
 
         `0.000` in a comparison column would read as 'answered and got them
         all wrong'. Rendered as an em dash in the `--grade` table and as an
-        empty field in `scores.tsv`. The denominator is narrower than
-        `attempted`: a record whose correctness was never written down is not
-        evidence either way.
+        empty field in `scores.tsv`. The denominator is `judged`, narrower
+        than `attempted`: a record whose correctness was never written down
+        is not evidence either way.
 
         History: this and its two siblings were settable fields, so a caller
         could write rates that contradicted the counts in the same row -- and

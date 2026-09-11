@@ -728,7 +728,11 @@ def _assert_row_agrees_with_score(header, row, score):
 
 
 def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
-    """Distinct counts, so a swapped pair is visible.
+    """Distinct counts so a swapped pair is visible, and an absent precision.
+
+    Two properties, because the second half below covers the other way a
+    column can be wrong: not mis-paired but mis-rendered, `precision` printed
+    as `0.0000` where the score has none.
 
     The end-to-end sibling below compares every column too, but its arm
     answers every question, so `abstained`, `extraction_failures`,

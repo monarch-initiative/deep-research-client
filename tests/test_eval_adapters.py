@@ -498,11 +498,23 @@ def test_the_rates_are_derived_and_cannot_contradict_the_counts():
     # dumped score sees. NOT because either in-tree surface depends on it:
     # `write_scores_tsv` reads the attributes, and no `--output` carries an
     # `MCQScore` (`eval run` has `--output-dir`; `eval score --output` dumps
-    # a `ScoringResult`).
+    # an `EvalResult`, which has no MCQ member).
     empty = MCQScore(total=1, attempted=0, correct=0, abstained=1)
     assert empty.precision is None
     assert empty.model_dump()["precision"] is None
     assert empty.model_dump()["coverage"] == 0.0
+
+    # The price of the pair above, and the way back, both pinned here because
+    # the class comment states them and nothing else executed either half:
+    # `extra="forbid"` plus computed fields means the dump carries three keys
+    # the constructor refuses, so this model alone does not reload from its
+    # own dump. Left unasserted, the documented recipe rots silently the day
+    # the dump's shape or `model_fields`' access pattern moves.
+    dump = s.model_dump()
+    with pytest.raises(ValidationError, match="accuracy"):
+        MCQScore(**dump)
+    counts = {k: v for k, v in dump.items() if k in MCQScore.model_fields}
+    assert MCQScore(**counts) == s
 
 
 def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(caplog):

@@ -228,8 +228,14 @@ params = OpenScientistParams(
     timeout=3600,                  # Max wait time (1-2 hours recommended)
     save_artifacts=True,           # Preserve useful ZIP artifacts
     artifact_max_bytes=5 * 1024 * 1024,  # Per-artifact extraction limit
+    artifact_keep_runtime=False,   # Also keep logs, transcripts, stdout/stderr
+    artifact_extra_extensions=[],  # Extend the extension allowlist
+    artifact_include_globs=[],     # Force-keep these paths
+    artifact_exclude_globs=[],     # Always drop these paths
 )
 ```
+
+See [Artifact selection](#artifact-selection) for what the last four do.
 
 ### Characteristics
 
@@ -237,7 +243,7 @@ params = OpenScientistParams(
 - **Speed**: 10-60+ minutes (iterative multi-step research)
 - **Capabilities**: PubMed search, code execution, hypothesis-driven research
 - **Citations**: PMID format with deduplication
-- **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default.
+- **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see [Artifact selection](#artifact-selection).
 
 ### When to Use
 
@@ -700,6 +706,171 @@ call, so `--check` reports the auth method and plan without spending a token.
 The one failure the CLI does not always report cleanly is a spent usage limit
 mid-run, which can stall rather than fail. The timeout message points at
 `providers --check` for that reason.
+
+## Artifact selection
+
+Providers that return a bundle of files — currently OpenScientist's artifacts
+ZIP — decide which members become `ResearchArtifact` entries. The defaults keep
+what most callers want (figures, small structured data, rendered reports) and
+drop agent scaffolding, but "noise" is a judgement about the consumer, not about
+the file: a knowledge base recording *how* a run reached its answer wants the
+agent transcripts that a report-only consumer does not.
+
+So the decision is data, not code. `ArtifactSelectionParams` supplies the knobs
+and any provider can inherit them:
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `save_artifacts` | `True` | Preserve artifacts at all |
+| `artifact_max_bytes` | 5 MB | Per-file size cap |
+| `artifact_keep_runtime` | `False` | Keep logs, agent transcripts, captured stdout/stderr; also allows `.log`, `.txt`, `.jsonl`, `.ndjson` |
+| `artifact_extra_extensions` | `[]` | Extend the extension allowlist |
+| `artifact_include_globs` | `[]` | Force-keep matching paths |
+| `artifact_exclude_globs` | `[]` | Always drop matching paths |
+
+Precedence, highest first:
+
+1. `artifact_exclude_globs` — an explicit deny always wins.
+2. `artifact_max_bytes` — the size cap applies even to an explicit include,
+   because it is what keeps a bundle out of memory. Raise the cap rather than
+   globbing around it — up to 50 MB, which the field enforces as a hard
+   ceiling. A member larger than that cannot be preserved by any setting. The
+   field's minimum is 1, so there is no "keep nothing" setting here; set
+   `save_artifacts=False` for that.
+3. The report body the provider already returned as the result markdown.
+4. `artifact_include_globs` — an explicit allow bypasses every remaining default.
+5. Default denies: scaffolding directories (`.git/`, `.claude/`, `node_modules/`,
+   …), nested archives, and — unless `artifact_keep_runtime` — runtime records.
+6. The extension allowlist, plus `artifact_extra_extensions`, plus any `image/*`
+   media type.
+
+Globs are `fnmatch` patterns matched against the lowercased, bundle-relative
+path. `*` crosses `/`, so `*.json` matches `provenance/iter1_transcript.json`.
+
+A comma separates patterns, which means a pattern cannot contain one — `[a,b]`
+is a valid `fnmatch` character class, so `artifact_include_globs="data[a,b]/*"`
+becomes two patterns that match nothing. Pass a list to use a comma inside a
+pattern; a list element is never split. That escape hatch is a Python one:
+`--param` splits on the first `=` only, so every CLI value arrives as a string
+and is always split on commas.
+
+From Python, where a list setting can be something other than a string, it
+must be a *re-readable collection*. A generator or other one-shot iterator is
+refused rather than read: a params object outlives the policy built from it,
+so the second reader would get no patterns at all and say nothing about it.
+`bytes` is refused for the same reason — iterating it yields integers, not
+names. Neither shape is reachable from `--param`, which only ever produces a
+string.
+
+Extensions are normalized wherever they are set, so `csv`, `.csv` and `.CSV`
+all mean the same thing; the paths they are matched against are lowercased
+first, so an unnormalized uppercase spelling would otherwise match nothing.
+The list-element-never-split rule applies to them as well as to globs, so
+`artifact_extra_extensions=["csv,tsv"]` is one extension named `.csv,tsv`
+rather than two — pass `["csv", "tsv"]` or the string `"csv,tsv"`.
+
+Surrounding whitespace is stripped, and empty and duplicate entries are
+dropped, from a list as well as from a string. That matters more than it
+sounds: an empty runtime fragment is a substring of every filename, so a stray
+blank left by `"stderr,".split(",")` would otherwise drop the entire bundle.
+
+A params model applies that cleaning to a string but stores a list as given,
+so `OpenScientistParams(artifact_include_globs=" a , , a ")` reads back as
+`["a"]` while `OpenScientistParams(artifact_include_globs=[" a ", ""])` still
+reads back as `[" a ", ""]`. Since `--param` only ever produces a string, a CLI
+value is clean at construction; a list from Python is cleaned when the policy
+is built. Either way the policy's setting is the one that selects.
+
+### Keeping OpenScientist agent transcripts
+
+OpenScientist writes its agent transcripts to `provenance/iter<N>_transcript.json`
+and `provenance/report_transcript.json`. They are dropped by default:
+
+```python
+params = OpenScientistParams(artifact_keep_runtime=True)
+```
+
+or, to take the transcripts without the container logs:
+
+```python
+params = OpenScientistParams(
+    artifact_include_globs=["provenance/*_transcript.json"],
+)
+```
+
+Both work through the CLI, where list-valued parameters accept a
+comma-separated string:
+
+```bash
+deep-research "..." --provider openscientist \
+  --param artifact_keep_runtime=true
+
+deep-research "..." --provider openscientist \
+  --param 'artifact_include_globs=provenance/*_transcript.json'
+```
+
+Note that transcripts can be large and, being a record of everything the agent
+did, are worth reading before they are committed anywhere public.
+
+### Cached results from before this change
+
+OpenScientist's cache version was bumped when the report-body picker became
+deterministic and scaffolding-aware, so entries written before that are no
+longer matched and the next run is live. Nothing is deleted — the old entries
+stay on disk and `list-cache` / `search-cache` still show them — they are just
+not served.
+
+Falcon's cache version is unchanged. The two used to share one string, so the
+split keeps Falcon's cached runs, whose behaviour this did not touch.
+
+## Transcript statistics
+
+Once transcripts are preserved they can be mined for the shape of a run rather
+than read line by line:
+
+```bash
+deep-research-client transcript-stats path/to/provenance/
+deep-research-client transcript-stats run_artifacts/ --format text
+deep-research-client transcript-stats run_artifacts/ --format json --output stats.json
+```
+
+A directory is searched recursively for `*transcript*.json`; a named file is
+read whatever it is called. Several transcripts merge into one summary, which
+is what you want for a job that writes one per iteration plus one for report
+generation.
+
+What it reports:
+
+- **Tools** — distinct tools called, call counts, failures per tool, MCP server,
+  and summed durations where the transcript records them.
+- **Skills** — every named skill invoked, with counts.
+- **Shell, searches, files** — programs run (wrappers and leading environment
+  assignments skipped, so `sudo FOO=1 apt-get …` reports `apt-get`), distinct
+  web-search queries, and paths touched by change kind.
+- **Models, subagents, tasks, token usage** — merged across entry types.
+- **Available but unused** — tools the session declared at init and never
+  called. The gap is usually more informative than either list alone.
+- **Unclassified entries** — entries the *producer* could not classify, and
+  entry types this summarizer has no handling for, counted separately. Both are
+  drift signals; neither is silently dropped.
+
+In Python:
+
+```python
+from deep_research_client.transcript_stats import summarize_artifacts
+
+stats = summarize_artifacts(result.artifacts)   # non-transcripts ignored
+print(stats.distinct_tools, stats.skills_used)
+print(stats.render_markdown())
+```
+
+Tool names are normalized across agent backends: one backend emits
+`mcp__github__search_issues` while another emits `github.search_issues` with a
+separate `namespace` field, and both aggregate to `search_issues`. A dotted
+prefix is stripped only when it matches the server the entry itself reports, so
+a tool whose name genuinely contains a dot is left alone.
+
+The summarizer reads decoded JSON and needs no agent SDK installed.
 
 ## Adding Custom Providers
 

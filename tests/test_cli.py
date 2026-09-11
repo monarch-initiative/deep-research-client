@@ -1,6 +1,7 @@
 """Tests for CLI behaviors."""
 
 import base64
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -586,3 +587,119 @@ def test_models_rejects_an_unknown_vocabulary_value_by_naming_the_whole_vocabula
             f"{member.value} is a permissible value but the error does not list it"
         )
     assert "etc." not in result.output, "the truncated list this replaced"
+
+
+# --- transcript-stats -------------------------------------------------------
+
+
+def _write_transcript(directory: Path) -> Path:
+    """Write a small transcript into ``directory`` and return its path."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "iter1_transcript.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "type": "tool_call",
+                    "id": "c1",
+                    "tool": "Skill",
+                    "arguments": {"skill": "gene-set-enrichment"},
+                },
+                {"type": "tool_result", "call_id": "c1", "output": "", "success": True},
+                {
+                    "type": "tool_call",
+                    "id": "c2",
+                    "tool": "mcp__openscientist__search_pubmed",
+                    "arguments": {},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_transcript_stats_renders_markdown(tmp_path):
+    """The default format is a markdown section naming tools and skills."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "## Agent run summary" in result.stdout
+    assert "search_pubmed" in result.stdout
+    assert "gene-set-enrichment" in result.stdout
+
+
+def test_transcript_stats_emits_parseable_json(tmp_path):
+    """--format json is for downstream tooling, so it must actually parse."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path), "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["tool_calls"] == 2
+    assert payload["skill_counts"] == {"gene-set-enrichment": 1}
+
+
+def test_transcript_stats_text_format_is_compact(tmp_path):
+    """--format text is the terminal view."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path), "--format", "text"])
+
+    assert result.exit_code == 0
+    assert "tool calls" in result.stdout
+    assert "skills:" in result.stdout
+
+
+def test_transcript_stats_writes_to_a_file(tmp_path):
+    """--output writes the summary instead of printing it."""
+    _write_transcript(tmp_path / "provenance")
+    out = tmp_path / "summary.md"
+
+    result = runner.invoke(
+        app, ["transcript-stats", str(tmp_path), "--output", str(out)]
+    )
+
+    assert result.exit_code == 0
+    assert "## Agent run summary" in out.read_text(encoding="utf-8")
+
+
+def test_transcript_stats_rejects_an_unknown_format(tmp_path):
+    """A bad --format fails before any transcript is read."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path), "--format", "xml"])
+
+    assert result.exit_code != 0
+
+
+def test_transcript_stats_fails_on_a_missing_path(tmp_path):
+    """A path that does not exist is an error, not an empty summary."""
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path / "absent.json")])
+
+    assert result.exit_code == 1
+
+
+def test_transcript_stats_fails_on_a_malformed_transcript(tmp_path):
+    """Malformed JSON exits non-zero rather than reporting nothing found."""
+    path = tmp_path / "bad_transcript.json"
+    path.write_text("{not json", encoding="utf-8")
+
+    result = runner.invoke(app, ["transcript-stats", str(path)])
+
+    assert result.exit_code == 1
+
+
+def test_transcript_stats_output_to_a_missing_directory_exits_1(tmp_path):
+    """A bad --output path fails like the command's other error paths."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(
+        app,
+        ["transcript-stats", str(tmp_path), "--output", str(tmp_path / "no" / "x.md")],
+    )
+
+    assert result.exit_code == 1

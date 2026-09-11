@@ -51,3 +51,8 @@ We welcome PRs wrapping other tools (aka "providers"). When doing this:
 - [ ] add unit tests and integration tests
 - [ ] Ensure documented in docs/reference/providers.md as well as README
 - [ ] does not signifantly add to base install dependencies; if so make this an optional install (allowing e.g. `pip install deep-research-client[my-bespoke-provider]`)
+- [ ] import the optional dependency lazily, not at module scope. `just test`
+      runs `pytest --doctest-modules src`, which imports every module under
+      `src/`, so a top-level import of an extra breaks the default test command
+      rather than only its own tests. See `providers/biomni.py` for the
+      `importlib.util` pattern.

@@ -67,7 +67,9 @@ def _split_list(value: Any, separator: str) -> list[str]:
     return [part.strip() for part in str(value).split(separator) if part.strip()]
 
 
-def _answer_type_of(row: dict[str, Any], distractors: list[str]) -> AnswerType:
+def _answer_type_of(
+    row: dict[str, Any], distractors: list[str], index: int = 0
+) -> AnswerType:
     """Determine a row's answer type, inferring it when unstated.
 
     A row carrying distractors is multiple choice; a row carrying only an ideal
@@ -85,7 +87,16 @@ def _answer_type_of(row: dict[str, Any], distractors: list[str]) -> AnswerType:
     """
     stated = row.get("answer_type")
     if stated:
-        return AnswerType(str(stated).strip().upper())
+        name = str(stated).strip().upper()
+        # The bare enum error names neither the file nor the row, in a module
+        # whose other errors both. `answer_type: mcq` is a plausible typo, since
+        # the how-to invites stating the type explicitly.
+        if name not in AnswerType.__members__:
+            raise ValueError(
+                f"row {index + 1}: {stated!r} is not a valid answer_type. "
+                f"Valid types: {', '.join(AnswerType.__members__)}"
+            )
+        return AnswerType(name)
     if distractors:
         return AnswerType.MULTIPLE_CHOICE
     if row.get("ideal"):
@@ -113,7 +124,7 @@ def _task_from_row(
     where = f"row {index + 1}"
     prompt = _prompt_of(row, where)
     distractors = _split_list(row.get("distractors"), list_separator)
-    answer_type = _answer_type_of(row, distractors)
+    answer_type = _answer_type_of(row, distractors, index)
 
     answer_spec = None
     ideal = row.get("ideal")

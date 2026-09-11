@@ -50,6 +50,38 @@ _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = 
 _MCQ_OPTION = re.compile(r"^([A-Z])\.\s+(.+?)\s*$", re.MULTILINE)
 
 
+def _mcq_options(query: str) -> list[tuple[str, str]]:
+    r"""The lettered options in a prompt, or [] if it poses no choice.
+
+    Matching the pattern anywhere in the prompt is not enough: a question can
+    open with something that looks exactly like an option line. "E. coli grows
+    anaerobically in which condition?" yields ``("E", "coli grows ...")`` ahead
+    of the real A/B/C, and ``answer_policy="first"`` then answers E -- a letter
+    that was never offered, scoring EXTRACTION_FAILED instead of the position
+    the policy promises. That property, that the score an arm should get is
+    computable in advance, is the whole reason this provider exists.
+
+    So take the run of consecutive lines that actually reads as an option list:
+    letters ascending from A with no gaps, which is exactly what the renderer
+    emits. A stray match before or after it is not part of that run.
+
+    >>> _mcq_options("E. coli grows how?\n\nA. Fast\nB. Slow\n")
+    [('A', 'Fast'), ('B', 'Slow')]
+    >>> _mcq_options("Which base?\n\nA. Thymine\nB. Guanine\n")
+    [('A', 'Thymine'), ('B', 'Guanine')]
+    >>> _mcq_options("No options here.")
+    []
+    """
+    run: list[tuple[str, str]] = []
+    for line in query.splitlines():
+        match = _MCQ_OPTION.match(line)
+        if match and match.group(1) == chr(ord("A") + len(run)):
+            run.append((match.group(1), match.group(2)))
+        elif run:
+            break
+    return run
+
+
 class MockProvider(ResearchProvider):
     """Mock provider that returns fake responses for testing."""
 
@@ -149,7 +181,7 @@ class MockProvider(ResearchProvider):
         if policy == "none":
             return ""
 
-        options = _MCQ_OPTION.findall(query)
+        options = _mcq_options(query)
         if not options:
             return ""
 

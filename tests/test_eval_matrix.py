@@ -5,6 +5,7 @@ client, so the output layout, the resume logic and the TSV writers are all
 exercised end to end without reaching a network.
 """
 
+import re
 import asyncio
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from deep_research_client.client import DeepResearchClient
+from deep_research_client.models import CacheConfig
 from deep_research_client.evaluation import mcq
 from deep_research_client.evaluation.datamodel import (
     AnswerSpec,
@@ -38,10 +40,21 @@ from deep_research_client.evaluation.matrix import (
 
 
 @pytest.fixture
-def mock_client(monkeypatch):
-    """A client with only the mock provider registered."""
+def mock_client(monkeypatch, tmp_path_factory):
+    """A client with only the mock provider registered, and no cache.
+
+    Caching is off deliberately. `DeepResearchClient()` defaults to a cache in
+    ``~/.deep_research_cache`` shared by every run on the machine, so a mock
+    response computed once is replayed for every later run of a test that asks
+    the same question -- and these tests do ask stable questions. That makes a
+    test pass on data recorded before the code it is meant to exercise existed:
+    a tripwire raised inside `_mock_answer` never fired, while the response
+    still arrived complete with its answer line.
+    """
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
-    return DeepResearchClient()
+    return DeepResearchClient(cache_config=CacheConfig(
+        enabled=False, directory=str(tmp_path_factory.mktemp("nocache")),
+    ))
 
 
 @pytest.fixture
@@ -392,6 +405,54 @@ def _expected_correct_for_first(eval_set: EvalSet) -> int:
     return sum(
         1 for task in (eval_set.tasks or []) if mcq.present_choices(task)[0].is_ideal
     )
+
+
+def test_a_question_that_looks_like_an_option_does_not_derail_the_policy(
+    tmp_path, mock_client,
+):
+    """The mock's whole value is that its score is computable in advance.
+
+    `_MCQ_OPTION` matched anywhere in the prompt, so a question opening with
+    "E. coli ..." parsed as option E -- ahead of the real A/B/C. An arm with
+    answer_policy="first" then answered E, a letter never offered, and the cell
+    scored EXTRACTION_FAILED instead of the first position the policy promises.
+
+    No LitQA2 question happens to trip this (checked: 0 of 199), so the baseline
+    this provider produced stands. The guarantee is what is under test, not the
+    corpus that currently exercises it.
+    """
+    eval_set = EvalSet(name="ecoli", tasks=[
+        EvalTask(
+            id="ecoli",
+            prompt="E. coli grows anaerobically under which condition?",
+            answer_type=AnswerType.MULTIPLE_CHOICE,
+            answer_spec=AnswerSpec(
+                ideal="Fermentation", distractors=["Respiration", "Glycolysis"],
+            ),
+        ),
+    ])
+    offered = [c.letter for c in mcq.present_choices(eval_set.tasks[0])]
+
+    run_dir = tmp_path / "run"
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("always-a", "first")],
+        MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
+    ))
+
+    # The letter written, which is what the fix changes.
+    response = (run_dir / "ecoli" / "always-a" / "output.md").read_text()
+    answered = re.findall(r"^Answer:\s*([A-Z])\s*$", response, re.MULTILINE)
+    assert answered, "the mock wrote no answer line at all"
+    assert answered[-1] in offered, (
+        f"mock answered {answered[-1]!r}, which was never offered ({offered})"
+    )
+    assert answered[-1] == offered[0], "answer_policy='first' must name position one"
+
+    # And the harm it caused: a letter off the list cannot be extracted, so an
+    # arm that answers every question was recorded as having answered none.
+    score = score_by_arm(eval_set, manifest.cells)["always-a"]
+    assert score.extraction_failures == 0
+    assert score.attempted == 1
 
 
 def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):

@@ -405,7 +405,8 @@ class LabBenchAdapter(EvalSetAdapter):
         if unknown:
             raise ValueError(
                 f"Unknown LAB-Bench subset(s): {', '.join(repr(s) for s in unknown)}. "
-                f"Available: {', '.join(SUBSETS)}"
+                f"Available: {', '.join(SUBSETS)}. Pass 'all' on its own for "
+                f"every text-only subset; it is not a list element."
             )
 
         # Every name is known by now, so this only has to ask about modality.

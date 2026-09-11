@@ -170,8 +170,8 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     """Why this spec cannot pose an answerable question, or None if it can.
 
     Every shape refused here produces a number rather than an error, which is
-    the whole reason the check exists. The list is exhaustive - the paragraph
-    below about what is *not* refused depends on that:
+    the whole reason the check exists. The list below is exhaustive, and the
+    paragraph after it about what is *not* refused depends on that.
 
     They are listed in the order they are checked, and that order is a contract
     rather than a detail: a spec can be degenerate in more than one way at once,

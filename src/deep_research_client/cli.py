@@ -2713,23 +2713,65 @@ def eval_fetch(
         deep-research-client eval fetch LitQA2,SuppQA --refresh
         deep-research-client eval fetch all
     """
-    from .evaluation.adapters.lab_bench import SUBSETS, fetch_subset, text_only_subsets
+    import httpx
+
+    from .evaluation.adapters.lab_bench import (
+        SUBSETS,
+        _resolve_or_fall_back,
+        fetch_subset,
+        text_only_subsets,
+    )
 
     names = text_only_subsets() if subset.lower() == "all" else [
         s.strip() for s in subset.split(",") if s.strip()
     ]
 
+    # An empty argument used to exit 0 having printed nothing: no download, no
+    # error, no sign the argument was blank. Refused here for the same reason
+    # `LabBenchAdapter.load` refuses it.
+    if not names:
+        typer.echo("No subset named.")
+        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        raise typer.Exit(1)
+
     unknown = [n for n in names if n not in SUBSETS]
     if unknown:
         typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
-        typer.echo(f"Available: {', '.join(SUBSETS)}")
+        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
-    for name in names:
-        rows, resolved = fetch_subset(
-            name, cache_dir=cache_dir, revision=revision, refresh=refresh
+    multimodal = [n for n in names if not SUBSETS[n][1]]
+    if multimodal:
+        typer.echo(
+            f"NOTE: {', '.join(multimodal)} ask about figures or tables supplied as "
+            f"images. They will be cached, but `eval load` refuses them, so there is "
+            f"no path from this download to a run."
         )
-        typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
+
+    # Resolved once and threaded down, as `LabBenchAdapter.load` does. Resolving
+    # per subset is not just five extra round trips for `all`: a revision that
+    # changes mid-fetch caches subsets under two different revision directories,
+    # and `newest_cached_revision` requires one revision covering every subset
+    # requested. That is a cache holding every byte that the offline fallback
+    # then refuses whole -- assembled by the command meant to prevent it.
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            pinned = _resolve_or_fall_back(client, names, cache_dir)
+
+        for name in names:
+            rows, resolved = fetch_subset(
+                name, cache_dir=cache_dir, revision=revision,
+                refresh=refresh, resolved_revision=pinned,
+            )
+            typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
+    except ValueError as exc:
+        # Upstream drift trips the row-count guard, which exists precisely so a
+        # user finds out. Its siblings report that; this used to traceback.
+        typer.echo(f"Could not fetch the dataset: {exc}")
+        raise typer.Exit(1) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"Could not reach the dataset: {exc}")
+        raise typer.Exit(1) from exc
 
 
 def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
@@ -3044,12 +3086,18 @@ def eval_run(
     if unscoreable_note:
         typer.echo(unscoreable_note)
 
-    has_reports = any(t.answer_type == AnswerType.REPORT for t in tasks)
-    if has_reports:
+    # Named with a real task and arm rather than <placeholders>: cells live
+    # under safe_segment(id), which appends a digest to anything it rewrites, so
+    # `HP:0001156` writes to `HP_0001156-<digest>/`. The placeholder form told
+    # the user to type a path that does not exist and cannot be guessed.
+    report_task = next((t for t in tasks if t.answer_type == AnswerType.REPORT), None)
+    if report_task is not None:
+        from .evaluation.matrix import safe_segment
+        cell_path = f"{safe_segment(report_task.id)}/{safe_segment(arms[0].id)}"
         typer.echo(
             "\nTo score a report against its rubric with an LLM judge:\n"
-            f"  deep-research-client eval score {run_dir}/<task_id>/<arm_id>/output.md \\\n"
-            f"    --source {source} --adapter {adapter} --task-id <task_id>"
+            f"  deep-research-client eval score {run_dir}/{cell_path}/output.md \\\n"
+            f"    --source {source} --adapter {adapter} --task-id {report_task.id}"
         )
 
     typer.echo(f"\nManifest: {run_dir}/manifest.json")

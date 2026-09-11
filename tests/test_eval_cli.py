@@ -289,3 +289,100 @@ def test_eval_load_reports_too_many_options_as_a_message(tmp_path):
     assert result.exit_code == 1
     assert "Could not load the eval set" in result.stdout
     assert "26 letters" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# eval fetch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("arg", ["", ",", " , "])
+def test_eval_fetch_refuses_an_empty_subset_argument(arg):
+    """It used to exit 0 having printed nothing: no download, no error, no sign.
+
+    The same three inputs `LabBenchAdapter.load` refuses, one command over.
+    """
+    result = runner.invoke(app, ["eval", "fetch", arg])
+    assert result.exit_code == 1
+    assert "No subset named" in result.stdout
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (ValueError("LitQA2 returned 198 rows, expected 199"), "Could not fetch the dataset"),
+    (__import__("httpx").HTTPError("503 from the datasets server"), "Could not reach the dataset"),
+])
+def test_eval_fetch_reports_expected_failures_rather_than_raising(monkeypatch, exc, expected):
+    """Its siblings all report these; this command tracebacked.
+
+    Both are expected outcomes of running it: the row-count guard exists so a
+    user finds out about upstream drift, and this is the command that downloads
+    hundreds of megabytes, so an outage lands here more than anywhere else.
+    """
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    monkeypatch.setattr(lab_bench, "_resolve_or_fall_back", lambda *a, **k: "deadbeef")
+
+    def boom(*args, **kwargs):
+        raise exc
+
+    monkeypatch.setattr(lab_bench, "fetch_subset", boom)
+
+    result = runner.invoke(app, ["eval", "fetch", "LitQA2"])
+    assert result.exit_code == 1
+    assert expected in result.stdout
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_eval_fetch_resolves_the_revision_once_for_many_subsets(monkeypatch):
+    """Resolving per subset can split the cache across two revisions.
+
+    `newest_cached_revision` requires one revision covering every subset asked
+    for, so a revision that changes mid-fetch leaves every byte on disk and a
+    later offline load failing with a connection error -- against a cache this
+    very command assembled.
+    """
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    resolves = []
+
+    def count_resolve(client, wanted, cache_dir=None):
+        resolves.append(tuple(wanted))
+        return "deadbeefcafe"
+
+    monkeypatch.setattr(lab_bench, "_resolve_or_fall_back", count_resolve)
+    monkeypatch.setattr(
+        lab_bench, "fetch_subset",
+        lambda name, **kw: ([{"id": 1}], kw["resolved_revision"]),
+    )
+
+    result = runner.invoke(app, ["eval", "fetch", "LitQA2,SuppQA,DbQA"])
+    assert result.exit_code == 0
+    assert len(resolves) == 1, f"resolved {len(resolves)} times, expected once"
+
+
+def test_eval_fetch_says_a_multimodal_subset_has_no_path_to_a_run(monkeypatch):
+    """Fetching one is allowed, but `eval load` refuses it, so say so."""
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    monkeypatch.setattr(lab_bench, "_resolve_or_fall_back", lambda *a, **k: "deadbeef")
+    monkeypatch.setattr(
+        lab_bench, "fetch_subset", lambda name, **kw: ([{"id": 1}], "deadbeef"))
+
+    result = runner.invoke(app, ["eval", "fetch", "FigQA"])
+    assert result.exit_code == 0
+    assert "no path from this download to a run" in result.stdout
+
+
+def test_the_score_hint_names_a_path_that_exists(tmp_path):
+    """`safe_segment` rewrites ids, so <task_id> was neither real nor guessable."""
+    path = _write(tmp_path / "colon.yaml",
+                  'tasks:\n  - id: "HP:0001156"\n    prompt: What mechanisms?\n')
+    run_dir = tmp_path / "run"
+    result = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--output-dir", str(run_dir),
+    ])
+    assert result.exit_code == 0
+
+    hint = next(ln for ln in result.stdout.splitlines() if "eval score" in ln)
+    printed = Path(hint.split("eval score")[1].split()[0])
+    assert printed.exists(), f"hint names a path that does not exist: {printed}"

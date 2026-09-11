@@ -887,8 +887,12 @@ class MCQScore(BaseModel):
     # equal score. That test compares the expression above against its own
     # source AND against `MCQScore`'s own source -- this comment, not the
     # file -- so the copy a caller pastes cannot drift from the one that
-    # runs. A separate test fails if this comment stops naming a test, or
-    # names one that no longer exists.
+    # runs. Two tests in tests/test_repo_hygiene.py hold this comment to
+    # that. One fails if it stops naming the test that actually executes
+    # the recipe -- naming some OTHER real test counts as stopping, which
+    # is the case the first version of that check, a test for whether ANY
+    # name was cited, could not see. The other fails if any test named
+    # anywhere under `src/` or `tests/` does not exist.
     #
     # Naming a test FUNCTION from `src/` is deliberate and is the only
     # place this package does it; `MatrixConfig.on_scores` cites a test

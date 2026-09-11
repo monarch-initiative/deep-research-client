@@ -13,6 +13,12 @@ import inspect
 import re
 from pathlib import Path
 
+# One spelling of the one root. Two functions below walk `tests/` and a
+# third walks it beside `src/`; they spelled the same directory two ways
+# from the same `__file__`, which is a second source of truth for a path.
+_ROOT = Path(__file__).parent.parent
+_TESTS_DIR = _ROOT / "tests"
+
 
 def _unclosed_citation(fragment: str) -> str | None:
     """The test a fragment was naming when its closing backtick never came.
@@ -166,6 +172,15 @@ def _cited_names(text: str) -> list[tuple[int, str]]:
             if abandoned is not None:
                 names.append((opened_at, abandoned))
 
+        # A line that CLOSES a carry can open a new fragment, and the new
+        # one did not open where the carry did. `opened_at` is otherwise
+        # set only when no carry is in flight, so without this the report
+        # points at the line before the citation it is about -- which
+        # became load-bearing when the abandoned carry above started using
+        # it, since that line number is the whole of a reader's directions.
+        if pending is not None and carry_resolved:
+            opened_at = line_no
+
     # The same event at the end of the text, where there is no next line to
     # abandon the carry on.
     if pending is not None:
@@ -295,6 +310,20 @@ def test_the_citation_scanner_resolves_the_shapes_a_citation_takes():
         "happens to be on the last line of the file"
     )
 
+    # And a line that closes one citation while opening another: the
+    # second did not open where the first did, so the abandoned-carry
+    # report must not point at the earlier line.
+    reopened = (
+        f"{tick}test_alpha_\n"
+        f"beta{tick} and {tick}test_gamma_\n"
+        "prose that closes nothing\n"
+    )
+    expected_pair = [(1, "test_alpha_beta"), (2, "test_gamma_")]
+    assert _cited_names(reopened) == expected_pair, (
+        "a citation opened on the line that closed the previous one is "
+        "being reported at the previous one's line"
+    )
+
     # The recorded cost of the bounded carry, pinned so it stays a known
     # limit: a genuine multi-line code span resets parity, and a citation
     # on its closing line is dropped. If this ever starts finding the
@@ -404,12 +433,15 @@ def test_no_citation_names_a_test_that_does_not_exist():
       no backticks, is not resolved. Deliberate and measured: dropping the
       prefix requirement reported two fixture filenames as dangling, and a
       fixture cannot avoid containing the shape it tests
+    - only `test_`-prefixed names resolve, so a citation of a HELPER goes
+      unchecked. `_cited_names` and `_page_guards` are each named from two
+      other files, and renaming either dangles those citations silently --
+      this guard's own failure mode, one kind of identifier over. Scope,
+      not oversight: a helper name in prose is far likelier to be a
+      sentence about the code than a pointer to a definition
     """
-    root = Path(__file__).parent.parent
-    tests_dir = root / "tests"
-
     known: set[str] = set()
-    for path in sorted(tests_dir.rglob("*.py")):
+    for path in sorted(_TESTS_DIR.rglob("*.py")):
         known.add(path.stem)
         text = path.read_text(encoding="utf-8")
         known.update(re.findall(r"^def (test_\w+)", text, re.M))
@@ -433,10 +465,10 @@ def test_no_citation_names_a_test_that_does_not_exist():
     # a citation apart from test data, so an unprefixed filename stays a
     # stated blind spot rather than a false positive factory.
     dangling: list[str] = []
-    scanned = [*tests_dir.rglob("*.py"), *(root / "src").rglob("*.py")]
+    scanned = [*_TESTS_DIR.rglob("*.py"), *(_ROOT / "src").rglob("*.py")]
     for path in sorted(scanned):
         text = path.read_text(encoding="utf-8")
-        where = path.relative_to(root)
+        where = path.relative_to(_ROOT)
         for line_no, cited in _cited_names(text):
             if cited not in known:
                 dangling.append(f"{where}:{line_no} cites `{cited}`")
@@ -451,8 +483,33 @@ def test_no_citation_names_a_test_that_does_not_exist():
     )
 
 
-def _tests_whose_body_contains(needle: str) -> set[str]:
-    """Names of the tests under `tests/` whose body carries `needle`.
+def _test_body_lines(prefix: str) -> list[tuple[str, str]]:
+    """(test name, stripped line) for lines under `tests/` starting `prefix`.
+
+    Matched from the START of the stripped line, which is what makes
+    `prefix` mean prefix. It is NOT what keeps this instrument out of its
+    own result, and saying so would be the easy sentence to write here:
+    mutation-tested, replacing the anchor with a substring test changes
+    nothing for the one caller, because the key it passes is the whole
+    assignment line and this module never holds that line -- it holds the
+    expression and an f-string that builds the rest at runtime.
+
+    The exclusion that WAS needed is against the bare expression, which
+    this module does hold verbatim. Measured: searching for the expression
+    alone returns `test_the_recipe_rebuilds_a_score_its_own_dump_cannot`
+    AND `test_mcqscore_still_names_the_test_that_runs_its_recipe`, so the
+    caller's exactly-one assertion fails with this file's own name in the
+    list. Either the `counts = ` stem or the anchor supplies that on its
+    own; the caller passes the stem, so both are present and neither is
+    load-bearing alone. Recorded this way because the version of this
+    paragraph that called the anchor load-bearing was written first, and
+    the mutation that should have confirmed it passed instead.
+
+    The caller passes the WHOLE assignment line rather than the stem, and
+    that was measured too: the stem alone also matches
+    `test_find_reference_ids_counts_repeats`, which assigns a different
+    dict to the same name. A binding name is not an identifier for an
+    expression.
 
     Attribution resets at every top-level `def` AND every top-level
     `class`, for the reason `_page_guards` records: crediting a helper's
@@ -460,24 +517,31 @@ def _tests_whose_body_contains(needle: str) -> set[str]:
     source. The `class` half was a live leak, not a precaution -- without
     it, 129 lines of three classes in `test_evaluation.py` are credited to
     the last test defined above them and 21 lines of a probe client in
-    `test_falcon_errors.py` to another. Neither carries the one needle
+    `test_falcon_errors.py` to another. Neither carries the one prefix
     this is called with today, which is why nothing was failing and why
     the leak had to be measured rather than observed.
 
     A test defined INSIDE a class is not attributed at all, the same blind
     spot `known` has two functions up and for the same reason: the match is
-    anchored at column zero.
+    anchored at column zero. And a line is matched as TEXT, so a `prefix`
+    the source wraps, or assembles from a variable, is invisible. Those are
+    the three blind spots `_page_guards` lists for itself, and they apply
+    here because this is that function with the needle parametrised.
+
+    Not shared with it: `tests/` is not an importable package, so neither
+    copy can call the other. The duplication is the package layout rather
+    than a preference, and is recorded rather than left looking like one.
     """
-    found: set[str] = set()
-    for path in sorted((Path(__file__).parent).rglob("*.py")):
+    found: list[tuple[str, str]] = []
+    for path in sorted(_TESTS_DIR.rglob("*.py")):
         current: str | None = None
         for line in path.read_text(encoding="utf-8").splitlines():
             match = re.match(r"(?:def|class) (\w+)", line)
             if match:
                 name = match.group(1)
                 current = name if name.startswith("test_") else None
-            elif needle in line and current:
-                found.add(current)
+            elif current and line.strip().startswith(prefix):
+                found.append((current, line.strip()))
     return found
 
 
@@ -504,13 +568,20 @@ def test_mcqscore_still_names_the_test_that_runs_its_recipe():
     two files over -- a predicate wider than the message it prints.
 
     The expected name is DERIVED, not written: the recipe test is whichever
-    test function executes the reconstruction expression, found by reading
-    `tests/` for the one whose body carries it. So no literal name is
+    test function ASSIGNS `counts` from the reconstruction expression,
+    found by reading `tests/` for that line. So no literal name is
     duplicated here to go stale, swapping the citation for an unrelated
     test fails, and RENAMING the recipe test fails here too -- the message
     names the test's new name and `models.py`'s citation is what has to
     change to match it. Importing the test would have been the other way
     round, and `tests/` is not an importable package.
+
+    The `counts` binding is the hinge, and naming it is the price: rename
+    it over there and the derivation finds nothing here, loudly. The
+    recipe test states that coupling for its own use of the same line;
+    this file depends on the same binding and said nothing. What keeps
+    this function out of its own result is in `_test_body_lines`, along
+    with a measurement of what does not.
 
     That last clause said "a rename of that test still passes (it is the
     same test)" from `f799e46` until the commit carrying this paragraph,
@@ -530,20 +601,34 @@ def test_mcqscore_still_names_the_test_that_runs_its_recipe():
 
     source = inspect.getsource(MCQScore)
     recipe = "{k: v for k, v in dump.items() if k in MCQScore.model_fields}"
-    assert recipe in source, (
-        "MCQScore's class comment no longer carries the recipe, so there is "
-        "no reconstruction expression for a cited test to be running"
-    )
 
-    runs_the_recipe = _tests_whose_body_contains(f"counts = {recipe}")
+    # The literal above is a FOURTH copy of the recipe, and the search key
+    # is the whole assignment line rather than the `counts = ` stem, so a
+    # drift in this copy finds nothing instead of finding the wrong line.
+    # The message below has to name both sides, because from here the two
+    # are indistinguishable -- what it must NOT do is name `models.py`,
+    # which is what its predecessor did: an assertion that the comment
+    # "no longer carries the recipe" fired when this file's literal was the
+    # only thing that had moved. Measured by adding a space inside the
+    # braces here and leaving `models.py` alone.
+    runs_the_recipe = _test_body_lines(f"counts = {recipe}")
     assert len(runs_the_recipe) == 1, (
-        f"expected exactly one test executing the recipe, found "
-        f"{sorted(runs_the_recipe)} -- with none, the recipe is documented "
-        f"and unrun and there is no test for MCQScore to be naming; with "
-        f"several, this check cannot say which one it should name"
+        f"expected exactly one test whose body assigns `counts` from the "
+        f"recipe as this module spells it -- `counts = {recipe}` -- and "
+        f"found {sorted(name for name, _ in runs_the_recipe)}. None means "
+        f"either the recipe test is gone or one of the two copies drifted, "
+        f"this module's or the line that runs it, and this check cannot "
+        f"say which; `models.py` is not implicated either way. Several "
+        f"means it cannot say which one MCQScore should name."
     )
-    expected = runs_the_recipe.pop()
+    expected, _executed = runs_the_recipe[0]
 
+    # Nothing here asserts the recipe is in `MCQScore`'s source. That
+    # assertion existed and was a weaker restatement of the same
+    # containment made from inside the recipe test: no failure reaches this
+    # line without failing there first, since losing the recipe from the
+    # comment fails that one and losing the test that runs it fails the one
+    # above.
     cited = [name for _, name in _cited_names(source)]
     assert expected in cited, (
         f"MCQScore's class comment no longer names {expected}, the test "

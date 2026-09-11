@@ -137,6 +137,58 @@ def _unique(names: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(names))
 
 
+def require_name_collection(value: object) -> Collection[str]:
+    """Type-check a value that must be a re-readable collection of names.
+
+    The shape rule with no cleaning attached, so a caller that must not touch
+    its entries can share it. :func:`split_name_list` calls this after
+    handling the string case, then strips, dedupes and orders the result;
+    :func:`checked_path_collection` calls it after *refusing* the string case
+    and hands the collection straight back.
+
+    The value is returned rather than copied, so a caller checking the same
+    collection once per bundle member rebuilds nothing.
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        ``value`` itself, narrowed to a collection.
+
+    Raises:
+        TypeError: For a mapping, ``bytes``, a one-shot iterator, or anything
+            that is not a collection. :func:`split_name_list` explains why
+            each is refused rather than read as best it can be.
+
+    Example:
+        >>> require_name_collection(["a", "b"])
+        ['a', 'b']
+    """
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; decode it to str first, because "
+            "iterating it yields integers rather than names"
+        )
+    if isinstance(value, Mapping):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; its keys are unlikely to be the names meant"
+        )
+    if isinstance(value, Collection):
+        return value
+    if isinstance(value, Iterable):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; these names must be a re-readable "
+            "collection, so wrap it in a list"
+        )
+    raise TypeError(
+        "expected a list of names or a comma-separated string, not a "
+        f"{type(value).__name__}: {value!r}"
+    )
+
+
 def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
     """Strip each name, drop the empties, and drop the repeats.
 
@@ -231,64 +283,48 @@ def split_name_list(value: object) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         return _stripped_names(value.split(","))
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        raise TypeError(
-            "expected a list of names or a comma-separated string, not a "
-            f"{type(value).__name__}; decode it to str first, because "
-            "iterating it yields integers rather than names"
-        )
-    if isinstance(value, Mapping):
-        raise TypeError(
-            "expected a list of names or a comma-separated string, not a "
-            f"{type(value).__name__}; its keys are unlikely to be the names meant"
-        )
+    checked = require_name_collection(value)
     # AbstractSet rather than the concrete types: a KeysView or a custom
     # Set is just as unordered, and sorting only real sets would make the
     # promise above true of some unordered collections and not others.
-    if isinstance(value, AbstractSet):
-        return tuple(sorted(_stripped_names(str(item) for item in value)))
-    if isinstance(value, Collection):
-        return _stripped_names(str(item) for item in value)
-    if isinstance(value, Iterable):
-        raise TypeError(
-            "expected a list of names or a comma-separated string, not a "
-            f"{type(value).__name__}; these names must be a re-readable "
-            "collection, so wrap it in a list"
-        )
-    raise TypeError(
-        "expected a list of names or a comma-separated string, not a "
-        f"{type(value).__name__}: {value!r}"
-    )
+    if isinstance(checked, AbstractSet):
+        return tuple(sorted(_stripped_names(str(item) for item in checked)))
+    return _stripped_names(str(item) for item in checked)
 
 
-def checked_path_collection(value: object, parameter: str) -> tuple[str, ...]:
-    """Read a collection of paths, which must not be comma-split.
+def checked_path_collection(value: object, parameter: str) -> Collection[str]:
+    """Check a collection of paths, without altering any of them.
 
-    The sibling of :func:`split_name_list` for the one kind of name that can
-    legitimately contain a comma. A deny entry is a member path, so splitting
-    ``"a,b/report.md"`` would turn one valid entry into two that match
-    nothing — the failure the entry existed to prevent. A bare string is
-    therefore refused outright rather than read as a list.
+    The sibling of :func:`split_name_list` for the one kind of name that is
+    not a name. A deny entry is a member path, compared verbatim against a
+    path that :func:`normalize_member_path` has lowercased and stripped of a
+    leading slash — and of nothing else. So every part of the name-cleaning
+    rule is wrong here, not just the comma:
 
-    Refusing the string first means the delegation below can never reach the
-    comma-splitting branch, so the rest of the rule — no mapping, no
-    ``bytes``, no one-shot iterator, stripped and distinct — is shared rather
-    than restated.
+    * Splitting ``"a,b/report.md"`` makes two entries that match nothing.
+    * Stripping ``" analysis/report.md"`` makes one entry that matches
+      nothing, because the member path it names keeps its space.
+
+    Both turn a valid deny into a silent no-op, which is the failure the deny
+    exists to prevent. Only the *shape* rule is shared, through
+    :func:`require_name_collection`, and the collection is handed back
+    untouched — no split, no strip, no dedupe, no sort, and no copy, so a
+    caller checking it once per bundle member rebuilds nothing.
 
     Args:
         value: A collection of paths.
         parameter: Name of the parameter being read, for the message.
 
     Returns:
-        The distinct paths.
+        ``value`` itself, narrowed to a collection.
 
     Raises:
         TypeError: If given a single string, or anything
-            :func:`split_name_list` refuses.
+            :func:`require_name_collection` refuses.
 
     Example:
-        >>> checked_path_collection(["a/b.md", "a/b.md"], "provider_deny")
-        ('a/b.md',)
+        >>> checked_path_collection([" a/b.md", "a/b.md"], "provider_deny")
+        [' a/b.md', 'a/b.md']
     """
     if isinstance(value, str):
         raise TypeError(
@@ -296,7 +332,7 @@ def checked_path_collection(value: object, parameter: str) -> tuple[str, ...]:
             f"iterating one yields characters, none of which equals a member "
             f"path, so nothing would be denied. Pass [{value!r}]."
         )
-    return split_name_list(value)
+    return require_name_collection(value)
 
 
 def _normalized_names(
@@ -675,9 +711,10 @@ class ArtifactSelectionPolicy:
             name: Bundle-relative member path.
             size: Uncompressed size in bytes.
             provider_deny: Member paths the provider has already consumed.
-                Read by :func:`checked_path_collection`, not
-                :func:`split_name_list`: a path may contain a comma, so this
-                one is never comma-split.
+                Checked by :func:`checked_path_collection`, not read by
+                :func:`split_name_list`: a path is compared verbatim, so
+                neither splitting nor stripping it is safe, and the
+                collection is handed back untouched.
                 Each entry is normalized here before comparison, so one
                 differing only in case or a leading ``./`` still matches, and
                 passing an already-normalized set is idempotent rather than

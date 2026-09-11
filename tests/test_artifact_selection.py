@@ -21,6 +21,7 @@ from deep_research_client.artifact_selection import (
     _with_trailing_slashes,
     is_under_directory,
     is_under_normalized_directory,
+    checked_path_collection,
     normalize_member_path,
     split_name_list,
 )
@@ -1261,6 +1262,7 @@ def test_a_params_model_stores_a_list_as_given():
         ("exclude_globs", {"B/*", "a/*"}, ("a/*", "b/*")),
         ("runtime_suffixes", {"B.LOG", "a.log"}, ("a.log", "b.log")),
         ("scaffolding_prefixes", {"logs", "logs.old"}, ("logs.old/", "logs/")),
+        ("runtime_name_fragments", {"STDERR", "aaa"}, ("aaa", "stderr")),
     ],
 )
 def test_an_unordered_setting_is_stored_sorted_in_its_transformed_form(
@@ -1307,21 +1309,22 @@ def test_a_provider_deny_path_containing_a_comma_is_not_split():
     assert decision.rule == "provider_deny"
 
 
-def test_a_one_shot_provider_deny_is_refused_because_it_is_read_per_member():
-    """Not a uniformity call here — the argument really does outlive the call.
+@pytest.mark.parametrize("make_value,expected_message", REFUSED_NAME_SHAPES)
+def test_provider_deny_refuses_what_the_shared_rule_refuses(
+    make_value, expected_message
+):
+    """The fourth door, driven from the table rather than hand-written.
 
-    The provider builds one deny collection and passes it to decide() for
-    every member of the bundle, so a generator fires for the first member and
-    is empty for every one after it.
+    The one-shot row is not a uniformity call here: the provider builds one
+    deny collection and passes it to decide() for every member of the bundle,
+    so a generator fires for the first member and is empty for every one
+    after it. The mapping and bytes rows were untested when this door was
+    added, which is the state the shared table exists to prevent.
     """
     policy = ArtifactSelectionPolicy(max_bytes=1024)
 
-    with pytest.raises(TypeError, match="re-readable collection"):
-        policy.decide(
-            "analysis/report.md",
-            100,
-            provider_deny=(n for n in ["analysis/report.md"]),
-        )
+    with pytest.raises(TypeError, match=expected_message):
+        policy.decide("analysis/report.md", 100, provider_deny=make_value())
 
 
 def test_the_ordinary_provider_deny_shapes_still_decide():
@@ -1336,15 +1339,32 @@ def test_the_ordinary_provider_deny_shapes_still_decide():
     assert policy.decide("analysis/other.md", 100).keep
 
 
-@pytest.mark.parametrize(
-    "field,setting,expected",
-    [
-        ("runtime_name_fragments", {"STDERR", "aaa"}, ("aaa", "stderr")),
-    ],
-)
-def test_the_fourth_lowercased_field_is_sorted_too(field, setting, expected):
-    """The sibling parametrize covered three of the four fields _lowercased
-    feeds; there is no behavioural gap, but it read as exhaustive."""
-    policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
+def test_a_deny_path_keeps_the_whitespace_the_member_path_keeps():
+    """The same argument that forbids comma-splitting forbids stripping.
 
-    assert getattr(policy, field) == expected
+    normalize_member_path lowercases and drops a leading slash, and stays
+    away from whitespace on purpose — so a stripped deny entry no longer
+    equals the member path it names, and the report body is re-emitted as a
+    duplicate artifact. That is the failure the deny exists to prevent,
+    reintroduced by the guard added to prevent it.
+    """
+    raw = " analysis/report.md"
+    deny = {normalize_member_path(raw)}
+
+    assert deny == {" analysis/report.md"}
+    assert ArtifactSelectionPolicy(max_bytes=1024).decide(
+        raw, 100, provider_deny=deny
+    ).rule == "provider_deny"
+
+
+def test_the_deny_collection_is_handed_back_rather_than_rebuilt():
+    """decide() checks this once per member, so a copy is per-member work.
+
+    Rounds 2 and 5 hoisted exactly this off exactly this parameter, and
+    decide's docstring still promises the set is built once per bundle. No
+    test can state the cost, so this states the mechanism instead: the object
+    that comes back is the one that went in.
+    """
+    deny = frozenset({"analysis/report.md"})
+
+    assert checked_path_collection(deny, "provider_deny") is deny

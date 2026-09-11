@@ -12,10 +12,11 @@ import pytest
 from deep_research_client.artifact_selection import (
     DEFAULT_ALLOWED_EXTENSIONS,
     DEFAULT_MAX_BYTES,
+    DEFAULT_SCAFFOLDING_DIRECTORIES,
     DEFAULT_SCAFFOLDING_PREFIXES,
     RUNTIME_EXTENSIONS,
-    DEFAULT_SCAFFOLDING_DIRECTORIES,
     ArtifactSelectionPolicy,
+    _with_trailing_slashes,
     is_under_directory,
     is_under_normalized_directory,
     normalize_member_path,
@@ -582,12 +583,22 @@ def test_the_normalized_matcher_also_rejects_a_bare_string():
 
 
 def test_the_default_directories_are_derived_from_the_shared_rule():
-    """The constant and the policy must normalize by one rule, not two copies."""
+    """The constant and the policy must normalize by one rule, not two copies.
+
+    Asserted on an input the rule actually has to transform. Every default is
+    already lowercase and slash-terminated, so comparing the defaults to
+    themselves passes even if the two sides normalize differently — which is
+    the divergence this is supposed to catch.
+    """
     policy = ArtifactSelectionPolicy(
-        max_bytes=1024, scaffolding_prefixes=DEFAULT_SCAFFOLDING_PREFIXES
+        max_bytes=1024, scaffolding_prefixes=(".Codex", "Logs/")
     )
 
-    assert policy.scaffolding_prefixes == DEFAULT_SCAFFOLDING_DIRECTORIES
+    assert policy.scaffolding_prefixes == (".codex/", "logs/")
+    assert _with_trailing_slashes((".Codex", "Logs/")) == policy.scaffolding_prefixes
+    assert DEFAULT_SCAFFOLDING_DIRECTORIES == _with_trailing_slashes(
+        DEFAULT_SCAFFOLDING_PREFIXES
+    )
 
 
 @pytest.mark.parametrize(
@@ -615,7 +626,7 @@ def test_the_pair_production_actually_uses(name, expected):
 
 
 def test_a_negative_cap_reports_its_own_value():
-    """"0" would be untrue, which is the defect this branch was split out for."""
+    """Reporting "0" would be untrue, the defect this branch was split out for."""
 
     class LooseParams:
         artifact_max_bytes = -1

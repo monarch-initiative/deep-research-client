@@ -19,9 +19,11 @@ Precedence, highest first:
 1. ``exclude_globs`` — an explicit deny always wins.
 2. ``max_bytes`` — the size cap always applies, including to explicit includes,
    because it is what keeps a bundle from being read into memory. Raise the cap
-   rather than trying to glob around it, up to the 50 MB ceiling that
-   ``artifact_max_bytes`` enforces; past that there is no knob, by design. A
-   cap of 0 is the floor and keeps nothing, a zero-byte member included.
+   rather than trying to glob around it, up to the 50 MB ceiling that the
+   ``artifact_max_bytes`` field enforces; past that there is no knob, by
+   design. The floor belongs to the policy rather than that field, whose own
+   minimum is 1: a policy built directly with a cap of 0 or less keeps
+   nothing, a zero-byte member included.
 3. ``provider_deny`` — members the provider has already consumed (the markdown
    report it returned as the result body).
 4. ``include_globs`` — an explicit allow bypasses every remaining default deny.
@@ -216,8 +218,9 @@ class ArtifactSelectionPolicy:
         convention a caller has to know.
 
         Raises:
-            TypeError: If ``scaffolding_prefixes`` is a single string, which
-                would iterate into characters and match nothing.
+            TypeError: If ``scaffolding_prefixes`` is a single string.
+                Iterating one yields characters, which match wrongly rather
+                than not at all — see :func:`is_under_directory`.
         """
         object.__setattr__(
             self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
@@ -379,8 +382,10 @@ def is_under_directory(name: str, directories: Iterable[str]) -> bool:
         Whether any of them names a directory on the path.
 
     Raises:
-        TypeError: If ``directories`` is a single string, which would iterate
-            into characters and match nothing.
+        TypeError: If ``directories`` is a single string. Iterating one yields
+            characters, and a lone ``"a"`` or ``"."`` matches any path with a
+            matching segment — so a bare string does not fail to match, it
+            matches wrongly and only on some paths.
 
     Example:
         >>> is_under_directory("workspace/.claude/skills/x.md", [".claude/"])

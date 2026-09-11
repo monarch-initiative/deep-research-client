@@ -774,11 +774,12 @@ dropped, from a list as well as from a string. That matters more than it
 sounds: an empty runtime fragment is a substring of every filename, so a stray
 blank left by `"stderr,".split(",")` would otherwise drop the entire bundle.
 
-This cleaning happens when the *policy* is built, not when the params object is
-constructed — a params model splits a string but stores a list as given, so
-`OpenScientistParams(artifact_include_globs=[" a ", ""])` still reads back as
-`[" a ", ""]`. The effective setting is the policy's, which is the one that
-selects.
+A params model applies that cleaning to a string but stores a list as given,
+so `OpenScientistParams(artifact_include_globs=" a , , a ")` reads back as
+`["a"]` while `OpenScientistParams(artifact_include_globs=[" a ", ""])` still
+reads back as `[" a ", ""]`. Since `--param` only ever produces a string, a CLI
+value is clean at construction; a list from Python is cleaned when the policy
+is built. Either way the policy's setting is the one that selects.
 
 ### Keeping OpenScientist agent transcripts
 

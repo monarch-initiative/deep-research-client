@@ -28,6 +28,19 @@ from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import OpenScientistParams
 from deep_research_client.providers.openscientist import OpenScientistProvider
 
+#: The shapes the shared name-reading rule refuses, and a fragment of each
+#: message that distinguishes it from the other two. Held once and driven
+#: through every door that reads a name list, so a door that quietly stops
+#: applying the rule fails rather than the table being restated per door.
+#: Factories, not values: a bare ``iter(...)`` here would be consumed by the
+#: first test parametrized over it and read empty for the second.
+REFUSED_NAME_SHAPES = [
+    (lambda: {".claude/": 1}, "its keys are unlikely"),
+    (lambda: iter([".claude/"]), "re-readable collection"),
+    (lambda: b".claude/", "decode it to str first"),
+]
+
+
 ONE_MB = 1024 * 1024
 
 
@@ -1073,16 +1086,9 @@ def test_a_name_in_a_list_is_stripped_the_way_a_name_in_a_string_is():
     assert policy.decide("agent-container.log", 100).rule == "runtime"
 
 
-@pytest.mark.parametrize(
-    "value,expected_message",
-    [
-        ({".claude/": 1}, "its keys are unlikely"),
-        (iter([".claude/"]), "re-readable collection"),
-        (b".claude/", "decode it to str first"),
-    ],
-)
+@pytest.mark.parametrize("make_value,expected_message", REFUSED_NAME_SHAPES)
 def test_scaffolding_refuses_what_every_other_setting_refuses(
-    value, expected_message
+    make_value, expected_message
 ):
     """It was the loosest field in a module built around being strict.
 
@@ -1091,7 +1097,7 @@ def test_scaffolding_refuses_what_every_other_setting_refuses(
     'endswith'` rather than the corrective TypeError.
     """
     with pytest.raises(TypeError, match=expected_message):
-        ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes=value)
+        ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes=make_value())
 
 
 def test_scaffolding_names_from_an_unordered_collection_are_sorted():
@@ -1180,16 +1186,9 @@ def test_a_caller_supplied_list_order_survives_normalization():
     assert policy.scaffolding_prefixes == ("z/", "a/")
 
 
-@pytest.mark.parametrize(
-    "value,expected_message",
-    [
-        ({".claude/": 1}, "its keys are unlikely"),
-        (iter([".claude/"]), "re-readable collection"),
-        (b".claude/", "decode it to str first"),
-    ],
-)
+@pytest.mark.parametrize("make_value,expected_message", REFUSED_NAME_SHAPES)
 def test_is_under_directory_refuses_what_the_shared_rule_refuses(
-    value, expected_message
+    make_value, expected_message
 ):
     """The public door behind _with_trailing_slashes, now documented as such.
 
@@ -1200,10 +1199,74 @@ def test_is_under_directory_refuses_what_the_shared_rule_refuses(
     than a harm that does not apply here.
     """
     with pytest.raises(TypeError, match=expected_message):
-        is_under_directory("a/.claude/x.md", value)
+        is_under_directory("a/.claude/x.md", make_value())
 
 
 def test_is_under_directory_still_answers_for_an_ordinary_list():
     """The guard above narrows what is accepted, not what it decides."""
     assert is_under_directory("workspace/.claude/skills/x.md", [".claude/"])
     assert not is_under_directory("run/logs_summary.csv", ["logs"])
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (["a", "a"], ("a",)),
+        ("a,a", ("a",)),
+        (" a , , a ", ("a",)),
+        (["a", "b", "a"], ("a", "b")),
+    ],
+)
+def test_the_splitter_itself_drops_repeats(value, expected):
+    """The one line of the dedupe change with no coverage of its own.
+
+    Every policy field re-dedupes downstream — through _lowercased,
+    _with_trailing_slashes, or _normalize_extensions returning a frozenset —
+    so the whole suite stayed green with this call site removed. It is
+    observable through the params validator, which stores the splitter's
+    output directly.
+    """
+    assert split_name_list(value) == expected
+
+
+def test_a_params_model_cleans_a_string_at_construction():
+    """The shape a --param user actually produces is clean immediately.
+
+    The docs previously said the cleaning happens only when the policy is
+    built. That is true of a list, which is the shape the CLI cannot produce,
+    and false of a string, which is the shape it always produces.
+    """
+    params = OpenScientistParams(artifact_include_globs=" a , , a ")
+
+    assert params.artifact_include_globs == ["a"]
+
+
+def test_a_params_model_stores_a_list_as_given():
+    """The other half of the same sentence, so neither half can rot alone."""
+    params = OpenScientistParams(artifact_include_globs=[" a ", ""])
+
+    assert params.artifact_include_globs == [" a ", ""]
+    assert ArtifactSelectionPolicy.from_params(params).include_globs == ("a",)
+
+
+@pytest.mark.parametrize(
+    "field,setting,expected",
+    [
+        ("include_globs", {"B/*", "a/*"}, ("a/*", "b/*")),
+        ("exclude_globs", {"B/*", "a/*"}, ("a/*", "b/*")),
+        ("runtime_suffixes", {"B.LOG", "a.log"}, ("a.log", "b.log")),
+        ("scaffolding_prefixes", {"logs", "logs.old"}, ("logs.old/", "logs/")),
+    ],
+)
+def test_an_unordered_setting_is_stored_sorted_in_its_transformed_form(
+    field, setting, expected
+):
+    """The sort has to run after the transform, for every transform.
+
+    Lowercasing reorders (uppercase sorts below lowercase) exactly as
+    appending "/" does. Fixing it for the slash wrapper alone left the claim
+    true of one of the two.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
+
+    assert getattr(policy, field) == expected

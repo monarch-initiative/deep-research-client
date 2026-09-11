@@ -43,7 +43,7 @@ from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 import mimetypes
 from pathlib import PurePosixPath
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 
 # Default per-artifact size cap. Declared here and referenced by the pydantic
@@ -123,7 +123,9 @@ def _unique(names: Iterable[str]) -> tuple[str, ...]:
     module establishes elsewhere.
 
     Args:
-        names: Normalized names, possibly with repeats.
+        names: Names at whatever stage of normalization the caller has
+            reached — merely stripped at the first call site, transformed at
+            the others. Possibly with repeats.
 
     Returns:
         The distinct names, in first-seen order.
@@ -136,7 +138,7 @@ def _unique(names: Iterable[str]) -> tuple[str, ...]:
 
 
 def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
-    """Strip each name and drop the empties.
+    """Strip each name, drop the empties, and drop the repeats.
 
     Applied to every branch of :func:`split_name_list`, because an empty name
     is not harmless in every matcher that consumes one: ``"" in basename`` is
@@ -147,7 +149,7 @@ def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
         items: Raw names.
 
     Returns:
-        The non-empty names, in the order given.
+        The distinct non-empty names, in the order given.
 
     Example:
         >>> _stripped_names([" a/* ", "", "  "])
@@ -196,8 +198,8 @@ def split_name_list(value: object) -> tuple[str, ...]:
             equal sets compare equal.
 
     Returns:
-        The names, stripped of surrounding whitespace, with empty entries
-        dropped — the same answer whichever shape it was handed, so a list
+        The names, stripped of surrounding whitespace, with empty and repeated
+        entries dropped — the same answer whichever shape it was handed, so a list
         assembled from ``"stderr,".split(",")`` behaves like the string it
         came from. That matters because an empty name is not inert in every
         matcher: an empty runtime fragment is a substring of every basename.
@@ -252,6 +254,39 @@ def split_name_list(value: object) -> tuple[str, ...]:
     )
 
 
+def _normalized_names(
+    value: object, transform: Callable[[str], str]
+) -> tuple[str, ...]:
+    """Read a list setting, transform each name, and re-establish the order.
+
+    The sort inside :func:`split_name_list` runs on the names as given, so any
+    transformation applied afterwards can reorder them — lowercasing moves an
+    uppercase name below its neighbours, and appending ``/`` (0x2F) moves a
+    name above one sharing its prefix. Sorting again here means "the stored
+    form is the sorted form" holds for every field rather than for whichever
+    wrapper last had the bug.
+
+    The sort condition lives here too, rather than being re-derived per
+    wrapper: an unordered collection is sorted and a caller's own list order
+    is left alone, which is one rule, not one per transform.
+
+    Args:
+        value: A collection of names or a comma-separated string.
+        transform: Applied to each name after splitting.
+
+    Returns:
+        The distinct transformed names, sorted when ``value`` was unordered.
+
+    Example:
+        >>> _normalized_names({"B/*", "a/*"}, str.lower)
+        ('a/*', 'b/*')
+        >>> _normalized_names(["z", "a"], str.upper)
+        ('Z', 'A')
+    """
+    names = _unique(transform(name) for name in split_name_list(value))
+    return tuple(sorted(names)) if isinstance(value, AbstractSet) else names
+
+
 def _lowercased(names: object) -> tuple[str, ...]:
     """Read a list setting and lowercase it for matching a normalized path.
 
@@ -269,7 +304,13 @@ def _lowercased(names: object) -> tuple[str, ...]:
         >>> _lowercased("Transcript, LOG")
         ('transcript', 'log')
     """
-    return _unique(name.lower() for name in split_name_list(names))
+    return _normalized_names(names, str.lower)
+
+
+def _as_directory_name(name: str) -> str:
+    """Lowercase a directory name and give it the trailing slash."""
+    lowered = name.lower()
+    return lowered if lowered.endswith("/") else f"{lowered}/"
 
 
 def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
@@ -315,20 +356,7 @@ def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
             "directories must be a collection of names, not a single string; "
             f"pass [{directories!r}] rather than {directories!r}"
         )
-    suffixed = _unique(
-        name if name.endswith("/") else f"{name}/"
-        for name in (
-            directory.lower() for directory in split_name_list(directories)
-        )
-    )
-    # split_name_list sorts the *pre-slash* names, and "/" (0x2F) sorts above
-    # "." and every digit, so appending it reorders any pair sharing a prefix:
-    # {"logs", "logs.old"} came back as ("logs/", "logs.old/"). Re-sort the
-    # final form for the inputs split_name_list sorts, and leave a caller's
-    # own list order alone.
-    if isinstance(directories, AbstractSet):
-        return tuple(sorted(suffixed))
-    return suffixed
+    return _normalized_names(directories, _as_directory_name)
 
 
 #: The scaffolding names already lowercased and slash-terminated, derived by

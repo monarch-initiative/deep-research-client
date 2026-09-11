@@ -164,6 +164,18 @@ class ArtifactSelectionPolicy:
     exclude_globs: tuple[str, ...] = ()
     keep_runtime: bool = False
 
+    def __post_init__(self) -> None:
+        """Normalize scaffolding names so segment matching cannot be broken.
+
+        Matching relies on each name ending in a slash: without it,
+        ``scaffolding_prefixes=("logs",)`` would drop ``run/logs_summary.csv``
+        as a directory. Normalizing here makes that structural rather than a
+        convention a caller has to know.
+        """
+        object.__setattr__(
+            self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
+        )
+
     @classmethod
     def from_params(cls, params: object) -> "ArtifactSelectionPolicy":
         """Build a policy from a params object carrying the artifact knobs.
@@ -178,10 +190,13 @@ class ArtifactSelectionPolicy:
         Returns:
             The resolved policy.
         """
-        # ``or`` rather than a plain default: this is documented as
-        # duck-typed, and a params object declaring ``Optional[int] = None``
-        # would otherwise reach ``size > None`` at decision time.
-        max_bytes = getattr(params, "artifact_max_bytes", None) or DEFAULT_MAX_BYTES
+        # Explicitly against None rather than falsiness: this is documented
+        # as duck-typed, and a params object declaring ``Optional[int] = None``
+        # would otherwise reach ``size > None`` at decision time — but a
+        # deliberate 0 means "keep nothing", not "use the default".
+        max_bytes = getattr(params, "artifact_max_bytes", None)
+        if max_bytes is None:
+            max_bytes = DEFAULT_MAX_BYTES
         extra = _normalize_extensions(getattr(params, "artifact_extra_extensions", ()))
         return cls(
             max_bytes=max_bytes,
@@ -250,7 +265,7 @@ class ArtifactSelectionPolicy:
         if _matches_any(normalized, self.include_globs):
             return ArtifactDecision(True, "matched artifact_include_globs", rule="include_glob")
 
-        if _under_any_directory(normalized, self.scaffolding_prefixes):
+        if is_under_directory(normalized, self.scaffolding_prefixes):
             return ArtifactDecision(
                 False, "agent scaffolding directory", rule="scaffolding"
             )
@@ -288,22 +303,43 @@ class ArtifactSelectionPolicy:
         )
 
 
-def _under_any_directory(normalized_name: str, prefixes: Iterable[str]) -> bool:
+def is_under_directory(name: str, directories: Iterable[str]) -> bool:
     """Return whether a path lies under one of the named directories.
 
-    Matched at any depth, so ``workspace/.claude/settings.json`` counts as
-    being under ``.claude/``.
+    Matched on a whole path segment at any depth, so
+    ``workspace/.claude/settings.json`` counts as being under ``.claude/``
+    while ``run/logs_summary.csv`` does not count as being under ``logs/``.
+
+    Shared by the selection policy and by a provider's report-picking path, so
+    the two cannot drift into disagreeing about what scaffolding is.
 
     Args:
-        normalized_name: Path already through :func:`normalize_member_path`.
-        prefixes: Directory names, each with a trailing slash.
+        name: Member path, normalized here if it is not already.
+        directories: Directory names, with or without a trailing slash.
 
     Returns:
-        Whether any prefix names a directory on the path.
+        Whether any of them names a directory on the path.
+
+    Example:
+        >>> is_under_directory("workspace/.claude/skills/x.md", [".claude/"])
+        True
+        >>> is_under_directory("run/logs_summary.csv", ["logs"])
+        False
+        >>> is_under_directory("run/logs/out.csv", ["logs"])
+        True
     """
+    normalized = normalize_member_path(name)
     return any(
-        normalized_name.startswith(prefix) or f"/{prefix}" in normalized_name
-        for prefix in prefixes
+        normalized.startswith(directory) or f"/{directory}" in normalized
+        for directory in _with_trailing_slashes(directories)
+    )
+
+
+def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
+    """Return directory names each ending in exactly one slash."""
+    return tuple(
+        directory if directory.endswith("/") else f"{directory}/"
+        for directory in directories
     )
 
 

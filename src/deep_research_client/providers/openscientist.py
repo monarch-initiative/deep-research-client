@@ -29,6 +29,7 @@ from ..artifact_selection import (
     DEFAULT_RUNTIME_SUFFIXES,
     DEFAULT_SCAFFOLDING_PREFIXES,
     ArtifactSelectionPolicy,
+    is_under_directory,
     normalize_member_path,
 )
 from ..exceptions import ProviderNotConfiguredError
@@ -523,15 +524,22 @@ class OpenScientistProvider(ResearchProvider):
         applies the default noise rules: a caller who widens artifact selection
         still does not want a transcript chosen as the report body.
 
+        Scaffolding is matched by the same shared segment rule the selection
+        policy uses. It has to be: ``_is_report_markdown_name`` matches at any
+        depth, so a root-anchored check here left
+        ``workspace/.claude/skills/writer/report.md`` eligible to be returned
+        as the entire report body ahead of the bundle's real
+        ``final_report.md``.
+
         Args:
             name: ZIP member path.
 
         Returns:
             Whether the member is scaffolding or a runtime record.
         """
-        normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
+        normalized = normalize_member_path(name)
         basename = PurePosixPath(normalized).name
-        if normalized.startswith(DEFAULT_SCAFFOLDING_PREFIXES):
+        if is_under_directory(normalized, DEFAULT_SCAFFOLDING_PREFIXES):
             return True
         if basename.endswith(DEFAULT_RUNTIME_SUFFIXES):
             return True

@@ -12,8 +12,10 @@ import pytest
 from deep_research_client.artifact_selection import (
     DEFAULT_ALLOWED_EXTENSIONS,
     DEFAULT_MAX_BYTES,
+    DEFAULT_SCAFFOLDING_PREFIXES,
     RUNTIME_EXTENSIONS,
     ArtifactSelectionPolicy,
+    is_under_directory,
 )
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import OpenScientistParams
@@ -378,3 +380,67 @@ def test_a_nested_report_markdown_is_reachable_by_an_include_glob():
     ]
 
     assert kept == ["analysis_subtopic_report.md"]
+
+
+def test_a_nested_skill_report_is_not_chosen_as_the_report_body():
+    """The report picker and the selection policy must agree on scaffolding.
+
+    `_is_report_markdown_name` matches at any depth, so a root-anchored
+    scaffolding check left a nested `.claude/skills/.../report.md` eligible —
+    and the picker takes the first candidate in ZIP order, which is the order
+    the server happened to write them. The whole result body became skill
+    boilerplate.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("workspace/.claude/skills/writer/report.md", "# Boilerplate")
+        archive.writestr("final_report.md", "# The actual report")
+
+    config = ProviderConfig(
+        name="openscientist", api_key="k", base_url="https://example.test/", enabled=True
+    )
+    provider = OpenScientistProvider(config)
+    name, body = provider._extract_markdown_from_artifact_zip(
+        buffer.getvalue(), "job-1"
+    )
+
+    assert name == "final_report.md"
+    assert body == "# The actual report"
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        (".claude/skills/x.md", True),
+        ("workspace/.claude/skills/x.md", True),
+        ("a/b/__pycache__/x.json", True),
+        ("run/logs_summary.csv", False),
+        ("results/claude_notes.md", False),
+    ],
+)
+def test_the_shared_scaffolding_rule_matches_whole_segments(name, expected):
+    """One rule, used by both the policy and the report picker."""
+    assert is_under_directory(name, DEFAULT_SCAFFOLDING_PREFIXES) is expected
+
+
+def test_scaffolding_names_are_normalized_so_a_caller_cannot_break_matching():
+    """A directory given without a trailing slash must not match a substring."""
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, scaffolding_prefixes=("logs",)
+    )
+
+    assert policy.scaffolding_prefixes == ("logs/",)
+    assert policy.decide("run/logs_summary.csv", 100).keep
+    assert not policy.decide("run/logs/out.csv", 100).keep
+
+
+def test_a_zero_size_cap_is_honoured_rather_than_replaced():
+    """0 means "keep nothing"; only an absent cap falls back to the default."""
+
+    class LooseParams:
+        artifact_max_bytes = 0
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.max_bytes == 0
+    assert not policy.decide("results/table.csv", 1).keep

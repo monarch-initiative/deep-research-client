@@ -751,8 +751,8 @@ def _md(value: str) -> str:
     Example:
         >>> _md("a|b")
         'a\\|b'
-        >>> _md(r"C:\\runs\\out.csv")
-        'C:\\\\runs\\\\out.csv'
+        >>> _md(r"C:\runs\out.csv")
+        'C:\\runs\\out.csv'
     """
     return str(value).replace("|", "\\|").replace("\n", " ")
 

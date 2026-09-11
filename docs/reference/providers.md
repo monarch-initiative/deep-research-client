@@ -733,7 +733,8 @@ Precedence, highest first:
 1. `artifact_exclude_globs` — an explicit deny always wins.
 2. `artifact_max_bytes` — the size cap applies even to an explicit include,
    because it is what keeps a bundle out of memory. Raise the cap rather than
-   globbing around it.
+   globbing around it — up to 50 MB, which the field enforces as a hard
+   ceiling. A member larger than that cannot be preserved by any setting.
 3. The report body the provider already returned as the result markdown.
 4. `artifact_include_globs` — an explicit allow bypasses every remaining default.
 5. Default denies: scaffolding directories (`.git/`, `.claude/`, `node_modules/`,

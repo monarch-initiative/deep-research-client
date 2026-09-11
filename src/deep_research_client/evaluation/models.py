@@ -209,10 +209,20 @@ class RACEDimension(BaseModel):
     explanation: Optional[str] = None
 
     @property
-    def normalized_score(self) -> float:
-        """Return score normalized to 0-1 range, or 0.0 if unscored."""
+    def normalized_score(self) -> Optional[float]:
+        """Score normalized to 0-1, or None when the dimension was not scored.
+
+        None rather than 0.0: this property is public, and returning the worst
+        possible score for a dimension nobody measured is the defect the
+        Optional `score` was introduced to remove, one accessor down. A caller
+        that averages these without filtering now gets a TypeError rather than
+        a plausible number.
+
+        >>> RACEDimension(dimension="d", score=None).normalized_score is None
+        True
+        """
         if self.score is None or self.max_score <= 0:
-            return 0.0
+            return None
         return self.score / self.max_score
 
 
@@ -271,10 +281,13 @@ class RACEScore(BaseModel):
         0.0 when none were, which `unscored_count` distinguishes from a report
         that genuinely scored zero.
         """
-        scored = self.scored_dimensions
+        scored = [
+            d.normalized_score for d in self.scored_dimensions
+            if d.normalized_score is not None
+        ]
         if not scored:
             return 0.0
-        return sum(d.normalized_score for d in scored) / len(scored)
+        return sum(scored) / len(scored)
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +444,15 @@ class FactualSpotCheckScore(BaseModel):
 
     total_checks: int
     present_count: int = Field(..., description="Facts mentioned in the report")
-    correct_count: int = Field(..., description="Facts correctly stated")
+    correct_count: int = Field(
+        ...,
+        description=(
+            "Checks recorded correct, which includes every presence-only check "
+            "that matched. Not the numerator of `accuracy_rate` -- that is over "
+            "`compared_count`, the checks that compared a captured value. Read "
+            "this one as coverage, not as agreement."
+        ),
+    )
     compared_count: int = Field(
         default=0,
         description=(

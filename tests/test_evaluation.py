@@ -8,7 +8,9 @@ Tests cover:
 - Scorer helpers (no LLM calls — those are integration tests)
 """
 
+import asyncio
 from pathlib import Path
+
 import pytest
 
 from deep_research_client.evaluation.datamodel import (
@@ -466,7 +468,7 @@ def test_an_optional_group_that_did_not_participate_is_not_a_captured_value():
 # ---------------------------------------------------------------------------
 
 
-def test_race_records_an_unscored_dimension_rather_than_a_middling_one():
+def test_race_records_an_unscored_dimension_rather_than_a_middling_one(monkeypatch):
     """A judge outage used to report 3.0 out of 5 for every dimension.
 
     Indistinguishable from a genuine 3, so a run against a dead endpoint
@@ -483,12 +485,8 @@ def test_race_records_an_unscored_dimension_rather_than_a_middling_one():
     task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
     out = parse_dr_output(task, "A report.", "test")
 
-    original = scorers._llm_judge
-    scorers._llm_judge = dead_judge
-    try:
-        score = asyncio.run(scorers.score_race(out, task, llm_client=object()))
-    finally:
-        scorers._llm_judge = original
+    monkeypatch.setattr(scorers, "_llm_judge", dead_judge)
+    score = asyncio.run(scorers.score_race(out, task, llm_client=object()))
 
     assert score.dimensions, "the dimensions should still be listed"
     assert all(d.score is None for d in score.dimensions)
@@ -498,7 +496,7 @@ def test_race_records_an_unscored_dimension_rather_than_a_middling_one():
     assert score.overall_score == 0.0
 
 
-def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim():
+def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim(monkeypatch):
     """Recall used to fall with the judge's uptime.
 
     An exception recorded `matched=False` and divided by the full ground-truth
@@ -521,14 +519,8 @@ def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim():
     task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
     out = parse_dr_output(task, "A report.", "test")
 
-    original = scorers._llm_judge
-    scorers._llm_judge = dead_judge
-    try:
-        score = asyncio.run(
-            scorers.score_claim_recall(out, claims, llm_client=object())
-        )
-    finally:
-        scorers._llm_judge = original
+    monkeypatch.setattr(scorers, "_llm_judge", dead_judge)
+    score = asyncio.run(scorers.score_claim_recall(out, claims, llm_client=object()))
 
     assert score.total_ground_truth_claims == 2
     assert score.unjudged_claims == 2
@@ -536,7 +528,7 @@ def test_claim_recall_does_not_count_an_unreachable_judge_as_a_missed_claim():
     assert score.claim_recall == 0.0  # nothing judged, not "covered nothing"
 
 
-def test_a_judge_reply_without_a_verdict_is_not_read_as_a_verdict():
+def test_a_judge_reply_without_a_verdict_is_not_read_as_a_verdict(monkeypatch):
     """`"true" in result_text[:50]` scored prose on whether four letters appear.
 
     "It is not true that this abstract supports the claim" was read as support,
@@ -556,14 +548,8 @@ def test_a_judge_reply_without_a_verdict_is_not_read_as_a_verdict():
     task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
     out = parse_dr_output(task, "A report.", "test")
 
-    original = scorers._llm_judge
-    scorers._llm_judge = prose_judge
-    try:
-        score = asyncio.run(
-            scorers.score_claim_recall(out, claims, llm_client=object())
-        )
-    finally:
-        scorers._llm_judge = original
+    monkeypatch.setattr(scorers, "_llm_judge", prose_judge)
+    score = asyncio.run(scorers.score_claim_recall(out, claims, llm_client=object()))
 
     assert score.matches[0].matched is None, (
         "a reply containing the letters 'true' is not a verdict of true"
@@ -681,3 +667,35 @@ def test_a_thousands_separator_is_not_a_disagreement(phrasing, expect_correct):
     score = score_factual_spot_checks(parse_dr_output(task, phrasing, "test"), task)
     check = next(c for c in score.checks if c.fact_name == "protein_length")
     assert check.correct is expect_correct
+
+
+@pytest.mark.parametrize("reply,why", [
+    ('{"verdict": "yes"}', "a different key"),
+    ('{"error": "rate limited"}', "an envelope from a proxy"),
+    ('{}', "an empty object"),
+])
+def test_well_formed_json_without_the_verdict_key_is_not_a_negative_verdict(
+    monkeypatch, reply, why,
+):
+    """`result.get("matched", False)` read these as "the report does not cover it".
+
+    Worse than the prose case, which at least took the no-verdict path: these
+    landed in the judged set and counted against the provider. `score_race` got
+    this guard; its two neighbours did not.
+    """
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    async def odd_reply(*args, **kwargs):
+        return reply
+
+    monkeypatch.setattr(scorers, "_llm_judge", odd_reply)
+
+    claims = [ReferenceClaim(name="c1", category="molecular_function",
+                             description="First claim.")]
+    task = EvalTask(id="r", prompt="?", answer_type=AnswerType.REPORT)
+    out = parse_dr_output(task, "A report.", "test")
+
+    score = asyncio.run(scorers.score_claim_recall(out, claims, llm_client=object()))
+    assert score.matches[0].matched is None, why
+    assert score.unjudged_claims == 1

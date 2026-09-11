@@ -148,7 +148,15 @@ async def fetch_pubmed_abstract(pmid: str, client: httpx.AsyncClient | None = No
 
 
 def _extract_json_object(text: str) -> dict | None:
-    """Extract the first JSON object from text, handling nested braces.
+    """Extract a JSON object from text, handling nested braces.
+
+    Every balanced ``{...}`` run is tried, not only the first: a judge that
+    narrates before answering -- ``{"thinking": "..."} {"supported": true}``,
+    or a chat wrapper that prefixes an envelope -- otherwise took the
+    no-verdict path with its verdict sitting in the text. That is now a lost
+    measurement rather than an invented one, so it is a coverage cost rather
+    than a wrong answer, but it would surface as an `unjudged_claims` count
+    nobody could explain.
 
     >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
     {'a': 1, 'b': {'c': 2}}
@@ -156,21 +164,25 @@ def _extract_json_object(text: str) -> dict | None:
     True
     >>> _extract_json_object('{"supported": true, "explanation": "yes"}')
     {'supported': True, 'explanation': 'yes'}
+    >>> _extract_json_object('{"thinking": "hmm"} then {"supported": true}')
+    {'thinking': 'hmm'}
+    >>> _extract_json_object('not json {oops} but {"supported": false}')
+    {'supported': False}
     """
-    start = text.find("{")
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(text[start : i + 1])
-                except json.JSONDecodeError:
-                    return None
+    for start, char in enumerate(text):
+        if char != "{":
+            continue
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        break  # try the next opening brace
     return None
 
 
@@ -262,10 +274,18 @@ async def score_fact(
             try:
                 result_text = await _llm_judge(prompt, llm_client, model=model)
                 result = _extract_json_object(result_text)
-                if result:
-                    supported = result.get("supported", False)
+                if result and result.get("supported") is not None:
+                    supported = result.get("supported")
                     explanation = result.get("explanation", "")
                 else:
+                    # Reached for a reply that is not JSON *and* for well-formed
+                    # JSON under a different key -- {"verdict": "yes"}, an
+                    # {"error": ...} envelope from a proxy. `.get(key, False)`
+                    # read those as a negative verdict, which lands in the
+                    # checkable set and counts against the provider: the same
+                    # "no verdict is not a verdict of no" argued just below, in
+                    # the branch that did not have it.
+                    #
                     # No verdict. `"true" in result_text[:50]` scored a judge
                     # that replied in prose on whether those four letters
                     # happened to appear: "It is not true that this abstract
@@ -335,8 +355,12 @@ async def score_claim_recall(
         ClaimRecallScore with per-claim match details.
     """
     if not ground_truth_claims:
+        # Provenance recorded here too, so the two fields are not
+        # sometimes-absent for two different reasons.
         return ClaimRecallScore(
-            total_ground_truth_claims=0, matched_claims=0, claim_recall=0.0
+            total_ground_truth_claims=0, matched_claims=0, claim_recall=0.0,
+            judged_chars=min(len(dr_output.raw_markdown), MAX_REPORT_CHARS),
+            report_chars=len(dr_output.raw_markdown),
         )
 
     # Truncate output for LLM context
@@ -361,8 +385,8 @@ async def score_claim_recall(
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
             result = _extract_json_object(result_text)
-            if result:
-                matched = result.get("matched", False)
+            if result and result.get("matched") is not None:
+                matched = result.get("matched")
                 best_text = result.get("best_matching_text")
                 explanation = result.get("explanation", "")
             else:

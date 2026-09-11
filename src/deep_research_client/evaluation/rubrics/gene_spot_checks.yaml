@@ -6,7 +6,15 @@
 # writing them requires knowing the answer in advance.
 #
 # This file is a starting set, not a benchmark. An eval set that needs checks
-# for other subjects should ship its own rubric rather than extend this one.
+# for other subjects should ship its own rubric rather than extend this one -
+# a YAML eval set carries a `rubric:` block per task.
+#
+# `expected` is advisory where the pattern has no capturing group: there is
+# nothing to compare, so the check is presence-only and `compared` is False.
+# Most checks here are that shape deliberately - the pattern *is* the expected
+# value. Only `chromosome` and `protein_length` compare a captured value, which
+# is what `compared_count` reports. Do not add a load-time rule refusing
+# `expected` without a group without rewriting this file first.
 
 BRCA1:
   - name: chromosome

@@ -595,7 +595,8 @@ def test_the_recipe_rebuilds_a_score_its_own_dump_cannot():
     # function's source contains the line defining `recipe`, so a substring
     # search over the whole of it matches that and is true however the
     # comprehension above is rewritten. It survived the mutation that proved
-    # it -- the fourth self-reference on this branch.
+    # it -- another of the self-referential instruments listed in
+    # `_cited_names` (tests/test_repo_hygiene.py).
     executed = next(
         (ln.strip() for ln in inspect.getsource(
             test_the_recipe_rebuilds_a_score_its_own_dump_cannot).splitlines()

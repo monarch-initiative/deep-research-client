@@ -9,6 +9,7 @@ That is the argument `85ae9be` made one level in, when it split the
 page-guard tripwire out of a test named for `scores.tsv` columns.
 """
 
+import inspect
 import re
 from pathlib import Path
 
@@ -97,11 +98,31 @@ def test_no_comment_cites_a_test_that_does_not_exist():
 
     No invented name appears anywhere above: the first draft of this
     docstring illustrated the backtick rule with a made-up one, and this
-    function read its own example and reported it as dangling. That is the
-    third instrument on this branch to be an instance of what it measures,
-    and the reason its blind spots are worth stating -- it cannot see a
-    citation that wraps across lines, and it treats any backticked
-    `test_`-prefixed token as a claim that something exists.
+    function read its own example and reported it as dangling.
+
+    That failure has a family, and this is its one home -- three sentences
+    elsewhere each called their own case "the third" or "the fourth", in
+    three different vocabularies, and two of the three numbers could not be
+    right. Named rather than counted, because a tally kept in several files
+    is a claim with nowhere to check it:
+
+    - a `caplog` wrapper that suppressed nothing it was meant to suppress
+    - a recursion counter that spent a Python frame per level it counted
+    - a `#:` ragged-line audit that read every wrapped paragraph end as a
+      stub, because `lstrip("#")` turns a Sphinx marker into ":"
+    - `_page_guards`, which counted its own body as a page read
+    - `recipe in inspect.getsource(...)`, which matched the line DEFINING
+      `recipe` and so held however the comprehension was rewritten
+    - this docstring's first invented example, and the fixture name below
+    - `_cited_names` itself, which rejoined a wrapped citation correctly
+      and then looked for it at a parity the scan never reads
+
+    Its blind spots are worth stating for the same reason: it treats any
+    backticked `test_`-prefixed token as a claim that something exists, and
+    `known` is built from `^def test_` at column zero, so a test defined
+    inside a class would be absent and every citation of it reported. That
+    last one fails loudly rather than silently, which is the direction to
+    prefer.
     """
     root = Path(__file__).parent.parent
     tests_dir = root / "tests"
@@ -132,15 +153,45 @@ def test_no_comment_cites_a_test_that_does_not_exist():
         "a same-line citation regressed, or a non-test token was picked up"
     )
 
+    # A path reference is a citation too, and the one in `src/` that the
+    # backtick rule cannot reach: `MatrixConfig.on_scores` cites
+    # tests/test_eval_matrix.py by path. The backtick requirement exists
+    # because an unquoted NAME in prose is not distinguishable from a
+    # sentence -- which is not true of a path, so paths are resolved as
+    # well, against the files that exist.
     dangling: list[str] = []
     scanned = [*tests_dir.rglob("*.py"), *(root / "src").rglob("*.py")]
     for path in sorted(scanned):
-        for line_no, cited in _cited_names(path.read_text(encoding="utf-8")):
+        text = path.read_text(encoding="utf-8")
+        where = path.relative_to(root)
+        for line_no, cited in _cited_names(text):
             if cited not in known:
-                where = path.relative_to(root)
                 dangling.append(f"{where}:{line_no} cites `{cited}`")
+        for line_no, line in enumerate(text.splitlines(), 1):
+            for ref in re.findall(r"tests/(test_\w+)\.py", line):
+                if ref not in known:
+                    dangling.append(f"{where}:{line_no} cites tests/{ref}.py")
 
     assert not dangling, (
         "these name a test that no longer exists, so a reader following "
         "them finds nothing:\n  " + "\n  ".join(dangling)
+    )
+
+    # The other direction, which the checks above cannot see: they fail when
+    # a citation points at nothing, and stay green when a citation is simply
+    # DELETED. `MCQScore`'s class comment says naming its test is deliberate
+    # and that describing the recipe without saying what runs it "is what
+    # left this comment unexecuted for four commits" -- so a tidy-up that
+    # drops the name, keeping the recipe the other guards pin, returns the
+    # comment to the state its own sentence calls the failure.
+    #
+    # From out here rather than from the cited test, so deleting that test
+    # does not delete the checker with it.
+    from deep_research_client.evaluation.models import MCQScore
+
+    cited_by_mcqscore = _cited_names(inspect.getsource(MCQScore))
+    assert cited_by_mcqscore, (
+        "MCQScore's class comment no longer names the test that executes "
+        "its documented recipe; the expression is still pinned, but a "
+        "reader has nothing to run it by"
     )

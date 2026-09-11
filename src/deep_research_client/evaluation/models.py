@@ -889,10 +889,11 @@ class MCQScore(BaseModel):
     # from the one that runs; a separate test fails if this comment ever
     # names a test that no longer exists.
     #
-    # Naming a test from `src/` is deliberate and is the only place this
-    # package does it. The alternative is to describe the recipe without
-    # saying what runs it, which is what left this comment unexecuted for
-    # four commits.
+    # Naming a test FUNCTION from `src/` is deliberate and is the only
+    # place this package does it; `MatrixConfig.on_scores` cites a test
+    # MODULE by path, which is the same coupling one step looser. The
+    # alternative is to describe the recipe without saying what runs it,
+    # which is what left this comment unexecuted for four commits.
     model_config = ConfigDict(extra="forbid")
 
     total: int = Field(..., ge=0, description="Questions in the eval set")

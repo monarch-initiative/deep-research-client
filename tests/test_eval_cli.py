@@ -394,7 +394,8 @@ def _page_guards(root: Path | None = None) -> set[str]:
     was invisible only because the test above does read the page, so the
     self-hit re-added a name already in the set. Move the helper and the
     derivation gains a member that reads nothing. An instrument that counts
-    itself is the fourth on this branch.
+    itself is one of several on this branch; see `_cited_names` in
+    tests/test_repo_hygiene.py, which keeps the list.
 
     What this does NOT cover, in the order it matters:
 
@@ -456,48 +457,58 @@ def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
     reasons that have nothing to do with `write_scores_tsv` or any column.
     The line pytest prints is a describer too.
 
-    Every test naming the page, and what each one reads:
+    Every test naming the page, what it reads, and by which shape. The shape
+    is on each row rather than tallied below it, because a count over this
+    mapping is a derivation done by hand beside the data it derives from --
+    the second-source-of-truth shape this branch deleted from `MCQScore`,
+    and the one that made the previous two versions of this paragraph wrong:
 
-      test_the_page_quotes_the_extraction_failures_note_...  a printed note
-      test_an_arm_that_attempted_nothing_shows_no_precision  the rendered
-          `--grade` row AND the unconditional extractor note -- two of the
-          six content items in this list come from one guard
-      test_the_docs_do_not_claim_the_skip_is_narrower_...    a PROSE
-          paragraph, the only one in the tree
-      test_the_docs_quote_a_line_the_command_can_...         the
-          verifiability line
-      test_the_documented_rubric_example_loads_and_scores    a rubric
-          example, EXTRACTED and RUN (tests/test_eval_adapters.py)
-      test_the_page_names_every_column_the_writer_emits      the page's
-          text, searched for column NAMES -- it is the test the exemption
-          lives in
-      test_the_set_of_page_guards_is_the_one_the_exemption_argues_from
-          nothing: this test, which names the page only in its fixture and
-          its message
+      RENDER  run the command, assert its output against the page
+      PROSE   assert the page's prose against itself
+      RUN     lift content out of the page and execute it
+      NAMES   derive identifiers from code, assert the page names them
 
-    Only the last never opens the file; it is in the set because
-    `_page_guards` excludes nothing.
+      RENDER  test_the_page_quotes_the_extraction_failures_note_...
+                  a printed note
+      RENDER  test_an_arm_that_attempted_nothing_shows_no_precision
+                  the rendered `--grade` row AND the unconditional
+                  extractor note -- one guard, two of the things read
+      RENDER  test_the_docs_quote_a_line_the_command_can_...
+                  the verifiability line
+      PROSE   test_the_docs_do_not_claim_the_skip_is_narrower_...
+                  a paragraph, split on blank lines so two facts must
+                  co-occur in ONE of them -- after a whole-page containment
+                  check let an unrelated `--template PATH | ...
+                  placeholders` row satisfy half of it
+      RUN     test_the_documented_rubric_example_loads_and_scores
+                  a YAML block, executed through the adapter and asserted
+                  on by behaviour (tests/test_eval_adapters.py)
+      NAMES   test_the_page_names_every_column_the_writer_emits
+                  the page's text, searched for each column name -- it is
+                  the test the exemption lives in
+      --      test_the_set_of_page_guards_is_the_one_the_exemption_argues_from
+                  nothing: this test, which names the page only in its
+                  fixture and its message, and is in the set because
+                  `_page_guards` excludes nothing
 
-    THREE shapes, not two. Four guards run a command and assert its rendered
-    output against the page. One asserts page PROSE against itself, splitting
-    on blank lines so two facts must co-occur in ONE paragraph -- after a
-    whole-page containment check let an unrelated `--template PATH | ...
-    placeholders` row satisfy half of it. One goes the other way: it lifts a
-    YAML block out of the page and EXECUTES it through the adapter, asserting
-    on the behaviour rather than on the text.
+    What that leaves the exemption. RENDER is ruled out for the rate
+    paragraphs because no command prints them. NAMES is ruled out by the
+    exemption's own sentence: the page discusses the three rates at length,
+    so asserting it mentions them adds nothing. PROSE and RUN both remain --
+    a rate paragraph stating a formula could be pinned either way -- so the
+    argument is that nothing pins them TODAY, not that only one shape could.
 
-    So the exemption's argument is weaker than the two-shape version of this
-    paragraph made it. No command prints the rate paragraphs, which rules out
-    the first shape -- but the prose guard is not the only remaining model.
-    The extract-and-run guard also starts from page text, and a rate
-    paragraph stating a formula could plausibly be pinned either way.
+    History, because this paragraph has been wrong three times and each
+    correction caused the next. It said every guard but the prose one "reads
+    a RENDERED line, built by running the command" (false of the rubric
+    guard) and grouped the column guard as reading "no page CONTENT" (false
+    of the column guard). Correcting the second moved the column guard into
+    the content column and thereby falsified two COUNTS in this same
+    docstring -- "six content items" and "four guards run a command" -- in
+    the same edit that fixed the entry they counted. Hence no counts.
 
-    History: this said every guard but the prose one "reads a RENDERED line,
-    built by running the command", which was false of the rubric guard, and
-    grouped the column guard with this one as reading "no page CONTENT",
-    which was false of the column guard. Both were wrong the day they were
-    written -- the tripwire below pins MEMBERSHIP, and `_page_guards`' own
-    docstring names this mapping as the first thing it cannot see.
+    `_page_guards` names this mapping as the first thing it cannot see, and
+    the tripwire below pins MEMBERSHIP only.
     """
     # The scanner first, because the set below is only as good as it is and
     # it was wrong in exactly this way: it set the current test at a

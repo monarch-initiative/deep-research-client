@@ -519,60 +519,14 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
 
     Every ``{...}`` object at the top level of the reply is a candidate; an
     array is decoded and stepped over rather than mined, so its members are
-    reachable only through the descent. With ``key``, the first candidate that
-    carries it wins; if none does, the search descends before falling back to
-    the first object found.
+    reachable only through the descent.
 
-    Three things have been wrong here, and they compound:
-
-    1. Only the first ``{...}`` run was tried. A judge that narrates before
-       answering -- ``{"thinking": "..."} {"supported": true}`` -- took the
-       no-verdict path with its verdict sitting in the text.
-    2. Then every run was tried, but the first that *parsed* won, so the
-       narration object still won. Each caller now passes the key it asked
-       for; a reply that never answers is still unjudged, which is a lost
-       measurement rather than an invented one.
-    3. Then the scan resumed one character after a parsed object, which is a
-       brace *inside* it -- so a key nested in a preamble outranked a later
-       top-level verdict. ``{"evidence": {"supported": false}}`` followed by
-       ``{"supported": true}`` returned **false**: not a missing verdict but
-       the opposite one, counted against the provider. The scan now advances
-       past each decoded object, and nesting is consulted only when no
-       top-level object answers.
-
-    Cost, which three rewrites of this paragraph have got wrong in a different
-    way each time, so stated per shape:
-
-    - Linear while values parse -- the scan advances past each decoded span.
-    - Constant for a reply that simply runs out, which is what truncation
-      produces: no closer anywhere means no opener can begin a container, and
-      one comparison rules out the whole run.
-    - Quadratic in the run only for unclosed openers with a stray closer
-      somewhere after them, since neither the bound above nor the skip inside
-      `_decode_candidates` applies. Bounded by the length of the reply.
-
-    The length is in CHARACTERS -- the scan steps one at a time -- and what
-    bounds it is `max_tokens`, set where the judge is called and currently
-    2048, NOT `MAX_REPORT_CHARS`, which two earlier versions of this paragraph
-    cited. That constant truncates the report sent *to* the judge and says
-    nothing about what comes back.
-
-    A third version of this sentence then said the mistake made the bound look
-    "about six times worse", which is 12,000 divided by 2048: characters over
-    tokens, in the paragraph arguing that the two measure different things.
-    A fourth said "nearer 1.5x", which is a ratio of LENGTHS quoted as the
-    factor a quadratic bound was off by. The constant is the part that
-    matters and it is above; no factor is quoted here now, because three
-    versions running have got one wrong.
-
-    And `max_tokens` bounds a reply THIS CLIENT asked for. Every scorer takes
-    an `llm_client` from its caller and `eval score` accepts `--llm-base-url`,
-    so an endpoint that ignores it, or a library caller driving `score_race`
-    directly, is not bounded by it at all.
-
-    ``raw_decode`` does the scanning rather than a brace counter, so a closing
-    brace inside a string value no longer ends the object early -- an
-    explanation mentioning "a } brace" lost the verdict entirely.
+    With ``key``, three tiers in order of how much the reply commits to each
+    answer: a top-level object carrying the key; one nested inside a readable
+    top-level value; anything carrying it inside a container that could not be
+    read at all. If no tier answers, the first object found is returned so the
+    caller can quote what the judge actually said -- which is not a verdict,
+    and every caller checks the key rather than the truthiness of the result.
 
     >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
     {'a': 1, 'b': {'c': 2}}
@@ -632,6 +586,58 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
 
     >>> _extract_json_object('{"verdict": "yes"}', key="supported")
     {'verdict': 'yes'}
+
+    History, below the rule and the examples because a reader needs those
+    first. Every paragraph here was written after the behaviour above cost a
+    review round, and each names a verdict this function once returned.
+
+    Three things have been wrong with the tiering, and they compound:
+
+    1. Only the first ``{...}`` run was tried. A judge that narrates before
+       answering -- ``{"thinking": "..."} {"supported": true}`` -- took the
+       no-verdict path with its verdict sitting in the text.
+    2. Then every run was tried, but the first that *parsed* won, so the
+       narration object still won. Each caller now passes the key it asked
+       for; a reply that never answers is still unjudged, which is a lost
+       measurement rather than an invented one.
+    3. Then the scan resumed one character after a parsed object, which is a
+       brace *inside* it -- so a key nested in a preamble outranked a later
+       top-level verdict. ``{"evidence": {"supported": false}}`` followed by
+       ``{"supported": true}`` returned **false**: not a missing verdict but
+       the opposite one, counted against the provider. The scan now advances
+       past each decoded object, and nesting is consulted only when no
+       top-level object answers.
+
+    ``raw_decode`` does the scanning rather than a brace counter, so a closing
+    brace inside a string value no longer ends the object early -- an
+    explanation mentioning "a } brace" lost the verdict entirely.
+
+    Cost, which four rewrites of this paragraph have got wrong in a different
+    way each time, so stated per shape:
+
+    - Linear while values parse -- the scan advances past each decoded span.
+    - Constant for a reply that simply runs out, which is what truncation
+      produces: no closer anywhere means no opener can begin a container, and
+      one comparison rules out the whole run.
+    - Quadratic in the run only for unclosed openers with a stray closer
+      somewhere after them, since neither the bound above nor the skip inside
+      `_decode_candidates` applies. Bounded by the length of the reply.
+
+    That length is in CHARACTERS -- the scan steps one at a time -- and what
+    bounds it is `max_tokens`, set where the judge is called and currently
+    2048, NOT `MAX_REPORT_CHARS`, which two earlier versions of this paragraph
+    cited: that constant truncates the report sent *to* the judge and says
+    nothing about what comes back. A third version quoted "about six times
+    worse", which is 12,000 divided by 2048 -- characters over tokens, in the
+    paragraph arguing the two measure different things -- and a fourth quoted
+    "nearer 1.5x", a ratio of LENGTHS standing in for the factor a QUADRATIC
+    bound was off by. No factor is quoted now; the constant is the part that
+    matters.
+
+    And `max_tokens` bounds a reply THIS CLIENT asked for. Every scorer takes
+    an `llm_client` from its caller and `eval score` accepts `--llm-base-url`,
+    so an endpoint that ignores it, or a library caller driving `score_race`
+    directly, is not bounded by it at all.
     """
     top_level, salvage = _decode_candidates(text)
     top_dicts = [v for v in top_level if isinstance(v, dict)]

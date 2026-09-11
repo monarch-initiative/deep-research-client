@@ -14,13 +14,20 @@ import httpx
 import pytest
 
 from deep_research_client.evaluation import mcq
-from deep_research_client.evaluation.adapters import available_adapters, get_adapter
+from deep_research_client.evaluation.adapters import (
+    available_adapters,
+    get_adapter,
+    lab_bench,
+)
 from deep_research_client.evaluation.adapters.lab_bench import (
     SUBSETS,
     _task_from_row,
     text_only_subsets,
 )
 from deep_research_client.evaluation.adapters.monarch import build_rubric
+from deep_research_client.evaluation.adapters.tabular import (
+    _task_from_row as _tabular_task_from_row,
+)
 from deep_research_client.evaluation.datamodel import (
     AnswerSpec,
     AnswerType,
@@ -160,21 +167,38 @@ def test_unknown_lab_bench_subset_is_rejected():
         fetch_subset("NotASubset")
 
 
-def test_a_mistyped_subset_name_is_refused_before_the_network():
-    """`fetch_subset` refuses it too, but only after a revision lookup.
+@pytest.mark.parametrize("source,match", [
+    ("NotASubset", "Unknown LAB-Bench subset"),
+    # A real name alongside a bad one must still name the bad one -- and must
+    # not download the real one first while finding that out.
+    ("LitQA2,NotASubset", "NotASubset"),
+    # One input short of the check above: an empty list passed every guard,
+    # made the revision request anyway, and returned an EvalSet named
+    # "lab-bench-" with zero tasks and a partial_reason describing a benchmark
+    # it had not loaded.
+    ("", "No LAB-Bench subset named"),
+    (",", "No LAB-Bench subset named"),
+    (" , ", "No LAB-Bench subset named"),
+])
+def test_a_bad_subset_argument_is_refused_before_the_network(monkeypatch, source, match):
+    """The absence of the network is the assertion, not a property of the runner.
 
-    That put an HTTP call between the user and a message about a typo: online
-    it cost a round trip, and offline the revision lookup failed first, so a
-    mistyped name surfaced as a connection error instead of as its own name.
-    Like the multimodal refusal above, this raises without reaching the network,
-    which is what lets it run outside the integration suite.
+    Asserting only the message does not discriminate: `fetch_subset` refuses an
+    unknown name as its own first statement, so with this guard reverted the
+    same ValueError still comes out -- just after `_resolve_or_fall_back` has
+    made a revision request, and for "LitQA2,NotASubset" after LitQA2 has been
+    downloaded in full. Verified by reverting the guard: the message assertion
+    stayed green. A tripwire on the revision lookup is what actually holds the
+    property, on a networked machine and an isolated one alike.
     """
-    with pytest.raises(ValueError, match="Unknown LAB-Bench subset"):
-        get_adapter("lab-bench").load("NotASubset")
+    def tripwire(*args, **kwargs):
+        raise AssertionError("network reached before the subset name was checked")
 
-    # A real name alongside a bad one must still name the bad one.
-    with pytest.raises(ValueError, match="NotASubset"):
-        get_adapter("lab-bench").load("LitQA2,NotASubset")
+    monkeypatch.setattr(lab_bench, "resolve_revision", tripwire)
+    monkeypatch.setattr(lab_bench, "_resolve_or_fall_back", tripwire)
+
+    with pytest.raises(ValueError, match=match):
+        get_adapter("lab-bench").load(source)
 
 
 @pytest.mark.integration
@@ -852,7 +876,7 @@ def test_an_abstention_does_not_count_towards_the_two_options():
 
 @pytest.mark.parametrize("body,expected", [
     ("    answer_type: MULTIPLE_CHOICE\n    ideal: Thymine\n",
-     "distinct option"),
+     "offers no usable distractors"),
     # An ideal repeated as its only distractor is both a duplicate and a
     # one-option task. The duplicate message is the one that names the cell to
     # edit, so it is the one that has to win.
@@ -866,7 +890,7 @@ def test_an_abstention_does_not_count_towards_the_two_options():
     # the abstention checks, or a one-option task reads as a collision.
     ("    answer_type: MULTIPLE_CHOICE\n    ideal: Unknown\n"
      "    abstention_option: unknown\n",
-     "1 distinct option"),
+     "offers no usable distractors"),
 ])
 def test_a_degenerate_set_is_refused_when_it_loads(tmp_path, body, expected):
     """Caught at load, not at cell 43 of a run that has already been paid for.
@@ -1050,6 +1074,24 @@ def test_the_letter_budget_counts_the_abstention_too():
 
     without = AnswerSpec(ideal="right", distractors=[f"d{i}" for i in range(25)])
     assert mcq.degenerate_reason(without) is None
+
+
+@pytest.mark.parametrize("row,expected", [
+    ({"id": "  ", "question": "Q?"}, "task_1"),
+    ({"id": "", "question": "Q?"}, "task_1"),
+    ({"question": "Q?"}, "task_1"),
+    ({"id": " m1 ", "question": "Q?"}, "m1"),
+])
+def test_a_blank_id_column_falls_back_to_the_positional_id(row, expected):
+    """A whitespace id used to survive as an empty string.
+
+    `str(row.get("id") or f"task_{n}").strip()` stripped after the fallback, not
+    before it, so "  " was truthy, the fallback never fired, and the task got an
+    empty id. Nothing downstream refused it: `check_unique_ids` only looks for
+    collisions, `check_task_shapes` checks the prompt, and `safe_segment("")`
+    quietly writes the results under `unnamed-<digest>`.
+    """
+    assert _tabular_task_from_row(row, 0, "|").id == expected
 
 
 def test_a_blank_distractor_is_never_presented_as_an_option():

@@ -173,16 +173,26 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     the whole reason the check exists. The list is exhaustive - the paragraph
     below about what is *not* refused depends on that:
 
+    They are listed in the order they are checked, and that order is a contract
+    rather than a detail: a spec can be degenerate in more than one way at once,
+    and the message names the first match. The duplicate check deliberately
+    outranks the count, so that an ideal repeated as its only distractor -- one
+    option *and* a duplicate -- is reported as the duplicate, which names the
+    cell of the file to edit rather than only the result. The count in turn
+    outranks the abstention checks, so a one-option task with a colliding
+    abstention is reported as having one option.
+
     - No ideal answer at all. The correct option renders blank, no provider can
       choose it, and every arm is marked wrong - accuracy 0.000 across the
       matrix, which is the same defect as accuracy 1.000 and just as quiet.
-    - Fewer than two distinct options. One option and a right answer is not a
-      question: every arm answers it correctly.
-    - The ideal answer repeated among the distractors, or shared with the
-      abstention text, or an abstention repeating a distractor. Two lettered
-      options then read identically, so a provider that knows the answer is
-      marked wrong - or recorded as declining - at random, depending which of
-      the two it happens to name.
+    - The ideal answer repeated among the distractors. Two lettered options then
+      read identically, so a provider that knows the answer is marked wrong at
+      random, depending which of the two it happens to name.
+    - No usable distractors, leaving fewer than two distinct options. One option
+      and a right answer is not a question: every arm answers it correctly.
+    - The ideal answer shared with the abstention text, or an abstention
+      repeating a distractor. Same collision as above, in the option that
+      `present_choices` appends rather than shuffles.
     - More options than there are letters to label them. Checked here rather
       than at render time so it is caught before a run is paid for.
 
@@ -200,7 +210,7 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     >>> degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["Guanine", "Guanine"])) is None
     True
     >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=[])))
-    offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
+    offers no usable distractors, so it presents one option besides any abstention; at least two are needed for the answer to mean anything
     >>> print(degenerate_reason(
     ...     AnswerSpec(ideal="Thymine", distractors=["thymine ", "Guanine"])))
     repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
@@ -229,7 +239,7 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     # and fall back to the generic count only when nothing more specific fits.
     # An ideal repeated as its only distractor is one option *and* a duplicate;
     # "repeats its ideal answer" tells the author which cell of their file to
-    # edit, where "offers 1 distinct option(s)" only tells them the result. The
+    # edit, where the no-distractors message only tells them the result. The
     # generic count still has to precede the abstention checks, so that a task
     # with one option and a colliding abstention is reported as having one
     # option rather than as an abstention collision.
@@ -239,11 +249,14 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
             "identically and only one counts as correct"
         )
 
-    distinct = len({ideal, *distractors})
-    if distinct < 2:
+    # Reached only when the ideal is not among the distractors, so the count is
+    # 1 + len(set(distractors)) and falling below two means there are no usable
+    # distractors at all. Said that way rather than as a count, which would
+    # interpolate a constant and describe the arithmetic instead of the file.
+    if len({ideal, *distractors}) < 2:
         return (
-            f"offers {distinct} distinct option(s) besides any abstention; at "
-            f"least two are needed for the answer to mean anything"
+            "offers no usable distractors, so it presents one option besides any "
+            "abstention; at least two are needed for the answer to mean anything"
         )
 
     # The abstention is appended by present_choices after everything above, so

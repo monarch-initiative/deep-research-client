@@ -388,10 +388,19 @@ class LabBenchAdapter(EvalSetAdapter):
             else [s.strip() for s in requested.split(",") if s.strip()]
         )
 
-        # Checked in the same pass as the multimodal filter, and before the
-        # network: `fetch_subset` refuses an unknown name too, but only after
-        # `_resolve_or_fall_back` has already made an HTTP call, so a typo cost
-        # a round trip online and surfaced as an httpx error offline.
+        # Both names are checked here, before the network. `fetch_subset`
+        # refuses an unknown name as its own first statement, so it never
+        # reaches HTTP either -- but it is called from the loop below, after
+        # `_resolve_or_fall_back` has already made a revision request. So the
+        # round trip a typo used to cost was spent by this method, not by
+        # `fetch_subset`, and offline it surfaced as a connection error rather
+        # than as the name that was wrong.
+        if not subsets:
+            raise ValueError(
+                f"No LAB-Bench subset named. Pass one or more of: "
+                f"{', '.join(SUBSETS)}, or 'all' for every text-only subset."
+            )
+
         unknown = [s for s in subsets if s not in SUBSETS]
         if unknown:
             raise ValueError(
@@ -399,7 +408,8 @@ class LabBenchAdapter(EvalSetAdapter):
                 f"Available: {', '.join(SUBSETS)}"
             )
 
-        multimodal = [s for s in subsets if s in SUBSETS and not SUBSETS[s][1]]
+        # Every name is known by now, so this only has to ask about modality.
+        multimodal = [s for s in subsets if not SUBSETS[s][1]]
         if multimodal:
             raise ValueError(
                 f"LAB-Bench subset(s) {', '.join(multimodal)} ask about figures or "

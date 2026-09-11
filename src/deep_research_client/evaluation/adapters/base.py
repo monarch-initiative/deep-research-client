@@ -116,7 +116,7 @@ def check_task_shapes(tasks: list[EvalTask], source: str) -> None:
     >>> check_task_shapes([bad], "somewhere")
     Traceback (most recent call last):
         ...
-    ValueError: somewhere: task 'b' is multiple choice but offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
+    ValueError: somewhere: task 'b' is multiple choice but offers no usable distractors, so it presents one option besides any abstention; at least two are needed for the answer to mean anything
     """
     # Imported here rather than at module scope: mcq imports the datamodel, and
     # hoisting this would make adapters and mcq import each other.

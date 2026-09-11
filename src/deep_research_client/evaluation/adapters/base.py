@@ -161,7 +161,10 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
     presence-only, which is a coverage signal wearing an accuracy label. A
     groupless pattern with the default ``exact`` style is *not* refused: that is
     the documented way to write a presence-only check, and most of the bundled
-    ones are exactly that.
+    ones are exactly that. ``gene_spot_checks.yaml``'s header records the same
+    thing from the other side -- ten of its checks declare an ``expected`` that
+    nothing compares -- so a rule refusing that shape would have to rewrite the
+    bundled file first. This docstring is where someone would come to add it.
 
     An empty ``rubric`` block is refused for the same reason: it is
     indistinguishable in effect from no rubric at all, so writing one is always
@@ -223,6 +226,16 @@ def check_rubrics(tasks: list[EvalTask], source: str) -> None:
                 f"scores nothing; fill it in or remove it"
             )
         for spec in (task.rubric.spot_checks if task.rubric else None) or []:
+            if not spec.name.strip():
+                # `fact_name` is how the CLI and `--output` identify a failed
+                # check. Blank, a reader is told a fact was wrong and not which
+                # -- the same one-character slip as a blank keyword or a blank
+                # description, in the last of the three free-text fields.
+                raise ValueError(
+                    f"{source}: task {task.id!r} has a spot check with a blank "
+                    f"name, which is how a failed check is identified in the "
+                    f"results"
+                )
             try:
                 compiled = re.compile(spec.pattern)
             except re.error as exc:

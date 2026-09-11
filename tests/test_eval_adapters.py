@@ -1535,3 +1535,19 @@ def test_every_subject_in_the_bundled_spot_checks_is_covered_by_that_test():
         f"subjects in gene_spot_checks.yaml with no coverage at load: "
         f"{subjects - covered}"
     )
+
+
+def test_a_spot_check_with_no_name_is_refused(tmp_path):
+    """`fact_name` is how a failed check is identified in the results.
+
+    Blank, the scorecard says a fact was wrong without saying which. The other
+    two free-text fields in a rubric are already guarded; this was the third.
+    """
+    path = _yaml_with_check(
+        tmp_path,
+        "        - name: '  '\n"
+        "          pattern: '\\bBRCT\\b'\n",
+    )
+
+    with pytest.raises(ValueError, match="blank name"):
+        get_adapter("yaml").load(path)

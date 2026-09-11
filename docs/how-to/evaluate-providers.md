@@ -454,6 +454,7 @@ without that rule it would excuse a report that went on to place BRCA1 at
 | A topic with no keywords | No report can ever cover it |
 | A topic with a blank keyword | Every report covers it, including an empty one |
 | A reference claim with a blank description | It asks the judge to look for nothing |
+| A spot check with a blank name | It is how a failed check is identified in the results |
 | An empty `rubric:` block | It scores exactly what no rubric scores |
 
 ## Adding a benchmark

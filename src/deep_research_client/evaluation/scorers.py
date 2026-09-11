@@ -183,6 +183,153 @@ def _nested_with_key(obj: object, key: str) -> dict | None:
     return None
 
 
+def _balanced_span(text: str, start: int) -> int | None:
+    """Index just past the bracket matching ``text[start]``, or None if unclosed.
+
+    String-aware, because a brace inside a string value is not a brace: counting
+    them naively is the defect `raw_decode` was brought in to remove, and this
+    is the one place that still has to find an end without parsing -- the text
+    it is asked about is text the parser has already refused.
+
+    >>> _balanced_span('{"a": {"b": 1}} tail', 0)
+    15
+    >>> _balanced_span('{"note": "a } brace"} tail', 0)
+    21
+    >>> _balanced_span('{"a": 1', 0) is None
+    True
+    """
+    closers = {"{": "}", "[": "]"}
+    if text[start] not in closers:
+        return None
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        char = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in closers:
+            stack.append(closers[char])
+        elif char in "}]":
+            if not stack or stack[-1] != char:
+                return None
+            stack.pop()
+            if not stack:
+                return i + 1
+    return None
+
+
+def _without_trailing_commas(text: str) -> str:
+    """Drop commas that directly precede a closing bracket.
+
+    A trailing comma is the commonest way an LLM's JSON fails to parse, and the
+    cost of not repairing it is not a missing verdict but the wrong one: the
+    object holding the answer is unreadable, so the only thing left to recover
+    is whatever it happens to contain -- a per-criterion breakdown, say, whose
+    verdict is the opposite of the one the judge reached.
+
+    String-aware, so a comma inside a string value survives.
+
+    The comma becomes a space rather than being removed, so every other offset
+    in the text is unchanged and the result can be compared with the original.
+
+    >>> _without_trailing_commas('{"a": 1,}')
+    '{"a": 1 }'
+    >>> _without_trailing_commas('{"a": [1, 2, ], }')
+    '{"a": [1, 2  ]  }'
+    >>> _without_trailing_commas('{"note": "a, }", "b": 2}')
+    '{"note": "a, }", "b": 2}'
+    """
+    out = list(text)
+    in_string = False
+    escaped = False
+    comma_at: int | None = None
+    for i, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            comma_at = None
+        elif char == ",":
+            comma_at = i
+        elif char in "}]":
+            if comma_at is not None:
+                out[comma_at] = " "
+            comma_at = None
+        elif not char.isspace():
+            comma_at = None
+    return "".join(out)
+
+
+def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
+    """Split a reply's JSON values into top-level ones and salvaged ones.
+
+    A value is top-level when the scan reached it without being inside a
+    container it could not read. One found inside such a container is salvage:
+    recoverable, but not evidence of what the reply *says*, because whatever
+    enclosed it is unreadable.
+
+    The distinction exists because the tiering was previously inferred from
+    where the parser happened to succeed. On a decode failure the scan advanced
+    a single character, so an object nested inside a malformed outer became a
+    *top-level* candidate and outranked a genuine verdict after it -- a judge
+    answering `true` with a trailing comma and a nested breakdown was recorded
+    as `false`. A malformed container is now measured with `_balanced_span`,
+    repaired if a trailing comma is all that was wrong with it, and otherwise
+    mined for salvage and stepped over.
+
+    Returns:
+        ``(top_level, salvage)``, each in document order.
+    """
+    decoder = json.JSONDecoder()
+    top_level: list[Any] = []
+    salvage: list[Any] = []
+    i = 0
+    while i < len(text):
+        if text[i] not in "{[":
+            i += 1
+            continue
+        try:
+            parsed, end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            span = _balanced_span(text, i)
+            if span is None:
+                # Never closed -- a reply cut off mid-object, say. Step one
+                # character so a value nested inside it stays reachable; it is
+                # salvage, since nothing here can be read as a whole.
+                inner_top, inner_salvage = _decode_candidates(text[i + 1 :])
+                salvage.extend(inner_top)
+                salvage.extend(inner_salvage)
+                break
+            try:
+                repaired = json.loads(_without_trailing_commas(text[i:span]))
+            except json.JSONDecodeError:
+                inner_top, inner_salvage = _decode_candidates(text[i + 1 : span - 1])
+                salvage.extend(inner_top)
+                salvage.extend(inner_salvage)
+            else:
+                top_level.append(repaired)
+            i = span
+            continue
+        top_level.append(parsed)
+        i = end  # never rescan inside a value already read
+    return top_level, salvage
+
+
 def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     """Extract a JSON object from text, handling nested braces.
 
@@ -277,49 +424,42 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     >>> _extract_json_object('{"verdict": "yes"}', key="supported")
     {'verdict': 'yes'}
     """
-    decoder = json.JSONDecoder()
-    # Objects at the top level of the reply, in order. Arrays are decoded but
-    # are not candidates themselves and neither are their members: scanning
-    # only for `{` walked past a `[` one character at a time and collected each
-    # member as a peer of a later verdict, so a judge emitting a per-criterion
-    # breakdown as an array -- `[{"criterion": ..., "score": 2}, ...]` then
-    # `{"score": 4}` -- had a RACE dimension recorded from the breakdown. That
-    # is the defect this scan was rewritten to fix, reached through a bracket
-    # instead of a brace.
-    top_level: list[dict] = []
-    # Everything decoded, arrays included, for the descent below. An array is
-    # still where the verdict lives when the reply is *only* an array.
-    decoded: list[Any] = []
-    i = 0
-    while i < len(text):
-        if text[i] not in "{[":
-            i += 1
-            continue
-        try:
-            parsed, end = decoder.raw_decode(text, i)
-        except json.JSONDecodeError:
-            # Not a value here. Advance one character rather than skipping the
-            # run, so a value nested inside unparseable text is still found.
-            i += 1
-            continue
-        decoded.append(parsed)
-        if isinstance(parsed, dict):
-            top_level.append(parsed)
-        i = end  # never rescan inside a value already read
+    top_level, salvage = _decode_candidates(text)
+    top_dicts = [v for v in top_level if isinstance(v, dict)]
+    salvage_dicts = [v for v in salvage if isinstance(v, dict)]
+
+    def _fallback() -> dict | None:
+        # The judge's actual reply, so the caller can quote it in the
+        # explanation rather than reporting nothing. A list is never returned:
+        # the caller calls `.get` on whatever comes back.
+        if top_dicts:
+            return top_dicts[0]
+        return salvage_dicts[0] if salvage_dicts else None
 
     if key is None:
-        return top_level[0] if top_level else None
-    for candidate in top_level:
+        return _fallback()
+
+    # Three tiers, in order of how much the reply commits to each answer: a
+    # top-level object that carries the key; one nested inside a readable
+    # top-level value; anything at all inside a container that could not be
+    # read. Salvage is one tier, not two -- `_nested_with_key` returns a dict
+    # that carries the key itself, so a separate "top-level salvage" pass could
+    # never answer a case the descent does not, and the ordering it would
+    # impose within salvage has nothing behind it: the container was
+    # unreadable, so nothing there is more the reply's answer than anything
+    # else.
+    for candidate in top_dicts:
         if key in candidate:
             return candidate
-    for value in decoded:
+    for value in top_level:
         nested = _nested_with_key(value, key)
         if nested is not None:
             return nested
-    # Nothing anywhere carries the key -- not at the top level and not nested.
-    # The judge's actual reply is returned so the caller can quote it in the
-    # explanation rather than reporting nothing at all.
-    return top_level[0] if top_level else None
+    for value in salvage:
+        nested = _nested_with_key(value, key)
+        if nested is not None:
+            return nested
+    return _fallback()
 
 
 async def _llm_judge(prompt: str, llm_client: Any, model: str = "gpt-4o-mini") -> str:
@@ -1049,15 +1189,26 @@ async def score_citation_alignment(
         claim_terms = _extract_key_terms(claim.text)
         for cit in claim.citations:
             cid = cit.normalized_id
-            if not cid:
-                continue
 
             # Fetch paper metadata
-            if cid.startswith("PMID:"):
+            if cid and cid.startswith("PMID:"):
                 meta = await fetch_pubmed_metadata(cid, pubmed_client)
-            elif cid.startswith("DOI:"):
+            elif cid and cid.startswith("DOI:"):
                 meta = await resolve_doi(cid, pubmed_client)
             else:
+                # A citation this scorer has no way to look up: an identifier
+                # that would not normalise, or one of a kind it cannot resolve
+                # -- the extractor also emits PMC and GEO accessions. Counted,
+                # not dropped. Both were previously missing from `results` and
+                # from `unresolvable` alike, so a report whose whole reference
+                # list is PMC ids printed `0/0 (0.00)` with nothing
+                # unresolvable -- byte-identical to a report that cited
+                # nothing, which is the reading this counter exists to
+                # prevent. Its sibling scorer counts exactly these two as
+                # findings, and the two scorers read the same reference list:
+                # they should not disagree about whether it has citations in
+                # it.
+                unresolvable += 1
                 continue
 
             title = meta.get("title")
@@ -1177,10 +1328,14 @@ def _most_specific(
     callers have already established that theirs is non-empty, and an Optional
     return meant a third fallback that could not fire.
 
+    Two correct captures of one check, which is what it is for. A mixed list
+    would run, since the function has no opinion about the flag -- but it would
+    be an executable example of the ranking the paragraph above refuses.
+
     >>> import re
-    >>> ms = [(re.match("a", "a"), True, "17"), (re.match("a", "a"), False, "17p13.1")]
-    >>> _most_specific(ms)[2]
-    '17p13.1'
+    >>> m = re.match("a", "a")
+    >>> _most_specific([(m, True, "17"), (m, True, "17q21.31")])[2]
+    '17q21.31'
     """
     return max(verdicts, key=lambda t: len(t[2]))
 
@@ -1328,13 +1483,6 @@ def score_factual_spot_checks(
                 # is one of only two bundled checks that compare anything at
                 # all -- so `compared_count` stayed 2 with one of the two
                 # unable to register a disagreement.
-                #
-                # So a correct occurrence loses to an incorrect one that
-                # captured a strictly longer value: the report made a more
-                # specific claim, and the more specific claim is its answer.
-                # Only under `prefix`, because that is the only style where a
-                # correct capture can be less specific than the answer --
-                # under `exact` a correct capture *is* the answer.
                 right = [t for t in comparable if t[1]]
                 wrong = [t for t in comparable if not t[1]]
                 hit = _most_specific(right) if right else None
@@ -1361,10 +1509,14 @@ def score_factual_spot_checks(
                 # and nothing can extend it meaningfully.
                 overrode: tuple[re.Match[str], bool, str] | None = None
                 if hit is not None and is_prefix_match(spec):
-                    overrode = next(
-                        (t for t in wrong if t[2] != hit[2] and t[2].startswith(hit[2])),
-                        None,
-                    )
+                    extending = [
+                        t for t in wrong if t[2] != hit[2] and t[2].startswith(hit[2])
+                    ]
+                    # The most specific of them, not the first in the report:
+                    # with several, "the disagreement that overrode it" names
+                    # nothing in particular, and the report's own claim is the
+                    # most precise one it made.
+                    overrode = _most_specific(extending) if extending else None
                     if overrode is not None:
                         hit = None
 

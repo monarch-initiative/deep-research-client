@@ -1648,3 +1648,102 @@ def test_an_array_is_never_returned_as_the_verdict(reply):
     assert scorers._extract_json_object(reply) is None or isinstance(
         scorers._extract_json_object(reply), dict
     )
+
+
+@pytest.mark.parametrize("reply,expected,why", [
+    # The commonest way an LLM's JSON fails to parse, with a breakdown inside
+    # the object that holds the verdict. The scan advanced one character on a
+    # decode failure, so the nested breakdown became a *top-level* candidate
+    # and answered for the reply -- a judge that said `true` recorded as
+    # `false` and counted against the provider.
+    ('{"criteria": {"supported": false}, "supported": true,}',
+     True, "a trailing comma in the object holding the verdict"),
+    # A malformed preamble followed by a real verdict: the failed region has to
+    # be bounded, or the genuine verdict is demoted alongside the breadcrumbs.
+    ('{"criteria": {"supported": false},} {"supported": true}',
+     True, "a malformed preamble before a real verdict"),
+    # An outer that is not JSON at all and cannot be repaired: its contents are
+    # still recoverable, because nothing else answers.
+    ('{oops {"supported": true}}', True, "an unparseable outer"),
+    # Several values inside the unreadable container, the verdict not first.
+    # With one, the fallback that quotes the judge's reply happens to return
+    # the right object, so a single-value case cannot tell the salvage tier
+    # from its absence.
+    ('{oops {"note": "thinking"} {"supported": true}}',
+     True, "an unparseable outer holding more than one value"),
+    # A reply cut off mid-object, which is what `max_tokens` produces.
+    ('{"criteria": {"supported": true}, "sup',
+     True, "a reply cut off before its object closed"),
+    # A trailing comma inside a string value is not a trailing comma.
+    ('{"note": "a, }", "supported": true,}',
+     True, "a comma inside a string value"),
+])
+def test_a_malformed_container_does_not_answer_for_the_reply(reply, expected, why):
+    """Recovering the wrong verdict is worse than recovering none.
+
+    Every predicate that has been wrong in this function was a proxy: a brace
+    counter for "where does this object end", position for "which object is the
+    verdict". This one was "where the parser happened to succeed" standing in
+    for "is this at the top level", and the two disagree exactly when the outer
+    object is malformed.
+    """
+    from deep_research_client.evaluation import scorers
+
+    result = scorers._extract_json_object(reply, key="supported")
+    assert result is not None, why
+    assert result["supported"] is expected, why
+
+
+def test_alignment_counts_a_citation_it_cannot_look_up(monkeypatch):
+    """Verifiability counts these; alignment dropped them from both its results
+    and its unresolvable count.
+
+    The extractor emits PMC accessions and GEO ids as well as PMIDs and DOIs,
+    so this is reachable from an ordinary report. A reference list made of them
+    printed `0/0 (0.00)` with nothing unresolvable -- byte-identical to a report
+    that cited nothing, which is the reading the counter exists to prevent.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = ("FGFR3 drives achondroplasia (PMC11000121). "
+            "Expression was deposited under GSE68086.")
+    out = parse_dr_output(task, body, "test")
+    assert [c.normalized_id for c in out.extracted_citations] == [
+        "PMC:PMC11000121", "GEO:GSE68086",
+    ], "the fixture must exercise identifiers neither scorer can resolve"
+
+    verifiability = asyncio.run(scorers.score_citation_verifiability(out))
+    alignment = asyncio.run(scorers.score_citation_alignment(out))
+
+    # The two scorers read the same reference list and must agree that it has
+    # citations in it.
+    assert verifiability.total_citations == 2
+    assert alignment.unresolvable == 2
+    assert alignment.total_checked == 0
+
+
+def test_the_evidence_named_is_the_most_specific_disagreement():
+    """With several disagreements extending the agreement, "the one that
+    overrode it" names nothing in particular; the report's claim is its most
+    precise one."""
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="chromosome", pattern=r"chromosome\s+(17[pq\d.]*)",
+            expected="17q21.31", match="prefix",
+        )]),
+    )
+    report = ("Genes on chromosome 17 include BRCA1. It is on chromosome 17p13 "
+              "-- more precisely chromosome 17p13.1.")
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    assert score.checks[0].correct is False
+    # The trailing period is inside the match: `.` is in the character class.
+    assert score.checks[0].found_in_report == "chromosome 17p13.1."

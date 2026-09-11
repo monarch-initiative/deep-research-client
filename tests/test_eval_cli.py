@@ -190,6 +190,54 @@ def test_eval_run_grades_multiple_choice_and_warns_about_the_extractor(tmp_path)
     assert "provisional regex extractor" in result.stdout
 
 
+def test_a_dimension_on_a_dead_scale_is_not_printed_as_a_number(tmp_path, monkeypatch):
+    """The header and the lines under it have to answer one question.
+
+    `scored_dimensions` was changed to filter on `normalized_score`, so a
+    dimension carrying a score against a non-positive scale counts as unscored
+    and the aggregate says `not measured`. The per-dimension loop kept asking
+    `d.score is None` -- a third accessor -- and printed a number beneath that
+    header, against a `/5` the dimension does not have.
+    """
+    from deep_research_client.evaluation import runner as eval_runner
+    from deep_research_client.evaluation.models import (
+        EvalResult, RACEDimension, RACEScore,
+    )
+
+    result = EvalResult(task_id="r1", provider="mock")
+    result.race_score = RACEScore(dimensions=[
+        RACEDimension(dimension="comprehensiveness", score=3.0, max_score=0.0),
+        RACEDimension(dimension="accuracy", score=4.0, max_score=5.0),
+        # A scale that is NOT 5, so the hardcoded `/5` is observable: with it,
+        # both of the scored dimensions render the same way and nothing here
+        # can tell a literal from the field.
+        RACEDimension(dimension="organization", score=7.0, max_score=10.0),
+    ])
+
+    async def fake_score(*a, **k):
+        return result
+
+    # `eval score` imports `score_output` inside the command body, so the
+    # patch on the module is what it picks up.
+    monkeypatch.setattr(eval_runner, "score_output", fake_score)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    path = _write(tmp_path / "t.yaml", "tasks:\n  - id: r1\n    prompt: What?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    out = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
+    assert out.exit_code == 0, out.stdout
+
+    lines = {ln.strip().split(":")[0]: ln.strip() for ln in out.stdout.splitlines()}
+    assert lines["comprehensiveness"] == "comprehensiveness: unscored", (
+        "a dimension the aggregate counts as unscored must not print a number"
+    )
+    assert lines["accuracy"] == "accuracy: 4.0/5"
+    assert lines["organization"] == "organization: 7.0/10", (
+        "the denominator is the dimension's own, not a literal 5"
+    )
+
+
 def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):
     """The eighth rate, and the one the enumeration reached but did not gate.
 

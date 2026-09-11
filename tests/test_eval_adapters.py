@@ -7,6 +7,7 @@ where this project is BSD-3-Clause, and would make `just test` depend on
 HuggingFace being up. Tests that need the real thing are marked ``integration``.
 """
 
+import logging
 import re
 from pathlib import Path
 
@@ -360,8 +361,6 @@ def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(capl
     of both counts, and logged, because silently dropping a record moves a
     published number with nothing naming the cause.
     """
-    import logging
-
     # Named rather than root: the CLI's `setup_logging` calls `setLevel` on
     # the package logger and never restores it, and a root-level raise is
     # consulted after that. `test_provider_fallback` documents why.

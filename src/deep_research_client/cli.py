@@ -2765,6 +2765,10 @@ def browse_files(
 # Evaluation commands
 # ---------------------------------------------------------------------------
 
+#: Column width for the three rate columns of the `--grade` table. One
+#: place, so the header and both precision branches cannot drift apart.
+_RATE_WIDTH = 7
+
 eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
 
@@ -3260,7 +3264,11 @@ def eval_run(
         )
     if scores:
         typer.echo("\nMultiple-choice scores:\n")
-        typer.echo(f"  {'arm':<20} {'acc':>7} {'cov':>7} {'prec':>7}   {'n':>5}")
+        # One width for the header and both precision branches. It was written
+        # in three places that had to agree (and a fourth, hand-aligned, in the
+        # how-to), which is how a six-space literal came to sit beside a `:>7`.
+        w = _RATE_WIDTH
+        typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
             # An em dash where an arm attempted nothing: `prec 0.000` in a
             # column beside arms that answered reads as "got them all wrong",
@@ -3273,11 +3281,23 @@ def eval_run(
             # an adjacent column.
             # `:>7` on both branches: the width is the header's, and six
             # literal spaces made it a fourth place that has to agree.
-            prec = (f"{'—':>7}" if score.precision is None
-                    else f"{score.precision:>7.3f}")
+            prec = (f"{'—':>{w}}" if score.precision is None
+                    else f"{score.precision:>{w}.3f}")
             typer.echo(
-                f"  {arm_id:<20} {score.accuracy:>7.3f} {score.coverage:>7.3f} "
+                f"  {arm_id:<20} {score.accuracy:>{w}.3f} {score.coverage:>{w}.3f} "
                 f"{prec}   {score.correct:>2}/{score.total}"
+            )
+        if any(s.unusable for s in scores.values()):
+            # The same disclosure `EXTRACTION_FAILED` gets, for the same
+            # reason: a harness record gap that moves a published rate has to
+            # say so on the surface that printed the rate. This one had only a
+            # `logger.warning`, which goes to stderr while the table goes to
+            # stdout.
+            typer.echo(
+                "\n  Some answers were recorded with no correctness, so they "
+                "count toward coverage but are left out of precision; see the "
+                "unusable column in scores.tsv. Only a hand-edited or "
+                "older-format run produces them."
             )
         if any(s.extraction_failures for s in scores.values()):
             typer.echo(
@@ -3585,7 +3605,16 @@ def eval_score(
             # outside runner._run's except -- so a missing API key, which this
             # command warns about and offers --no-race for, tracebacked here
             # after every scorer had run.
-            shown = "unscored" if d.score is None else f"{d.score:.1f}/5"
+            # `normalized_score`, not `score` -- the same predicate
+            # `scored_dimensions` uses, so the header and the lines under it
+            # answer one question. Asking `d.score is None` made this a THIRD
+            # accessor: a dimension scored against a non-positive scale printed
+            # a number beneath a header saying nothing was measured. And the
+            # denominator is the dimension's own, where `/5` was a literal.
+            shown = (
+                "unscored" if d.normalized_score is None
+                else f"{d.score:.1f}/{d.max_score:g}"
+            )
             typer.echo(f"    {d.dimension}: {shown}")
     if result.intrinsic_score:
         isc = result.intrinsic_score

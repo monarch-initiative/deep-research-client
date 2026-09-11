@@ -10,6 +10,12 @@ Scoring follows several complementary frameworks:
 - FACT: citation verification (does the cited paper support the claim?)
 - RACE: report quality (comprehensiveness, accuracy, organization, terminology)
 - Claim recall: does the report cover the reference claims?
+
+Several field descriptions here carry a `History:` paragraph below a blank
+line. That is deliberate and not cruft: each records a reading the field
+previously invited and a number it produced, and each was written after that
+reading cost a review round. The statement a consumer needs is always the
+first sentence, so a reader can stop there.
 """
 
 from typing import Optional
@@ -315,7 +321,14 @@ class RACEScore(BaseModel):
 
     @property
     def unscored_count(self) -> int:
-        """Dimensions the judge could not be asked about, or did not answer."""
+        """Dimensions with no usable score.
+
+        Three ways in, not two: the judge could not be asked, it did not
+        answer, or it answered against a non-positive scale -- which
+        `normalized_score` refuses and `scored_dimensions` therefore excludes.
+        The third was added when those two accessors were made to agree, and
+        this list is their complement, so it gained the case with them.
+        """
         return len(self.dimensions) - len(self.scored_dimensions)
 
     @property
@@ -353,11 +366,6 @@ class RACEScore(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-#: Several field descriptions in this module carry a `History:` paragraph
-#: below a blank line. That is deliberate and not cruft: each one records a
-#: reading the field previously invited and a number it produced, and each was
-#: written after that reading cost a round. The statement a consumer needs is
-#: always the first sentence, so a reader can stop there.
 class CitationExistence(BaseModel):
     """Result of checking whether a single citation resolves to a real paper.
 

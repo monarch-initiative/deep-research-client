@@ -764,10 +764,17 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         # puts the cause on stderr while the number it moved is on stdout. Its
         # sibling harness defect, `EXTRACTION_FAILED`, gets a column and a
         # printed note; this now gets the same.
+        # Named by ARM: `score_by_arm` calls this once per arm, so without it
+        # a five-arm resume emits five indistinguishable warnings and none of
+        # them says whose row moved. Capped, the way `eval run` truncates its
+        # failure list, so a 199-question benchmark does not put every id on
+        # one line.
+        ids = sorted(a.task_id for a in unusable)
+        shown = ", ".join(ids[:5]) + (f", and {len(ids) - 5} more" if len(ids) > 5 else "")
         logger.warning(
-            "%d scored answer(s) carry no recorded correctness: counted in "
-            "attempted, excluded from precision: %s",
-            len(unusable), ", ".join(sorted(a.task_id for a in unusable)),
+            "arm %s: %d scored answer(s) carry no recorded correctness, so "
+            "they are in `attempted` and out of `precision`: %s",
+            unusable[0].provider, len(ids), shown,
         )
     # The provider chose an option, so the question WAS attempted -- excluding
     # it here fixed precision by moving the same collapse into coverage, which

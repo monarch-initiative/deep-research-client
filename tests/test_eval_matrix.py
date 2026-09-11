@@ -9,6 +9,7 @@ import ast
 import asyncio
 import functools
 import json
+import logging
 import os
 import pathlib
 import re
@@ -478,6 +479,47 @@ def test_always_first_arm_scores_exactly_what_it_should(tmp_path, mock_client):
     assert score.extraction_failures == 0
 
 
+def test_the_grade_table_discloses_records_it_could_not_use(tmp_path, mock_client):
+    """A harness gap that moves a rate says so where the rate is printed.
+
+    `EXTRACTION_FAILED` gets a column AND a note under the table. The unusable
+    record had only a `logger.warning`, which goes to stderr while the table
+    goes to stdout -- so a user who redirects the table, or reads `scores.tsv`
+    later, has nothing.
+    """
+    from typer.testing import CliRunner
+
+    from deep_research_client.cli import app
+    from deep_research_client.evaluation import matrix as matrix_mod
+    from deep_research_client.evaluation.models import MCQScore
+
+    def one_unusable(eval_set, cells):
+        return {"decliner": MCQScore(
+            total=1, attempted=1, correct=0, unusable=1,
+            accuracy=0.0, coverage=1.0, precision=None,
+        )}
+
+    os.environ["ENABLE_MOCK_PROVIDER"] = "true"
+    real = matrix_mod.score_by_arm
+    matrix_mod.score_by_arm = one_unusable
+    try:
+        path = tmp_path / "mcq.yaml"
+        path.write_text(
+            "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
+            "    ideal: Thymine\n    distractors: [Guanine]\n", encoding="utf-8")
+        out = CliRunner().invoke(app, [
+            "eval", "run", str(path), "--arm", "mock", "--grade",
+            "--output-dir", str(tmp_path / "run")])
+    finally:
+        matrix_mod.score_by_arm = real
+
+    assert out.exit_code == 0, out.stdout
+    assert "no correctness" in out.stdout, (
+        "the table that printed the rate must say what was left out of it"
+    )
+    assert "unusable column" in out.stdout
+
+
 def test_scores_tsv_counts_the_attempts_that_left_precisions_denominator(tmp_path):
     """A deduction from a rate has to be countable from the same row.
 
@@ -548,8 +590,6 @@ def test_a_resumed_cell_with_no_recorded_correctness_is_not_scored_wrong(caplog)
     line joining them, which is why it survived a test that builds `MCQAnswer`
     directly -- so this one starts from the cells, the way a resume does.
     """
-    import logging
-
     eval_set = EvalSet(name="x", tasks=[
         EvalTask(id="t1", prompt="?", answer_type=AnswerType.MULTIPLE_CHOICE),
         EvalTask(id="t2", prompt="?", answer_type=AnswerType.MULTIPLE_CHOICE),

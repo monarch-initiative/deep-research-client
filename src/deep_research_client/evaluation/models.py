@@ -339,7 +339,8 @@ class CitationExistence(BaseModel):
             "Whether the citation resolved to a real paper: True, False when "
             "the registry says it does not exist, and None when nothing was "
             "established -- an outage, or an identifier kind this scorer has "
-            "no resolver for. A `bool` answering a three-valued question meant "
+            "no resolver for, or a body that answered about no identifier. A "
+            "`bool` answering a three-valued question meant "
             "the per-citation record of a real PMC article read "
             "`exists: false` in `--output`, so a consumer reading the obvious "
             "field got exactly the answer the aggregate was fixed to stop "
@@ -355,8 +356,9 @@ class CitationExistence(BaseModel):
     lookup_failed: bool = Field(
         default=False,
         description=(
-            "Whether nothing was learned about this citation -- a timeout, a "
-            "5xx, a connection error, or an identifier of a kind this scorer "
+            "Whether nothing was learned about this citation: a lookup that "
+            "raised (a timeout, a 5xx, a connection error), a 200 whose body "
+            "answers about no identifier, or an identifier kind this scorer "
             "has no resolver for, which is never looked up at all. Distinct "
             "from `error`, which is also set "
             "for an authoritative negative: NCBI reports an unknown PMID as a "
@@ -384,9 +386,10 @@ class CitationVerifiabilityScore(BaseModel):
             "'checked', though: the checked count is "
             "`total_citations - unresolvable`, which is what `verifiability` "
             "is over and what the CLI prints. The sibling name in `FACTScore` "
-            "carried the same mismatch. (An earlier correction of this "
-            "description asserted that nothing de-duplicates, which was the "
-            "opposite of what the extractor does.)"
+            "carried the same mismatch.\n\n"
+            "History: an earlier correction of this description asserted that "
+            "nothing de-duplicates, which was the opposite of what the "
+            "extractor does."
         ),
     )
     verified_exist: int = Field(..., description="Citations that resolve to real papers")
@@ -394,16 +397,17 @@ class CitationVerifiabilityScore(BaseModel):
         default=0,
         description=(
             "Citations nothing was learned about, so they are excluded from "
-            "`verifiability`. Two causes: a lookup that errored -- a CrossRef "
-            "or PubMed outage otherwise reports every DOI in the report as "
-            "hallucinated -- and an identifier of a kind this scorer has no "
-            "resolver for, such as a PMC accession or a GEO series, whose "
-            "lookup never happened and so never errored. A citation the "
-            "registry says does not exist is NOT here: that is fabricated, and "
-            "stays in the rate. (It said 'only transport failures' for one "
-            "commit after the second cause was added -- the aggregate field "
-            "and `CitationExistence.lookup_failed` have to agree, and only one "
-            "of them was updated.)"
+            "`verifiability`: a lookup that raised, a 200 whose body answers "
+            "about no identifier -- NCBI's `esummaryresult` envelope or a "
+            "rate-limit page that still parses as JSON, CrossRef's "
+            "no-work-record body -- and an identifier kind this scorer has no "
+            "resolver for, such as a PMC accession or a GEO series, which is "
+            "never attempted. A citation the registry says does not exist is "
+            "NOT here: that is fabricated, and stays in the rate.\n\n"
+            "History, because this field has been wrong twice: it said 'only "
+            "transport failures' for a commit after the no-resolver cause was "
+            "added, and then 'two causes' while the code had three. Both were "
+            "tallies. The causes are listed rather than counted now."
         ),
     )
     verifiability: float = Field(

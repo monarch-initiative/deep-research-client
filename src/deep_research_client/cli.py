@@ -3480,10 +3480,16 @@ def eval_score(
         # denominator; the rest are named separately so a reader who divides
         # gets the number printed.
         judged_pairs = fact.total_citations - fact.unjudged_citations
-        line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
-                f"effective_citations={fact.effective_citations}/"
-                f"{judged_pairs}")
-        if fact.unjudged_citations:
+        if not fact.total_citations:
+            line = "  FACT: no citations to verify"
+        elif not judged_pairs:
+            line = (f"  FACT: no citation was judged "
+                    f"({fact.total_citations} found, none checkable)")
+        else:
+            line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
+                    f"effective_citations={fact.effective_citations}/"
+                    f"{judged_pairs}")
+        if fact.unjudged_citations and judged_pairs:
             # The fourth score line to say what it could not measure. A report
             # citing only DOIs printed 0.00 over 0/0 and looked like a report
             # whose citations support nothing.
@@ -3496,14 +3502,20 @@ def eval_score(
         cr = result.claim_recall_score
         judged = cr.total_ground_truth_claims - cr.unjudged_claims
         if not cr.total_ground_truth_claims:
-            # The rate is absent, not zero -- the same distinction the
-            # spot-check line below draws, with the same trigger: a task whose
+            # The rate is absent, not zero -- the same distinction every other
+            # line in this block now draws, with the same trigger: a task whose
             # rubric carries no reference claims, which is every task loaded
             # from a benchmark that ships without one.
             line = "  Claim Recall: no reference claims to match against"
+        elif not judged:
+            # Claims to match, and a judge that ruled on none of them. The
+            # `not judged` suffix made this tolerable; it is still a rate over
+            # a zero denominator, which is what the branch above refuses.
+            line = (f"  Claim Recall: no claim was judged "
+                    f"({cr.total_ground_truth_claims} to match)")
         else:
             line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
-        if cr.unjudged_claims:
+        if cr.unjudged_claims and judged:
             line += f", {cr.unjudged_claims} not judged"
         # Claim recall truncates the report the same way RACE does, and records
         # the same pair. Recall measured over a report's opening is an
@@ -3533,9 +3545,19 @@ def eval_score(
         if isc.citation_verifiability:
             cv = isc.citation_verifiability
             checked = cv.total_citations - cv.unresolvable
-            line = (f"  Citation Verifiability: {cv.verified_exist}/{checked} "
-                    f"({cv.verifiability:.2f})")
-            if cv.unresolvable:
+            if not cv.total_citations:
+                line = "  Citation Verifiability: no citations to check"
+            elif not checked:
+                # Citations present and not one of them checked. The rate is
+                # absent, so this says so -- and says it with the same count
+                # and the same words the suffix below uses, rather than a
+                # second phrasing for the same fact that no test pins.
+                line = (f"  Citation Verifiability: not measured, "
+                        f"{cv.unresolvable} not checked")
+            else:
+                line = (f"  Citation Verifiability: {cv.verified_exist}/{checked} "
+                        f"({cv.verifiability:.2f})")
+            if cv.unresolvable and checked:
                 # "not checked" rather than "could not be looked up": the
                 # count now also holds identifiers this scorer never attempts,
                 # and its alignment sibling was reworded for exactly this in
@@ -3546,9 +3568,17 @@ def eval_score(
                 typer.echo(f"    Median citation year: {cv.median_year}")
         if isc.citation_alignment:
             ca = isc.citation_alignment
-            line = (f"  Citation-Claim Alignment: {ca.aligned_count}/"
-                    f"{ca.total_checked} ({ca.alignment_rate:.2f})")
-            if ca.unresolvable:
+            if not ca.total_checked and not ca.unresolvable:
+                line = "  Citation-Claim Alignment: no citation-claim pairs"
+            elif not ca.total_checked:
+                # As above: nothing left to take a rate over, said in the
+                # words of the suffix below so the two cannot drift apart.
+                line = (f"  Citation-Claim Alignment: not measured, "
+                        f"{ca.unresolvable} with nothing to align against")
+            else:
+                line = (f"  Citation-Claim Alignment: {ca.aligned_count}/"
+                        f"{ca.total_checked} ({ca.alignment_rate:.2f})")
+            if ca.unresolvable and ca.total_checked:
                 # Its sibling above prints this; without it here, a run where
                 # PubMed was down reads as an alignment rate over everything.
                 # Worded for all three things this counts: a lookup that

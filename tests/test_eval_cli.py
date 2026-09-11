@@ -992,6 +992,83 @@ def test_a_task_with_no_rubric_prints_no_rates_it_did_not_measure(tmp_path, monk
         assert absent not in result.stdout, absent
 
 
+def test_the_docs_quote_a_line_the_command_can_actually_print(tmp_path, monkeypatch):
+    """The page quoted `Citation Verifiability: 0/0 (0.00), 12 not checked`.
+
+    That was real output once. Gating the rate on its own denominator made it
+    unreachable, and the page went on quoting it -- as the worked example for
+    the one case it exists to explain, an accession-only bibliography. Build
+    the sentence from the command and assert the page carries that wording, so
+    the next rewording of the line takes the page with it.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md",
+                    "FGFR3 drives achondroplasia (PMC11000121). "
+                    "Deposited under GSE68086.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-race"])
+    assert result.exit_code == 0, result.stdout
+
+    line = next(ln for ln in result.stdout.splitlines()
+                if "Citation Verifiability" in ln).strip()
+    # The page's example uses a different count, so compare the wording with
+    # the number taken out rather than the whole sentence.
+    shape = line.replace("2 not checked", "N not checked")
+    assert "N not checked" in shape, line
+
+    page = (Path(__file__).parent.parent
+            / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
+    prefix = shape.split("N not checked")[0]
+    assert prefix in page, (
+        f"docs/how-to/evaluate-providers.md does not quote {prefix!r}, which is "
+        f"what the command now prints for an accession-only bibliography"
+    )
+
+
+def test_a_report_without_citations_prints_no_rates_it_did_not_measure(
+    tmp_path, monkeypatch,
+):
+    """The same defect as its predecessor above, one trigger over.
+
+    That test fixed the three lines a rubric-less task renders. A report that
+    cites nothing drives three more from a zero denominator -- FACT, citation
+    verifiability and citation-claim alignment -- and they printed `0/0` and
+    `0.00` beside two lines that do say "there is nothing here", in the same
+    output. A provider that returned prose without a bibliography is the
+    commonest case there is, and it read as a provider whose every citation
+    was fabricated.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"supported": true}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-recall", "--no-race"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "FACT: no citations to verify" in result.stdout
+    assert "Citation Verifiability: no citations to check" in result.stdout
+    assert "Citation-Claim Alignment: no citation-claim pairs" in result.stdout
+    # A measured zero on any of the three is the defect, whichever line it is
+    # on: assert over the output rather than per-line so a regression that
+    # moves between them still fails.
+    for absent in ("accuracy=0.00", "0/0 (0.00)", "0/0 ("):
+        assert absent not in result.stdout, absent
+
+
 def test_the_verifiability_line_says_not_checked_rather_than_could_not_be(
     tmp_path, monkeypatch,
 ):

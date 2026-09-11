@@ -351,8 +351,10 @@ Citation existence resolves PMIDs against PubMed and DOIs against CrossRef.
 Anything else the report cites — a PMC accession, a GEO series — is reported as
 *not checked* rather than counted against the report, and both citation lines
 say how many. That matters for a genomics benchmark, whose reference lists are
-often accessions: `Citation Verifiability: 0/0 (0.00), 12 not checked` is a
+often accessions: `Citation Verifiability: not measured, 12 not checked` is a
 report this client cannot judge, not a report that invented twelve references.
+The rate is absent rather than zero whenever nothing was checkable, on this line
+and on every other score line, so a measured zero always means a measured zero.
 
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:

@@ -1228,10 +1228,16 @@ async def score_citation_verifiability(
     # per-uid error -- so filtering on `error` dropped fabricated citations out
     # of the denominator and scored a report that invented one at 1.00.
     #
-    # Three causes on the excluded side, not two. This sentence said two for a
-    # commit after the third was added, which is the shape that keeps recurring
-    # here: the branch that makes a distinction gets updated and the sentence
-    # that counts the cases does not.
+    # On the excluded side: a lookup that raised, a 200 whose body answers
+    # about no identifier at all -- NCBI's `esummaryresult` envelope, a
+    # rate-limit page that still parses as JSON, CrossRef's no-work-record
+    # body -- and an identifier kind with no resolver, never attempted.
+    #
+    # Listed rather than counted. This sentence has twice been a tally that was
+    # a case short within a commit, most recently asserting "three causes" and
+    # naming two of them, while the alignment field's description has been
+    # right for three rounds by enumerating instead: a wrong count reads as
+    # authoritative, a short list reads as incomplete.
     total = len(results)
     checkable = [r for r in results if not r.lookup_failed]
     verified = sum(1 for r in checkable if r.exists)
@@ -1300,10 +1306,9 @@ async def score_citation_alignment(
                 # list is PMC ids printed `0/0 (0.00)` with nothing
                 # unresolvable -- byte-identical to a report that cited
                 # nothing, which is the reading this counter exists to
-                # prevent. Its sibling scorer counts exactly these two as
-                # it. Three ways in: an identifier that would not normalise,
-                # one of a kind neither scorer resolves, and a citation with no
-                # identifier at all.
+                # prevent. Three ways in: an identifier that would not
+                # normalise, one of a kind neither scorer resolves, and a
+                # citation with no identifier at all.
                 #
                 # The sibling agrees about the middle one -- it is
                 # `lookup_failed` there too, so neither scorer treats a PMC

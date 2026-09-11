@@ -337,9 +337,9 @@ neither is saying nothing.
 
 Neither has a precision. It is over the answers attempted whose correctness
 was actually established, and these two attempted nothing, so the column shows
-an em dash rather than `0.000` — which in a comparison would read as "answered
-and got them all wrong". `silent` is why
-this matters most: its responses are ones the provisional extractor could not
+an em dash rather than `0.000` — which in a comparison would read as
+"answered and got them all wrong". `silent` is why this matters most: its
+responses are ones the provisional extractor could not
 read, which is a limitation of this harness rather than a result from the
 provider, and the first of the two notes below the table says so. The second
 is printed after every graded run and is the one that qualifies the whole
@@ -378,17 +378,27 @@ report this client cannot judge, not a report that invented twelve references.
 The rate is absent rather than zero whenever nothing was checkable, on this
 line and on every other score line, so a measured zero always means a measured
 zero. That holds across commands: `eval run`'s precision column is an em dash
-whenever there is nothing to take a rate over. Two ways there — an arm that
-attempted nothing, and an arm that attempted everything but whose answers came
-back with no recorded correctness. The second shows `cov 1.000` beside the
-dash, which is not a contradiction: the provider answered, and the harness
-cannot say whether it was right.
+whenever there is nothing to take a rate over — that is, whenever no
+attempted answer had its correctness established. An arm gets there by
+attempting nothing (every question declined, the endpoint down all run,
+every response unreadable by the extractor, the pair skipped, or any mixture
+of those), or by attempting and having every attempt come back with no
+recorded correctness.
 
-That second case has a count of its own. `scores.tsv` carries an `unusable`
-column, and a graded run whose arms have any prints a note under the table
-saying so — the same treatment `extraction_failures` gets, and for the same
-reason: a harness record gap that moves a published rate has to say so where
-the rate is printed. Only a hand-edited or older-format run produces them.
+Do not read the `cov` beside the dash as saying which happened. Those causes
+compose, so coverage there can be anything: `cov 0.000` when nothing was
+attempted, `cov 1.000` when everything was and none of it was usable — not a
+contradiction, the provider answered and the harness cannot say whether it was
+right — and anything in between for a mixture. Five questions declined and
+five answered with no recorded correctness, out of ten, prints `cov 0.500`
+beside the dash.
+
+Answers with no recorded correctness have a count of their own. `scores.tsv`
+carries an `unusable` column, and a graded run with any such answers prints a
+note under the table saying so — the same treatment `extraction_failures`
+gets, and for the same reason: a harness record gap that moves a published
+rate has to say so where the rate is printed. Only a hand-edited or
+older-format run produces them.
 
 The intrinsic scores need no LLM judge at all, so they are the cheap ones to
 run first:

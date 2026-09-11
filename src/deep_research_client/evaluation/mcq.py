@@ -680,7 +680,9 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     """Aggregate graded answers into LAB-Bench's three headline metrics.
 
     Following Laurent et al. (2024): accuracy is correct over all questions,
-    coverage is the fraction attempted, and precision is correct over attempted.
+    coverage is the fraction attempted, and precision is correct over
+    attempted. That last is the paper's definition; ours is narrower by
+    `unusable`, for the reason two paragraphs down.
     A question is "attempted" when an option was actually chosen, so the
     dispositions that record no choice -- abstentions, provider errors,
     extraction failures, and a skipped pair -- all reduce coverage.
@@ -717,9 +719,12 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     >>> score_mcq([]).accuracy
     0.0
 
-    An arm that attempted nothing -- every call errored, or every question was
-    declined -- has no precision. None rather than 0.000, which in a column
-    beside arms that did attempt reads as "answered and got them all wrong".
+    Precision is absent when no attempted answer had its correctness
+    established. The causes compose -- every call errored, every question
+    declined, every response unreadable, every pair skipped, every attempted
+    answer unusable, or any mixture -- so this is stated as the condition and
+    not as a list. None rather than 0.000, which in a column beside arms that
+    did attempt reads as "answered and got them all wrong".
 
     >>> errored = score_mcq([
     ...     MCQAnswer(task_id="1", provider="p", disposition="PROVIDER_ERROR"),

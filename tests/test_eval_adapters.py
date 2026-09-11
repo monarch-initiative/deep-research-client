@@ -331,6 +331,41 @@ def test_empty_score_does_not_divide_by_zero():
     assert score.precision is None
 
 
+def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one():
+    """The mixture every describer of the em dash used to rule out.
+
+    Three places said when precision is absent, and all three said it as a
+    COUNT of causes: four ways, four ways, two ways. The causes compose, so
+    none of those was a partition. Half the questions declined and half
+    answered with no recorded correctness leaves `judged` at zero with five
+    attempts on the board -- a dash beside `cov 0.500`, which a reader who
+    had been taught it comes with 0.000 or 1.000 has been told cannot happen.
+
+    `SKIPPED` was the other omission: it reaches `attempted == 0` like the
+    rest, `score_mcq`'s own summary names it, and no describer of the number
+    did.
+    """
+    mixed = mcq.score_mcq(
+        [MCQAnswer(task_id=f"d{i}", provider="p",
+                   disposition=ScoreDisposition.ABSTAINED) for i in range(5)]
+        + [MCQAnswer(task_id=f"u{i}", provider="p",
+                     disposition=ScoreDisposition.SCORED) for i in range(5)]
+    )
+    assert (mixed.total, mixed.attempted, mixed.unusable) == (10, 5, 5)
+    assert mixed.precision is None, "nothing was judged, so there is no rate"
+    assert mixed.coverage == pytest.approx(0.5), (
+        "the dash is not pinned to cov 0.000 or cov 1.000, so coverage "
+        "cannot be read as saying which way an arm got there"
+    )
+
+    skipped = mcq.score_mcq([
+        MCQAnswer(task_id="s1", provider="p", disposition=ScoreDisposition.SKIPPED),
+        MCQAnswer(task_id="s2", provider="p", disposition=ScoreDisposition.SKIPPED),
+    ])
+    assert (skipped.attempted, skipped.coverage) == (0, 0.0)
+    assert skipped.precision is None
+
+
 def test_precision_is_nullable_but_not_omittable():
     """Absent means "attempted nothing", so it cannot also mean "nobody said".
 

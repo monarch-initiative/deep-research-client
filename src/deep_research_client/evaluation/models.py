@@ -240,7 +240,18 @@ class RACEDimension(BaseModel):
             "written on failure is indistinguishable from a genuine 3."
         ),
     )
-    max_score: float = 5.0
+    max_score: float = Field(
+        default=5.0,
+        description=(
+            "The scale this dimension was scored on. Deliberately NOT "
+            "constrained to be positive: `gt=0` would make a non-positive "
+            "scale unconstructible, and with it `normalized_score`'s guard "
+            "dead -- and that guard is the only thing separating it from "
+            "`score is None`, which is the distinction three accessors have "
+            "now disagreed about. A degenerate scale is a describable state "
+            "with a defined rendering (`unscored`), not a validation error"
+        ),
+    )
     explanation: Optional[str] = None
 
     @computed_field  # type: ignore[prop-decorator]
@@ -863,9 +874,11 @@ class MCQScore(BaseModel):
         ...,
         description=(
             "attempted / total, and 0.0 when `total` is 0, for the same "
-            "reason as `accuracy`. This is the field that says an arm "
-            "attempted nothing, so it is the one `precision` being absent "
-            "sends a reader to. Over every question an option was chosen for, "
+            "reason as `accuracy`. This is the field that says whether an arm "
+            "attempted anything, but it does NOT say why `precision` is "
+            "absent: an arm can reach a `None` precision at any coverage, so "
+            "0.0 here means nothing was attempted and says nothing about the "
+            "other way in. Over every question an option was chosen for, "
             "including the ones `unusable` counts -- those cost precision, not "
             "coverage"
         ),
@@ -873,18 +886,30 @@ class MCQScore(BaseModel):
     precision: Optional[float] = Field(
         ...,
         description=(
-            "correct / (attempted - unusable), and None when that is 0. Four "
-            "ways there: every call errored, every question was declined, "
-            "every response was unreadable by the extractor, or every "
-            "attempted answer came back with no recorded correctness -- the "
-            "only one of the four with `coverage` above zero, since the "
-            "provider did answer and we cannot say whether it was right. "
+            "correct / (attempted - unusable), and None when that is 0 -- "
+            "when NO attempted answer had its correctness established. That "
+            "is the condition, stated instead of its causes because the "
+            "causes compose. An arm can attempt nothing (every question "
+            "declined, the endpoint down all run, every response unreadable "
+            "by the extractor, the pair skipped, or any mixture of those), or "
+            "attempt and have every attempt come back with no recorded "
+            "correctness, or land anywhere between. So `coverage` beside the "
+            "dash is not one of two values: 0.000 when nothing was "
+            "attempted, 1.000 when everything was and none of it was usable, "
+            "and anything in between for a mixture -- five declined and five "
+            "unusable out of ten gives `cov 0.500` beside the dash. "
             "`0.000` in a comparison column would read as 'answered and got "
             "them all wrong'. Rendered as an em dash in the `--grade` "
             "table and as an empty field in `scores.tsv`. The denominator is "
             "narrower than `attempted`: a record whose correctness was never "
             "written down is not evidence either way.\n\n"
-            "History: this was a float documented as readable-against-"
+            "History: this counted the ways in and said four, which was one "
+            "short -- `SKIPPED` reaches `attempted == 0` as well, and "
+            "`score_mcq` names it -- and admitted no mixtures at all, so a "
+            "reader who met a dash beside `cov 0.500` had been told it could "
+            "not happen. A count of causes is a claim about a surface; the "
+            "condition is the thing that cannot drift. Before that it was a "
+            "float documented as readable-against-"
             "`coverage`. That is the same trade -- a disambiguator beside a "
             "rate -- that the citation lines had just rejected one command "
             "over, and there the disambiguator was in the same sentence "

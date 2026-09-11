@@ -9,6 +9,8 @@ know, and a message nothing asserts on is a message that can quietly disappear.
 Everything here runs through the mock provider, so no network and no spend.
 """
 
+import json
+import logging
 import re
 from pathlib import Path
 
@@ -286,6 +288,77 @@ def test_the_grade_table_discloses_records_it_could_not_use(tmp_path, monkeypatc
     assert "accuracy" in out.stdout.split("no correctness")[1][:400]
 
 
+def _make_cells_unusable(run_dir: Path) -> list[str]:
+    """Rewrite every stored cell into the shape that has no correctness.
+
+    `SCORED` with `correct` absent is what a hand-edited or older-format
+    `cell.json` holds, and `_completed_cell` only re-grades a cell whose
+    disposition is None -- so a resume hands these straight through to the
+    scorer, which is the path a user actually meets them on.
+    """
+    arms = []
+    for path in sorted(run_dir.rglob("cell.json")):
+        cell = json.loads(path.read_text(encoding="utf-8"))
+        cell["disposition"] = "SCORED"
+        cell.pop("correct", None)
+        path.write_text(json.dumps(cell), encoding="utf-8")
+        arms.append(cell["arm_id"])
+    return arms
+
+
+def test_a_graded_run_warns_once_per_arm_and_not_twice(tmp_path):
+    """The scores are computed once and read twice, not computed twice.
+
+    `score_mcq` logs one warning per arm whose records carry no correctness,
+    and a graded run used to derive the scores twice over the same cells --
+    once in `run_matrix` to write `scores.tsv`, once in the CLI to print the
+    table. So a two-arm run emitted four lines, and the two for one arm were
+    byte-identical, which is exactly what naming the arm in that warning was
+    added to prevent. Grading is idempotent in its NUMBERS and not in its
+    OUTPUT, so "it only recomputes" was never the whole cost.
+
+    Counted on a handler of our own rather than `caplog`: the CLI calls
+    `logging.basicConfig(force=True)`, which closes every root handler,
+    pytest's capture among them, so `caplog` sees nothing here no matter what
+    is logged.
+    """
+    path = _write(tmp_path / "mcq.yaml",
+                  "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
+                  "    ideal: Thymine\n    distractors: [Guanine]\n")
+    run_dir = tmp_path / "run"
+    argv = ["eval", "run", str(path), "--arm", "alpha=mock", "--arm", "beta=mock",
+            "--output-dir", str(run_dir)]
+
+    assert runner.invoke(app, argv).exit_code == 0
+    assert sorted(_make_cells_unusable(run_dir)) == ["alpha", "beta"]
+
+    records: list[str] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record.getMessage())
+
+    handler = _Collect()
+    mcq_logger = logging.getLogger("deep_research_client.evaluation.mcq")
+    mcq_logger.addHandler(handler)
+    try:
+        out = runner.invoke(app, argv + ["--grade"])
+    finally:
+        mcq_logger.removeHandler(handler)
+
+    assert out.exit_code == 0, out.stdout
+    # The condition really was reproduced -- without this the count below
+    # passes just as well when nothing is unusable and nothing is logged.
+    assert "unusable" in (run_dir / "scores.tsv").read_text(encoding="utf-8")
+    assert "no correctness" in out.stdout
+
+    warnings = [m for m in records if "no recorded correctness" in m]
+    assert len(warnings) == 2, (
+        f"one warning per arm, not one per arm per pass over the cells: {warnings}"
+    )
+    assert sorted(m.split(":")[0] for m in warnings) == ["arm alpha", "arm beta"]
+
+
 def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):
     """The eighth rate, and the one the enumeration reached but did not gate.
 
@@ -295,14 +368,17 @@ def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch)
     ordinary ones: every question declined, every response unreadable by the
     provisional extractor, an endpoint down for the whole run (a failed
     multiple-choice cell is given PROVIDER_ERROR precisely so the arm appears
-    rather than vanishing from the comparison), or every attempted answer
-    carrying no recorded correctness, which is the only one of them with
-    coverage above zero.
+    rather than vanishing from the comparison), every attempted answer
+    carrying no recorded correctness, or any mixture of those. This arm is
+    the `cov 0.000` shape; the mixtures, which put the dash beside a coverage
+    that is neither 0 nor 1, are pinned in `test_eval_adapters`.
 
     The reasoning offered for leaving it was that `cov 0.000` sits beside it
     and does say so. That is the same trade -- a disambiguator next to a rate
     -- that the citation lines rejected one command over, and there the
     disambiguator was in the same sentence rather than an adjacent column.
+    And it does not even hold in general: coverage does not identify which
+    way an arm reached an absent precision.
     """
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
     path = _write(tmp_path / "mcq.yaml",

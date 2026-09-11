@@ -863,9 +863,10 @@ def test_a_200_from_crossref_with_no_work_record_establishes_nothing():
 
 
 @pytest.mark.parametrize("report,expect_correct,expect_found", [
-    # The defect: a report on BRCA1 that mentions TP53's locus first. `re.search`
-    # stopped at the first occurrence, so a report that stated BRCA1's own locus
-    # correctly two sentences later was scored a factual error.
+    # The defect: a report on BRCA1 that mentions TP53's locus first.
+    # `re.search` stopped at the first occurrence, so a report that stated
+    # BRCA1's own locus correctly two sentences later was scored a factual
+    # error.
     ("BRCA1 works with TP53, on chromosome 17p13.1. "
      "BRCA1 itself is on chromosome 17q21.31.", True, "chromosome 17q21.31"),
     # Order must not matter either way round.
@@ -2047,8 +2048,9 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # Two things follow. The answer does not depend on either budget -- it is
     # `{}` at every `sys.setrecursionlimit` from 150 to 3,000 and on both
     # interpreters CI builds (3.12.3, 3.13.12) -- because wherever the mine
-    # bottoms out, the forward walk starts there. And this case DISCRIMINATES the main-loop
-    # handler: remove it and the answer is None. The bracket case above is the
+    # bottoms out, the forward walk starts there. And this case DISCRIMINATES
+    # the main-loop handler: remove it and the answer is None. The bracket
+    # case above is the
     # only one that *escapes* without that handler, which is not the same as
     # being the only one that notices.
     #

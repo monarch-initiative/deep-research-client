@@ -272,6 +272,19 @@ class MatrixConfig:
     cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
+    #: Called with the per-arm scores whenever `grade` is on -- with an empty
+    #: mapping when the selection had no multiple-choice cells to score, which
+    #: is a result and not a non-event: it is what the CLI's "nothing to
+    #: grade" message reads. A caller that needs the numbers takes
+    #: them from here rather than calling `score_by_arm` again: grading is not
+    #: idempotent in its OUTPUT -- `score_mcq` logs one warning per arm whose
+    #: records carry no correctness -- so a second pass over the same cells
+    #: recomputes identical numbers and emits a second identical warning. The
+    #: CLI did exactly that, and the arm id added to make those warnings
+    #: distinguishable could not: the duplicate is the SAME arm.
+    on_scores: Callable[[dict[str, MCQScore]], None] | None = field(
+        default=None, repr=False
+    )
 
 
 def _prompt_for(task: EvalTask) -> tuple[str, list[mcq.Choice]]:
@@ -525,8 +538,8 @@ def write_scores_tsv(layout: RunLayout, scores: dict[str, MCQScore]) -> None:
             # Empty rather than 0.0000, for the reason the CLI prints a dash:
             # a spreadsheet averaging this column must not average in an arm
             # that had nothing to be precise about -- which is not the same as
-            # one that made no attempt, since an arm can attempt everything
-            # and still have no established correctness.
+            # one that made no attempt, since an arm can attempt any number of
+            # questions and still have no established correctness on any.
             "" if score.precision is None else f"{score.precision:.4f}",
             str(score.abstained), str(score.extraction_failures),
             str(score.provider_errors), str(score.unusable),
@@ -694,5 +707,7 @@ async def run_matrix(
         scores = score_by_arm(eval_set, ordered)
         if scores:
             write_scores_tsv(layout, scores)
+        if config.on_scores:
+            config.on_scores(scores)
 
     return manifest

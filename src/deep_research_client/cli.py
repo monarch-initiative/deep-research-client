@@ -3064,8 +3064,9 @@ def eval_run(
     from datetime import datetime, timezone
     from .evaluation.datamodel import AnswerType, CellStatus
     from .evaluation.matrix import (
-        MatrixConfig, load_arms, parse_arm_flag, run_matrix, score_by_arm,
+        MatrixConfig, load_arms, parse_arm_flag, run_matrix,
     )
+    from .evaluation.models import MCQScore
     if not arm and not arms_file:
         typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
         raise typer.Exit(1)
@@ -3175,6 +3176,12 @@ def eval_run(
         typer.echo(f"  [{completed['n']}/{total}] {mark} {cell.task_id} / {cell.arm_id}{extra}")
 
     typer.echo(f"\nWriting to {run_dir}\n")
+    # Filled by `run_matrix` through `on_scores`, not derived here. Grading the
+    # same cells twice recomputes the same numbers AND re-emits `score_mcq`'s
+    # per-arm warning, so a five-arm resume logged ten lines where two for each
+    # arm were byte-identical -- which is what naming the arm in that warning
+    # was meant to stop. `run_matrix` already has them; this takes them.
+    scores: dict[str, MCQScore] = {}
     manifest = asyncio.run(run_matrix(
         eval_set, arms,
         MatrixConfig(
@@ -3185,6 +3192,7 @@ def eval_run(
             use_cache=not no_cache,
             cache_dir=cache_dir,
             on_cell=on_cell,
+            on_scores=scores.update,
         ),
     ))
 
@@ -3256,7 +3264,6 @@ def eval_run(
             f"were which."
         )
 
-    scores = score_by_arm(eval_set, cells) if grade else {}
     if grade and not scores:
         typer.echo(
             "\nNothing to grade: --grade scores multiple-choice answers, and this "
@@ -3271,21 +3278,26 @@ def eval_run(
         w = _RATE_WIDTH
         typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
-            # An em dash where there is nothing to take a rate over:
-            # `prec 0.000` in a column beside arms that answered reads as "got
-            # them all wrong", and the arm that abstained on every question,
-            # or whose every response the extractor could not read, or whose
-            # endpoint was down all run, or whose every answer came back with
-            # no recorded correctness, is exactly the one a comparison must
-            # not read that way. The last has `cov 1.000` beside the dash --
-            # it answered; we cannot say whether it was right -- and the note
-            # below the table is what reconciles the two. `cov 0.000` is beside it and does say so -- but that is a
-            # disambiguator next to a rate, which is what the citation lines
-            # stopped doing, and there it was in the same sentence rather than
-            # an adjacent column.
-            # Both branches format to the shared width above. Six literal
-            # spaces used to sit here beside a `:>7`, which is how a fourth
-            # place that had to agree came about.
+            # An em dash where there is nothing to take a rate over --
+            # that is, where no attempted answer had its correctness
+            # established. `prec 0.000` in a column beside arms that answered
+            # reads as "got them all wrong", and an arm with nothing to be
+            # precise about is exactly the one a comparison must not read
+            # that way.
+            #
+            # Stated as that condition rather than as a list of causes,
+            # because the causes compose: every question declined, the
+            # endpoint down all run, every response unreadable, the pair
+            # skipped, every attempted answer carrying no recorded
+            # correctness -- and any mixture. So the `cov` beside the dash is
+            # not a fixed pair of values, and cannot be used to tell the
+            # cases apart: 0.000 when nothing was attempted, 1.000 when
+            # everything was and none of it was usable, and anything between
+            # for a mixture. Reading `cov` as the disambiguator is the trade
+            # the citation lines rejected one command over, and there the
+            # disambiguator was at least in the same sentence rather than an
+            # adjacent column. The note below the table is what says which
+            # happened.
             prec = (f"{'—':>{w}}" if score.precision is None
                     else f"{score.precision:>{w}.3f}")
             typer.echo(

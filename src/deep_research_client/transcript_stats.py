@@ -95,7 +95,13 @@ class TranscriptStats(BaseModel):
     """
 
     sources: list[str] = Field(
-        default_factory=list, description="Transcript names this summary covers"
+        default_factory=list,
+        description=(
+            "Transcript sources this summary covers. Not always a bare "
+            "filename: summarize_paths uses the full path, and "
+            "summarize_artifacts suffixes a duplicate filename with #2, #3 "
+            "so neither transcript is lost."
+        ),
     )
     entries: int = Field(default=0, description="Total transcript entries read")
     entry_types: dict[str, int] = Field(
@@ -248,7 +254,10 @@ def summarize_artifacts(artifacts: Iterable[Any]) -> TranscriptStats:
         artifacts: Objects exposing ``filename`` and ``content_base64``.
 
     Returns:
-        The merged summary; empty when no transcript artifact is present.
+        The merged summary; empty when no transcript artifact is present. Two
+        artifacts sharing a filename both appear in ``sources``, the second
+        suffixed ``#2``, so a caller mapping sources back to artifacts should
+        expect that form.
     """
     transcripts: dict[str, Sequence[dict[str, Any]]] = {}
     for artifact in artifacts:

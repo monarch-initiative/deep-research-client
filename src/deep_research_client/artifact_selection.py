@@ -110,12 +110,42 @@ DEFAULT_RUNTIME_NAME_FRAGMENTS: tuple[str, ...] = (
 )
 
 
-#: The scaffolding names already lowercased and slash-terminated. Pass this to
+def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
+    """Normalize directory names for segment matching.
+
+    Lowercased and slash-terminated, so both sides of the comparison are
+    normalized the way every other matcher in this module does it — a caller
+    passing ``".Codex/"`` would otherwise match nothing at all.
+
+    Args:
+        directories: Directory names, any case, with or without a trailing
+            slash. A bare string is rejected rather than iterated as
+            characters.
+
+    Returns:
+        The normalized names.
+
+    Raises:
+        TypeError: If given a single string instead of a collection.
+    """
+    if isinstance(directories, str):
+        raise TypeError(
+            "directories must be a collection of names, not a single string; "
+            f"pass [{directories!r}] rather than {directories!r}"
+        )
+    return tuple(
+        directory.lower() if directory.endswith("/") else f"{directory.lower()}/"
+        for directory in directories
+    )
+
+
+#: The scaffolding names already lowercased and slash-terminated, derived by
+#: the same helper the policy normalizes with. Pass this to
 #: :func:`is_under_normalized_directory` from a hot loop rather than
-#: re-normalizing the defaults on every member.
-DEFAULT_SCAFFOLDING_DIRECTORIES: tuple[str, ...] = tuple(
-    directory if directory.endswith("/") else f"{directory}/"
-    for directory in (prefix.lower() for prefix in DEFAULT_SCAFFOLDING_PREFIXES)
+#: re-normalizing the defaults on every member. Derived rather than written
+#: out, so the constant and the policy cannot come to disagree.
+DEFAULT_SCAFFOLDING_DIRECTORIES: tuple[str, ...] = _with_trailing_slashes(
+    DEFAULT_SCAFFOLDING_PREFIXES
 )
 
 
@@ -272,7 +302,9 @@ class ArtifactSelectionPolicy:
             # member is dropped, and "0 bytes exceeds 0" would be a lie in a
             # string built to be shown to a user.
             return ArtifactDecision(
-                False, "artifact_max_bytes is 0: keeping nothing", rule="size_cap"
+                False,
+                f"artifact_max_bytes is {self.max_bytes}: keeping nothing",
+                rule="size_cap",
             )
         if size > self.max_bytes:
             return ArtifactDecision(
@@ -380,42 +412,25 @@ def is_under_normalized_directory(
     Returns:
         Whether any of them names a directory on the path.
 
+    Raises:
+        TypeError: If given a single string. Iterating one yields characters,
+            and a lone ``"."`` matches any path with a dot-segment — so a bare
+            string does not fail to match, it matches wrongly and only on some
+            paths.
+
     Example:
         >>> is_under_normalized_directory("a/.claude/x.md", (".claude/",))
         True
     """
+    if isinstance(normalized_directories, str):
+        raise TypeError(
+            "normalized_directories must be a collection of names, not a "
+            f"single string; pass [{normalized_directories!r}] rather than "
+            f"{normalized_directories!r}"
+        )
     return any(
         normalized_name.startswith(directory) or f"/{directory}" in normalized_name
         for directory in normalized_directories
-    )
-
-
-def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
-    """Normalize directory names for segment matching.
-
-    Lowercased and slash-terminated, so both sides of the comparison are
-    normalized the way every other matcher in this module does it — a caller
-    passing ``".Codex/"`` would otherwise match nothing at all.
-
-    Args:
-        directories: Directory names, any case, with or without a trailing
-            slash. A bare string is rejected rather than iterated as
-            characters.
-
-    Returns:
-        The normalized names.
-
-    Raises:
-        TypeError: If given a single string instead of a collection.
-    """
-    if isinstance(directories, str):
-        raise TypeError(
-            "directories must be a collection of names, not a single string; "
-            f"pass [{directories!r}] rather than {directories!r}"
-        )
-    return tuple(
-        directory.lower() if directory.endswith("/") else f"{directory.lower()}/"
-        for directory in directories
     )
 
 

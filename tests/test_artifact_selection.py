@@ -14,8 +14,11 @@ from deep_research_client.artifact_selection import (
     DEFAULT_MAX_BYTES,
     DEFAULT_SCAFFOLDING_PREFIXES,
     RUNTIME_EXTENSIONS,
+    DEFAULT_SCAFFOLDING_DIRECTORIES,
     ArtifactSelectionPolicy,
     is_under_directory,
+    is_under_normalized_directory,
+    normalize_member_path,
 )
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import OpenScientistParams
@@ -419,7 +422,11 @@ def test_a_nested_skill_report_is_not_chosen_as_the_report_body():
     ],
 )
 def test_the_shared_scaffolding_rule_matches_whole_segments(name, expected):
-    """One rule, used by both the policy and the report picker."""
+    """The convenience wrapper, which normalizes both sides for a caller.
+
+    Production goes through the normalized-input variant instead; that pair is
+    covered by test_the_pair_production_actually_uses.
+    """
     assert is_under_directory(name, DEFAULT_SCAFFOLDING_PREFIXES) is expected
 
 
@@ -561,3 +568,59 @@ def test_a_member_exactly_at_the_cap_is_kept():
 
     assert policy.decide("results/table.csv", 1024).keep
     assert not policy.decide("results/table.csv", 1025).keep
+
+
+def test_the_normalized_matcher_also_rejects_a_bare_string():
+    """A bare string here matches wrongly rather than not at all.
+
+    Iterating ".claude/" yields "." among others, and "/." is in any path with
+    a dot-segment — so the first thing a caller tries looks correct and the
+    bug only shows on paths without one.
+    """
+    with pytest.raises(TypeError):
+        is_under_normalized_directory("a/.claude/x.md", ".claude/")
+
+
+def test_the_default_directories_are_derived_from_the_shared_rule():
+    """The constant and the policy must normalize by one rule, not two copies."""
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, scaffolding_prefixes=DEFAULT_SCAFFOLDING_PREFIXES
+    )
+
+    assert policy.scaffolding_prefixes == DEFAULT_SCAFFOLDING_DIRECTORIES
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        (".claude/skills/x.md", True),
+        ("workspace/.claude/skills/x.md", True),
+        ("a/b/__pycache__/x.json", True),
+        ("run/logs_summary.csv", False),
+        ("results/claude_notes.md", False),
+    ],
+)
+def test_the_pair_production_actually_uses(name, expected):
+    """The provider runs is_under_normalized_directory against the constant.
+
+    The sibling test covers is_under_directory, which no production caller
+    uses any more.
+    """
+    assert (
+        is_under_normalized_directory(
+            normalize_member_path(name), DEFAULT_SCAFFOLDING_DIRECTORIES
+        )
+        is expected
+    )
+
+
+def test_a_negative_cap_reports_its_own_value():
+    """"0" would be untrue, which is the defect this branch was split out for."""
+
+    class LooseParams:
+        artifact_max_bytes = -1
+
+    decision = ArtifactSelectionPolicy.from_params(LooseParams()).decide("x.csv", 0)
+
+    assert not decision.keep
+    assert "-1" in decision.reason

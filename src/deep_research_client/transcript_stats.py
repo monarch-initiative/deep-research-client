@@ -46,11 +46,15 @@ from pathlib import Path
 import shlex
 from typing import Any, Iterable, Optional, Sequence, TypeGuard
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # A transcript artifact is recognized by name; OpenScientist writes
 # ``provenance/iter<N>_transcript.json`` and ``provenance/report_transcript.json``.
 TRANSCRIPT_NAME_FRAGMENT = "transcript"
+
+# Stands in for a web_search entry whose query the transcript omitted, so the
+# reported total matches the number of searches the transcript records.
+NO_QUERY_RECORDED = "(no query recorded)"
 
 # Tool-call entries whose tool is this invoke a named skill.
 SKILL_TOOL_NAME = "Skill"
@@ -130,15 +134,12 @@ class TranscriptStats(BaseModel):
     failed_shell_commands: int = Field(
         default=0, description="Shell executions with a non-zero exit code"
     )
-    web_searches: list[str] = Field(
-        default_factory=list, description="Distinct web search queries issued"
-    )
     web_search_counts: dict[str, int] = Field(
         default_factory=dict,
         description=(
-            "Times each query was issued. A retried query is one entry in "
-            "web_searches but several searches, so the two numbers differ and "
-            "both are reported."
+            "Times each query was issued. A retried query is one distinct "
+            "query but several searches, so the two numbers differ and both "
+            "are reported."
         ),
     )
     files_changed: dict[str, list[str]] = Field(
@@ -176,6 +177,17 @@ class TranscriptStats(BaseModel):
         description="Entry types this summarizer has no handling for",
     )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def web_searches(self) -> list[str]:
+        """Distinct web search queries, sorted.
+
+        Derived from :attr:`web_search_counts` rather than stored beside it:
+        two fields holding the same data can disagree, and every renderer
+        would then need a fallback for the case where they do.
+        """
+        return sorted(self.web_search_counts)
+
     @property
     def distinct_tools(self) -> list[str]:
         """Sorted names of every tool actually called."""
@@ -206,12 +218,15 @@ class TranscriptStats(BaseModel):
         positive this guards against into a false negative, in the same list
         where neither is visible to a reader.
 
-        The residual case is a call recorded with its qualifier stripped *and*
-        no ``server`` or ``namespace`` field, where the transcript holds no
-        evidence of which server it belonged to; such a call matches only a
-        declaration that is likewise unqualified. No backend in use writes
-        that shape — an ``mcp__``-style name carries its server in the name
-        itself — so the strict reading costs nothing today.
+        The residual is a call and a declaration that disagree about whether
+        the server is part of the name, in *either* direction: a call recorded
+        bare against a qualified declaration, or a call carrying its server
+        out of band against a declaration that is bare. A declared name can
+        only acquire a server from its own spelling, never from the call side,
+        so neither is recoverable. Both are reported as unused. No backend in
+        use writes either shape — each carries the server in the name or
+        alongside a dotted one — so the strict reading costs nothing today,
+        and the alternative only moves which direction is wrong.
         """
         used_pairs = {(tool.server, tool.name) for tool in self.tools}
         used_qualified = {
@@ -237,6 +252,12 @@ class TranscriptStats(BaseModel):
             declared: The name as the session declared it.
             servers: MCP servers this run actually used, which is what makes a
                 dotted prefix readable as a server rather than part of a name.
+                So a declaration splits differently depending on what the run
+                called: ``github.notify`` is ``("github", "notify")`` in a run
+                that used ``github`` and ``(None, "github.notify")`` in one
+                that did not. Both report it unused, so nothing observable
+                changes — but the split is load-bearing for a second purpose
+                now, which is worth knowing before reusing it for a third.
 
         Returns:
             The ``(server, short name)`` pair, with ``None`` for a tool that
@@ -606,7 +627,6 @@ class _Accumulator:
             skill_counts=dict(self.skill_counts.most_common()),
             shell_commands=dict(self.shell_commands.most_common()),
             failed_shell_commands=self.failed_shell_commands,
-            web_searches=sorted(self.web_searches),
             web_search_counts=dict(self.web_searches.most_common()),
             files_changed={
                 kind: sorted(paths) for kind, paths in sorted(self.files_changed.items())
@@ -678,9 +698,12 @@ class _Accumulator:
             self.files_changed.setdefault(kind, set()).add(str(path))
 
     def _on_web_search(self, entry: dict[str, Any]) -> None:
+        # Counted under a placeholder rather than dropped: the heading reports
+        # a total, so a search whose query the transcript omitted would
+        # otherwise make "Web searches (0)" sit next to three web_search
+        # entries in the type counts.
         query = entry.get("query")
-        if query:
-            self.web_searches[str(query)] += 1
+        self.web_searches[str(query) if query else NO_QUERY_RECORDED] += 1
 
     def _on_collab_agent_tool_call(self, entry: dict[str, Any]) -> None:
         self.subagent_calls += 1
@@ -934,7 +957,7 @@ def _render_markdown(stats: TranscriptStats) -> str:
         lines.append("")
 
     if stats.web_searches:
-        total = sum(stats.web_search_counts.values()) or len(stats.web_searches)
+        total = sum(stats.web_search_counts.values())
         heading = f"### Web searches ({total})"
         if total != len(stats.web_searches):
             heading = f"### Web searches ({total}, {len(stats.web_searches)} distinct)"

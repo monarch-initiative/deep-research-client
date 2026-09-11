@@ -151,6 +151,26 @@ DEFAULT_SCAFFOLDING_DIRECTORIES: tuple[str, ...] = _with_trailing_slashes(
 )
 
 
+#: Every slug :meth:`ArtifactSelectionPolicy.decide` can put on a decision.
+#: Exported so a caller branching on ``rule`` has something to check against,
+#: and so the set cannot drift from the returns the way a hand-written list in
+#: a docstring did.
+ARTIFACT_RULES: frozenset[str] = frozenset(
+    {
+        "archive",
+        "exclude_glob",
+        "extension",
+        "extension_not_allowed",
+        "include_glob",
+        "media_type",
+        "provider_deny",
+        "runtime",
+        "scaffolding",
+        "size_cap",
+    }
+)
+
+
 @dataclass(frozen=True)
 class ArtifactDecision:
     """Whether one bundle member becomes an artifact, and on what grounds.
@@ -161,10 +181,11 @@ class ArtifactDecision:
     caller can treat one outcome differently without matching on prose — the
     provider does exactly that to log a size-cap skip louder than the rest.
 
-    The slugs, which callers may branch on: ``exclude_glob``, ``size_cap``,
-    ``provider_deny``, ``include_glob``, ``scaffolding``, ``archive``,
-    ``runtime``, ``extension`` (a keep) and ``extension_not_allowed`` (the
-    matching deny).
+    :data:`ARTIFACT_RULES` is the set a caller may branch on. Note that both
+    ``extension`` (a keep) and ``extension_not_allowed`` (the matching deny)
+    are in it, and so is ``media_type`` — the rule that keeps an image whose
+    suffix is not in the allowlist, which is the interesting keep rather than
+    the obvious one.
     """
 
     keep: bool

@@ -859,3 +859,32 @@ def test_a_single_web_search_reports_one_number():
     )
 
     assert "### Web searches (1)" in stats.render_markdown()
+
+
+def test_a_web_search_with_no_query_still_counts_as_a_search():
+    """The heading reports a total, so a dropped entry contradicts it.
+
+    "Web searches (0)" beside three web_search entries in the type counts
+    reads as a bug rather than a definition.
+    """
+    stats = summarize_transcript(
+        [
+            {"type": "web_search", "id": "w1", "query": "", "raw": {}},
+            {"type": "web_search", "id": "w2", "raw": {}},
+            {"type": "web_search", "id": "w3", "query": "real query", "raw": {}},
+        ]
+    )
+
+    assert stats.entry_types["web_search"] == 3
+    assert sum(stats.web_search_counts.values()) == 3
+    assert stats.web_search_counts["(no query recorded)"] == 2
+
+
+def test_the_distinct_query_list_is_derived_from_the_counts():
+    """One source of truth, so the two cannot disagree."""
+    stats = summarize_transcript(
+        [{"type": "web_search", "id": "w", "query": q, "raw": {}} for q in "aab"]
+    )
+
+    assert stats.web_searches == ["a", "b"]
+    assert json.loads(stats.model_dump_json())["web_searches"] == ["a", "b"]

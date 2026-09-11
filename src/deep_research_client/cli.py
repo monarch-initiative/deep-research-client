@@ -1685,11 +1685,13 @@ def _format_transcript_stats_text(stats: "TranscriptStats") -> str:
             + ", ".join(f"{p} ({c})" for p, c in stats.shell_commands.items())
         )
     if stats.web_searches:
-        total = sum(stats.web_search_counts.values()) or len(stats.web_searches)
+        # Same guard as the markdown renderer: "1 (1 distinct)" reads as though
+        # something had been deduplicated.
+        total = sum(stats.web_search_counts.values())
+        distinct = len(stats.web_searches)
+        suffix = f" ({distinct} distinct)" if total != distinct else ""
         lines.append("")
-        lines.append(
-            f"web searches:  {total} ({len(stats.web_searches)} distinct)"
-        )
+        lines.append(f"web searches:  {total}{suffix}")
     unused = stats.unused_available_tools
     if unused:
         lines.append("")

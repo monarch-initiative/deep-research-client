@@ -10,6 +10,7 @@ import zipfile
 import pytest
 
 from deep_research_client.artifact_selection import (
+    ARTIFACT_RULES,
     DEFAULT_ALLOWED_EXTENSIONS,
     DEFAULT_MAX_BYTES,
     DEFAULT_SCAFFOLDING_DIRECTORIES,
@@ -638,3 +639,46 @@ def test_a_negative_cap_reports_its_own_value():
 
     assert not decision.keep
     assert "-1" in decision.reason
+
+
+def test_every_decision_carries_a_documented_rule():
+    """The slug set and the returns must be one thing, not two.
+
+    The docstring invites callers to branch on `rule`, so an omission is a
+    silent miss for them — the enumeration written by hand left out
+    `media_type`, the rule that keeps an image whose suffix is not in the
+    allowlist.
+    """
+    policy = ArtifactSelectionPolicy.from_params(
+        OpenScientistParams(
+            artifact_include_globs=["included/*"],
+            artifact_exclude_globs=["excluded/*"],
+        )
+    )
+    outcomes = [
+        policy.decide("excluded/x.csv", 10),
+        policy.decide("results/huge.csv", 99 * ONE_MB),
+        policy.decide("final_report.md", 10, provider_deny={"final_report.md"}),
+        policy.decide("included/anything.bin", 10),
+        policy.decide(".claude/settings.json", 10),
+        policy.decide("raw/archive.zip", 10),
+        policy.decide("provenance/iter1_transcript.json", 10),
+        policy.decide("results/table.csv", 10),
+        policy.decide("figures/plot.bmp", 10),
+        policy.decide("notes.rst", 10),
+    ]
+
+    seen = {decision.rule for decision in outcomes}
+    assert "" not in seen, "a decision was returned without a rule slug"
+    assert seen <= ARTIFACT_RULES, seen - ARTIFACT_RULES
+    # Every documented slug is reachable, so the set has no dead entries.
+    assert seen == ARTIFACT_RULES
+
+
+def test_the_image_keep_is_the_one_the_enumeration_omitted():
+    """A .bmp is not in the allowlist and is kept on its media type alone."""
+    policy = ArtifactSelectionPolicy(max_bytes=1024)
+    decision = policy.decide("figures/plot.bmp", 10)
+
+    assert decision.keep
+    assert decision.rule == "media_type"

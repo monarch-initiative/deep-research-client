@@ -711,19 +711,19 @@ def _assert_row_agrees_with_score(header, row, score):
         f"name past the gap is reading the wrong value:\n{header}\n{row}"
     )
     values = dict(zip(header, row))
-    rates = {"accuracy", "coverage"}
     for column in header:
         if column == "arm_id":
             continue
-        if column == "precision":
-            assert values[column] == (
-                "" if score.precision is None else f"{score.precision:.4f}"
-            ), column
-        elif column in rates:
-            assert float(values[column]) == pytest.approx(
-                getattr(score, column), abs=1e-4), column
+        # The KIND comes from the model too, not from a second literal list.
+        # An `Optional` rate renders empty when absent, which is the only
+        # case that is not just `str(expected)` parsed back.
+        expected = getattr(score, column)
+        if expected is None:
+            assert values[column] == "", column
+        elif isinstance(expected, float):
+            assert float(values[column]) == pytest.approx(expected, abs=1e-4), column
         else:
-            assert int(values[column]) == getattr(score, column), column
+            assert int(values[column]) == expected, column
     return values
 
 
@@ -762,6 +762,22 @@ def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
     ]
     values = _assert_row_agrees_with_score(header, row, score)
     assert values["arm_id"] == "arm-x"
+
+    # And an ABSENT precision, which renders empty rather than 0.0000. The
+    # helper special-cases that kind and neither caller reached it: mutating
+    # the writer to print `0.0000` there left both green, and only a CLI test
+    # three files over noticed. A branch no caller exercises is a case this
+    # test is short, not a branch the suite covers.
+    absent = MCQScore(total=3, attempted=1, correct=0, abstained=2, unusable=1)
+    assert absent.precision is None
+    layout_b = RunLayout(root=tmp_path / "absent")
+    layout_b.root.mkdir(parents=True, exist_ok=True)
+    write_scores_tsv(layout_b, {"arm-y": absent})
+    header_b, row_b = [
+        ln.split("\t")
+        for ln in layout_b.scores_path.read_text(encoding="utf-8").strip().splitlines()
+    ]
+    _assert_row_agrees_with_score(header_b, row_b, absent)
 
 
 def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):

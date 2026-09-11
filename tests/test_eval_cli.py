@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 
 from deep_research_client.cli import app
 from deep_research_client.evaluation.adapters import get_adapter
+from deep_research_client.evaluation.models import MCQScore
 
 runner = CliRunner()
 
@@ -259,7 +260,6 @@ def test_the_grade_table_discloses_records_it_could_not_use(tmp_path, monkeypatc
     `test_eval_matrix`.
     """
     from deep_research_client.evaluation import matrix as matrix_mod
-    from deep_research_client.evaluation.models import MCQScore
 
     def one_unusable(eval_set, cells):
         return {"decliner": MCQScore(
@@ -359,19 +359,24 @@ def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
     )
 
 
-def _scores_tsv_header(score) -> list[str]:
-    """The column names `write_scores_tsv` actually emits, by running it."""
-    import tempfile
+def _scores_tsv_header(tmp_path: Path, score: MCQScore) -> list[str]:
+    """The column names `write_scores_tsv` actually emits, by running it.
 
+    Takes the caller's `tmp_path` rather than calling `tempfile.mkdtemp`,
+    which hands you a directory and no one to remove it -- every run of the
+    suite left a `scores.tsv` in the system temp. This file already carries
+    an autouse fixture because of an earlier test that wrote outside
+    `tmp_path`, into the developer's real response cache.
+    """
     from deep_research_client.evaluation.matrix import RunLayout, write_scores_tsv
 
-    root = Path(tempfile.mkdtemp()) / "run"
+    root = tmp_path / "header-probe"
     root.mkdir(parents=True, exist_ok=True)
     write_scores_tsv(RunLayout(root=root), {"a": score})
     return (root / "scores.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
 
 
-def test_the_page_names_every_column_the_writer_emits():
+def test_the_page_names_every_column_the_writer_emits(tmp_path):
     """DERIVED from `write_scores_tsv`, so a new column cannot leave the page.
 
     The how-to tells a reader that `cov` beside the em dash does not say which
@@ -388,17 +393,15 @@ def test_the_page_names_every_column_the_writer_emits():
     Derived, every emitted column must be named on the page or exempted here
     by name, so a new one fails until someone decides which.
     """
-    from deep_research_client.evaluation.models import MCQScore
 
     # The writer's own tuple, read by running it rather than by parsing its
     # source: a regex over `inspect.getsource` depended on a trailing comma
     # and matched quoted words in the docstring too.
-    layout_root = Path(__file__).parent
-    emitted = _scores_tsv_header(MCQScore(total=1, attempted=0, correct=0,
-                                          abstained=1))
+    emitted = _scores_tsv_header(
+        tmp_path, MCQScore(total=1, attempted=0, correct=0, abstained=1))
     assert "skipped" in emitted, emitted
 
-    page = (layout_root.parent
+    page = (Path(__file__).parent.parent
             / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
 
     # `arm_id` identifies the row; the three rates are documented by the

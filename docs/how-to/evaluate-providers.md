@@ -397,16 +397,16 @@ beside the dash.
 What does say which happened is `scores.tsv`. It carries one column per
 disposition: `attempted` for the questions an option was chosen for, and
 `abstained`, `provider_errors`, `extraction_failures` and `skipped` for the
-four ways one was not. Those five account for `total` exactly, so an arm's
-row says where each of its questions went, and `correct` says how many of
-the attempts were right — the `n` column of the table above is `correct` over
-`total`. The row also carries `unusable`, which is not a disposition but a
-subset of `attempted` — answers whose correctness was never recorded. Those
-are left out of precision's denominator rather than counted against it, since
-nothing can be said about whether they were right; they stay in coverage,
-because an option was chosen; and they lower accuracy exactly as a wrong
-answer would, since accuracy is over every question asked. Only a hand-edited
-or older-format run produces them.
+four ways one was not. Those five account for `total` exactly, so an arm's row
+says where each of its questions went. `correct` is a subset of those attempts
+— the ones whose answer was both recorded and right — and the `n` column of
+the table above is `correct` over `total`. The row also carries `unusable`,
+which is not a disposition but a subset of `attempted` — answers whose
+correctness was never recorded. Those are left out of precision's denominator
+rather than counted against it, since nothing can be said about whether they
+were right; they stay in coverage, because an option was chosen; and they
+lower accuracy exactly as a wrong answer would, since accuracy is over every
+question asked. Only a hand-edited or older-format run produces them.
 
 Two of those columns get a note under the table as well: `unusable` and
 `extraction_failures`, the two harness defects, on the principle that a

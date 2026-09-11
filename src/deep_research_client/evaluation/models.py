@@ -846,6 +846,18 @@ class MCQScore(BaseModel):
     # The three rates became `computed_field`s, and pydantic DROPS unknown
     # keyword arguments by default -- so a call site still passing
     # `accuracy=0.6` would have had it silently ignored rather than flagged.
+    # Five stale ones failed loudly instead, which is why this is here.
+    #
+    # The cost, and it is a real one: `model_dump()` INCLUDES computed
+    # fields, so `MCQScore(**score.model_dump())` raises on all three. This
+    # is the only score in the module that does not round-trip through its
+    # own dump -- `RACEScore` and `CitationAlignmentScore` have computed
+    # fields too and keep the default `extra="ignore"`, which drops them on
+    # the way back in. Taken deliberately: `on_scores` hands these to library
+    # callers, and a caller that persists and reloads should rebuild from the
+    # COUNTS (`{k: v for k, v in dump.items() if k in MCQScore.model_fields}`)
+    # rather than from a rate that was only ever a view of them. Silently
+    # accepting a stale rate is the failure this pair exists to prevent.
     model_config = ConfigDict(extra="forbid")
 
     total: int = Field(..., description="Questions in the eval set")
@@ -861,9 +873,14 @@ class MCQScore(BaseModel):
         description=(
             "Questions answered correctly AND scored. The second half is the "
             "invariant `score_mcq`'s numerator filter introduced: a record "
-            "carrying `correct=True` on any other disposition is not counted, "
-            "so `correct <= attempted <= total` holds by construction rather "
-            "than by convention"
+            "carrying `correct=True` on any other disposition is not counted. "
+            "The bound is `correct <= judged <= attempted <= total`, and it "
+            "is the model validator that holds it -- `correct <= attempted` "
+            "is the weaker half and was what this said, credited to the "
+            "producer's filter, which held it for `score_mcq`'s OUTPUT and "
+            "not for the type: `MCQScore(total=1, attempted=1, correct=5)` "
+            "was accepted and wrote `precision 5.0`. `judged` is the bound "
+            "that matters, because it is what `precision` divides by"
         ),
     )
     abstained: int = Field(default=0, description="Questions the provider declined")
@@ -937,6 +954,23 @@ class MCQScore(BaseModel):
         """
         return self.attempted / self.total if self.total else 0.0
 
+    @property
+    def judged(self) -> int:
+        """Attempted questions whose correctness was actually established.
+
+        `attempted - unusable`, and precision's denominator. It was computed
+        in the rate, again in the validator, and restated in four
+        descriptions -- two independent computations of one definition, which
+        is the same second-source-of-truth shape as a stored copy of a
+        derived value, one notch weaker.
+
+        A plain `@property`, not a `computed_field`: it would otherwise join
+        `model_dump()` and so `--output`, and the artifact's columns are a
+        published format. A consumer derives it the way this does, from two
+        columns the file already carries.
+        """
+        return self.attempted - self.unusable
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def precision(self) -> Optional[float]:
@@ -971,9 +1005,7 @@ class MCQScore(BaseModel):
         as readable-against-`coverage`: a disambiguator beside a rate, the
         trade the citation lines had just rejected one command over.
         """
-        judged = self.attempted - self.unusable
-        return self.correct / judged if judged else None
-
+        return self.correct / self.judged if self.judged else None
 
     @model_validator(mode="after")
     def _counts_account_for_total(self) -> "MCQScore":
@@ -1019,7 +1051,7 @@ class MCQScore(BaseModel):
                 f"an unusable record is a SCORED one, so it is a subset of "
                 f"`attempted`, not a sixth part of `total`"
             )
-        judged = self.attempted - self.unusable
+        judged = self.judged
         if self.correct > judged:
             raise ValueError(
                 f"correct={self.correct} exceeds judged={judged} "

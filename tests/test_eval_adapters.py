@@ -332,8 +332,8 @@ def test_empty_score_does_not_divide_by_zero():
 
 
 @pytest.mark.parametrize("disposition", list(ScoreDisposition))
-def test_every_disposition_is_countable_from_one_score(disposition, caplog):
-    """The counts account for `total`, which `scores.tsv` is read by column.
+def test_every_disposition_is_countable_from_one_score(disposition):
+    """The counts account for `total`, one per disposition.
 
     `write_scores_tsv` documented `abstained`, `extraction_failures` and
     `provider_errors` as partitioning what is left of `total`. There are five
@@ -346,12 +346,10 @@ def test_every_disposition_is_countable_from_one_score(disposition, caplog):
     Parametrized over the enum rather than over a list of names: a sixth
     member added later fails here until it has a home.
     """
-    with caplog.at_level(logging.WARNING,
-                         logger="deep_research_client.evaluation.mcq"):
-        score = mcq.score_mcq([
-            MCQAnswer(task_id=f"t{i}", provider="p", disposition=disposition)
-            for i in range(3)
-        ])
+    score = mcq.score_mcq([
+        MCQAnswer(task_id=f"t{i}", provider="p", disposition=disposition)
+        for i in range(3)
+    ])
 
     accounted = (
         score.attempted + score.abstained + score.extraction_failures
@@ -406,6 +404,33 @@ def test_precision_is_absent_at_a_coverage_that_is_neither_zero_nor_one():
     assert skipped.precision is None
 
 
+def test_a_score_whose_counts_do_not_account_for_total_is_rejected():
+    """The accounting is enforced, not just described.
+
+    It is stated on `MCQScore.skipped` and again in `write_scores_tsv`'s
+    docstring, where a spreadsheet reader is told the subtraction is exact.
+    Both were claims about `score_mcq`'s OUTPUT asserted of the TYPE and of
+    the FILE, and the counts are independently settable -- a fixture in this
+    repo built `total=3, attempted=2` with every failure count defaulting to
+    zero and wrote a row whose remainder said a pair was skipped when none
+    was. Enforcing it is what makes the sentence a reader acts on true of
+    every file the writer produces.
+    """
+    with pytest.raises(ValidationError, match="do not account for total"):
+        MCQScore(total=3, attempted=2, correct=1,
+                 accuracy=1 / 3, coverage=2 / 3, precision=0.5)
+
+    # The complement: `unusable` is a subset of `attempted`, so it cannot
+    # exceed it -- a separate way for the counts to describe no run at all.
+    with pytest.raises(ValidationError, match="exceeds attempted"):
+        MCQScore(total=2, attempted=1, correct=0, abstained=1, unusable=2,
+                 accuracy=0.0, coverage=0.5, precision=None)
+
+    # And the shape `score_mcq` actually produces is accepted.
+    assert MCQScore(total=3, attempted=2, correct=1, abstained=1, unusable=1,
+                    accuracy=1 / 3, coverage=2 / 3, precision=1.0).skipped == 0
+
+
 def test_precision_is_nullable_but_not_omittable():
     """Absent means "nothing was judged", so it cannot also mean "nobody said".
 
@@ -415,11 +440,15 @@ def test_precision_is_nullable_but_not_omittable():
     the renderer keys on `is None` alone, so a hand-built score that forgot it
     prints an em dash for an arm that attempted eight questions.
     """
-    with pytest.raises(ValidationError):
-        MCQScore(total=10, attempted=8, correct=6, accuracy=0.6, coverage=0.8)
+    # Counts that account for `total`, so the ONLY thing wrong with this
+    # score is the missing `precision`. Without `abstained=2` the accounting
+    # validator rejects it first and this passes for the wrong reason.
+    with pytest.raises(ValidationError, match="precision"):
+        MCQScore(total=10, attempted=8, correct=6, abstained=2,
+                 accuracy=0.6, coverage=0.8)
     # Still nullable where it means something.
-    assert MCQScore(total=1, attempted=0, correct=0, accuracy=0.0,
-                    coverage=0.0, precision=None).precision is None
+    assert MCQScore(total=1, attempted=0, correct=0, abstained=1,
+                    accuracy=0.0, coverage=0.0, precision=None).precision is None
 
 
 def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(caplog):

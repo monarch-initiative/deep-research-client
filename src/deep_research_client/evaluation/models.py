@@ -20,7 +20,7 @@ first sentence, so a reader can stop there.
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from .datamodel import ScoreDisposition
 
@@ -834,8 +834,12 @@ class MCQScore(BaseModel):
     record came back with no correctness at all. Reporting accuracy without
     coverage hides whether a low score means wrong answers or declined ones.
 
-    >>> s = MCQScore(total=10, attempted=8, correct=6, accuracy=0.6,
-    ...              coverage=0.8, precision=0.75)
+    Every task has exactly one disposition, so `attempted` and the four
+    failure counts partition `total`; a score whose counts do not add up is
+    rejected rather than written to a file a spreadsheet subtracts from.
+
+    >>> s = MCQScore(total=10, attempted=8, correct=6, abstained=2,
+    ...              accuracy=0.6, coverage=0.8, precision=0.75)
     >>> s.precision
     0.75
     """
@@ -867,7 +871,11 @@ class MCQScore(BaseModel):
     skipped: int = Field(
         default=0,
         description=(
-            "Pairs a filter excluded, which nothing emits today. Counted "
+            "Pairs that were not run -- typically because a filter "
+            "excluded them, which is how `ScoreDisposition.SKIPPED` states "
+            "it; the sibling `CellStatus.SKIPPED` also covers a pair a "
+            "previous run had already completed. Nothing emits it today. "
+            "Counted "
             "anyway so the four disposition counts ACCOUNT FOR `total` "
             "alongside `attempted`: without it, `scores.tsv` had no column "
             "for `SKIPPED` and no way to reach it, since its writer "
@@ -957,3 +965,51 @@ class MCQScore(BaseModel):
         ),
     )
     answers: list[MCQAnswer] = Field(default_factory=list, description="Per-task graded answers")
+
+    @model_validator(mode="after")
+    def _counts_account_for_total(self) -> "MCQScore":
+        """Reject a score whose counts cannot describe a run.
+
+        The accounting is stated on `skipped` and again in
+        `write_scores_tsv`'s docstring, where a spreadsheet reader is told the
+        subtraction is exact. Both were claims about `score_mcq`'s output
+        asserted of the TYPE and of the FILE -- and `MCQScore`'s counts are
+        independently settable, so anything could be handed to the writer. A
+        fixture in this repo did exactly that: `total=3, attempted=2` with
+        every failure count at its default, a row whose remainder says a pair
+        was skipped when none was, and a shape `score_mcq` cannot produce.
+
+        Enforced here rather than documented, so the sentence a reader acts on
+        holds by construction -- the way `correct`'s does.
+
+        >>> MCQScore(total=2, attempted=1, correct=1, abstained=1,
+        ...          accuracy=0.5, coverage=0.5, precision=1.0).skipped
+        0
+
+        >>> MCQScore(total=3, attempted=2, correct=1,
+        ...          accuracy=1/3, coverage=2/3, precision=0.5)
+        Traceback (most recent call last):
+        ...
+        pydantic_core._pydantic_core.ValidationError: ...
+        """
+        accounted = (
+            self.attempted + self.abstained + self.extraction_failures
+            + self.provider_errors + self.skipped
+        )
+        if accounted != self.total:
+            raise ValueError(
+                f"counts do not account for total: attempted={self.attempted} "
+                f"+ abstained={self.abstained} "
+                f"+ extraction_failures={self.extraction_failures} "
+                f"+ provider_errors={self.provider_errors} "
+                f"+ skipped={self.skipped} = {accounted}, not {self.total}. "
+                f"Every task has exactly one disposition, so the five counts "
+                f"partition `total`."
+            )
+        if self.unusable > self.attempted:
+            raise ValueError(
+                f"unusable={self.unusable} exceeds attempted={self.attempted}: "
+                f"an unusable record is a SCORED one, so it is a subset of "
+                f"`attempted`, not a sixth part of `total`"
+            )
+        return self

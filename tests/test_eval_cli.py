@@ -9,6 +9,7 @@ know, and a message nothing asserts on is a message that can quietly disappear.
 Everything here runs through the mock provider, so no network and no spend.
 """
 
+import inspect
 import json
 import logging
 import re
@@ -357,6 +358,40 @@ def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
         "the how-to's worked transcript quotes an extraction-failures note "
         "the command does not print; it reads:\n"
         + " ".join(printed.split())
+    )
+
+
+def test_the_page_names_every_disposition_column_the_writer_emits():
+    """Built from `write_scores_tsv`, so a new column cannot leave the page.
+
+    The how-to tells a reader that `cov` beside the em dash does not say which
+    case it is, and points at `scores.tsv`'s per-disposition columns as what
+    does. That list was a case short until `skipped` was added -- the page
+    named four dispositions when the enum has five and the file had no column
+    for the fifth. Naming them from the writer's own tuple means the next
+    column added is a failing test rather than a page that quietly stops being
+    the answer.
+    """
+    from deep_research_client.evaluation.matrix import write_scores_tsv
+
+    source = inspect.getsource(write_scores_tsv)
+    emitted = set(re.findall(r'"(\w+)",', source))
+    page = (Path(__file__).parent.parent
+            / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
+
+    # The disposition counts, which are what resolve the dash. `arm_id` and
+    # the rates are the row's identity and its numbers, documented elsewhere
+    # on the page; these are the ones the em-dash paragraph promises.
+    dispositions = {"abstained", "extraction_failures", "provider_errors",
+                    "skipped", "unusable"}
+    assert dispositions <= emitted, (
+        f"write_scores_tsv no longer emits {dispositions - emitted}; this "
+        f"guard is reading the wrong source"
+    )
+    missing = {c for c in dispositions if f"`{c}`" not in page}
+    assert not missing, (
+        f"docs/how-to/evaluate-providers.md does not name {sorted(missing)}, "
+        f"which scores.tsv carries and the em-dash paragraph sends a reader to"
     )
 
 

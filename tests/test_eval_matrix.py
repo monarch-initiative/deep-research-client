@@ -537,8 +537,13 @@ def test_scores_tsv_counts_the_attempts_that_left_precisions_denominator(tmp_pat
 
     layout = RunLayout(root=tmp_path / "run")
     layout.root.mkdir(parents=True, exist_ok=True)
+    # `abstained=1` is what makes the third question's disposition explicit.
+    # Without it the counts did not account for `total`, so the row this wrote
+    # had a remainder of 1 against `skipped=0` -- telling a spreadsheet reader
+    # a pair was skipped when none was, in the test that exists to show the
+    # file is countable. The accounting validator now rejects that shape.
     write_scores_tsv(layout, {"a": MCQScore(
-        total=3, attempted=2, correct=1, unusable=1,
+        total=3, attempted=2, correct=1, unusable=1, abstained=1,
         accuracy=1 / 3, coverage=2 / 3, precision=1.0,
     )})
 
@@ -680,8 +685,55 @@ def test_silent_arm_is_extraction_failure_not_abstention(tmp_path, mock_client):
     assert score.coverage == pytest.approx(0.0)
 
 
+def test_every_scores_tsv_column_carries_its_own_value(tmp_path):
+    """Distinct counts, so a swapped pair is visible.
+
+    The end-to-end sibling below compares every column too, but its arm
+    answers every question, so `abstained`, `extraction_failures`,
+    `provider_errors` and `skipped` are all zero -- and a mutation that swaps
+    two of those values in `write_scores_tsv` passes it. `columns` and the row
+    list are two ordered sequences kept parallel by hand, so the alignment
+    needs a fixture where every count differs.
+    """
+    from deep_research_client.evaluation.models import MCQScore
+
+    layout = RunLayout(root=tmp_path / "run")
+    layout.root.mkdir(parents=True, exist_ok=True)
+    # 4 + 1 + 2 + 3 + 5 == 15, so the accounting validator accepts it.
+    score = MCQScore(
+        total=15, attempted=4, correct=3, abstained=1, extraction_failures=2,
+        provider_errors=3, skipped=5, unusable=1,
+        accuracy=0.2, coverage=0.4, precision=0.75,
+    )
+    write_scores_tsv(layout, {"arm-x": score})
+
+    header, row = [
+        ln.split("\t")
+        for ln in layout.scores_path.read_text(encoding="utf-8").strip().splitlines()
+    ]
+    assert len(row) == len(header)
+    values = dict(zip(header, row))
+    assert values["arm_id"] == "arm-x"
+    for column in ("total", "attempted", "correct", "abstained",
+                   "extraction_failures", "provider_errors", "skipped",
+                   "unusable"):
+        assert int(values[column]) == getattr(score, column), column
+
+
 def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
-    """The written file is the artifact people read; it must agree with the API."""
+    """The written file is the artifact people read; it must agree with the API.
+
+    EVERY column, not a sample of them. This asserted four of twelve while its
+    summary claimed the agreement for all of them, so a value dropped from the
+    row was caught only sideways: `zip` truncates, the remaining names pair
+    with the wrong values, and some other test failed on a `KeyError` for a
+    different column. `len(row) == len(header)` plus a loop over the counts
+    makes a dropped or misaligned value fail as itself.
+
+    `columns` and the row list in `write_scores_tsv` are two ordered sequences
+    kept parallel by hand, which is what makes this worth asserting rather
+    than trusting.
+    """
     eval_set = _mcq_eval_set()
     manifest = asyncio.run(run_matrix(
         eval_set, [_mock_arm("always-a", "first")],
@@ -691,12 +743,23 @@ def test_scores_tsv_matches_the_computed_scores(tmp_path, mock_client):
     score = score_by_arm(eval_set, manifest.cells)["always-a"]
     rows = (tmp_path / "run" / "scores.tsv").read_text(encoding="utf-8").strip().split("\n")
     header, row = (line.split("\t") for line in rows)
+    assert len(row) == len(header), (
+        f"the row has {len(row)} fields for {len(header)} columns, so every "
+        f"name past the gap is reading the wrong value:\n{header}\n{row}"
+    )
     values = dict(zip(header, row))
 
     assert values["arm_id"] == "always-a"
-    assert int(values["correct"]) == score.correct
-    assert float(values["accuracy"]) == pytest.approx(score.accuracy, abs=1e-4)
-    assert float(values["coverage"]) == pytest.approx(score.coverage, abs=1e-4)
+    for column in ("total", "attempted", "correct", "abstained",
+                   "extraction_failures", "provider_errors", "skipped",
+                   "unusable"):
+        assert int(values[column]) == getattr(score, column), column
+    for column in ("accuracy", "coverage"):
+        assert float(values[column]) == pytest.approx(
+            getattr(score, column), abs=1e-4), column
+    assert values["precision"] == (
+        "" if score.precision is None else f"{score.precision:.4f}"
+    )
 
 
 # ---------------------------------------------------------------------------

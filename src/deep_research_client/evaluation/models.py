@@ -885,9 +885,10 @@ class MCQScore(BaseModel):
     # `test_the_recipe_rebuilds_a_score_its_own_dump_cannot`, which asserts
     # both that the raw dump is refused and that the filtered one rebuilds an
     # equal score. That test compares the expression above against its own
-    # source AND against this file, so the copy a caller pastes cannot drift
-    # from the one that runs; a separate test fails if this comment ever
-    # names a test that no longer exists.
+    # source AND against `MCQScore`'s own source -- this comment, not the
+    # file -- so the copy a caller pastes cannot drift from the one that
+    # runs. A separate test fails if this comment stops naming a test, or
+    # names one that no longer exists.
     #
     # Naming a test FUNCTION from `src/` is deliberate and is the only
     # place this package does it; `MatrixConfig.on_scores` cites a test

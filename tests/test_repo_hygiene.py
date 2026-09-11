@@ -33,16 +33,34 @@ def _cited_names(text: str) -> list[tuple[int, str]]:
 
     So state is carried ACROSS lines: while a backtick is open the next
     line's text is appended with no separator, which is how a wrapped
-    identifier rejoins, and a leading `#` and indentation are stripped
-    first. Outside a citation the separator does not matter, since only the
-    text between a pair of backticks is ever read.
+    identifier rejoins. Indentation is stripped from every line and a
+    leading `#` after it, so a wrap inside a DOCSTRING rejoins too -- the
+    first version stripped the indent only when a `#` followed it, which
+    covered comments and left every docstring wrap embedding whitespace in
+    the middle of the name.
+
+    The carry is BOUNDED, and that is the load-bearing part. An odd
+    backtick is not always a wrap: `mcq.py` compiles `[*`#]+` and never
+    restores parity, and four other modules under `src/` have such a line.
+    Carrying state on those inverts parity for every remaining line of the
+    file, so a real citation lands at an even index and the loop below --
+    which is the same even-index failure described above, at file scale --
+    reports nothing. Measured: with one stray backtick ahead of it, a
+    citation two lines later was returned as `[]`.
+
+    So a fragment is carried only when it could be PART OF AN IDENTIFIER.
+    `#]+")` is not, and is dropped where the line ends; `test_the_page_
+    quotes_..._note_as_` is, and continues. Giving an instrument memory
+    without a condition that ends it does not shrink its blind spot, it
+    relocates it -- from two lines to everything after the first
+    unbalanced delimiter, and in the same silent direction.
     """
     names: list[tuple[int, str]] = []
     pending: str | None = None
     opened_at = 0
 
     for line_no, raw in enumerate(text.splitlines(), 1):
-        body = re.sub(r"^\s*#\s?", "", raw).rstrip("\n")
+        body = re.sub(r"^#\s?", "", raw.strip())
         if pending is not None:
             # The backtick is put back, because `split` reads parity from
             # the text it is given: without it the continuation begins
@@ -62,7 +80,10 @@ def _cited_names(text: str) -> list[tuple[int, str]]:
             match = re.fullmatch(r"(test_\w+)", parts[i])
             if match:
                 names.append((opened_at, match.group(1)))
-        pending = parts[-1] if len(parts) % 2 == 0 else None
+        # Only an identifier-shaped fragment continues; see the docstring.
+        open_fragment = parts[-1] if len(parts) % 2 == 0 else ""
+        identifier_shaped = re.fullmatch(r"[\w.]+", open_fragment)
+        pending = open_fragment if identifier_shaped else None
 
     return names
 
@@ -145,12 +166,43 @@ def test_no_comment_cites_a_test_that_does_not_exist():
     ], "a citation split across two comment lines is not being rejoined"
     # The delimiters are built rather than written, because a literal pair
     # around an invented name IS a citation and this function scans its own
-    # file: the first version reported its own fixture as dangling. Fourth
-    # time on this branch that an instrument read its own example.
+    # file: the first version reported its own fixture as dangling. That
+    # family is listed in `_cited_names`' docstring above -- one home, no
+    # ordinal, because four sentences in this tree each numbered their own
+    # case and no two agreed.
     tick = chr(96)
     same_line = f"{tick}test_on_one_line{tick} and {tick}not_a_test{tick}"
     assert _cited_names(same_line) == [(1, "test_on_one_line")], (
         "a same-line citation regressed, or a non-test token was picked up"
+    )
+
+    # A stray backtick is not a wrap. `mcq.py` compiles a character class
+    # containing one and never restores parity, so carrying state on it
+    # inverted every remaining line of that file and the scan reported
+    # nothing -- measured as `[]` for the citation below before the carry
+    # was bounded to identifier-shaped fragments.
+    after_stray = (
+        f'PAT = re.compile(r"[*{tick}#]+")\n'
+        "X = 1\n"
+        f"# see {tick}test_on_one_line{tick} for why\n"
+    )
+    assert _cited_names(after_stray) == [(3, "test_on_one_line")], (
+        "an unbalanced backtick that is not a wrap has disabled the scan "
+        "for the rest of the file"
+    )
+
+    # And a wrap inside a DOCSTRING, where this repo keeps most of its
+    # prose: the indent must come off the continuation or it lands in the
+    # middle of the name. Stripping it only after a `#` covered comments
+    # and left every docstring wrap invisible.
+    in_docstring = (
+        f"    {tick}test_a_name_that_wraps_\n"
+        f"    here{tick} and more prose\n"
+    )
+    wrapped_name = "test_a_name_that_wraps_here"
+    assert _cited_names(in_docstring) == [(1, wrapped_name)], (
+        "a citation wrapped across two indented docstring lines is not "
+        "being rejoined"
     )
 
     # A path reference is a citation too, and the one in `src/` that the

@@ -688,6 +688,171 @@ Removes all files from `~/.deep_research_cache/`.
 
 ---
 
+### eval
+
+Evaluate research tools against benchmark eval sets. A benchmark is read by an
+*adapter*; see [Evaluate Providers](../how-to/evaluate-providers.md) for the
+full workflow.
+
+#### Subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `eval adapters` | List the benchmark formats this client can read |
+| `eval fetch` | Download a benchmark dataset into the local cache |
+| `eval load` | Load an eval set and show what it contains |
+| `eval run` | Run every task in an eval set against every arm |
+| `eval score` | Score a saved report against one task from an eval set |
+
+#### eval adapters
+
+Lists every registered adapter with its description, marking those that download
+data.
+
+#### eval fetch
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SUBSET` | LAB-Bench subset(s), comma-separated, or `all` (default: `LitQA2`) |
+| `--cache-dir PATH` | Cache directory (default: `~/.deep_research_cache`) |
+| `--revision TEXT` | Fail unless the dataset's current revision is this one (asserts; the API serves only the current revision) |
+| `--refresh` | Re-download even if a cached copy exists |
+
+Benchmark data is cached rather than committed: LAB-Bench ships a contamination
+canary, is CC-BY-SA-4.0 where this project is BSD-3-Clause, and is large. The
+revision downloaded is recorded so a score can name the data behind it.
+
+#### eval load
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | Source for the adapter: a file, a directory, or a dataset subset |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--output`, `-o PATH` | Write the eval set as JSON instead of summarising it |
+| `--limit INTEGER` | Show only the first N tasks in the summary (default: 10) |
+
+#### eval run
+
+Runs every task in an eval set against every arm, writing results into a
+predictable directory tree.
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | Eval set source: a file, a directory, or a dataset subset name |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--arm TEXT` | Arm as `provider`, `provider:model`, or `id=provider:model` (repeatable) |
+| `--arms PATH` | YAML file defining arms, for arms that need provider params |
+| `--output-dir`, `-o PATH` | Run directory (default: `runs/<timestamp>`) |
+| `--limit INTEGER` | Run only the first N tasks |
+| `--task-id TEXT` | Run only these task ids (repeatable) |
+| `--concurrency`, `-j INTEGER` | Cells to run at a time (default: 4) |
+| `--no-resume` | Re-run cells an earlier run already completed (does not bypass the response cache; pair with `--no-cache`) |
+| `--no-cache` | Never replay a response from the client cache; call the provider for every cell |
+| `--cache-dir TEXT` | Override the response cache directory (default: `~/.deep_research_cache`) |
+| `--grade` | Also score multiple-choice answers with the provisional regex extractor |
+| `--dry-run` | Show the matrix and one prompt without calling any provider |
+
+A run materialises results and does not score them: every response lands on disk
+beside the prompt that produced it, so grading can be decided and redone later
+without re-running any provider. `--grade` opts into a provisional regex-based
+multiple-choice grader, which is fine for a quick look but is not the intended
+design — see [Evaluate Providers](../how-to/evaluate-providers.md).
+
+Responses are cached by default, keyed on prompt, provider, model and
+parameters, so a cell can be served from an earlier run rather than measured in
+this one. The end-of-run summary separates cells measured now, replayed from the
+cache, and resumed from a previous run in the same directory; `results.tsv`
+carries `resumed` and `cached` columns. Use `--no-cache` when the number has to
+describe calls made now, and `--no-resume --no-cache` when the run directory
+already holds results.
+
+Output layout:
+
+```
+<run_dir>/
+  manifest.json        arms, dataset revision, every cell
+  results.tsv          one row per cell
+  scores.tsv           per-arm aggregates, for multiple-choice runs
+  <task_id>/<arm_id>/
+    prompt.md          exactly what the provider was sent
+    output.md          exactly what it returned
+    cell.json          the cell record
+    answer.json        the graded answer, for multiple-choice tasks
+```
+
+Cells are written as they finish, so a run is resumable: point `--output-dir` at
+an existing run and completed cells are skipped. Failed cells are always
+retried. A provider failure fails its own cell and no others.
+
+#### eval score
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `REPORT` | Markdown file with the report to score |
+| `--source TEXT` | Eval set source (required) |
+| `--adapter`, `-a TEXT` | Eval set format (default: `yaml`) |
+| `--task-id TEXT` | Task to score against; required when the set has more than one |
+| `--provider TEXT` | Name of the provider that generated the report |
+| `--no-fact` | Skip FACT (citation support) scoring |
+| `--no-recall` | Skip claim recall scoring |
+| `--no-race` | Skip RACE (report quality) scoring |
+| `--no-intrinsic` | Skip intrinsic (LLM-free) scoring |
+| `--output`, `-o PATH` | Output file for results (JSON) |
+| `--llm-base-url TEXT` | Base URL for the LLM judge API |
+| `--llm-api-key-env TEXT` | Env var for the LLM judge API key (default: `OPENAI_API_KEY`) |
+| `--llm-model TEXT` | Model for the LLM judge (default: `gpt-4o-mini`) |
+
+FACT, claim recall and RACE need an LLM judge; the intrinsic scores do not.
+
+#### Examples
+
+```bash
+# See what benchmark formats are available
+deep-research-client eval adapters
+
+# Check your own questions parse before spending money on providers
+deep-research-client eval load questions.yaml
+deep-research-client eval load questions.tsv --adapter tsv
+
+# Download and inspect a published benchmark
+deep-research-client eval fetch LitQA2
+deep-research-client eval load LitQA2 --adapter lab-bench
+
+# Load curated Monarch ground truth
+deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+
+# Price a matrix run before committing to it
+deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml --limit 20 --dry-run
+
+# Run a benchmark across several arms
+deep-research-client eval run LitQA2 --adapter lab-bench \\
+  --arm edison=falcon --arm baseline=claude_code --limit 20
+
+# Score a saved report
+deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+
+# Intrinsic scores only: no LLM judge, no API spend
+deep-research-client eval score report.md --source questions.yaml \
+  --no-fact --no-recall --no-race
+
+# A local OpenAI-compatible judge, which needs no API key
+deep-research-client eval score report.md --source questions.yaml \
+  --llm-base-url http://localhost:8000/v1 --llm-model my-local-model
+```
+
+`eval score` refuses to start when a judge-backed score is enabled and no API
+key is set, rather than running the intrinsic scores and then failing at the
+judge. Set `OPENAI_API_KEY`, point `--llm-api-key-env` at a variable that is
+set, pass `--llm-base-url`, or turn the judge-backed scores off with the three
+flags above.
+
+Any `--llm-base-url` skips that check, not only a local one: the command cannot
+tell a keyless endpoint from one that checks keys, so it sends a placeholder and
+says so. A local server accepts it; a remote proxy that does check will answer
+401 on every judge call.
+
+---
+
 ## Environment Variables
 
 | Variable | Provider | Description |

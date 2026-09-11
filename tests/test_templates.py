@@ -87,7 +87,7 @@ def test_load_template():
     tm = TemplateProcessor()
 
     # Create temporary template file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
         template_content = "Research {gene} in {organism}\n\nDetails about {gene}."
         f.write(template_content)
         temp_path = Path(f.name)
@@ -126,7 +126,7 @@ Gene: {gene}
 Organism: {organism}
 """
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
         f.write(template_content)
         temp_path = Path(f.name)
 
@@ -323,7 +323,7 @@ Detailed analysis required.
 Brief overview.
 {% endif %}"""
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.j2', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.j2', delete=False, encoding="utf-8") as f:
         f.write(template_content)
         temp_path = Path(f.name)
 
@@ -354,7 +354,7 @@ description: Gene research
 ---
 Research {{gene}}{% if organism %} in {{organism}}{% endif %}."""
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
         f.write(template_content)
         temp_path = Path(f.name)
 
@@ -381,7 +381,7 @@ def test_process_template_includes_format():
     # Create a Jinja template
     template_content = "Research {{gene}}"
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.j2', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.j2', delete=False, encoding="utf-8") as f:
         f.write(template_content)
         temp_path = Path(f.name)
 

@@ -768,7 +768,7 @@ def test_the_cache_does_not_store_which_providers_were_tried(tmp_path):
 
     cached_files = list(tmp_path.glob("*.json"))
     assert len(cached_files) == 1
-    payload = json.loads(cached_files[0].read_text())
+    payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
     assert payload["provider_attempts"] == []
     assert payload["requested_provider"] is None
 
@@ -1270,7 +1270,7 @@ def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     assert f"{BACKUP}: produced the report" in result.output
     # The console keeps the provider's own words; the report does not.
     assert "simulated billing failure" in result.output
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "fell_back: true" in content
     assert "simulated billing failure" not in content
 
@@ -1300,7 +1300,7 @@ def test_cli_falls_back_when_the_named_provider_is_not_configured(tmp_path, monk
     )
 
     assert result.exit_code == 0
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert f"provider: {BACKUP}" in content
     assert "requested_provider: falcon" in content
     # The provider that could not run is in the trail, not dropped from it.
@@ -1453,7 +1453,7 @@ def test_the_mock_can_demonstrate_the_quota_redaction_end_to_end(tmp_path, monke
     # The console keeps the provider's reset text, identifier and all.
     assert "quota_pool_7f21" in result.output
     # The committed file keeps only our reading of it.
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "quota_pool_7f21" not in content
     assert "renews at" not in content
     assert "the plan's usage limit is spent" in content
@@ -1505,7 +1505,7 @@ def test_cli_rejects_nothing_when_fallback_is_absent(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "fell_back" not in content
 
 
@@ -1532,7 +1532,7 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     doc = (
         pathlib.Path(__file__).resolve().parents[1]
         / "docs" / "how-to" / "choose-provider.md"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     listed = re.search(r"^    (openai,.*)$", doc, re.MULTILINE)
     assert listed, "the how-to no longer prints an indented candidate list"
     documented = {name.strip() for name in listed.group(1).split(",")}

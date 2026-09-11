@@ -426,9 +426,9 @@ def write_stub_claude(tmp_path, stdout: str):
     """
     script = tmp_path / "stubclaude"
     payload = tmp_path / "stub_output.jsonl"
-    payload.write_text(stdout)
+    payload.write_text(stdout, encoding="utf-8")
     # Drain stdin so the provider's write to it cannot fail with EPIPE.
-    script.write_text(f"#!/bin/sh\ncat > /dev/null\ncat {payload}\n")
+    script.write_text(f"#!/bin/sh\ncat > /dev/null\ncat {payload}\n", encoding="utf-8")
     script.chmod(0o755)
     return script
 
@@ -506,7 +506,7 @@ async def test_research_allows_short_report_when_guard_disabled(tmp_path):
 async def test_research_raises_on_timeout(tmp_path):
     """A run that exceeds the timeout is killed and surfaces as a ValueError."""
     script = tmp_path / "slowclaude"
-    script.write_text("#!/bin/sh\nsleep 5\n")
+    script.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
     script.chmod(0o755)
     config = ProviderConfig(name="claude_code", api_key=None, enabled=True, timeout=1)
     provider = ClaudeCodeProvider(

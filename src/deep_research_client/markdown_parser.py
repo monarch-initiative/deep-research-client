@@ -146,7 +146,8 @@ def parse_markdown_file(file_path: Path) -> dict[str, Any]:
 
     >>> from pathlib import Path
     >>> import tempfile
-    >>> with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+    >>> with tempfile.NamedTemporaryFile(
+    ...         mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
     ...     _ = f.write("---\\nprovider: test\\nmodel: gpt-4\\n---\\n\\n## Question\\n\\nTest?\\n\\n## Output\\n\\n# Answer\\n\\nHello")
     ...     path = Path(f.name)
     >>> result = parse_markdown_file(path)
@@ -241,7 +242,8 @@ def parse_markdown_files(
 
     >>> from pathlib import Path
     >>> import tempfile
-    >>> with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+    >>> with tempfile.NamedTemporaryFile(
+    ...         mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
     ...     _ = f.write("---\\nprovider: p1\\n---\\n\\n# Doc 1")
     ...     path1 = Path(f.name)
     >>> results = parse_markdown_files(files=[path1])

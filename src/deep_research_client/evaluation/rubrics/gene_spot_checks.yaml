@@ -1,0 +1,83 @@
+# Subject-specific factual spot checks, keyed by gene symbol.
+#
+# These are the only genuinely *accuracy*-bearing checks in the intrinsic
+# scorers: each names a fact with a known correct value, so a report can be
+# wrong about it rather than merely silent. That is also why they are narrow -
+# writing them requires knowing the answer in advance.
+#
+# This file is a starting set, not a benchmark. An eval set that needs checks
+# for other subjects should ship its own rubric rather than extend this one -
+# a YAML eval set carries a `rubric:` block per task.
+#
+# `expected` is advisory where the pattern has no capturing group: there is
+# nothing to compare, so the check is presence-only and `compared` is False.
+# Most checks here are that shape deliberately - the pattern *is* the expected
+# value. Only `chromosome` and `protein_length` compare a captured value, which
+# is what `compared_count` reports. Do not add a load-time rule refusing
+# `expected` without a group without rewriting this file first.
+
+BRCA1:
+  - name: chromosome
+    # `prefix`, because a cytogenetic locus is hierarchical. Comparing a
+    # captured locus against a bare "17" marked the precise report wrong;
+    # comparing "17" against the full locus by equality marked the *ordinary*
+    # report wrong, which is the same defect mirrored. A shorter answer is less
+    # precise; a different arm or band is still wrong.
+    pattern: chromosome\s+(17(?:[pq]\d+(?:\.\d+)?)?)\b
+    expected: 17q21.31
+    match: prefix
+  - name: protein_length
+    # Thousands separators accepted, and stripped by the comparison below via
+    # the alternation: `1,863 amino acids` used to capture "863" and score the
+    # report wrong for using a comma.
+    pattern: (\d{1,3},\d{3}|\d{3,4})\s*amino\s*acid
+    expected: "1863"
+  - name: partner_protein
+    pattern: \bBARD1\b
+    expected: BARD1
+  - name: repair_pathway
+    pattern: \bhomologous\s+recombination\b
+    expected: homologous recombination
+  - name: ring_domain
+    # Non-capturing: an optional *capturing* group that does not participate
+    # gives groups() == (None,), which is truthy, and used to crash the scorer
+    # on the commonest phrasing. There is nothing to compare here anyway - the
+    # pattern is the expected value.
+    pattern: \bRING\s*(?:finger\s*)?domain\b
+    expected: RING domain
+  - name: brct_domain
+    pattern: \bBRCT\b
+    expected: BRCT
+  - name: e3_ligase
+    pattern: \bE3\s*ubiquitin\s*ligase\b
+    expected: E3 ubiquitin ligase
+  - name: rad51_interaction
+    pattern: \bRAD51\b
+    expected: RAD51
+  - name: cancer_type
+    # Non-capturing: the group captured "breast" or "ovarian" and was compared
+    # against "breast/ovarian cancer", so this check was wrong for every report
+    # ever written. Naming either cancer is the test.
+    pattern: \b(?:breast|ovarian)\s+cancer\b
+    expected: breast or ovarian cancer
+  - name: parp_inhibitor
+    pattern: \bPARP\s*inhibitor
+    expected: PARP inhibitor
+
+TP53:
+  - name: chromosome
+    pattern: chromosome\s+(17(?:[pq]\d+(?:\.\d+)?)?)\b
+    expected: 17p13.1
+    match: prefix
+  - name: protein_name
+    pattern: \bp53\b
+    expected: p53
+  - name: tumor_suppressor
+    pattern: \btumor\s+suppressor\b
+    expected: tumor suppressor
+  - name: apoptosis
+    pattern: \bapoptosis\b
+    expected: apoptosis
+  - name: cell_cycle
+    pattern: \bcell\s+cycle\b
+    expected: cell cycle

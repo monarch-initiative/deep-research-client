@@ -1084,8 +1084,7 @@ class MCQScore(BaseModel):
         was skipped when none was, and a shape `score_mcq` cannot produce.
 
         Enforced here rather than documented, because a claim that holds for
-        one producer's output is not a claim about the type, and every count
-        is independently settable.
+        one producer's output is not a claim about the type.
 
         The `answers` check is the one conditional clause: the field defaults
         to empty and a score built from counts alone carries none, which is

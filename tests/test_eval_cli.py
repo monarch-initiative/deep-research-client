@@ -441,7 +441,6 @@ def _scores_tsv_header(tmp_path: Path, score: MCQScore) -> list[str]:
     return (root / "scores.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
 
 
-
 def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
     """A tripwire on the exemption above, and on the scanner behind it.
 
@@ -468,21 +467,37 @@ def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
       test_the_docs_quote_a_line_the_command_can_...         the
           verifiability line
       test_the_documented_rubric_example_loads_and_scores    a rubric
-          example (tests/test_eval_adapters.py)
-      test_the_page_names_every_column_the_writer_emits      column NAMES,
-          not content -- it is the test the exemption lives in
+          example, EXTRACTED and RUN (tests/test_eval_adapters.py)
+      test_the_page_names_every_column_the_writer_emits      the page's
+          text, searched for column NAMES -- it is the test the exemption
+          lives in
       test_the_set_of_page_guards_is_the_one_the_exemption_argues_from
           nothing: this test, which names the page only in its fixture and
           its message
 
-    The last two read no page CONTENT and are here because the set excludes
-    nothing; see `_page_guards`. Every one of the first five but the third
-    reads a RENDERED line, built by running the
-    command and asserted against the page. The rate paragraphs are prose and
-    no command prints them, so the third is the shape a guard for them would
-    take: it splits the page on blank lines and asserts two facts co-occur in
-    ONE paragraph, after a whole-page containment check let an unrelated
-    `--template PATH | ... placeholders` row satisfy half of it.
+    Only the last never opens the file; it is in the set because
+    `_page_guards` excludes nothing.
+
+    THREE shapes, not two. Four guards run a command and assert its rendered
+    output against the page. One asserts page PROSE against itself, splitting
+    on blank lines so two facts must co-occur in ONE paragraph -- after a
+    whole-page containment check let an unrelated `--template PATH | ...
+    placeholders` row satisfy half of it. One goes the other way: it lifts a
+    YAML block out of the page and EXECUTES it through the adapter, asserting
+    on the behaviour rather than on the text.
+
+    So the exemption's argument is weaker than the two-shape version of this
+    paragraph made it. No command prints the rate paragraphs, which rules out
+    the first shape -- but the prose guard is not the only remaining model.
+    The extract-and-run guard also starts from page text, and a rate
+    paragraph stating a formula could plausibly be pinned either way.
+
+    History: this said every guard but the prose one "reads a RENDERED line,
+    built by running the command", which was false of the rubric guard, and
+    grouped the column guard with this one as reading "no page CONTENT",
+    which was false of the column guard. Both were wrong the day they were
+    written -- the tripwire below pins MEMBERSHIP, and `_page_guards`' own
+    docstring names this mapping as the first thing it cannot see.
     """
     # The scanner first, because the set below is only as good as it is and
     # it was wrong in exactly this way: it set the current test at a
@@ -493,7 +508,14 @@ def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
     # the page, which made the self-hit a duplicate.
     fixture = tmp_path / "decoys"
     fixture.mkdir()
+    # Three cases: a module-scope mention BEFORE any `def` (no enclosing
+    # test, so ignored), a test that reads nothing, and a helper between
+    # them whose mention must not be credited to the test above it. The
+    # module-scope line is deliberate rather than incidental -- `current`
+    # starts as None and that is the only thing keeping the first line out.
     (fixture / "test_decoy.py").write_text(
+        'PAGE = "docs/how-to/evaluate-providers.md"\n'
+        '\n\n'
         'def test_reads_nothing():\n'
         '    assert True\n'
         '\n\n'
@@ -571,10 +593,11 @@ def test_the_page_names_every_column_the_writer_emits(tmp_path):
     # length, so a name-presence check would add nothing for them. NOT
     # because something else pins those paragraphs -- nothing does, and
     # `test_the_set_of_page_guards_is_the_one_the_exemption_argues_from`
-    # carries that argument, its enumeration, and the tripwire that keeps
-    # the enumeration honest. Kept out of this test because it fails when a
-    # docs guard moves anywhere under `tests/`, which is not a fact about
-    # any column.
+    # carries that argument, its enumeration, and a tripwire on the
+    # enumeration's MEMBERSHIP -- not on what it says each guard reads,
+    # which is hand-written and was wrong the day it shipped. Kept out of
+    # this test because it fails when a docs guard moves anywhere under
+    # `tests/`, which is not a fact about any column.
     exempt = {"arm_id", "accuracy", "coverage", "precision"}
     missing = [c for c in emitted if c not in exempt and f"`{c}`" not in page]
     assert not missing, (

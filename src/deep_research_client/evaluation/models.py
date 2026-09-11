@@ -693,7 +693,28 @@ class MCQScore(BaseModel):
         description="Responses no option could be recovered from; a harness defect, not a provider one",
     )
     provider_errors: int = Field(default=0, description="Calls that failed outright")
-    accuracy: float = Field(..., description="correct / total")
-    coverage: float = Field(..., description="attempted / total")
-    precision: float = Field(..., description="correct / attempted")
+    accuracy: float = Field(
+        ...,
+        description=(
+            "correct / total, and 0.0 when `total` is 0 -- a float cannot say "
+            "'no questions', so read it against `total` rather than alone"
+        ),
+    )
+    coverage: float = Field(
+        ...,
+        description=(
+            "attempted / total, and 0.0 when `total` is 0, as for `accuracy`"
+        ),
+    )
+    precision: float = Field(
+        ...,
+        description=(
+            "correct / attempted, and 0.0 when `attempted` is 0 -- the "
+            "boundary a reader actually meets, since an arm that errored on "
+            "every call or abstained on every question attempts nothing and "
+            "prints `prec 0.000` beside an arm that answered. `coverage` is "
+            "what tells those apart, which is why the CLI table and "
+            "`scores.tsv` never print one without the other"
+        ),
+    )
     answers: list[MCQAnswer] = Field(default_factory=list, description="Per-task graded answers")

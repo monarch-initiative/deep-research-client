@@ -701,6 +701,19 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     (0.25, 0.5, 0.5)
     >>> score_mcq([]).accuracy
     0.0
+
+    An arm that attempted nothing -- every call errored, or every question was
+    declined -- has no precision to report, and a float has no way to say so.
+    It reads 0.000 in the same column as an arm that answered everything
+    wrongly; `coverage` is what separates them, which is why neither the CLI
+    table nor `scores.tsv` prints one without the other.
+
+    >>> errored = score_mcq([
+    ...     MCQAnswer(task_id="1", provider="p", disposition="PROVIDER_ERROR"),
+    ...     MCQAnswer(task_id="2", provider="p", disposition="PROVIDER_ERROR"),
+    ... ])
+    >>> errored.total, errored.attempted, errored.precision, errored.coverage
+    (2, 0, 0.0, 0.0)
     """
     total = len(answers)
     attempted = sum(1 for a in answers if a.disposition == ScoreDisposition.SCORED)

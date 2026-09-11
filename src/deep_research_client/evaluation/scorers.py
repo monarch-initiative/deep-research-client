@@ -214,6 +214,15 @@ def _balanced_span(text: str, start: int) -> int | None:
 
     >>> _balanced_span('{"a": [1} tail', 0)
     9
+
+    ``start`` must actually be a bracket. The sole caller only ever passes one,
+    but the guard is not dead code: without it a non-bracket start walks to the
+    first stray closer and returns a region the bracket there does not own --
+    harmless while the return value meant "closed cleanly", and wrong now that
+    it means "the damage stops here".
+
+    >>> _balanced_span('abc} tail', 0) is None
+    True
     """
     closers = {"{": "}", "[": "]"}
     if text[start] not in closers:

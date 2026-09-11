@@ -550,8 +550,9 @@ def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
     own_name = test_the_set_of_page_guards_is_the_one_the_exemption_argues_from.__name__
     exemption = inspect.getsource(test_the_page_names_every_column_the_writer_emits)
     assert own_name in exemption, (
-        "the exemption in test_the_page_names_every_column_the_writer_emits "
-        "no longer names this test, so its argument points at nothing"
+        f"the exemption in "
+        f"{test_the_page_names_every_column_the_writer_emits.__name__} no "
+        f"longer names this test, so its argument points at nothing"
     )
 
     assert _page_guards() == {

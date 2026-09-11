@@ -49,11 +49,32 @@ def _cited_names(text: str) -> list[tuple[int, str]]:
     citation two lines later was returned as `[]`.
 
     So a fragment is carried only when it could be PART OF AN IDENTIFIER.
-    `#]+")` is not, and is dropped where the line ends; `test_the_page_
-    quotes_..._note_as_` is, and continues. Giving an instrument memory
-    without a condition that ends it does not shrink its blind spot, it
-    relocates it -- from two lines to everything after the first
-    unbalanced delimiter, and in the same silent direction.
+    `#]+")` is not; `test_the_page_ / quotes_..._note_as_` is, and
+    continues. (The ellipsis in that illustration is what keeps it inert: a
+    real-looking name written here would BE a citation, in a function that
+    scans its own file.)
+
+    That is a TRADE, not a closure, and the losing side is recorded here
+    because a describer that states only the win is the shape this branch
+    keeps finding. Rejecting a fragment also resets parity, so a GENUINE
+    multi-line code span -- one whose first line ends in something that is
+    not identifier-shaped -- has its second line scanned as though it began
+    outside a citation. A real citation on that line lands at an even index
+    and is dropped. `models.py:856-857` is such a span today, and so is the
+    `wrapped` fixture's own source below; neither carries a citation after
+    the closing backtick, which is why it costs nothing yet. Measured, and
+    pinned by a fixture: a span followed by a citation on its closing line
+    returns `[]`.
+
+    Kept anyway, because the two errors are not the same size. A stray
+    backtick is common -- five modules under `src/` have one -- and
+    carrying on it costs every remaining line of the file; a multi-line
+    code span in a comment is rare and costs exactly one. Assuming "stray"
+    is the cheaper mistake.
+
+    Giving an instrument memory without a condition that ends it does not
+    shrink its blind spot, it relocates it -- from two lines to everything
+    after the first unbalanced delimiter, in the same silent direction.
     """
     names: list[tuple[int, str]] = []
     pending: str | None = None
@@ -166,6 +187,14 @@ def test_no_comment_cites_a_test_that_does_not_exist():
     - the PATH spelling is matched per line, so a path reference that wraps
       is invisible where a wrapped backticked name is not. No instance
       today; the asymmetry is here because both checks now sit in one place
+    - the line after a genuine multi-line code span is scanned at inverted
+      parity, so a citation on it is dropped. That is the losing side of
+      the bounded carry, reasoned about in `_cited_names` and pinned by a
+      fixture -- a limit, not an oversight
+    - a module named by BARE filename in prose, with no `tests/` prefix and
+      no backticks, is not resolved. Deliberate and measured: dropping the
+      prefix requirement reported two fixture filenames as dangling, and a
+      fixture cannot avoid containing the shape it tests
     """
     root = Path(__file__).parent.parent
     tests_dir = root / "tests"
@@ -240,6 +269,20 @@ def test_no_comment_cites_a_test_that_does_not_exist():
         "reported"
     )
 
+    # The recorded cost of the bounded carry, pinned so it stays a known
+    # limit: a genuine multi-line code span resets parity, and a citation
+    # on its closing line is dropped. If this ever starts finding the
+    # citation, the carry was widened and `_cited_names`' trade paragraph
+    # needs rewriting -- the fixture is here to make that loud either way.
+    after_code_span = (
+        f"# see {tick}MCQScore(total=1,\n"
+        f"# attempted=1){tick} and {tick}test_on_one_line{tick} for why\n"
+    )
+    assert _cited_names(after_code_span) == [], (
+        "the line closing a multi-line code span is no longer scanned at "
+        "inverted parity -- good, but the docstring says otherwise"
+    )
+
     # The third spelling of a module citation: a backticked FILENAME. The
     # bare stem resolves through `path.stem` and the `tests/...` path
     # through the regex below; this one matched neither, and the tree's only
@@ -253,8 +296,20 @@ def test_no_comment_cites_a_test_that_does_not_exist():
     # backtick rule cannot reach: `MatrixConfig.on_scores` cites
     # tests/test_eval_matrix.py by path. The backtick requirement exists
     # because an unquoted NAME in prose is not distinguishable from a
-    # sentence -- which is not true of a path, so paths are resolved as
-    # well, against the files that exist.
+    # sentence -- which is not true of a path.
+    #
+    # The `tests/` prefix is load-bearing, not incidental, and this was
+    # measured rather than assumed: dropping it to cover a BARE filename in
+    # prose -- `test_provider_errors.py` is cited that way inside
+    # tests/test_biomni_provider.py -- immediately reported two FIXTURE
+    # filenames as dangling: the decoy tree's module and this file's own
+    # `.py` fixture. Neither is named in backticks here, because doing so
+    # would make this comment a third false positive, which is the point it
+    # is making. A fixture that exercises the scanner has to
+    # contain the shape being scanned, and unlike the backticks it cannot
+    # be built around: the token IS the match. The directory is what tells
+    # a citation apart from test data, so an unprefixed filename stays a
+    # stated blind spot rather than a false positive factory.
     dangling: list[str] = []
     scanned = [*tests_dir.rglob("*.py"), *(root / "src").rglob("*.py")]
     for path in sorted(scanned):

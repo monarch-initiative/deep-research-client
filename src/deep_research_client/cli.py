@@ -2731,6 +2731,30 @@ def eval_fetch(
         typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
 
 
+def _load_eval_set_or_exit(adapter: str, source: str):
+    """Load an eval set, reporting bad input rather than raising through typer.
+
+    A malformed eval set, an unknown adapter and an unreachable dataset are all
+    expected outcomes of pointing these commands at something - `eval load`
+    exists to find the first before providers are paid for - and every other
+    kind of bad input in this command group prints and exits. Without this the
+    same eval set produces a clean message from one command and a stack trace
+    from the next.
+    """
+    import httpx
+
+    from .evaluation.runner import load_eval_set
+
+    try:
+        return load_eval_set(adapter, source)
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(f"Could not load the eval set: {exc}")
+        raise typer.Exit(1) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"Could not reach the dataset to load it: {exc}")
+        raise typer.Exit(1) from exc
+
+
 @eval_app.command("load")
 def eval_load(
     source: Annotated[str, typer.Argument(
@@ -2757,16 +2781,11 @@ def eval_load(
         deep-research-client eval load LitQA2 --adapter lab-bench -o litqa2.json
     """
     import json as json_mod
-    from .evaluation.runner import load_eval_set
 
-    # A malformed eval set is this command's expected output, not a crash: its
-    # whole job is to find one before providers are paid for. Its neighbours in
-    # this group report bad input the same way.
-    try:
-        eval_set = load_eval_set(adapter, source)
-    except (ValueError, FileNotFoundError) as exc:
-        typer.echo(f"Could not load the eval set: {exc}")
-        raise typer.Exit(1) from exc
+    from .evaluation.datamodel import AnswerType
+    from .evaluation.mcq import present_choices
+
+    eval_set = _load_eval_set_or_exit(adapter, source)
     tasks = eval_set.tasks or []
 
     if output:
@@ -2795,8 +2814,11 @@ def eval_load(
     for task in tasks[:limit]:
         typer.echo(f"  [{task.answer_type}] {task.id}")
         typer.echo(f"      {task.prompt[:100]}...")
-        if task.answer_spec and task.answer_spec.distractors:
-            typer.echo(f"      {len(task.answer_spec.distractors) + 1} options")
+        if task.answer_type == AnswerType.MULTIPLE_CHOICE:
+            # Rendered rather than counted from the spec: distractors alone omit
+            # the abstention and include blanks that are never presented, so the
+            # inspection command would report a number no provider ever sees.
+            typer.echo(f"      {len(present_choices(task))} options")
         if task.rubric and task.rubric.reference_claims:
             typer.echo(f"      {len(task.rubric.reference_claims)} reference claims")
     if limit is not None and len(tasks) > limit:
@@ -2871,8 +2893,6 @@ def eval_run(
     from .evaluation.matrix import (
         MatrixConfig, load_arms, parse_arm_flag, run_matrix, score_by_arm,
     )
-    from .evaluation.runner import load_eval_set
-
     if not arm and not arms_file:
         typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
         raise typer.Exit(1)
@@ -2888,7 +2908,7 @@ def eval_run(
         typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
-    eval_set = load_eval_set(adapter, source)
+    eval_set = _load_eval_set_or_exit(adapter, source)
     tasks = eval_set.tasks or []
     if task_id:
         wanted = set(task_id)
@@ -3052,9 +3072,9 @@ def eval_score(
     import json as json_mod
     from openai import AsyncOpenAI
     from .evaluation.datamodel import AnswerType
-    from .evaluation.runner import EvalConfig, load_eval_set, parse_dr_output, score_output
+    from .evaluation.runner import EvalConfig, parse_dr_output, score_output
 
-    eval_set = load_eval_set(adapter, source)
+    eval_set = _load_eval_set_or_exit(adapter, source)
     tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
     if not tasks:
         present = sorted({t.answer_type for t in (eval_set.tasks or [])})

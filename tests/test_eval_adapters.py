@@ -957,3 +957,41 @@ def test_the_validator_and_the_renderer_see_the_same_options():
     assert len(presented) == 2
     assert {c.text for c in presented} == {"Thymine", "Guanine"}
     assert mcq.degenerate_reason(spec) is None
+
+
+@pytest.mark.parametrize("spec_kwargs,expected", [
+    (dict(ideal="Unknown", distractors=["X", "Y"], abstention_option="unknown"),
+     "abstention text as the ideal"),
+    (dict(ideal="A", distractors=["X", "Cannot be determined"],
+          abstention_option="cannot be determined"),
+     "repeats its abstention text"),
+])
+def test_the_abstention_is_not_exempt_from_the_duplicate_rule(spec_kwargs, expected):
+    """The abstention is appended after everything the guard looked at.
+
+    Without comparing it too, the duplicate rule is simply routed around — and
+    the collision is not far-fetched: "Unknown" and "Cannot be determined" serve
+    both as a harness abstention and as real answers to biology questions. With
+    the ideal duplicated, naming one line scores correct and naming the other
+    records an abstention, at random.
+    """
+    assert expected in (mcq.degenerate_reason(AnswerSpec(**spec_kwargs)) or "")
+
+
+def test_an_ordinary_abstention_is_still_allowed():
+    """The rule must not refuse the normal case it exists alongside."""
+    spec = AnswerSpec(
+        ideal="Thymine", distractors=["Guanine", "Cytosine"],
+        abstention_option="Insufficient information to answer this question.",
+    )
+    assert mcq.degenerate_reason(spec) is None
+
+
+def test_a_null_distractor_does_not_become_an_option_reading_None():
+    """`str(None)` is non-blank, so it passes every guard while being no option."""
+    from deep_research_client.evaluation.adapters.lab_bench import _task_from_row
+
+    row = {"id": "z", "question": "Q?", "ideal": "A", "distractors": ["B", None]}
+    task = _task_from_row(row, "LitQA2", None)
+    assert task.answer_spec.distractors == ["B"]
+    assert "None" not in {c.text for c in mcq.present_choices(task)}

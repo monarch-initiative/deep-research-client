@@ -329,7 +329,9 @@ def _task_from_row(row: dict[str, Any], subset: str, abstention: str | None) -> 
     ['lab_bench_subset']
     """
     source_id = str(row.get("id", ""))
-    distractors = [str(d) for d in (row.get("distractors") or [])]
+    # `str(None)` would make a JSON null into an option reading "None", which is
+    # non-blank and so passes every downstream guard while being no option at all.
+    distractors = [str(d) for d in (row.get("distractors") or []) if d is not None]
 
     return EvalTask(
         # Namespaced by subset: ids are unique within a subset but the framework

@@ -150,9 +150,10 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
       matrix, which is the same defect as accuracy 1.000 and just as quiet.
     - Fewer than two distinct options. One option and a right answer is not a
       question: every arm answers it correctly.
-    - The ideal answer repeated among the distractors. Two lettered options then
-      read identically with only one flagged correct, so a provider that knows
-      the answer is marked wrong half the time, at random.
+    - The ideal answer repeated among the distractors, or shared with the
+      abstention text. Two lettered options then read identically, so a provider
+      that knows the answer is marked wrong - or recorded as declining - at
+      random, depending which of the two it happens to name.
 
     Distractors that duplicate *each other* are not refused. Both are wrong
     however the model answers, so no accuracy changes, and real benchmarks
@@ -173,6 +174,9 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
     >>> print(degenerate_reason(AnswerSpec(ideal="  ", distractors=["Guanine", "Cytosine"])))
     has no ideal answer, so its correct option would render blank and every arm would be marked wrong
+    >>> print(degenerate_reason(AnswerSpec(
+    ...     ideal="Unknown", distractors=["X", "Y"], abstention_option="unknown")))
+    uses its abstention text as the ideal answer, so the same line appears twice - naming one counts as correct and the other as declining to answer
     """
     if not (spec.ideal or "").strip():
         return (
@@ -182,6 +186,7 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
 
     ideal = _comparable(spec.ideal)
     distractors = [_comparable(d) for d in usable_distractors(spec)]
+    abstention = _comparable(spec.abstention_option or "")
 
     if ideal in distractors:
         return (
@@ -189,7 +194,24 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
             "identically and only one counts as correct"
         )
 
-    distinct = len({t for t in [ideal, *distractors] if t})
+    # The abstention is appended by present_choices after everything above, so
+    # it has to be compared too or the rule above is simply routed around. It is
+    # not a far-fetched collision: "Insufficient information", "Unknown" and
+    # "Cannot be determined" are exactly the phrases that serve as a harness
+    # abstention and as a real answer to a biology question.
+    if abstention and abstention == ideal:
+        return (
+            "uses its abstention text as the ideal answer, so the same line "
+            "appears twice - naming one counts as correct and the other as "
+            "declining to answer"
+        )
+    if abstention and abstention in distractors:
+        return (
+            "repeats its abstention text among the distractors, so declining "
+            "and choosing wrongly are the same line"
+        )
+
+    distinct = len({ideal, *distractors})
     if distinct < 2:
         return (
             f"offers {distinct} distinct option(s) besides any abstention; at "
@@ -236,12 +258,9 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
     spec = task.answer_spec
     reason = degenerate_reason(spec)
     if reason is not None:
-        # One option and a right answer is not a question: every arm answers it
-        # correctly and the run reports perfect accuracy for having asked
-        # nothing. Reachable from an authored eval set that declares
-        # multiple_choice and forgets the distractors, and from a benchmark row
-        # whose distractors field is empty or renamed - neither of which
-        # anything downstream would notice.
+        # A question that cannot be answered meaningfully still produces a
+        # number, and the number looks ordinary - see degenerate_reason for the
+        # shapes and why each one is refused.
         raise ValueError(
             f"Task {task.id!r} is multiple choice but {reason}."
         )

@@ -13,18 +13,23 @@ def _default_mode(directory: Path) -> int:
     which any thread creating a file gets it world-writable. This module is
     called several times per cell from a runner built for concurrency, so that
     window is not hypothetical, and probing avoids it entirely rather than
-    merely making it rarer.
+    merely making it rarer. Probing also picks up what umask arithmetic cannot:
+    a default ACL, or a setgid directory.
+
+    ``O_EXCL`` on a name nothing else holds, so the probe can only ever report
+    the mode of the file it just created - never a mode inherited from whatever
+    else happened to appear at that path, which matters most in the one place
+    this module writes somewhere the user may not own: a shared cache.
     """
-    fd, probe = tempfile.mkstemp(dir=str(directory), prefix=".mode-probe.")
+    fd, reserved = tempfile.mkstemp(dir=str(directory), prefix=".mode-probe.")
     os.close(fd)
+    probe = Path(f"{reserved}.check")
     try:
-        # mkstemp deliberately creates 0600, so re-create the probe the ordinary
-        # way to see what the umask actually allows.
-        os.unlink(probe)
-        os.close(os.open(probe, os.O_CREAT | os.O_WRONLY, 0o666))
-        return stat.S_IMODE(os.stat(probe).st_mode)
+        os.close(os.open(str(probe), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666))
+        return stat.S_IMODE(probe.stat().st_mode)
     finally:
-        Path(probe).unlink(missing_ok=True)
+        probe.unlink(missing_ok=True)
+        Path(reserved).unlink(missing_ok=True)
 
 
 def atomic_write(path: Path, text: str) -> None:
@@ -43,8 +48,8 @@ def atomic_write(path: Path, text: str) -> None:
     the machine that wrote it.
 
     The result carries the mode an ordinary write would have left: the
-    destination's own mode when it already exists, and the umask default
-    otherwise. Neither is what ``mkstemp`` produces - it creates 0600, and
+    destination's own mode when it already exists, and otherwise whatever a
+    plain file creation in that directory produces. Neither is what ``mkstemp`` produces - it creates 0600, and
     ``os.replace`` keeps the temporary file's mode - which would quietly make
     every file here owner-only, including a benchmark cache whose whole purpose
     is to be shared between runs and, on a cluster, between users. Preserving an
@@ -54,10 +59,11 @@ def atomic_write(path: Path, text: str) -> None:
     The default is probed rather than derived from the umask, so this never
     changes process-global state - see :func:`_default_mode`.
     """
-    try:
-        mode = stat.S_IMODE(path.stat().st_mode)
-    except FileNotFoundError:
-        mode = _default_mode(path.parent)
+    # Resolved before any try, so that a failure probing the directory is
+    # reported as itself rather than chained onto an unrelated FileNotFoundError
+    # from the stat above.
+    existing = path.stat().st_mode if path.exists() else None
+    mode = stat.S_IMODE(existing) if existing is not None else _default_mode(path.parent)
 
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
     try:

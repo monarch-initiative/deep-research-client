@@ -185,3 +185,34 @@ def test_eval_score_points_multiple_choice_sets_at_the_right_command(tmp_path):
     result = runner.invoke(app, ["eval", "score", str(report), "--source", str(path)])
     assert result.exit_code == 1
     assert "eval run --grade" in result.stdout
+
+
+@pytest.mark.parametrize("command", ["run", "score"])
+def test_every_command_reports_a_malformed_eval_set_the_same_way(tmp_path, command):
+    """One command printing a message while the next tracebacks is the defect.
+
+    `eval run` is the one the user reaches with a wallet open, and it already
+    reports a bad `--arm` with a message a dozen lines earlier.
+    """
+    path = _write(tmp_path / "bad.yaml",
+                  "tasks:\n  - id: q\n    prompt: Which?\n"
+                  "    answer_type: MULTIPLE_CHOICE\n    ideal: only\n")
+    args = (
+        ["eval", "run", str(path), "--arm", "mock", "--output-dir", str(tmp_path / "r")]
+        if command == "run"
+        else ["eval", "score", str(_write(tmp_path / "rep.md", "x")), "--source", str(path)]
+    )
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1
+    assert "Could not load the eval set" in result.stdout
+
+
+def test_eval_load_reports_the_number_of_options_actually_asked(tmp_path):
+    """Counting distractors omits the abstention and includes blanks never shown."""
+    path = _write(tmp_path / "mcq.yaml",
+                  "tasks:\n  - id: m1\n    prompt: Which base?\n    ideal: Thymine\n"
+                  "    distractors: [Guanine, Cytosine]\n"
+                  "    abstention_option: Insufficient information.\n")
+    result = runner.invoke(app, ["eval", "load", str(path)])
+    assert result.exit_code == 0
+    assert "4 options" in result.stdout

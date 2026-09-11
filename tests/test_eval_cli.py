@@ -404,8 +404,15 @@ def test_the_page_names_every_column_the_writer_emits(tmp_path):
     page = (Path(__file__).parent.parent
             / "docs" / "how-to" / "evaluate-providers.md").read_text(encoding="utf-8")
 
-    # `arm_id` identifies the row; the three rates are documented by the
-    # paragraphs above, which the sibling guards pin sentence by sentence.
+    # `arm_id` identifies the row; the three rates the page discusses at
+    # length, so a name-presence check would add nothing for them. NOT
+    # because something else pins those paragraphs -- nothing does. The five
+    # page guards in this tree read the two printed notes, the rendered
+    # `--grade` row, the verifiability line and a rubric example; none reads
+    # the paragraphs that define what the rates are over, and a wrong
+    # sentence about `precision` lived in exactly those until it was fixed by
+    # hand. An exemption list is a describer too: this one says what it does
+    # not cover rather than implying someone else does.
     exempt = {"arm_id", "accuracy", "coverage", "precision"}
     missing = [c for c in emitted if c not in exempt and f"`{c}`" not in page]
     assert not missing, (

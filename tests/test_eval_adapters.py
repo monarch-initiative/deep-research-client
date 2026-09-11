@@ -445,8 +445,30 @@ def test_a_score_whose_counts_do_not_account_for_total_is_rejected():
                     unusable=1).skipped == 0
 
 
+def test_a_count_below_zero_is_rejected():
+    """Every accounting check passes on counts that cancel out.
+
+    `total=2, attempted=-1, abstained=3, unusable=-1, correct=0` accounts for
+    `total` (-1 + 3 + 0 + 0 + 0 == 2), keeps `unusable <= attempted` and
+    `correct <= judged`, and prints `coverage -0.5`. The partition checks
+    constrain the counts against each OTHER; nothing constrained them against
+    zero, which is the same make-it-unconstructible argument one step down.
+    """
+    with pytest.raises(ValidationError, match="greater than or equal to 0"):
+        MCQScore(total=2, attempted=-1, abstained=3, unusable=-1, correct=0)
+
+    # Each count on its own, so a missing bound on one is not hidden by
+    # another's. `total` needs a companion that keeps the accounting valid.
+    for field in ("attempted", "correct", "abstained", "extraction_failures",
+                  "provider_errors", "skipped", "unusable"):
+        with pytest.raises(ValidationError, match="greater than or equal to 0"):
+            MCQScore(**{"total": 0, field: -1})
+    with pytest.raises(ValidationError, match="greater than or equal to 0"):
+        MCQScore(total=-1, attempted=0)
+
+
 def test_the_rates_are_derived_and_cannot_contradict_the_counts():
-    """Absent means "nothing was judged", so it cannot also mean "nobody said".
+    """Derived from the counts, so no row can disagree with itself.
 
     All three rates are pure functions of the counts, and all three were
     settable fields -- a second source of truth with nothing keeping the two
@@ -471,8 +493,12 @@ def test_the_rates_are_derived_and_cannot_contradict_the_counts():
     with pytest.raises(ValidationError, match="coverage"):
         MCQScore(total=1, attempted=0, correct=0, abstained=1, coverage=0.9)
 
-    # Absent where it means something, and present in `model_dump()` so it
-    # still reaches `--output` and `scores.tsv`.
+    # Absent where it means something, and present in `model_dump()` -- i.e.
+    # serialised rather than private, which is what a consumer reading a
+    # dumped score sees. NOT because either in-tree surface depends on it:
+    # `write_scores_tsv` reads the attributes, and no `--output` carries an
+    # `MCQScore` (`eval run` has `--output-dir`; `eval score --output` dumps
+    # a `ScoringResult`).
     empty = MCQScore(total=1, attempted=0, correct=0, abstained=1)
     assert empty.precision is None
     assert empty.model_dump()["precision"] is None

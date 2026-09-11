@@ -860,9 +860,12 @@ class MCQScore(BaseModel):
     # accepting a stale rate is the failure this pair exists to prevent.
     model_config = ConfigDict(extra="forbid")
 
-    total: int = Field(..., description="Questions in the eval set")
+    total: int = Field(
+        ..., ge=0, description="Questions in the eval set"
+    )
     attempted: int = Field(
         ...,
+        ge=0,
         description=(
             "Questions the provider chose an option for. Coverage's numerator, "
             "and NOT precision's denominator -- those differ by `unusable`"
@@ -870,6 +873,7 @@ class MCQScore(BaseModel):
     )
     correct: int = Field(
         ...,
+        ge=0,
         description=(
             "Questions answered correctly AND scored. The second half is the "
             "invariant `score_mcq`'s numerator filter introduced: a record "
@@ -883,14 +887,20 @@ class MCQScore(BaseModel):
             "that matters, because it is what `precision` divides by"
         ),
     )
-    abstained: int = Field(default=0, description="Questions the provider declined")
+    abstained: int = Field(
+        default=0, ge=0, description="Questions the provider declined"
+    )
     extraction_failures: int = Field(
         default=0,
+        ge=0,
         description="Responses no option could be recovered from; a harness defect, not a provider one",
     )
-    provider_errors: int = Field(default=0, description="Calls that failed outright")
+    provider_errors: int = Field(
+        default=0, ge=0, description="Calls that failed outright"
+    )
     skipped: int = Field(
         default=0,
+        ge=0,
         description=(
             "Pairs that were not run -- typically because a filter "
             "excluded them, which is how `ScoreDisposition.SKIPPED` states "
@@ -909,6 +919,7 @@ class MCQScore(BaseModel):
     )
     unusable: int = Field(
         default=0,
+        ge=0,
         description=(
             "Attempted questions whose correctness was never recorded, which "
             "only a hand-edited or older-format `cell.json` produces. They are "
@@ -949,8 +960,17 @@ class MCQScore(BaseModel):
         does NOT say why `precision` is absent: an arm can reach a `None`
         precision at any coverage, so 0.0 here means nothing was attempted and
         says nothing about the other way in. Over every question an option was
-        chosen for, including the ones `unusable` counts -- those cost
-        precision, not coverage.
+        chosen for, INCLUDING the ones `unusable` counts: an option was
+        chosen on those too, so they belong here. They are left out of
+        precision's denominator rather than counted against it, and they
+        lower accuracy.
+
+        History: this said those records "cost precision, not coverage",
+        which is backwards -- leaving the denominator raises the rate. It
+        survived the sweep that corrected the same claim on the how-to
+        because 4654ff1 MOVED this text verbatim from a `Field(description=)`
+        into a property docstring, and because the phrase wrapped across two
+        lines, so a line-based `grep "cost precision"` matched nothing.
         """
         return self.attempted / self.total if self.total else 0.0
 
@@ -1057,9 +1077,11 @@ class MCQScore(BaseModel):
                 f"correct={self.correct} exceeds judged={judged} "
                 f"(attempted={self.attempted} - unusable={self.unusable}): a "
                 f"question can only be right if an option was chosen for it "
-                f"AND its correctness was recorded, and those two sets are "
-                f"disjoint in `score_mcq`. Checked against `judged` rather "
-                f"than `attempted` because `precision` divides by `judged`: "
+                f"AND its correctness was recorded. `score_mcq` counts "
+                f"`correct` where that record says True and `unusable` where "
+                f"it says nothing, so those two are disjoint and both sit "
+                f"inside `attempted`. Checked against `judged` rather than "
+                f"`attempted` because `precision` divides by `judged`: "
                 f"`correct <= attempted` alone admits a precision above 1"
             )
         return self

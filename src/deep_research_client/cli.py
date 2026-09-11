@@ -3002,15 +3002,14 @@ def eval_run(
     # is about; after the eval set loads, so it cannot advise on a run that
     # then refuses to start; and before the dry-run return, so it still
     # arrives before any provider call. It must be up front at all because
-    # afterwards the answer is not even
-    # stable. Two arms with the same provider, model and params share a
-    # response-cache key, so whether the second replays the first depends on
-    # scheduling: at -j 1 it does, and at the default concurrency both usually
-    # reach the provider before either writes the cache. The number of
-    # independent samples behind a reported spread therefore varies between
-    # identical invocations -- which is the very thing a duplicate-arm run
-    # exists to measure. Duplicate arm *ids* are refused above; this is the
-    # duplicate that matters to the number.
+    # afterwards the answer is not even stable: two arms with the same
+    # provider, model and params share a response-cache key, so whether the
+    # second replays the first depends on scheduling: at -j 1 it does, and at
+    # the default concurrency both usually reach the provider before either
+    # writes the cache. The number of independent samples behind a reported
+    # spread therefore varies between identical invocations -- which is the
+    # very thing a duplicate-arm run exists to measure. Duplicate arm *ids* are
+    # refused above; this is the duplicate that matters to the number.
     def _config_of(a: "ArmSpec") -> tuple:
         return (a.provider, a.model,
                 tuple(sorted((p.key, p.value) for p in (a.params or []))))
@@ -3085,7 +3084,7 @@ def eval_run(
     failed = [c for c in cells if c.status == CellStatus.FAILED]
     typer.echo(f"\n{len(cells) - len(failed)}/{len(cells)} cells completed")
     if failed:
-        typer.echo(f"{len(failed)} failed:")
+        typer.echo("Failed:")
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
 

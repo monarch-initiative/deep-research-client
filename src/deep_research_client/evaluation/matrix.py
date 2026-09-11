@@ -577,7 +577,10 @@ async def run_matrix(
     # stating the reverse of what happened, quietly, which is the exact failure
     # this field was added to remove. Fail fast instead.
     cache_enabled = bool(client.cache_config.enabled)
-    cache_dir = client.cache_config.directory
+    # Only when the cache was actually consulted: a directory recorded beside
+    # `cache_enabled: false` names somewhere the run never read, which is the
+    # same family as the field this one was added to close.
+    cache_dir = client.cache_config.directory if cache_enabled else None
     layout = RunLayout(Path(config.output_dir))
     layout.root.mkdir(parents=True, exist_ok=True)
 

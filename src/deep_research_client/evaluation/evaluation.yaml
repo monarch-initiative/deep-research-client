@@ -538,10 +538,12 @@ classes:
         range: boolean
       cache_dir:
         description: >-
-          The response cache directory the run used, when it is not the
-          client's default. A run whose replays came from a per-project cache
-          has a different provenance from one that used the shared default, and
-          `cache_enabled` alone does not say which.
+          The response cache directory the run read from. A run whose replays
+          came from a per-project cache has a different provenance from one
+          that used the shared default, and `cache_enabled` alone does not say
+          which. Absent when the cache was not consulted at all, and absent
+          when the client's default location was used - read it together with
+          `cache_enabled`, which distinguishes those two.
       cache_enabled:
         description: >-
           Whether the response cache was consulted. Recoverable per cell from

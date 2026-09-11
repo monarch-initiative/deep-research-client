@@ -8,6 +8,7 @@ exercised end to end without reaching a network.
 import asyncio
 import json
 import os
+import pathlib
 import re
 from pathlib import Path
 
@@ -99,7 +100,7 @@ def test_load_arms_round_trips_provider_params(tmp_path):
         "  - id: agent-noweb\n    provider: claude_code\n"
         "    description: Closed-book control\n"
         "    params:\n      allowed_tools: []\n"
-    )
+    , encoding="utf-8")
     arms = load_arms(path)
     assert [a.id for a in arms] == ["agent", "agent-noweb"]
     assert _arm_params(arms[0]) == {}
@@ -109,7 +110,7 @@ def test_load_arms_round_trips_provider_params(tmp_path):
 
 def test_load_arms_requires_a_provider(tmp_path):
     path = tmp_path / "arms.yaml"
-    path.write_text("arms:\n  - id: nameless\n")
+    path.write_text("arms:\n  - id: nameless\n", encoding="utf-8")
     with pytest.raises(ValueError, match="no 'provider'"):
         load_arms(path)
 
@@ -262,7 +263,7 @@ def test_resume_skips_completed_cells(tmp_path, mock_client, report_eval_set):
     ))
 
     marker = run_dir / "t1" / "a1" / "output.md"
-    marker.write_text("EDITED BY TEST")
+    marker.write_text("EDITED BY TEST", encoding="utf-8")
 
     asyncio.run(run_matrix(
         report_eval_set, [ArmSpec(id="a1", provider="mock")], config, client=mock_client,
@@ -591,7 +592,7 @@ def test_grading_a_resumed_run_does_not_call_the_provider_again(tmp_path, mock_c
         eval_set, [arm], MatrixConfig(output_dir=run_dir), client=mock_client,
     ))
     marker = "SENTINEL RESPONSE\n\nAnswer: A"
-    (run_dir / "q0" / "always-a" / "output.md").write_text(marker)
+    (run_dir / "q0" / "always-a" / "output.md").write_text(marker, encoding="utf-8")
 
     asyncio.run(run_matrix(
         eval_set, [arm], MatrixConfig(output_dir=run_dir, grade=True), client=mock_client,
@@ -615,7 +616,7 @@ def test_resume_reruns_a_cell_whose_question_changed(tmp_path, mock_client):
         EvalSet(name="v1", tasks=[task]), [ArmSpec(id="a1", provider="mock")],
         MatrixConfig(output_dir=run_dir), client=mock_client,
     ))
-    (run_dir / "m1" / "a1" / "output.md").write_text("STALE")
+    (run_dir / "m1" / "a1" / "output.md").write_text("STALE", encoding="utf-8")
 
     edited = EvalTask(
         id="m1", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
@@ -706,7 +707,7 @@ def test_written_files_get_the_mode_an_ordinary_write_would_give(
     ))
 
     reference = run_dir / "reference.txt"
-    reference.write_text("written the ordinary way")
+    reference.write_text("written the ordinary way", encoding="utf-8")
     expected = stat.S_IMODE(reference.stat().st_mode)
 
     for written in (run_dir / "results.tsv", run_dir / "manifest.json"):
@@ -721,7 +722,7 @@ def test_atomic_write_preserves_an_existing_files_mode(tmp_path):
     from deep_research_client.evaluation._fs import atomic_write
 
     path = tmp_path / "cache.json"
-    path.write_text("{}")
+    path.write_text("{}", encoding="utf-8")
     path.chmod(0o664)
 
     atomic_write(path, '{"refreshed": true}')
@@ -864,6 +865,10 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     import subprocess
     import sys
 
+    # The child keeps its non-ASCII as \\u escapes, so the script file is itself
+    # pure ASCII: an interpreter configured for ASCII must be able to read it.
+    # Simplifying those to literals would make the script unreadable by the very
+    # interpreter it exists to configure.
     script = tmp_path / "resume_under_ascii.py"
     script.write_text(
         "import asyncio, codecs, os, sys, locale\n"
@@ -871,7 +876,14 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
         # failure. Normalised through codecs.lookup because the same encoding is
         # spelt ANSI_X3.4-1968 on glibc and US-ASCII on macOS, and on Windows the
         # coercion variables do not apply at all.
-        "_enc = codecs.lookup(locale.getpreferredencoding(False)).name\n"
+        # The lookup itself can raise: getpreferredencoding can return '' or
+        # an alias no codec is registered for on some libc/locale pairs. That
+        # is "could not get an ASCII interpreter" too, not the defect.
+        "try:\n"
+        "    _enc = codecs.lookup(locale.getpreferredencoding(False)).name\n"
+        "except LookupError:\n"
+        "    print('unregistered')\n"
+        "    sys.exit(77)\n"
         "if _enc != 'ascii':\n"
         "    print(_enc)\n"
         "    sys.exit(77)\n"
@@ -922,20 +934,35 @@ def test_a_resumed_run_survives_non_ascii_under_an_ascii_locale(tmp_path):
     assert "OK" in done.stdout
 
 
-def _encoding_offenders(root) -> list[str]:
-    """Text reads and writes in `root` that do not name an encoding.
+#: Where a positional ``encoding`` sits, and where ``mode`` sits, per call form.
+#: Positions differ per function, which is the whole point: treating *any*
+#: positional as an encoding is right for ``read_text(encoding, ...)`` and wrong
+#: for ``write_text(data, encoding, ...)``, where the first positional is the
+#: data -- so that shortcut exempted every bare write and switched off the half
+#: of this check its own name promises.
+_TEXT_IO_SIGNATURES = {
+    # name, is_method -> (encoding position, mode position or None)
+    ("read_text", True): (0, None),
+    ("write_text", True): (1, None),
+    ("open", True): (2, 0),       # Path.open(mode, buffering, encoding, ...)
+    ("open", False): (3, 1),      # open(file, mode, buffering, encoding, ...)
+}
 
-    Covers `read_text`/`write_text` and `open`, in both its builtin and
-    `path.open` forms. `open` is here because it is the form the offenders were
-    actually written in -- `with open(yaml_path) as f` in `adapters/monarch.py`
-    -- and a check that missed it would leave its own blind spot exactly where
-    the defect had already appeared once.
+
+def _encoding_offenders(root: pathlib.Path) -> list[str]:
+    """Text reads and writes under `root` that do not name an encoding.
+
+    Covers `read_text`, `write_text` and `open`, the last in both its builtin
+    and `path.open` forms. `open` is here because it is the form the offenders
+    were actually written in -- `with open(yaml_path) as f` in
+    `adapters/monarch.py` -- and a check that missed it would leave its blind
+    spot exactly where the defect had already appeared once.
 
     Binary modes are skipped, since encoding is meaningless there, as are
-    `os.open` (an int fd) and `zipfile` members. A positional encoding
-    (`read_text("utf-8")`, legal since the signature is
-    `read_text(encoding=None, ...)`) counts as naming one, so a correct call is
-    not reported.
+    `os.open` (which takes a file descriptor) and `zipfile` members (bytes).
+    Those two are recognised by the name they are called on, so an unusual
+    spelling is reported rather than skipped -- a false positive that someone
+    reads, not a false negative nobody sees.
     """
     import ast
 
@@ -948,32 +975,31 @@ def _encoding_offenders(root) -> list[str]:
 
             func = node.func
             if isinstance(func, ast.Attribute):
-                name = func.attr
-                # os.open takes a file descriptor; zf.open yields bytes.
-                owner = getattr(func.value, "id", "")
-                if owner in {"os", "zf", "zipfile"}:
+                name, is_method = func.attr, True
+                if getattr(func.value, "id", "") in {"os", "zf", "zipfile"}:
                     continue
             elif isinstance(func, ast.Name):
-                name = func.id
+                name, is_method = func.id, False
             else:
                 continue
 
-            if name not in {"read_text", "write_text", "open"}:
+            signature = _TEXT_IO_SIGNATURES.get((name, is_method))
+            if signature is None:
                 continue
+            encoding_at, mode_at = signature
+
             if any(k.arg == "encoding" for k in node.keywords):
                 continue
+            if len(node.args) > encoding_at:
+                continue  # a positional encoding, in the position it belongs
 
-            if name == "open":
-                # Mode is the second positional or the `mode` keyword.
+            if mode_at is not None:
                 mode = next(
                     (k.value for k in node.keywords if k.arg == "mode"),
-                    node.args[1] if len(node.args) > 1 else None,
+                    node.args[mode_at] if len(node.args) > mode_at else None,
                 )
                 if isinstance(mode, ast.Constant) and "b" in str(mode.value):
                     continue
-            elif node.args:
-                # A positional encoding is still naming one.
-                continue
 
             offenders.append(f"{path.relative_to(root)}:{node.lineno} {name}")
     return offenders
@@ -1042,6 +1068,17 @@ def test_the_manifest_records_the_cache_state_the_client_actually_had(
         MatrixConfig(output_dir=tmp_path / "run"), client=client,
     ))
     assert manifest.cache_enabled is False
-    # Which cache, too: a run whose replays came from a per-project directory
-    # has a different provenance from one that used the shared default.
-    assert manifest.cache_dir == str(tmp_path / "cache")
+    # And no directory, because none was read. Recording one beside
+    # `cache_enabled: false` would name somewhere this run never consulted --
+    # the same family as the field it was added to close.
+    assert manifest.cache_dir is None
+
+    # With the cache on, the directory is provenance worth having: replays from
+    # a per-project cache are a different history from the shared default.
+    on = _cache_client(tmp_path, monkeypatch, enabled=True)
+    used = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=tmp_path / "run2"), client=on,
+    ))
+    assert used.cache_enabled is True
+    assert used.cache_dir == str(tmp_path / "cache")

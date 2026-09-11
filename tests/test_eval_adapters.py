@@ -108,14 +108,14 @@ def test_duplicate_task_ids_are_rejected(tmp_path):
         "tasks:\n"
         "  - id: same\n    prompt: first\n"
         "  - id: same\n    prompt: second\n"
-    )
+    , encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate task ids: same"):
         get_adapter("yaml").load(path)
 
 
 def test_declared_mcq_without_ideal_is_rejected(tmp_path):
     path = tmp_path / "bad.yaml"
-    path.write_text("tasks:\n  - id: x\n    prompt: p\n    answer_type: MULTIPLE_CHOICE\n")
+    path.write_text("tasks:\n  - id: x\n    prompt: p\n    answer_type: MULTIPLE_CHOICE\n", encoding="utf-8")
     with pytest.raises(ValueError, match="no 'ideal' answer"):
         get_adapter("yaml").load(path)
 
@@ -655,7 +655,7 @@ def test_lab_bench_uses_a_cached_revision_when_it_cannot_reach_the_api(monkeypat
         {"id": str(i), "question": "Q?", "ideal": "A", "distractors": ["B"]}
         for i in range(lab_bench.SUBSETS["LitQA2"][0])
     ]
-    (cached / "LitQA2.json").write_text(json_mod.dumps(rows))
+    (cached / "LitQA2.json").write_text(json_mod.dumps(rows), encoding="utf-8")
 
     def unreachable(client=None):
         raise httpx.ConnectError("no network")
@@ -674,7 +674,7 @@ def test_lab_bench_reports_a_truncated_cache(monkeypatch, tmp_path):
 
     cached = tmp_path / "eval_datasets" / "lab-bench" / "somesha"
     cached.mkdir(parents=True)
-    (cached / "LitQA2.json").write_text(json_mod.dumps([{"id": "1"}]))
+    (cached / "LitQA2.json").write_text(json_mod.dumps([{"id": "1"}]), encoding="utf-8")
 
     monkeypatch.setattr(lab_bench, "resolve_revision", lambda client=None: "somesha")
     with pytest.raises(ValueError, match="cached copy of"):
@@ -702,7 +702,7 @@ def test_an_adapter_actually_applies_the_uniqueness_guard(tmp_path):
         "tasks:\n"
         "  - id: same\n    prompt: first\n"
         "  - id: same\n    prompt: second\n"
-    )
+    , encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate task ids: same"):
         get_adapter("yaml").load(path)
 
@@ -805,8 +805,8 @@ def _split_cache(tmp_path):
     root = tmp_path / "eval_datasets" / "lab-bench"
     (root / "rev1").mkdir(parents=True)
     (root / "rev2").mkdir(parents=True)
-    (root / "rev1" / "LitQA2.json").write_text(json_mod.dumps([]))
-    (root / "rev2" / "SuppQA.json").write_text(json_mod.dumps([]))
+    (root / "rev1" / "LitQA2.json").write_text(json_mod.dumps([]), encoding="utf-8")
+    (root / "rev2" / "SuppQA.json").write_text(json_mod.dumps([]), encoding="utf-8")
 
 
 def test_newest_cached_revision_needs_every_subset_under_one_revision(tmp_path):
@@ -903,7 +903,7 @@ def test_a_degenerate_set_is_refused_when_it_loads(tmp_path, body, expected):
     and the generic count must outrank the abstention checks.
     """
     path = tmp_path / "degenerate.yaml"
-    path.write_text(f"tasks:\n  - id: q1\n    prompt: Which base?\n{body}")
+    path.write_text(f"tasks:\n  - id: q1\n    prompt: Which base?\n{body}", encoding="utf-8")
     with pytest.raises(ValueError, match=expected):
         get_adapter("yaml").load(path)
 
@@ -919,7 +919,7 @@ def test_distractors_duplicating_each_other_are_allowed(tmp_path):
     path.write_text(
         "tasks:\n  - id: q1\n    prompt: Which base?\n"
         "    ideal: Thymine\n    distractors: [Guanine, Guanine]\n"
-    )
+    , encoding="utf-8")
     eval_set = get_adapter("yaml").load(path)
     assert len(mcq.present_choices(eval_set.tasks[0])) == 3
 
@@ -1161,7 +1161,7 @@ def test_a_truncated_cache_file_names_itself_and_the_remedy(tmp_path, monkeypatc
     cached = tmp_path / "eval_datasets" / "lab-bench" / revision
     cached.mkdir(parents=True)
     truncated = cached / "LitQA2.json"
-    truncated.write_text('[{"id": "q1", "question": "Wh')
+    truncated.write_text('[{"id": "q1", "question": "Wh', encoding="utf-8")
 
     monkeypatch.setattr(lab_bench, "resolve_revision", lambda client=None: revision)
 

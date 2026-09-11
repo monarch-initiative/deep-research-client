@@ -23,6 +23,7 @@ from deep_research_client.artifact_selection import (
     is_under_normalized_directory,
     checked_path_collection,
     normalize_member_path,
+    require_name_collection,
     split_name_list,
 )
 from deep_research_client.models import ProviderConfig
@@ -1368,3 +1369,32 @@ def test_the_deny_collection_is_handed_back_rather_than_rebuilt():
     deny = frozenset({"analysis/report.md"})
 
     assert checked_path_collection(deny, "provider_deny") is deny
+
+
+def test_the_shared_shape_rule_refuses_a_bare_string_too():
+    """str is a Sequence, so it is a Collection, so it passed the check.
+
+    Both callers handle the string before delegating, so nothing was broken
+    — but this helper is public and its docstring invites a third caller,
+    and Collection[str] is satisfied by str, so a typed one would get no
+    signal from any layer either.
+    """
+    with pytest.raises(TypeError, match="not a single string"):
+        require_name_collection("*.json")
+
+
+@pytest.mark.parametrize("make_value,expected_message", REFUSED_NAME_SHAPES)
+def test_the_shared_shape_rule_refuses_what_its_callers_refuse(
+    make_value, expected_message
+):
+    """The fifth door on the table, and the one the other four delegate to."""
+    with pytest.raises(TypeError, match=expected_message):
+        require_name_collection(make_value())
+
+
+def test_both_callers_still_handle_a_string_themselves():
+    """The guard must not reach through them: they disagree on purpose."""
+    assert split_name_list("a,b") == ("a", "b")
+
+    with pytest.raises(TypeError, match="collection of paths"):
+        checked_path_collection("a/b.md", "provider_deny")

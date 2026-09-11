@@ -149,6 +149,16 @@ def require_name_collection(value: object) -> Collection[str]:
     The value is returned rather than copied, so a caller checking the same
     collection once per bundle member rebuilds nothing.
 
+    A bare string is refused even though both callers handle it before
+    delegating, because ``str`` is a ``Sequence`` and therefore a
+    ``Collection``: it would pass the check below and be handed back to be
+    iterated as characters, which is the one shape every other door in this
+    module refuses. ``Collection[str]`` is satisfied by ``str`` as well, so a
+    typed third caller would get no signal from any layer. What a string
+    *means* here is genuinely caller-specific — the two callers disagree on
+    purpose, one splitting it and one refusing it — so this helper declines
+    to guess rather than picking one for them.
+
     Args:
         value: The value to check.
 
@@ -156,14 +166,22 @@ def require_name_collection(value: object) -> Collection[str]:
         ``value`` itself, narrowed to a collection.
 
     Raises:
-        TypeError: For a mapping, ``bytes``, a one-shot iterator, or anything
-            that is not a collection. :func:`split_name_list` explains why
-            each is refused rather than read as best it can be.
+        TypeError: For a bare string, a mapping, ``bytes``, a one-shot
+            iterator, or anything that is not a collection.
+            :func:`split_name_list` explains why each of the latter four is
+            refused rather than read as best it can be.
 
     Example:
         >>> require_name_collection(["a", "b"])
         ['a', 'b']
     """
+    if isinstance(value, str):
+        raise TypeError(
+            "expected a collection of names, not a single string; iterating "
+            "one yields characters. What a string means here is the caller's "
+            "to decide - split_name_list splits it, checked_path_collection "
+            f"refuses it - so pass [{value!r}] or call one of those."
+        )
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
@@ -730,7 +748,9 @@ class ArtifactSelectionPolicy:
 
         Raises:
             TypeError: If ``provider_deny`` is a single string, or anything
-                :func:`split_name_list` refuses. The string case is the one
+                :func:`require_name_collection` refuses — this parameter no
+                longer goes through :func:`split_name_list`, so the two rules
+                can diverge. The string case is the one
                 that used to pass silently, denying nothing; the one-shot
                 iterator is refused because this argument is reused across
                 every member of a bundle, so a generator would fire for the

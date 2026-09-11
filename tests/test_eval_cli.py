@@ -239,6 +239,53 @@ def test_a_dimension_on_a_dead_scale_is_not_printed_as_a_number(tmp_path, monkey
     )
 
 
+def test_the_grade_table_discloses_records_it_could_not_use(tmp_path, monkeypatch):
+    """A harness gap that moves a rate says so where the rate is printed.
+
+    `EXTRACTION_FAILED` gets a column AND a note under the table. The unusable
+    record had only a `logger.warning`, which goes to stderr while the table
+    goes to stdout -- so a user who redirects the table, or reads `scores.tsv`
+    later, has nothing.
+
+    In THIS file rather than beside the matrix tests: `eval run` builds its own
+    client inside `run_matrix`, so a CLI-driven test cannot be handed a
+    cache-disabled one, and only this file's autouse fixture moves HOME away
+    from the developer's real `~/.deep_research_cache`.
+
+    `score_by_arm` is stubbed, so this covers the CLI branch; the arithmetic
+    that produces a non-zero `unusable` is covered at library level in
+    `test_eval_matrix`.
+    """
+    from deep_research_client.evaluation import matrix as matrix_mod
+    from deep_research_client.evaluation.models import MCQScore
+
+    def one_unusable(eval_set, cells):
+        return {"decliner": MCQScore(
+            total=1, attempted=1, correct=0, unusable=1,
+            accuracy=0.0, coverage=1.0, precision=None,
+        )}
+
+    monkeypatch.setattr(matrix_mod, "score_by_arm", one_unusable)
+    path = _write(tmp_path / "mcq.yaml",
+                  "tasks:\n  - id: m1\n    prompt: Which base pairs with adenine?\n"
+                  "    ideal: Thymine\n    distractors: [Guanine]\n")
+
+    out = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--grade",
+        "--output-dir", str(tmp_path / "run")])
+
+    assert out.exit_code == 0, out.stdout
+    assert "no correctness" in out.stdout, (
+        "the table that printed the rate must say what was left out of it"
+    )
+    assert "unusable column" in out.stdout
+    # And it names accuracy, which is the column those records actually cost:
+    # they are in `total` and cannot be in `correct`, so they lower it exactly
+    # as a wrong answer would. The note used to explain only the two columns
+    # they did not hurt.
+    assert "accuracy" in out.stdout.split("no correctness")[1][:400]
+
+
 def test_an_arm_that_attempted_nothing_shows_no_precision(tmp_path, monkeypatch):
     """The eighth rate, and the one the enumeration reached but did not gate.
 

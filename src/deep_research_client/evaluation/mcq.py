@@ -694,7 +694,10 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
     rather than deducted silently from a rate.
 
     Args:
-        answers: Graded answers, one per task.
+        answers: Graded answers, one per task, and all from ONE arm -- the
+            warning below attributes every unusable record to
+            `unusable[0].provider`. `score_by_arm`, the only caller in tree,
+            builds one list per arm.
 
     Returns:
         The aggregate score.
@@ -770,7 +773,8 @@ def score_mcq(answers: list[MCQAnswer]) -> MCQScore:
         # failure list, so a 199-question benchmark does not put every id on
         # one line.
         ids = sorted(a.task_id for a in unusable)
-        shown = ", ".join(ids[:5]) + (f", and {len(ids) - 5} more" if len(ids) > 5 else "")
+        more = f", and {len(ids) - 5} more" if len(ids) > 5 else ""
+        shown = ", ".join(ids[:5]) + more
         logger.warning(
             "arm %s: %d scored answer(s) carry no recorded correctness, so "
             "they are in `attempted` and out of `precision`: %s",

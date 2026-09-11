@@ -3264,9 +3264,10 @@ def eval_run(
         )
     if scores:
         typer.echo("\nMultiple-choice scores:\n")
-        # One width for the header and both precision branches. It was written
-        # in three places that had to agree (and a fourth, hand-aligned, in the
-        # how-to), which is how a six-space literal came to sit beside a `:>7`.
+        # One width for the five places that format a rate column -- the three
+        # headers and both precision branches -- where it was written out each
+        # time, which is how a six-space literal came to sit beside a `:>7`.
+        # The how-to's hand-aligned table is a sixth, pinned by a test.
         w = _RATE_WIDTH
         typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
         for arm_id, score in sorted(scores.items()):
@@ -3282,8 +3283,9 @@ def eval_run(
             # disambiguator next to a rate, which is what the citation lines
             # stopped doing, and there it was in the same sentence rather than
             # an adjacent column.
-            # `:>7` on both branches: the width is the header's, and six
-            # literal spaces made it a fourth place that has to agree.
+            # Both branches format to the shared width above. Six literal
+            # spaces used to sit here beside a `:>7`, which is how a fourth
+            # place that had to agree came about.
             prec = (f"{'—':>{w}}" if score.precision is None
                     else f"{score.precision:>{w}.3f}")
             typer.echo(
@@ -3297,16 +3299,20 @@ def eval_run(
             # `logger.warning`, which goes to stderr while the table goes to
             # stdout.
             typer.echo(
-                "\n  Some answers were recorded with no correctness, so they "
-                "count toward coverage but are left out of precision; see the "
-                "unusable column in scores.tsv. Only a hand-edited or "
-                "older-format run produces them."
+                "\n  Some answers were recorded with no correctness. They "
+                "count toward coverage and are left out of precision, and "
+                "they lower accuracy exactly as a wrong answer would, since "
+                "accuracy is over every question asked; see the unusable "
+                "column in scores.tsv. Only a hand-edited or older-format run "
+                "produces them."
             )
         if any(s.extraction_failures for s in scores.values()):
             typer.echo(
-                "\n  Some responses had no recoverable answer. Those count against "
-                "coverage but are a harness limitation, not a provider result; see "
-                "the extraction_failures column in scores.tsv."
+                "\n  Some responses had no recoverable answer. Those count "
+                "against coverage and against accuracy, which is over every "
+                "question asked -- but they are a harness limitation, not a "
+                "provider result; see the extraction_failures column in "
+                "scores.tsv."
             )
         if eval_set.is_partial:
             typer.echo(f"\n  {eval_set.partial_reason}")

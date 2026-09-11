@@ -243,6 +243,7 @@ class RACEDimension(BaseModel):
     max_score: float = 5.0
     explanation: Optional[str] = None
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def normalized_score(self) -> Optional[float]:
         """Score normalized to 0-1, or None when the dimension was not scored.
@@ -254,6 +255,15 @@ class RACEDimension(BaseModel):
         a plausible number.
 
         >>> RACEDimension(dimension="d", score=None).normalized_score is None
+        True
+
+        A `computed_field`, so `--output` carries it. The CLI decides whether
+        to print a number or "unscored" from this property; a JSON consumer
+        holding `{"score": 3.0, "max_score": 0.0}` would otherwise have to
+        re-derive the predicate to learn what the terminal said.
+        `CitationAlignmentScore.total_pairs` is the precedent.
+
+        >>> "normalized_score" in RACEDimension(dimension="d", score=4.0).model_dump()
         True
         """
         if self.score is None or self.max_score <= 0:
@@ -288,7 +298,7 @@ class RACEScore(BaseModel):
     )
 
     @property
-    def scored_dimensions(self) -> list[RACEDimension]:
+    def scored_dimensions(self) -> list["RACEDimension"]:
         """The dimensions the judge actually returned a score for.
 
         A dimension whose judge call failed used to be recorded as 3.0 out of 5,
@@ -319,6 +329,7 @@ class RACEScore(BaseModel):
         """
         return [d for d in self.dimensions if d.normalized_score is not None]
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def unscored_count(self) -> int:
         """Dimensions with no usable score.
@@ -331,6 +342,7 @@ class RACEScore(BaseModel):
         """
         return len(self.dimensions) - len(self.scored_dimensions)
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def overall_score(self) -> float:
         """Mean over the dimensions that were actually scored.
@@ -345,6 +357,16 @@ class RACEScore(BaseModel):
         travels with it; one that cannot reach a reader stays a float with its
         boundary documented. This zero cannot: the CLI gates on
         `scored_dimensions` before formatting it.
+
+        A `computed_field`, with `unscored_count`, so the headline RACE number
+        and the count that distinguishes "the judge was down" from "a terrible
+        report" both reach `--output`. They were plain properties, so neither
+        did.
+
+        >>> dumped = RACEScore(dimensions=[
+        ...     RACEDimension(dimension="d", score=4.0, max_score=5.0)]).model_dump()
+        >>> dumped["overall_score"], dumped["unscored_count"]
+        (0.8, 0)
         """
         # The `if` is TYPE NARROWING, not a runtime guard, and cannot be
         # deleted: `scored_dimensions` already filters on exactly this

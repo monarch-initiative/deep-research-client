@@ -786,14 +786,15 @@ def test_a_bare_string_exclude_glob_no_longer_empties_the_bundle():
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ((g for g in ["a/*", "b/*"]), ("a/*", "b/*")),
+        (["a/*", "b/*"], ("a/*", "b/*")),
+        (("a/*", "b/*"), ("a/*", "b/*")),
         ({"a/*": 1}.keys(), ("a/*",)),
         ({"b/*", "a/*"}, ("a/*", "b/*")),
         (frozenset({"a/*"}), ("a/*",)),
     ],
 )
-def test_any_iterable_of_names_is_accepted(value, expected):
-    """A generator and dict_keys worked before the splitter and must still.
+def test_any_re_readable_collection_of_names_is_accepted(value, expected):
+    """dict_keys worked before the splitter existed and must still.
 
     An unordered collection is sorted, so two policies built from equal sets
     are equal — the dataclass compares by field.
@@ -813,9 +814,76 @@ def test_a_setting_that_is_not_a_list_of_names_raises(value):
         split_name_list(value)
 
 
+@pytest.mark.parametrize("value", [b"*.json", bytearray(b"*.json")])
+def test_bytes_are_not_read_as_a_list_of_names(value):
+    """The one string-like that is also an iterable of something else.
+
+    `tuple(b"*.json")` is six integers, so the bundle would be filtered
+    against patterns named "42" and "46" — a deny list that denies nothing
+    and an allow list that allows nothing.
+    """
+    with pytest.raises(TypeError, match="decode it first"):
+        split_name_list(value)
+
+
+@pytest.mark.parametrize(
+    "make_value",
+    [
+        lambda: (name for name in ["a/*"]),
+        lambda: iter(["a/*"]),
+        lambda: map(str, ["a/*"]),
+    ],
+)
+def test_a_one_shot_iterator_is_refused_rather_than_read_once(make_value):
+    """It reads correctly once and empty after, which nothing would notice.
+
+    A params object outlives the policy built from it — `artifact_policy` is
+    a per-instance cached_property — so a second provider sharing the params
+    would silently select against no patterns at all.
+    """
+    with pytest.raises(TypeError, match="one-shot iterator"):
+        split_name_list(make_value())
+
+
 def test_two_policies_from_equal_sets_compare_equal():
-    """tuple(some_set) has no defined order, and the policy is a dataclass."""
-    first = ArtifactSelectionPolicy(max_bytes=1024, include_globs=split_name_list({"a", "b"}))
-    second = ArtifactSelectionPolicy(max_bytes=1024, include_globs=split_name_list({"b", "a"}))
+    """tuple(some_set) has no defined order, and the policy is a dataclass.
+
+    Passed raw rather than pre-split, because __post_init__ is what has to
+    hold this — routing through the splitter by hand would test the caller.
+    """
+    first = ArtifactSelectionPolicy(max_bytes=1024, include_globs={"a", "b"})
+    second = ArtifactSelectionPolicy(max_bytes=1024, include_globs={"b", "a"})
 
     assert first == second
+
+
+def test_a_bare_string_exclude_glob_through_with_overrides_keeps_the_bundle():
+    """with_overrides was one of two doors the params-side fix did not reach.
+
+    `replace()` re-runs __post_init__, so normalizing there covers it; the
+    `**changes: object` signature means the type checker never would.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024).with_overrides(
+        exclude_globs="*.log"
+    )
+
+    assert policy.exclude_globs == ("*.log",)
+    assert policy.decide("results/table.csv", 100).keep
+    assert not policy.decide("agent-container.log", 100).keep
+
+
+def test_a_bare_string_include_glob_through_the_constructor_is_split():
+    """The other door. A stray "*" here force-keeps archives and transcripts."""
+    policy = ArtifactSelectionPolicy(max_bytes=1024, include_globs="*.json")
+
+    assert policy.include_globs == ("*.json",)
+    assert not policy.decide("raw/archive.zip", 100).keep
+    assert policy.decide("results/table.json", 100).keep
+
+
+def test_the_constructor_refuses_a_glob_list_the_splitter_refuses():
+    """One rule, one home: __post_init__ raises where from_params would."""
+    with pytest.raises(TypeError, match="one-shot iterator"):
+        ArtifactSelectionPolicy(
+            max_bytes=1024, exclude_globs=iter(["*.log"])
+        )

@@ -43,7 +43,7 @@ from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 import mimetypes
 from pathlib import PurePosixPath
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 
 # Default per-artifact size cap. Declared here and referenced by the pydantic
 # field, so the value cannot drift between the policy and the params model.
@@ -127,12 +127,20 @@ def split_name_list(value: object) -> tuple[str, ...]:
     ``"data[a,b]/*"`` becomes two patterns that match nothing. Pass a list to
     use one; ``["data[a,b]/*"]`` is untouched.
 
-    Anything that is neither a string nor an iterable of names raises, rather
-    than yielding no names. A setting silently reduced to nothing is the worst
-    outcome available here: an empty ``exclude_globs`` keeps every runtime log
-    the caller asked to drop, and an empty ``include_globs`` leaves denied the
-    file they meant to rescue. A mapping raises for the same reason — its keys
-    are unlikely to be what a caller meant by a list of patterns.
+    Anything that is neither a string nor a re-readable collection of names
+    raises, rather than yielding no names. A setting silently reduced to
+    nothing is the worst outcome available here: an empty ``exclude_globs``
+    keeps every runtime log the caller asked to drop, and an empty
+    ``include_globs`` leaves denied the file they meant to rescue. Three
+    inputs therefore raise rather than being read as best they can:
+
+    * A mapping, whose keys are unlikely to be the names meant.
+    * ``bytes``, the one remaining string-like that is also an iterable of
+      something else: ``tuple(b"*.json")`` is six integers.
+    * A one-shot iterator such as a generator. It reads correctly once and
+      empty every time after, and a params object outlives the policy built
+      from it, so the second reader would select nothing and say nothing.
+      Wrap it in a list.
 
     Args:
         value: A collection of names, a comma-separated string, or None.
@@ -143,7 +151,8 @@ def split_name_list(value: object) -> tuple[str, ...]:
         The names, empty only for None or an empty collection.
 
     Raises:
-        TypeError: If given a mapping, or anything that is not iterable.
+        TypeError: If given a mapping, bytes, a one-shot iterator, or
+            anything that is not a collection of names.
 
     Example:
         >>> split_name_list("*.json")
@@ -152,8 +161,6 @@ def split_name_list(value: object) -> tuple[str, ...]:
         ('a/*', 'b/*')
         >>> split_name_list(["a/*", "b/*"])
         ('a/*', 'b/*')
-        >>> split_name_list(g for g in ["a/*"])
-        ('a/*',)
         >>> split_name_list(None)
         ()
     """
@@ -161,6 +168,12 @@ def split_name_list(value: object) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         return tuple(item.strip() for item in value.split(",") if item.strip())
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; decode it first, because iterating it "
+            "yields integers rather than names"
+        )
     if isinstance(value, Mapping):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
@@ -168,8 +181,14 @@ def split_name_list(value: object) -> tuple[str, ...]:
         )
     if isinstance(value, (set, frozenset)):
         return tuple(sorted(str(item) for item in value))
-    if isinstance(value, Iterable):
+    if isinstance(value, Collection):
         return tuple(str(item) for item in value)
+    if isinstance(value, Iterable):
+        raise TypeError(
+            "expected a list of names or a comma-separated string, not a "
+            f"{type(value).__name__}; a one-shot iterator reads correctly once "
+            "and empty after, so wrap it in a list"
+        )
     raise TypeError(
         "expected a list of names or a comma-separated string, not a "
         f"{type(value).__name__}: {value!r}"
@@ -295,7 +314,11 @@ class ArtifactSelectionPolicy:
         runtime_suffixes: Filename suffixes treated as runtime logs.
         runtime_name_fragments: Substrings in a basename marking runtime output.
         include_globs: Patterns force-kept, bypassing every default deny.
-        exclude_globs: Patterns force-dropped, beating everything else.
+            Read by :func:`split_name_list` in ``__post_init__``, so a
+            comma-separated string is a list of patterns here too, not a list
+            of characters.
+        exclude_globs: Patterns force-dropped, beating everything else. Read
+            the same way as ``include_globs``.
         keep_runtime: Keep logs, transcripts, and captured stdout/stderr, and
             extend the allowlist with :data:`RUNTIME_EXTENSIONS`.
 
@@ -321,21 +344,33 @@ class ArtifactSelectionPolicy:
     keep_runtime: bool = False
 
     def __post_init__(self) -> None:
-        """Normalize scaffolding names so segment matching cannot be broken.
+        """Normalize the list settings, so no door can be handed a bare string.
 
-        Matching relies on each name ending in a slash: without it,
-        ``scaffolding_prefixes=("logs",)`` would drop ``run/logs_summary.csv``
-        as a directory. Normalizing here makes that structural rather than a
-        convention a caller has to know.
+        Scaffolding matching relies on each name ending in a slash: without
+        it, ``scaffolding_prefixes=("logs",)`` would drop
+        ``run/logs_summary.csv`` as a directory.
+
+        The glob lists are read here rather than only in :meth:`from_params`,
+        because that left the constructor and :meth:`with_overrides` taking
+        ``exclude_globs="*.log"`` as six one-character patterns — the same
+        defect, at the two doors the params-side fix did not reach, and
+        ``**changes: object`` means the type checker does not reach them
+        either. Normalizing in ``__post_init__`` also means ``replace()``
+        re-runs it, gives the rule one home instead of three callers that have
+        to remember it, and makes equality between policies built from equal
+        sets structural rather than a property of one caller that sorts.
 
         Raises:
-            TypeError: If ``scaffolding_prefixes`` is a single string.
-                Iterating one yields characters, which match wrongly rather
-                than not at all — see :func:`is_under_directory`.
+            TypeError: If ``scaffolding_prefixes`` is a single string
+                (iterating one yields characters, which match wrongly rather
+                than not at all — see :func:`is_under_directory`), or if
+                either glob list is something :func:`split_name_list` refuses.
         """
         object.__setattr__(
             self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
         )
+        object.__setattr__(self, "include_globs", split_name_list(self.include_globs))
+        object.__setattr__(self, "exclude_globs", split_name_list(self.exclude_globs))
 
     @classmethod
     def from_params(cls, params: object) -> "ArtifactSelectionPolicy":
@@ -361,15 +396,14 @@ class ArtifactSelectionPolicy:
         extra = _normalize_extensions(
             split_name_list(getattr(params, "artifact_extra_extensions", ()))
         )
+        # The glob lists are handed over as they come: ``__post_init__``
+        # reads them, so splitting here as well would be a second copy of the
+        # rule to keep in step.
         return cls(
             max_bytes=max_bytes,
             allowed_extensions=DEFAULT_ALLOWED_EXTENSIONS | extra,
-            include_globs=split_name_list(
-                getattr(params, "artifact_include_globs", ())
-            ),
-            exclude_globs=split_name_list(
-                getattr(params, "artifact_exclude_globs", ())
-            ),
+            include_globs=getattr(params, "artifact_include_globs", ()),
+            exclude_globs=getattr(params, "artifact_exclude_globs", ()),
             keep_runtime=bool(getattr(params, "artifact_keep_runtime", False)),
         )
 

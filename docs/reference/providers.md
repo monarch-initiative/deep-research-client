@@ -750,7 +750,15 @@ path. `*` crosses `/`, so `*.json` matches `provenance/iter1_transcript.json`.
 A comma separates patterns, which means a pattern cannot contain one — `[a,b]`
 is a valid `fnmatch` character class, so `artifact_include_globs="data[a,b]/*"`
 becomes two patterns that match nothing. Pass a list to use a comma inside a
-pattern; a list element is never split.
+pattern; a list element is never split. That escape hatch is a Python one:
+`--param` splits on the first `=` only, so every CLI value arrives as a string
+and is always split on commas.
+
+A list setting must also be re-readable. A generator or other one-shot iterator
+is refused rather than read, because a params object outlives the policy built
+from it: the second reader would get no patterns at all and say nothing about
+it. `bytes` is refused for the same reason — iterating it yields integers, not
+names.
 
 ### Keeping OpenScientist agent transcripts
 

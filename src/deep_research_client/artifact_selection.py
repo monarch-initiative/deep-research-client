@@ -8,9 +8,11 @@ transcripts (they are provenance, not noise, for some downstream consumers) had
 no way to ask for them short of editing the library.
 
 :class:`ArtifactSelectionPolicy` makes the decision data rather than code. The
-defaults reproduce the previous curated behaviour exactly; every layer of it can
-be widened or narrowed by the caller, and other bundle-shaped providers can
-reuse the same policy instead of growing their own constants.
+defaults reproduce the previous curated behaviour, with two scaffolding
+directories added to it (``.codex/`` and ``__pycache__/``, which the hardcoded
+list missed); every layer can be widened or narrowed by the caller, and other
+bundle-shaped providers can reuse the same policy instead of growing their own
+constants.
 
 Precedence, highest first:
 
@@ -38,6 +40,10 @@ from fnmatch import fnmatch
 import mimetypes
 from pathlib import PurePosixPath
 from typing import Iterable
+
+# Default per-artifact size cap. Declared here and referenced by the pydantic
+# field, so the value cannot drift between the policy and the params model.
+DEFAULT_MAX_BYTES: int = 5 * 1024 * 1024
 
 # Extensions kept by default: figures, small structured data, rendered reports.
 DEFAULT_ALLOWED_EXTENSIONS: frozenset[str] = frozenset(
@@ -105,11 +111,13 @@ class ArtifactDecision:
 
     The reason exists so a skipped file can be logged with the rule that
     skipped it — "which knob do I turn to get this file" is the question a
-    caller actually has.
+    caller actually has. ``rule`` is the same thing as a stable slug, so a
+    caller can treat one outcome differently without matching on prose.
     """
 
     keep: bool
     reason: str
+    rule: str = ""
 
     def __bool__(self) -> bool:
         return self.keep
@@ -166,7 +174,7 @@ class ArtifactSelectionPolicy:
         Returns:
             The resolved policy.
         """
-        max_bytes = getattr(params, "artifact_max_bytes", 5 * 1024 * 1024)
+        max_bytes = getattr(params, "artifact_max_bytes", DEFAULT_MAX_BYTES)
         extra = _normalize_extensions(getattr(params, "artifact_extra_extensions", ()))
         return cls(
             max_bytes=max_bytes,
@@ -206,57 +214,89 @@ class ArtifactSelectionPolicy:
             name: Bundle-relative member path.
             size: Uncompressed size in bytes.
             provider_deny: Member paths the provider has already consumed.
+                Normalized here, so a caller passing an already-normalized
+                :class:`frozenset` (see :func:`normalize_member_path`) pays
+                nothing extra and one differing only in case still matches.
 
         Returns:
             The decision, carrying the rule that produced it.
         """
-        normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
+        normalized = normalize_member_path(name)
         basename = PurePosixPath(normalized).name
 
         if _matches_any(normalized, self.exclude_globs):
-            return ArtifactDecision(False, "matched artifact_exclude_globs")
+            return ArtifactDecision(False, "matched artifact_exclude_globs", rule="exclude_glob")
 
         if size > self.max_bytes:
             return ArtifactDecision(
                 False,
                 f"{size} bytes exceeds artifact_max_bytes ({self.max_bytes})",
+                rule="size_cap",
             )
 
-        if name in set(provider_deny):
-            return ArtifactDecision(False, "already returned as the report body")
+        if any(normalize_member_path(denied) == normalized for denied in provider_deny):
+            return ArtifactDecision(
+                False, "already returned as the report body", rule="provider_deny"
+            )
 
         if _matches_any(normalized, self.include_globs):
-            return ArtifactDecision(True, "matched artifact_include_globs")
+            return ArtifactDecision(True, "matched artifact_include_globs", rule="include_glob")
 
         if normalized.startswith(self.scaffolding_prefixes):
-            return ArtifactDecision(False, "agent scaffolding directory")
+            return ArtifactDecision(False, "agent scaffolding directory", rule="scaffolding")
 
         suffix = PurePosixPath(normalized).suffix
         if suffix in self.archive_extensions:
-            return ArtifactDecision(False, "nested archive")
+            return ArtifactDecision(False, "nested archive", rule="archive")
 
         if not self.keep_runtime:
             if basename.endswith(self.runtime_suffixes):
                 return ArtifactDecision(
-                    False, "runtime log (set artifact_keep_runtime to keep)"
+                    False,
+                    "runtime log (set artifact_keep_runtime to keep)",
+                    rule="runtime",
                 )
             if any(fragment in basename for fragment in self.runtime_name_fragments):
                 return ArtifactDecision(
-                    False, "runtime transcript (set artifact_keep_runtime to keep)"
+                    False,
+                    "runtime transcript (set artifact_keep_runtime to keep)",
+                    rule="runtime",
                 )
 
         if suffix in self.effective_extensions:
-            return ArtifactDecision(True, "allowed extension")
+            return ArtifactDecision(True, "allowed extension", rule="extension")
 
         media_type = mimetypes.guess_type(name)[0]
         if media_type is not None and media_type.startswith("image/"):
-            return ArtifactDecision(True, "image media type")
+            return ArtifactDecision(True, "image media type", rule="media_type")
 
         return ArtifactDecision(
             False,
             f"extension {suffix or '(none)'} not in allowlist "
             "(add it with artifact_extra_extensions)",
+            rule="extension",
         )
+
+
+def normalize_member_path(name: str) -> str:
+    """Normalize a bundle member path for comparison.
+
+    Lowercased, POSIX separators, no leading slash — the form every rule in
+    :meth:`ArtifactSelectionPolicy.decide` matches against. Exported so a
+    caller can normalize its deny set once per bundle rather than once per
+    member.
+
+    Args:
+        name: Bundle-relative member path.
+
+    Returns:
+        The normalized path.
+
+    Example:
+        >>> normalize_member_path("/Provenance/Iter1.JSON")
+        'provenance/iter1.json'
+    """
+    return PurePosixPath(name).as_posix().lstrip("/").lower()
 
 
 def _matches_any(normalized_name: str, patterns: Iterable[str]) -> bool:

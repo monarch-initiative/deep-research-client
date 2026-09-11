@@ -25,12 +25,11 @@ import httpx
 
 from . import ResearchProvider
 from ..artifact_selection import (
-    DEFAULT_ALLOWED_EXTENSIONS,
-    DEFAULT_ARCHIVE_EXTENSIONS,
     DEFAULT_RUNTIME_NAME_FRAGMENTS,
     DEFAULT_RUNTIME_SUFFIXES,
     DEFAULT_SCAFFOLDING_PREFIXES,
     ArtifactSelectionPolicy,
+    normalize_member_path,
 )
 from ..exceptions import ProviderNotConfiguredError
 from ..models import (
@@ -53,12 +52,8 @@ DEFAULT_BASE_URL = "https://www.openscientist.io"
 
 
 # Artifact selection lives in ``artifact_selection`` so it is configurable and
-# reusable; these aliases keep the previous names importable.
-_ALLOWED_ARTIFACT_EXTENSIONS = DEFAULT_ALLOWED_EXTENSIONS
-_ARCHIVE_ARTIFACT_EXTENSIONS = DEFAULT_ARCHIVE_EXTENSIONS
-_NOISY_ARTIFACT_PREFIXES = DEFAULT_SCAFFOLDING_PREFIXES
-_NOISY_ARTIFACT_SUFFIXES = DEFAULT_RUNTIME_SUFFIXES
-_NOISY_ARTIFACT_NAME_FRAGMENTS = DEFAULT_RUNTIME_NAME_FRAGMENTS
+# reusable. Only the noise rules are still referenced here, by the report-picking
+# path below.
 _REPORT_MARKDOWN_BASENAMES = {"final_report.md", "report.md"}
 _ARTIFACT_SOURCE = "openscientist_artifacts_zip"
 
@@ -481,16 +476,23 @@ class OpenScientistProvider(ResearchProvider):
             return False
 
         name = info.filename
-        deny = set(report_names)
+        deny = self._normalized_deny(report_names)
         if self._is_report_markdown_name(name):
-            deny.add(name)
+            deny = deny | {normalize_member_path(name)}
 
         decision = self.artifact_policy.decide(name, info.file_size, provider_deny=deny)
         if not decision.keep:
-            logger.debug(
-                "Skipping OpenScientist artifact %s: %s", name, decision.reason
-            )
+            # A size-cap skip is the one that is usually unintentional — a
+            # curator who lost a 6 MB figure needs to see why without turning
+            # on debug logging.
+            log = logger.info if decision.rule == "size_cap" else logger.debug
+            log("Skipping OpenScientist artifact %s: %s", name, decision.reason)
         return decision.keep
+
+    @staticmethod
+    def _normalized_deny(report_names: set[str]) -> frozenset[str]:
+        """Normalize the consumed-report names once for the whole bundle."""
+        return frozenset(normalize_member_path(name) for name in report_names)
 
     def _is_report_markdown_name(self, name: str) -> bool:
         """Return whether a ZIP member is the markdown report already captured."""
@@ -512,11 +514,11 @@ class OpenScientistProvider(ResearchProvider):
         """
         normalized = PurePosixPath(name).as_posix().lstrip("/").lower()
         basename = PurePosixPath(normalized).name
-        if normalized.startswith(_NOISY_ARTIFACT_PREFIXES):
+        if normalized.startswith(DEFAULT_SCAFFOLDING_PREFIXES):
             return True
-        if basename.endswith(_NOISY_ARTIFACT_SUFFIXES):
+        if basename.endswith(DEFAULT_RUNTIME_SUFFIXES):
             return True
-        return any(fragment in basename for fragment in _NOISY_ARTIFACT_NAME_FRAGMENTS)
+        return any(fragment in basename for fragment in DEFAULT_RUNTIME_NAME_FRAGMENTS)
 
     def _artifact_filename(self, raw_name: str, used_filenames: set[str]) -> str:
         """Return a stable, unique filename for a ZIP artifact member."""

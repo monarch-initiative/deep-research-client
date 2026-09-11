@@ -3,6 +3,8 @@
 from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
+from .artifact_selection import DEFAULT_MAX_BYTES
+
 
 class BaseProviderParams(BaseModel):
     """Base provider parameters that all providers can accept."""
@@ -279,7 +281,7 @@ class ArtifactSelectionParams(BaseProviderParams):
         )
     )
     artifact_max_bytes: int = Field(
-        default=5 * 1024 * 1024,
+        default=DEFAULT_MAX_BYTES,
         ge=1,
         le=50 * 1024 * 1024,
         description=(

@@ -4,7 +4,6 @@ import base64
 import binascii
 from dataclasses import dataclass
 import asyncio
-import json
 import logging
 import os
 import re
@@ -1598,12 +1597,20 @@ def edison_trajectory(
         raise typer.Exit(1)
 
 
+class TranscriptStatsFormat(str, Enum):
+    """Output formats for the transcript-stats command."""
+
+    MARKDOWN = "markdown"
+    JSON = "json"
+    TEXT = "text"
+
+
 @app.command(name="transcript-stats")
 def transcript_stats_command(
     paths: Annotated[List[Path], typer.Argument(
         help="Transcript JSON files, or directories searched for *transcript*.json")],
-    output_format: Annotated[str, typer.Option(
-        "--format", help="Output format: markdown, json, or text")] = "markdown",
+    output_format: Annotated[TranscriptStatsFormat, typer.Option(
+        "--format", help="Output format")] = TranscriptStatsFormat.MARKDOWN,
     output: Annotated[Optional[Path], typer.Option(
         help="Write to this file instead of stdout")] = None,
 ):
@@ -1621,22 +1628,21 @@ def transcript_stats_command(
 
     try:
         stats = summarize_paths(paths)
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
+    except (FileNotFoundError, ValueError) as e:
+        # json.JSONDecodeError subclasses ValueError, so malformed JSON lands
+        # here too.
         logger.error(f"Could not read transcripts: {e}")
         raise typer.Exit(1)
 
     if not stats.entries:
         logger.warning("No transcript entries found in the given paths")
 
-    if output_format == "json":
+    if output_format is TranscriptStatsFormat.JSON:
         content = stats.model_dump_json(indent=2)
-    elif output_format == "text":
+    elif output_format is TranscriptStatsFormat.TEXT:
         content = _format_transcript_stats_text(stats)
-    elif output_format == "markdown":
-        content = stats.render_markdown()
     else:
-        logger.error(f"Unknown format: {output_format}. Use markdown, json, or text.")
-        raise typer.Exit(1)
+        content = stats.render_markdown()
 
     if output:
         output.write_text(content, encoding="utf-8")

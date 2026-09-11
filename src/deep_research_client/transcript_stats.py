@@ -44,7 +44,7 @@ from collections import Counter
 import json
 from pathlib import Path
 import shlex
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Optional, Sequence, TypeGuard
 
 from pydantic import BaseModel, Field
 
@@ -274,7 +274,10 @@ def summarize_paths(paths: Iterable[Path]) -> TranscriptStats:
         if not path.exists():
             raise FileNotFoundError(f"No such transcript path: {path}")
         for resolved in _iter_transcript_files(path):
-            transcripts[resolved.name] = _as_entry_list(
+            # Keyed by full path: two runs each holding
+            # ``provenance/iter1_transcript.json`` would otherwise collapse
+            # into one entry and a whole run would vanish unreported.
+            transcripts[str(resolved)] = _as_entry_list(
                 json.loads(resolved.read_text(encoding="utf-8")), str(resolved)
             )
     return summarize_transcripts(transcripts)
@@ -436,7 +439,15 @@ class _Accumulator:
         self._pending_results: list[dict[str, Any]] = []
 
     def add_source(self, source: str) -> None:
-        """Record that a transcript's entries follow."""
+        """Close the previous transcript and record that another follows.
+
+        Call ids are unique only *within* one transcript — two iterations of
+        the same job both start numbering from scratch — so pairing has to be
+        resolved and the id map dropped at each boundary. Left shared, a
+        result from one iteration is attributed to whichever tool happened to
+        reuse its id in another.
+        """
+        self._close_source()
         self.sources.append(source)
 
     def consume(self, entry: dict[str, Any]) -> None:
@@ -445,17 +456,22 @@ class _Accumulator:
         entry_type = str(entry.get("type", "(missing type)"))
         self.entry_types[entry_type] += 1
 
-        handler = getattr(self, f"_on_{entry_type}", None)
+        handler = self._HANDLERS.get(entry_type)
         if handler is None:
             self.unrecognized_types[entry_type] += 1
             return
-        handler(entry)
+        handler(self, entry)
 
-    def finish(self) -> TranscriptStats:
-        """Resolve deferred pairing and build the immutable summary."""
+    def _close_source(self) -> None:
+        """Pair the current transcript's results, then forget its call ids."""
         for result in self._pending_results:
             self._apply_result(result)
         self._pending_results.clear()
+        self.name_by_call_id.clear()
+
+    def finish(self) -> TranscriptStats:
+        """Resolve deferred pairing and build the immutable summary."""
+        self._close_source()
 
         tools = [
             ToolUsage(
@@ -515,7 +531,9 @@ class _Accumulator:
         if call_id is not None:
             self.name_by_call_id[str(call_id)] = name
 
-        if qualified == SKILL_TOOL_NAME:
+        # Compare the normalized name: a backend that namespaces the tool
+        # still invoked a skill.
+        if name == SKILL_TOOL_NAME:
             arguments = entry.get("arguments") or {}
             skill = arguments.get("skill") if isinstance(arguments, dict) else None
             if skill:
@@ -534,8 +552,8 @@ class _Accumulator:
         if entry.get("success") is False:
             self.failures_by_name[name] += 1
         duration = entry.get("duration_ms")
-        if isinstance(duration, int):
-            self.duration_by_name[name] += duration
+        if _is_number(duration):
+            self.duration_by_name[name] += round(duration)
             self.duration_seen.add(name)
 
     def _on_shell_execution(self, entry: dict[str, Any]) -> None:
@@ -586,39 +604,77 @@ class _Accumulator:
     def _on_unknown_entry(self, entry: dict[str, Any]) -> None:
         self.unknown_entries += 1
 
-    # Recognized shapes that contribute nothing beyond their type count. They
-    # are listed so they are not reported as unrecognized.
-    def _on_user_prompt(self, entry: dict[str, Any]) -> None:
+    def _on_ignored(self, entry: dict[str, Any]) -> None:
+        """Recognized shape contributing nothing beyond its type count.
+
+        Registered so these types are not reported as unrecognized, which is
+        reserved for producer drift.
+        """
         return None
 
-    def _on_reasoning(self, entry: dict[str, Any]) -> None:
-        return None
+    # Explicit dispatch: an entry ``type`` selects a handler only if it is
+    # named here. Attribute-name dispatch would make any future ``_on_*``
+    # helper reachable from transcript content.
+    _HANDLERS: dict[str, Any] = {}
 
-    def _on_image_view(self, entry: dict[str, Any]) -> None:
-        return None
+    def _add_usage(self, usage: Any, prefix: str = "") -> None:
+        """Sum numeric counters out of a reported usage mapping.
 
-    def _on_image_generation(self, entry: dict[str, Any]) -> None:
-        return None
+        One level of nesting is flattened into dotted keys, because a usage
+        block reporting ``{"cache_creation": {"ephemeral_5m": 10}}`` otherwise
+        contributes nothing and the reader cannot tell it was skipped.
 
-    def _on_plan(self, entry: dict[str, Any]) -> None:
-        return None
-
-    def _on_hook_prompt(self, entry: dict[str, Any]) -> None:
-        return None
-
-    def _on_review_mode_entered(self, entry: dict[str, Any]) -> None:
-        return None
-
-    def _on_review_mode_exited(self, entry: dict[str, Any]) -> None:
-        return None
-
-    def _add_usage(self, usage: Any) -> None:
-        """Sum integer counters out of a reported usage mapping."""
+        Args:
+            usage: The reported usage mapping, or anything else (ignored).
+            prefix: Dotted prefix applied to keys of a nested mapping.
+        """
         if not isinstance(usage, dict):
             return
         for key, value in usage.items():
-            if isinstance(value, int) and not isinstance(value, bool):
-                self.token_usage[str(key)] += value
+            name = f"{prefix}{key}"
+            if _is_number(value):
+                self.token_usage[name] += round(value)
+            elif isinstance(value, dict) and not prefix:
+                self._add_usage(value, prefix=f"{name}.")
+
+
+_Accumulator._HANDLERS = {
+    "assistant_text": _Accumulator._on_assistant_text,
+    "collab_agent_tool_call": _Accumulator._on_collab_agent_tool_call,
+    "file_change": _Accumulator._on_file_change,
+    "hook_prompt": _Accumulator._on_ignored,
+    "image_generation": _Accumulator._on_ignored,
+    "image_view": _Accumulator._on_ignored,
+    "plan": _Accumulator._on_ignored,
+    "reasoning": _Accumulator._on_ignored,
+    "review_mode_entered": _Accumulator._on_ignored,
+    "review_mode_exited": _Accumulator._on_ignored,
+    "session_init": _Accumulator._on_session_init,
+    "shell_execution": _Accumulator._on_shell_execution,
+    "task_notification": _Accumulator._on_task_notification,
+    "task_progress": _Accumulator._on_task_progress,
+    "task_started": _Accumulator._on_task_started,
+    "tool_call": _Accumulator._on_tool_call,
+    "tool_result": _Accumulator._on_tool_result,
+    "unknown_entry": _Accumulator._on_unknown_entry,
+    "user_prompt": _Accumulator._on_ignored,
+    "web_search": _Accumulator._on_web_search,
+}
+"""Recognized entry types. A type absent here is counted as unrecognized."""
+
+
+def _is_number(value: Any) -> TypeGuard[float]:
+    """Return whether a value is a real number rather than a bool.
+
+    ``bool`` is a subclass of ``int``, so an unguarded check would let
+    ``True`` add 1 to a counter. A :class:`~typing.TypeGuard` so callers can
+    round the value without a second cast.
+
+    Example:
+        >>> _is_number(5), _is_number(2.5), _is_number(True), _is_number("5")
+        (True, True, False, False)
+    """
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _decode_entries(content_base64: str, source: str) -> list[dict[str, Any]]:
@@ -678,6 +734,20 @@ def _iter_transcript_files(path: Path) -> list[Path]:
     return sorted(p for p in path.rglob("*.json") if is_transcript_name(p.name))
 
 
+def _md(value: str) -> str:
+    r"""Escape agent-supplied text for a markdown table cell.
+
+    Tool names, paths and search queries come from agent output. An
+    unescaped pipe splits the cell and breaks the table for every reader
+    downstream.
+
+    Example:
+        >>> _md("a|b")
+        'a\\|b'
+    """
+    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+
+
 def _render_markdown(stats: TranscriptStats) -> str:
     """Build the markdown rendering for a summary."""
     lines: list[str] = ["## Agent run summary", ""]
@@ -693,9 +763,11 @@ def _render_markdown(stats: TranscriptStats) -> str:
     if rate is not None:
         lines.append(f"- Tool success rate: {rate:.1%} ({stats.failed_tool_calls} failed)")
     if stats.models:
-        lines.append(f"- Models: {', '.join(stats.models)}")
+        lines.append("- Models: " + ", ".join(_md(m) for m in stats.models))
     if stats.mcp_servers:
-        lines.append(f"- MCP servers used: {', '.join(stats.mcp_servers)}")
+        lines.append(
+            "- MCP servers used: " + ", ".join(_md(s) for s in stats.mcp_servers)
+        )
     if stats.subagent_calls:
         lines.append(f"- Subagent invocations: {stats.subagent_calls}")
     if stats.unknown_entries:
@@ -708,20 +780,22 @@ def _render_markdown(stats: TranscriptStats) -> str:
         lines.extend(["### Tools used", "", "| Tool | Calls | Failed | Server |", "|---|---:|---:|---|"])
         for tool in stats.tools:
             lines.append(
-                f"| `{tool.name}` | {tool.calls} | {tool.failures} | {tool.server or '—'} |"
+                f"| `{_md(tool.name)}` | {tool.calls} | {tool.failures} "
+                f"| {_md(tool.server) if tool.server else '—'} |"
             )
         lines.append("")
 
     if stats.skill_counts:
         lines.extend(["### Skills invoked", ""])
         for skill, count in stats.skill_counts.items():
-            lines.append(f"- `{skill}` ({count})")
+            lines.append(f"- `{_md(skill)}` ({count})")
         lines.append("")
 
     if stats.shell_commands:
         lines.extend(["### Shell programs", ""])
         summary = ", ".join(
-            f"`{program}` ({count})" for program, count in stats.shell_commands.items()
+            f"`{_md(program)}` ({count})"
+            for program, count in stats.shell_commands.items()
         )
         lines.append(summary)
         if stats.failed_shell_commands:
@@ -731,19 +805,21 @@ def _render_markdown(stats: TranscriptStats) -> str:
 
     if stats.web_searches:
         lines.extend([f"### Web searches ({len(stats.web_searches)})", ""])
-        lines.extend(f"- {query}" for query in stats.web_searches)
+        lines.extend(f"- {_md(query)}" for query in stats.web_searches)
         lines.append("")
 
     if stats.files_changed:
         lines.extend(["### Files changed", ""])
         for kind, paths in stats.files_changed.items():
-            lines.append(f"- **{kind}**: {', '.join(f'`{p}`' for p in paths)}")
+            lines.append(
+                f"- **{_md(kind)}**: " + ", ".join(f"`{_md(p)}`" for p in paths)
+            )
         lines.append("")
 
     if stats.token_usage:
         lines.extend(["### Reported token usage", ""])
         for key, value in stats.token_usage.items():
-            lines.append(f"- {key}: {value:,}")
+            lines.append(f"- {_md(key)}: {value:,}")
         lines.append("")
 
     unused = stats.unused_available_tools
@@ -755,7 +831,7 @@ def _render_markdown(stats: TranscriptStats) -> str:
                 f"{len(unused)} of {len(stats.available_tools)} declared tools were "
                 "never called:",
                 "",
-                ", ".join(f"`{name}`" for name in unused),
+                ", ".join(f"`{_md(name)}`" for name in unused),
                 "",
             ]
         )
@@ -763,7 +839,7 @@ def _render_markdown(stats: TranscriptStats) -> str:
     if stats.unrecognized_types:
         lines.extend(["### Entry types not summarized", ""])
         for entry_type, count in stats.unrecognized_types.items():
-            lines.append(f"- `{entry_type}` ({count})")
+            lines.append(f"- `{_md(entry_type)}` ({count})")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

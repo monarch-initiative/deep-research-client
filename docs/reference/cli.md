@@ -322,6 +322,54 @@ deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
 
 ---
 
+### transcript-stats
+
+Summarize what an agent did, from the transcripts saved alongside a run.
+
+```bash
+deep-research-client transcript-stats [OPTIONS] PATHS...
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `PATHS...` | Transcript JSON files, or directories searched recursively for `*transcript*.json` |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--format [markdown\|json\|text]` | Output format (default: `markdown`) |
+| `--output PATH` | Write to this file instead of stdout |
+
+#### Notes
+
+- Several transcripts merge into one summary, which is what a job writing one
+  transcript per iteration needs.
+- Reports distinct tools and call counts, per-tool failures, skills invoked,
+  shell programs, web searches, files changed, models, token usage, and the
+  tools a session declared but never called.
+- Transcripts are dropped by the default artifact policy. To keep them, run the
+  provider with `--param artifact_keep_runtime=true` (see
+  [Artifact selection](providers.md#artifact-selection)).
+- Exits 1 on a missing path or a transcript that is not a JSON list of objects.
+
+#### Examples
+
+```bash
+# Summarize a job's provenance directory
+deep-research-client transcript-stats run_artifacts/provenance/
+
+# Machine-readable, for downstream tooling
+deep-research-client transcript-stats run_artifacts/ --format json --output stats.json
+
+# Compact terminal view
+deep-research-client transcript-stats run_artifacts/ --format text
+```
+
+---
+
 ### providers
 
 List available research providers.

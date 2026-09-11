@@ -8,6 +8,7 @@ the real serialization rather than a tidied-up version of it.
 
 import base64
 import json
+import re
 
 import pytest
 
@@ -469,8 +470,28 @@ def test_summarize_paths_reads_a_directory(tmp_path, run_transcript):
 
     stats = summarize_paths([tmp_path])
 
-    assert stats.sources == ["iter1_transcript.json"]
+    assert stats.sources == [str(provenance / "iter1_transcript.json")]
     assert stats.unrecognized_types == {}
+
+
+def test_same_named_transcripts_in_different_runs_are_both_read(tmp_path):
+    """Two runs both holding provenance/iter1_transcript.json must not collide.
+
+    Keying sources by basename dropped one run's entries entirely, with no
+    warning — the summary just quietly described half the work.
+    """
+    for run, tool in (("run1", "Bash"), ("run2", "WebSearch")):
+        provenance = tmp_path / run / "provenance"
+        provenance.mkdir(parents=True)
+        (provenance / "iter1_transcript.json").write_text(
+            json.dumps([tool_call("a", tool)])
+        )
+
+    stats = summarize_paths([tmp_path])
+
+    assert len(stats.sources) == 2
+    assert stats.entries == 2
+    assert stats.distinct_tools == ["Bash", "WebSearch"]
 
 
 def test_summarize_paths_takes_a_named_file_as_given(tmp_path, run_transcript):
@@ -552,3 +573,124 @@ def test_a_dot_that_is_not_a_server_prefix_is_left_alone():
     )
 
     assert stats.distinct_tools == ["alpha.beta"]
+
+
+def test_call_ids_are_scoped_to_their_own_transcript():
+    """A call id is unique only within one transcript.
+
+    Both iterations of a job number their calls from scratch, so a shared id
+    map attributes iteration 1's failure to whichever tool reused the id in
+    iteration 2 — and sums both durations onto it.
+    """
+    stats = summarize_transcripts(
+        {
+            "iter1_transcript.json": [
+                tool_call("1", "Bash"),
+                tool_result("1", success=False, duration_ms=500),
+            ],
+            "iter2_transcript.json": [
+                tool_call("1", "WebSearch"),
+                tool_result("1", success=True, duration_ms=10),
+            ],
+        }
+    )
+    by_name = {tool.name: tool for tool in stats.tools}
+
+    assert by_name["Bash"].failures == 1
+    assert by_name["Bash"].total_duration_ms == 500
+    assert by_name["WebSearch"].failures == 0
+    assert by_name["WebSearch"].total_duration_ms == 10
+    assert stats.failed_tool_calls == 1
+
+
+def test_no_tool_can_report_more_failures_than_calls():
+    """The invariant the id collision broke, stated directly."""
+    stats = summarize_transcripts(
+        {
+            f"iter{index}_transcript.json": [
+                tool_call("1", f"Tool{index}"),
+                tool_result("1", success=False),
+            ]
+            for index in range(5)
+        }
+    )
+
+    assert all(tool.failures <= tool.calls for tool in stats.tools)
+    assert all(tool.successes >= 0 for tool in stats.tools)
+
+
+@pytest.mark.parametrize(
+    "duration,expected",
+    [
+        (500, 500),
+        (12.5, 12),
+        (0, 0),
+        (None, None),
+        (True, None),
+        ("500", None),
+    ],
+)
+def test_duration_accepts_numbers_and_rejects_booleans(duration, expected):
+    """``True`` is an int in Python; counting it as 1 ms would be a lie."""
+    stats = summarize_transcript(
+        [tool_call("a", "Bash"), tool_result("a", duration_ms=duration)]
+    )
+
+    assert stats.tools[0].total_duration_ms == expected
+
+
+def test_a_namespaced_skill_tool_is_still_a_skill():
+    """A backend that qualifies the Skill tool still invoked a skill."""
+    stats = summarize_transcript(
+        [tool_call("a", "mcp__agent__Skill", {"skill": "curate"})]
+    )
+
+    assert stats.skills_used == ["curate"]
+
+
+def test_nested_usage_counters_are_flattened_not_dropped():
+    """A usage block nesting its counters must not silently contribute zero."""
+    stats = summarize_transcript(
+        [
+            {
+                "type": "task_notification",
+                "task_id": "t1",
+                "status": "completed",
+                "summary": "",
+                "output_file": "",
+                "usage": {
+                    "input_tokens": 100,
+                    "cache_creation": {"ephemeral_5m": 10, "ephemeral_1h": 5},
+                },
+            }
+        ]
+    )
+
+    assert stats.token_usage == {
+        "cache_creation.ephemeral_1h": 5,
+        "cache_creation.ephemeral_5m": 10,
+        "input_tokens": 100,
+    }
+
+
+def test_a_handler_named_attribute_is_not_reachable_from_transcript_content():
+    """Dispatch is an explicit table, not attribute lookup on the entry type."""
+    stats = summarize_transcript([{"type": "ignored", "id": "x"}])
+
+    assert stats.unrecognized_types == {"ignored": 1}
+
+
+def test_markdown_table_survives_a_pipe_in_a_tool_name():
+    """Agent-supplied text lands in a markdown table and must not break it."""
+    markdown = summarize_transcript(
+        [tool_call("a", "we|ird"), {"type": "web_search", "id": "w", "query": "a|b"}]
+    ).render_markdown()
+
+    # Split on pipes that are not backslash-escaped: those are the real
+    # cell boundaries, and a 4-column row has exactly 5 of them.
+    table_rows = [line for line in markdown.splitlines() if line.startswith("| `")]
+    assert table_rows
+    for row in table_rows:
+        assert len(re.split(r"(?<!\\)\|", row)) == 6, row
+    assert "a|b" not in markdown
+    assert "a\\|b" in markdown

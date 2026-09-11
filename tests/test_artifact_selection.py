@@ -11,6 +11,7 @@ import pytest
 
 from deep_research_client.artifact_selection import (
     DEFAULT_ALLOWED_EXTENSIONS,
+    DEFAULT_MAX_BYTES,
     RUNTIME_EXTENSIONS,
     ArtifactSelectionPolicy,
 )
@@ -311,3 +312,69 @@ def test_provider_never_re_emits_the_report_body():
 
     assert "final_report.md" not in kept
     assert "raw_archive.zip" in kept
+
+
+def test_scaffolding_is_matched_at_any_depth():
+    """A nested .claude/ is the same scaffolding as one at the bundle root.
+
+    These directories are frequently .json, so matching only at the root let
+    a nested one clear the extension allowlist and become an artifact.
+    """
+    policy = ArtifactSelectionPolicy.from_params(OpenScientistParams())
+
+    assert not policy.decide("workspace/.claude/settings.json", 100).keep
+    assert not policy.decide("src/__pycache__/cache.json", 100).keep
+    assert not policy.decide("a/b/node_modules/pkg/data.json", 100).keep
+
+
+def test_a_directory_named_like_a_prefix_is_not_matched_by_accident():
+    """Matching is on a path segment, not a substring."""
+    policy = ArtifactSelectionPolicy.from_params(OpenScientistParams())
+
+    assert policy.decide("mycache/data.csv", 100).keep
+    assert policy.decide("results/cached_table.csv", 100).keep
+
+
+def test_a_none_size_cap_falls_back_to_the_default():
+    """from_params is duck-typed; a params object may declare the cap optional."""
+
+    class LooseParams:
+        artifact_max_bytes = None
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.max_bytes == DEFAULT_MAX_BYTES
+    assert policy.decide("results/table.csv", 100).keep
+
+
+def test_the_root_report_body_is_still_not_re_emitted():
+    """The main download path passes no report_names, so the root dedup holds."""
+    kept = _extract(OpenScientistParams(artifact_include_globs=["*"]))
+
+    assert "final_report.md" not in kept
+
+
+def test_a_nested_report_markdown_is_reachable_by_an_include_glob():
+    """Only the bundle root holds the report body.
+
+    A nested analysis/report.md is a different document; dropping it as
+    "already returned as the report body" was untrue, and sat above
+    include_globs in precedence so nothing could recover it.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("final_report.md", "# Report")
+        archive.writestr("analysis/subtopic/report.md", "# Subtopic")
+
+    config = ProviderConfig(
+        name="openscientist", api_key="k", base_url="https://example.test/", enabled=True
+    )
+    provider = OpenScientistProvider(
+        config, OpenScientistParams(artifact_include_globs=["analysis/*"])
+    )
+    kept = [
+        artifact.filename
+        for artifact in provider._extract_artifacts_from_artifact_zip(buffer.getvalue())
+    ]
+
+    assert kept == ["analysis_subtopic_report.md"]

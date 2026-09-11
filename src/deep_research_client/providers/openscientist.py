@@ -419,13 +419,15 @@ class OpenScientistProvider(ResearchProvider):
         report_names: set[str] | None = None,
     ) -> list[ResearchArtifact]:
         """Extract useful sidecar artifacts from an OpenScientist ZIP archive."""
-        report_names = report_names or set()
+        deny = frozenset(
+            normalize_member_path(name) for name in (report_names or set())
+        )
         artifacts: list[ResearchArtifact] = []
         used_filenames: set[str] = set()
 
         with zipfile.ZipFile(io.BytesIO(bundle)) as zf:
             for info in sorted(zf.infolist(), key=lambda item: item.filename):
-                if not self._should_preserve_artifact(info, report_names):
+                if not self._should_preserve_artifact(info, deny):
                     continue
 
                 with zf.open(info) as file:
@@ -457,7 +459,7 @@ class OpenScientistProvider(ResearchProvider):
     def _should_preserve_artifact(
         self,
         info: zipfile.ZipInfo,
-        report_names: set[str],
+        report_names: frozenset[str],
     ) -> bool:
         """Return whether a ZIP member should become a ResearchArtifact.
 
@@ -467,7 +469,8 @@ class OpenScientistProvider(ResearchProvider):
 
         Args:
             info: The ZIP member being considered.
-            report_names: Members already consumed as the report body.
+            report_names: Normalized paths already consumed as the report
+                body, computed once per bundle by the caller.
 
         Returns:
             Whether to preserve the member.
@@ -476,8 +479,8 @@ class OpenScientistProvider(ResearchProvider):
             return False
 
         name = info.filename
-        deny = self._normalized_deny(report_names)
-        if self._is_report_markdown_name(name):
+        deny = report_names
+        if self._is_root_report_markdown_name(name):
             deny = deny | {normalize_member_path(name)}
 
         decision = self.artifact_policy.decide(name, info.file_size, provider_deny=deny)
@@ -489,15 +492,29 @@ class OpenScientistProvider(ResearchProvider):
             log("Skipping OpenScientist artifact %s: %s", name, decision.reason)
         return decision.keep
 
-    @staticmethod
-    def _normalized_deny(report_names: set[str]) -> frozenset[str]:
-        """Normalize the consumed-report names once for the whole bundle."""
-        return frozenset(normalize_member_path(name) for name in report_names)
-
     def _is_report_markdown_name(self, name: str) -> bool:
-        """Return whether a ZIP member is the markdown report already captured."""
+        """Return whether a ZIP member is report-shaped markdown, at any depth.
+
+        Used when picking the report body out of the bundle, which should
+        prefer such a file wherever it sits.
+        """
         path = PurePosixPath(name.lower())
         return path.name in _REPORT_MARKDOWN_BASENAMES
+
+    def _is_root_report_markdown_name(self, name: str) -> bool:
+        """Return whether a ZIP member is the report body at the bundle root.
+
+        The main download path takes the report from the API rather than the
+        ZIP, so it passes no ``report_names`` and the bundle's own
+        ``final_report.md`` would otherwise be emitted as an artifact
+        duplicating the result body. That dedup applies only at the root: a
+        nested ``analysis/subtopic/report.md`` is a different document, and
+        dropping it as "already returned as the report body" would be both
+        untrue and unreachable by ``artifact_include_globs``, which sits below
+        the provider deny in precedence.
+        """
+        normalized = normalize_member_path(name)
+        return "/" not in normalized and normalized in _REPORT_MARKDOWN_BASENAMES
 
     def _is_noisy_artifact_path(self, name: str) -> bool:
         """Return whether a ZIP member is runtime scaffolding or verbose logs.

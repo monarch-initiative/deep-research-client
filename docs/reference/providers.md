@@ -769,7 +769,7 @@ deep-research "..." --provider openscientist \
   --param artifact_keep_runtime=true
 
 deep-research "..." --provider openscientist \
-  --param artifact_include_globs=provenance/*_transcript.json
+  --param 'artifact_include_globs=provenance/*_transcript.json'
 ```
 
 Note that transcripts can be large and, being a record of everything the agent

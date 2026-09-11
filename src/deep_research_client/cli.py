@@ -1645,7 +1645,13 @@ def transcript_stats_command(
         content = stats.render_markdown()
 
     if output:
-        output.write_text(content, encoding="utf-8")
+        try:
+            output.write_text(content, encoding="utf-8")
+        except OSError as e:
+            # Match the command's other failure paths: a missing directory
+            # exits 1 rather than raising a traceback at the user.
+            logger.error(f"Could not write {output}: {e}")
+            raise typer.Exit(1)
         logger.info(f"Transcript summary saved to: {output}")
     else:
         typer.echo(content)

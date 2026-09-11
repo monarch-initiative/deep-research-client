@@ -691,3 +691,15 @@ def test_transcript_stats_fails_on_a_malformed_transcript(tmp_path):
     result = runner.invoke(app, ["transcript-stats", str(path)])
 
     assert result.exit_code == 1
+
+
+def test_transcript_stats_output_to_a_missing_directory_exits_1(tmp_path):
+    """A bad --output path fails like the command's other error paths."""
+    _write_transcript(tmp_path / "provenance")
+
+    result = runner.invoke(
+        app,
+        ["transcript-stats", str(tmp_path), "--output", str(tmp_path / "no" / "x.md")],
+    )
+
+    assert result.exit_code == 1

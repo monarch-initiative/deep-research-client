@@ -19,7 +19,8 @@ Precedence, highest first:
 1. ``exclude_globs`` — an explicit deny always wins.
 2. ``max_bytes`` — the size cap always applies, including to explicit includes,
    because it is what keeps a bundle from being read into memory. Raise the cap
-   rather than trying to glob around it.
+   rather than trying to glob around it, up to the 50 MB ceiling that
+   ``artifact_max_bytes`` enforces; past that there is no knob, by design.
 3. ``provider_deny`` — members the provider has already consumed (the markdown
    report it returned as the result body).
 4. ``include_globs`` — an explicit allow bypasses every remaining default deny.
@@ -82,7 +83,10 @@ DEFAULT_ARCHIVE_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
-# Agent working directories and dependency trees, matched as path prefixes.
+# Agent working directories and dependency trees. Matched as a path
+# *segment*, at any depth: a ``.claude/settings.json`` nested under a
+# workspace directory is the same scaffolding as one at the bundle root, and
+# both are frequently ``.json``, which would otherwise clear the allowlist.
 DEFAULT_SCAFFOLDING_PREFIXES: tuple[str, ...] = (
     ".cache/",
     ".claude/",
@@ -174,7 +178,10 @@ class ArtifactSelectionPolicy:
         Returns:
             The resolved policy.
         """
-        max_bytes = getattr(params, "artifact_max_bytes", DEFAULT_MAX_BYTES)
+        # ``or`` rather than a plain default: this is documented as
+        # duck-typed, and a params object declaring ``Optional[int] = None``
+        # would otherwise reach ``size > None`` at decision time.
+        max_bytes = getattr(params, "artifact_max_bytes", None) or DEFAULT_MAX_BYTES
         extra = _normalize_extensions(getattr(params, "artifact_extra_extensions", ()))
         return cls(
             max_bytes=max_bytes,
@@ -214,9 +221,10 @@ class ArtifactSelectionPolicy:
             name: Bundle-relative member path.
             size: Uncompressed size in bytes.
             provider_deny: Member paths the provider has already consumed.
-                Normalized here, so a caller passing an already-normalized
-                :class:`frozenset` (see :func:`normalize_member_path`) pays
-                nothing extra and one differing only in case still matches.
+                Each entry is normalized here before comparison, so an entry
+                differing only in case or a leading ``./`` still matches.
+                Build the set once per bundle (see
+                :func:`normalize_member_path`) rather than per member.
 
         Returns:
             The decision, carrying the rule that produced it.
@@ -242,8 +250,10 @@ class ArtifactSelectionPolicy:
         if _matches_any(normalized, self.include_globs):
             return ArtifactDecision(True, "matched artifact_include_globs", rule="include_glob")
 
-        if normalized.startswith(self.scaffolding_prefixes):
-            return ArtifactDecision(False, "agent scaffolding directory", rule="scaffolding")
+        if _under_any_directory(normalized, self.scaffolding_prefixes):
+            return ArtifactDecision(
+                False, "agent scaffolding directory", rule="scaffolding"
+            )
 
         suffix = PurePosixPath(normalized).suffix
         if suffix in self.archive_extensions:
@@ -276,6 +286,25 @@ class ArtifactSelectionPolicy:
             "(add it with artifact_extra_extensions)",
             rule="extension",
         )
+
+
+def _under_any_directory(normalized_name: str, prefixes: Iterable[str]) -> bool:
+    """Return whether a path lies under one of the named directories.
+
+    Matched at any depth, so ``workspace/.claude/settings.json`` counts as
+    being under ``.claude/``.
+
+    Args:
+        normalized_name: Path already through :func:`normalize_member_path`.
+        prefixes: Directory names, each with a trailing slash.
+
+    Returns:
+        Whether any prefix names a directory on the path.
+    """
+    return any(
+        normalized_name.startswith(prefix) or f"/{prefix}" in normalized_name
+        for prefix in prefixes
+    )
 
 
 def normalize_member_path(name: str) -> str:

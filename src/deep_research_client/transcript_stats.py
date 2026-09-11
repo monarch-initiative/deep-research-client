@@ -68,6 +68,9 @@ class ToolUsage(BaseModel):
         calls: Number of invocations.
         failures: Invocations whose paired result reported failure.
         server: MCP server the tool belongs to, when the entry records one.
+            Two servers exposing the same short tool name collapse onto one
+            entry and the last one seen wins; ``qualified_names`` still holds
+            both spellings, so nothing is lost outright.
         total_duration_ms: Summed result durations, when reported.
     """
 
@@ -741,11 +744,17 @@ def _md(value: str) -> str:
     unescaped pipe splits the cell and breaks the table for every reader
     downstream.
 
+    Only pipes and newlines are escaped. Backslashes are left alone: most of
+    these values render inside a code span, where an escape is shown
+    literally, so doubling them would turn a Windows path into ``C:\\path``.
+
     Example:
         >>> _md("a|b")
         'a\\|b'
+        >>> _md(r"C:\\runs\\out.csv")
+        'C:\\\\runs\\\\out.csv'
     """
-    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+    return str(value).replace("|", "\\|").replace("\n", " ")
 
 
 def _render_markdown(stats: TranscriptStats) -> str:

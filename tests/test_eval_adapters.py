@@ -440,9 +440,26 @@ def test_a_score_whose_counts_do_not_account_for_total_is_rejected():
                  extraction_failures=2, provider_errors=4, skipped=6,
                  unusable=5)
 
+    # And `total` against the answers the row carries, which are two
+    # representations of one count: `score_mcq` sets `total = len(answers)`,
+    # so a row disagreeing with its own `answers` describes a run that did
+    # not happen. The last count pair in the model that could disagree.
+    answer = MCQAnswer(task_id="t1", provider="p",
+                       disposition=ScoreDisposition.SCORED, correct=True)
+    with pytest.raises(ValidationError, match="does not match the 1 answer"):
+        MCQScore(total=99, attempted=0, correct=0, abstained=99,
+                 answers=[answer])
+
+    # Conditional, and this is the case that makes it have to be: every other
+    # fixture in this file builds a score from counts alone. An unconditional
+    # `len(answers) != total` would reject all of them.
+    assert MCQScore(total=3, attempted=2, correct=1, abstained=1).answers == []
+
     # And the shape `score_mcq` actually produces is accepted.
     assert MCQScore(total=3, attempted=2, correct=1, abstained=1,
                     unusable=1).skipped == 0
+    assert MCQScore(total=1, attempted=1, correct=1,
+                    answers=[answer]).total == 1
 
 
 def test_a_count_below_zero_is_rejected():
@@ -458,13 +475,24 @@ def test_a_count_below_zero_is_rejected():
         MCQScore(total=2, attempted=-1, abstained=3, unusable=-1, correct=0)
 
     # Each count on its own, so a missing bound on one is not hidden by
-    # another's. `total` needs a companion that keeps the accounting valid.
+    # another's. None of these eight calls is a valid score -- `correct` is
+    # required and mostly absent -- and none needs to be: `ge` is a FIELD
+    # constraint, so it is evaluated alongside the `Field required` errors and
+    # pydantic reports them together, while the `mode="after"` validator never
+    # runs at all. That is what `match=` is discriminating against here, and
+    # it drops to no match the moment a bound is removed.
+    #
+    # History: `total`'s case was written as `MCQScore(total=-1, attempted=0)`
+    # with a note that `total` "needs a companion that keeps the accounting
+    # valid". It does not -- `MCQScore(total=-1)` raises the same `ge` error,
+    # because the accounting is never reached. The companion was inert and
+    # the reason given for it was not the reason the loop above works.
     for field in ("attempted", "correct", "abstained", "extraction_failures",
                   "provider_errors", "skipped", "unusable"):
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
             MCQScore(**{"total": 0, field: -1})
     with pytest.raises(ValidationError, match="greater than or equal to 0"):
-        MCQScore(total=-1, attempted=0)
+        MCQScore(total=-1)
 
 
 def test_the_rates_are_derived_and_cannot_contradict_the_counts():
@@ -557,9 +585,13 @@ def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(capl
 
     # DIRECTIONALLY, against the same run with that answer judged wrong. The
     # numbers above pin what the rates ARE; this pins which way each MOVES,
-    # which is what every describer of this record claims -- and the how-to
+    # which is what every describer of this record claims -- and TWO of them
     # got it backwards, saying unusable answers "cost precision" when leaving
-    # the denominator RAISES it. Absolute assertions could not see that.
+    # the denominator RAISES it: the how-to, and `MCQScore.coverage` in the
+    # module this test imports. The second outlived the sweep that fixed the
+    # first by a commit, because the phrase wrapped across two lines and a
+    # line-based grep could not see it. Absolute assertions could not see it
+    # either, at any point.
     judged_wrong = mcq.score_mcq([
         MCQAnswer(task_id="t1", provider="p",
                   disposition=ScoreDisposition.SCORED, correct=True),

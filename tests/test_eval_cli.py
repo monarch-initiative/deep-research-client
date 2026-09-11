@@ -359,6 +359,41 @@ def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
     )
 
 
+def _page_guards() -> set[str]:
+    """Tests that read the how-to, by name, excluding the caller.
+
+    Derived by reading the two test files rather than listed, because the
+    exemption in `test_the_page_names_every_column_the_writer_emits` argues
+    from what the existing guards cover -- and that argument is only as good
+    as the enumeration behind it. Written from memory twice and wrong twice:
+    once naming a guard that does not exist, once omitting the one prose
+    guard the argument is about.
+
+    Over every file in `tests/`, not the two that happen to hold them
+    today, so a guard added in a third file is not invisible to the list it
+    would belong in. Matches on the page's filename appearing in a line,
+    then walks back to the enclosing `def test_`. A test naming the page in
+    a failure message as well as reading it is counted once.
+
+    What this does NOT cover: a reader that never spells the filename on one
+    line -- built from a variable, or split across a wrap. Every guard in the
+    tree writes it whole, and a guard this cannot see does not change the set
+    below, so it would go unnoticed exactly as the hand-written list did.
+    """
+    import re
+
+    guards: set[str] = set()
+    for path in sorted(Path(__file__).parent.rglob("*.py")):
+        current: str | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"def (test_\w+)", line)
+            if match:
+                current = match.group(1)
+            elif "evaluate-providers.md" in line and current:
+                guards.add(current)
+    return guards - {"test_the_page_names_every_column_the_writer_emits"}
+
+
 def _scores_tsv_header(tmp_path: Path, score: MCQScore) -> list[str]:
     """The column names `write_scores_tsv` actually emits, by running it.
 
@@ -406,13 +441,52 @@ def test_the_page_names_every_column_the_writer_emits(tmp_path):
 
     # `arm_id` identifies the row; the three rates the page discusses at
     # length, so a name-presence check would add nothing for them. NOT
-    # because something else pins those paragraphs -- nothing does. The five
-    # page guards in this tree read the two printed notes, the rendered
-    # `--grade` row, the verifiability line and a rubric example; none reads
-    # the paragraphs that define what the rates are over, and a wrong
-    # sentence about `precision` lived in exactly those until it was fixed by
-    # hand. An exemption list is a describer too: this one says what it does
-    # not cover rather than implying someone else does.
+    # because something else pins those paragraphs -- nothing does. Grepping
+    # every test that reads this page gives five besides this one, and what
+    # each reads:
+    #
+    #   test_the_page_quotes_the_extraction_failures_note_...  a printed note
+    #   test_an_arm_that_attempted_nothing_shows_no_precision  the rendered
+    #       `--grade` row AND the unconditional extractor note -- two of the
+    #       six things in this list come from one guard
+    #   test_the_docs_do_not_claim_the_skip_is_narrower_...    a PROSE
+    #       paragraph, the only one in the tree
+    #   test_the_docs_quote_a_line_the_command_can_...         the
+    #       verifiability line
+    #   test_the_documented_rubric_example_loads_and_scores    a rubric
+    #       example (tests/test_eval_adapters.py)
+    #
+    # Every one but the third reads a RENDERED line, built by running the
+    # command and asserted against the page. The rate paragraphs are prose
+    # and no command prints them, so the third is the shape a guard for them
+    # would take: it splits the page on blank lines and asserts two facts
+    # co-occur in ONE paragraph, after a whole-page containment check let an
+    # unrelated `--template PATH | ... placeholders` row satisfy half of it.
+    #
+    # A wrong sentence about `precision` lived in these paragraphs until it
+    # was fixed by hand. An exemption list is a describer too: this one says
+    # what it does not cover rather than implying someone else does.
+    #
+    # History: this named "the two printed notes, the rendered `--grade` row,
+    # the verifiability line and a rubric example" -- five items for five
+    # guards, which reads as one apiece and is not the mapping. It omitted
+    # the prose guard, the single one whose shape the argument is about.
+    # Twice now this list has been written from memory and been wrong, so it
+    # is derived below rather than trusted: a list asserts nothing about
+    # completeness, and neither does a count of one.
+    assert _page_guards() == {
+        "test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it",
+        "test_an_arm_that_attempted_nothing_shows_no_precision",
+        "test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is",
+        "test_the_docs_quote_a_line_the_command_can_actually_print",
+        "test_the_documented_rubric_example_loads_and_scores",
+    }, (
+        "the set of tests reading docs/how-to/evaluate-providers.md has "
+        f"changed to {sorted(_page_guards())}; the exemption comment above "
+        f"enumerates them and says what each reads, so update it -- a new "
+        f"guard may already pin the rate paragraphs this exemption claims "
+        f"nothing covers"
+    )
     exempt = {"arm_id", "accuracy", "coverage", "precision"}
     missing = [c for c in emitted if c not in exempt and f"`{c}`" not in page]
     assert not missing, (

@@ -839,6 +839,20 @@ class MCQScore(BaseModel):
     failure counts partition `total`; a score whose counts do not add up is
     rejected rather than written to a file a spreadsheet subtracts from.
 
+    Three guards live here and nowhere else in this module: derived rates,
+    the accounting validator below, and `ge=0` on every count. Scoped to this
+    class deliberately, not because the arguments are special to it. The six
+    scores it sits beside -- `FACTScore`, `ClaimRecallScore`,
+    `CitationVerifiabilityScore`, `CitationAlignmentScore`,
+    `FactualSpotCheckScore` and `TopicCoverageScore` -- predate this branch
+    on `main` and keep settable rates duplicating their own counts, so
+    `CitationVerifiabilityScore(total_citations=1, verified_exist=99,
+    verifiability=0.1)` is accepted today. The asymmetry runs the wrong way
+    for blast radius: those six reach `eval score --output` through
+    `EvalResult`, where this one reaches only `scores.tsv`. Hardening them is
+    a change to code this branch does not otherwise touch, so it belongs in
+    its own commit rather than widening this one.
+
     >>> s = MCQScore(total=10, attempted=8, correct=6, abstained=2)
     >>> s.accuracy, s.coverage, s.precision
     (0.6, 0.8, 0.75)
@@ -861,9 +875,7 @@ class MCQScore(BaseModel):
     # accepting a stale rate is the failure this pair exists to prevent.
     model_config = ConfigDict(extra="forbid")
 
-    total: int = Field(
-        ..., ge=0, description="Questions in the eval set"
-    )
+    total: int = Field(..., ge=0, description="Questions in the eval set")
     attempted: int = Field(
         ...,
         ge=0,
@@ -1002,7 +1014,7 @@ class MCQScore(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def precision(self) -> Optional[float]:
-        """correct / (attempted - unusable), and None when that is 0.
+        """correct / `judged`, and None when `judged` is 0.
 
         None when NO attempted answer had its correctness established. That is
         the condition, stated instead of its causes because the causes
@@ -1072,6 +1084,16 @@ class MCQScore(BaseModel):
                 f"+ skipped={self.skipped} = {accounted}, not {self.total}. "
                 f"Every task has exactly one disposition, so the five counts "
                 f"partition `total`."
+            )
+        if self.answers and len(self.answers) != self.total:
+            raise ValueError(
+                f"total={self.total} does not match the {len(self.answers)} "
+                f"answer(s) carried: `score_mcq` sets `total = len(answers)` "
+                f"and grades every one of them, so a row whose `answers` "
+                f"disagree with its `total` describes a run that did not "
+                f"happen. Conditional on `answers` being non-empty, because "
+                f"it defaults to empty and a score built from counts alone "
+                f"legitimately carries none."
             )
         if self.unusable > self.attempted:
             raise ValueError(

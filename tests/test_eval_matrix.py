@@ -5,8 +5,8 @@ client, so the output layout, the resume logic and the TSV writers are all
 exercised end to end without reaching a network.
 """
 
-import re
 import asyncio
+import re
 import json
 from pathlib import Path
 
@@ -726,3 +726,110 @@ def test_atomic_write_preserves_an_existing_files_mode(tmp_path):
     atomic_write(path, '{"refreshed": true}')
     assert stat.S_IMODE(path.stat().st_mode) == 0o664
     assert path.read_text() == '{"refreshed": true}'
+
+
+# ---------------------------------------------------------------------------
+# Response cache
+# ---------------------------------------------------------------------------
+
+
+def _cache_client(tmp_path, monkeypatch, enabled=True):
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    return DeepResearchClient(cache_config=CacheConfig(
+        enabled=enabled, directory=str(tmp_path / "cache"),
+    ))
+
+
+def test_a_replayed_cell_is_recorded_as_cached(tmp_path, monkeypatch):
+    """A replay is a measurement that did not happen in the run reporting it.
+
+    The cache re-stamps `start_time`, `end_time` and `duration_seconds` for the
+    current run, so nothing downstream can tell a months-old report from a live
+    one. `ResearchResult.cached` already says which it was; `_run_cell` copied
+    five other fields off the result and dropped that one.
+    """
+    client = _cache_client(tmp_path, monkeypatch)
+    eval_set = EvalSet(name="c", tasks=[
+        EvalTask(id="t1", prompt="Cache probe question?", answer_type=AnswerType.REPORT),
+    ])
+
+    first = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=tmp_path / "r1"), client=client,
+    ))
+    assert first.cells[0].cached is False
+
+    second = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=tmp_path / "r2"), client=client,
+    ))
+    assert second.cells[0].cached is True, (
+        "a second run over the same prompt was served from the cache but "
+        "recorded as though the provider had answered"
+    )
+
+
+def test_two_arms_with_the_same_configuration_are_one_sample(tmp_path, monkeypatch):
+    """The run-to-run variance check a matrix exists for.
+
+    `--arm a=falcon --arm b=falcon` is how you ask what a provider's spread
+    looks like. The cache key is (prompt, provider, model, params), so the
+    second arm replays the first and `results.tsv` reports one sample as two.
+    Run serially, because concurrently the two arms race the cache and both
+    can miss -- which makes the defect intermittent rather than absent.
+    """
+    client = _cache_client(tmp_path, monkeypatch)
+    eval_set = EvalSet(name="v", tasks=[
+        EvalTask(id="t1", prompt="Variance probe?", answer_type=AnswerType.REPORT),
+    ])
+
+    manifest = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none"), _mock_arm("b", "none")],
+        MatrixConfig(output_dir=tmp_path / "run", concurrency=1), client=client,
+    ))
+
+    # Which arm is the replay depends on execution order, and asserting that
+    # made the test order-dependent -- it failed alone and passed with the
+    # file. The property is that exactly one of the two was measured.
+    replayed = [c.arm_id for c in manifest.cells if c.cached]
+    assert len(manifest.cells) == 2
+    assert len(replayed) == 1, (
+        f"expected one of two identical arms to be a replay, got {replayed}"
+    )
+
+
+def test_disabling_the_cache_makes_every_cell_a_live_call(tmp_path, monkeypatch):
+    """`--no-resume` re-runs a cell; it does not re-call the provider.
+
+    Without a way to defeat the cache, a user who suspects a bad run cannot
+    force a real one -- the same bytes come back under a fresh duration.
+    """
+    client = _cache_client(tmp_path, monkeypatch, enabled=False)
+    eval_set = EvalSet(name="n", tasks=[
+        EvalTask(id="t1", prompt="No-cache probe?", answer_type=AnswerType.REPORT),
+    ])
+    config = MatrixConfig(output_dir=tmp_path / "r1")
+
+    asyncio.run(run_matrix(eval_set, [_mock_arm("a", "none")], config, client=client))
+    second = asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=tmp_path / "r2"), client=client,
+    ))
+    assert second.cells[0].cached is False
+
+
+def test_the_cache_column_is_written_to_results_tsv(tmp_path, monkeypatch):
+    """Visible in the artefact a score is computed from, not only in memory."""
+    client = _cache_client(tmp_path, monkeypatch)
+    eval_set = EvalSet(name="c", tasks=[
+        EvalTask(id="t1", prompt="TSV cache probe?", answer_type=AnswerType.REPORT),
+    ])
+    run_dir = tmp_path / "run"
+    asyncio.run(run_matrix(
+        eval_set, [_mock_arm("a", "none")],
+        MatrixConfig(output_dir=run_dir), client=client,
+    ))
+
+    header, row = (run_dir / "results.tsv").read_text().splitlines()[:2]
+    assert "cached" in header.split("\t")
+    assert row.split("\t")[header.split("\t").index("cached")] == "false"

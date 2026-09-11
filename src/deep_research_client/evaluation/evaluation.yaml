@@ -456,6 +456,16 @@ classes:
           attributed to the wrong system is worse than a missing one.
       model_used:
         description: The model that actually answered.
+      cached:
+        description: >-
+          Whether the response was replayed from the client's cache rather than
+          produced by calling the provider in this run. Recorded because a
+          replayed cell is otherwise indistinguishable from a live one: the
+          cache re-stamps start and end times for the current run, so duration
+          does not give it away. A score computed over replayed cells may
+          describe a model version that is months old, and two arms sharing a
+          provider, model and parameters return one sample reported as two.
+        range: boolean
       disposition:
         description: >-
           For a multiple-choice task, what became of the answer. Absent for

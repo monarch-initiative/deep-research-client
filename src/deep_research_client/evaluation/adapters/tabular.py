@@ -68,7 +68,7 @@ def _split_list(value: Any, separator: str) -> list[str]:
 
 
 def _answer_type_of(
-    row: dict[str, Any], distractors: list[str], index: int = 0
+    row: dict[str, Any], distractors: list[str], index: int
 ) -> AnswerType:
     """Determine a row's answer type, inferring it when unstated.
 
@@ -76,14 +76,21 @@ def _answer_type_of(
     answer is short answer; a row carrying neither is a report task. Stating
     ``answer_type`` explicitly always wins.
 
-    >>> _answer_type_of({}, [])
+    ``index`` is required rather than defaulting: it exists only to name the row
+    in an error, and a caller that forgot it would report "row 1" -- the one
+    wrong row number that looks entirely plausible.
+
+    >>> _answer_type_of({}, [], 0)
     <AnswerType.REPORT: 'REPORT'>
-    >>> _answer_type_of({}, ["b"])
+    >>> _answer_type_of({}, ["b"], 0)
     <AnswerType.MULTIPLE_CHOICE: 'MULTIPLE_CHOICE'>
-    >>> _answer_type_of({"ideal": "42"}, [])
+    >>> _answer_type_of({"ideal": "42"}, [], 0)
     <AnswerType.SHORT_ANSWER: 'SHORT_ANSWER'>
-    >>> _answer_type_of({"answer_type": "report"}, ["b"])
+    >>> _answer_type_of({"answer_type": "report"}, ["b"], 0)
     <AnswerType.REPORT: 'REPORT'>
+    >>> _answer_type_of({"answer_type": "mcq"}, [], 2)
+    Traceback (most recent call last):
+    ValueError: row 3: 'mcq' is not a valid answer_type. Valid types: MULTIPLE_CHOICE, SHORT_ANSWER, REPORT
     """
     stated = row.get("answer_type")
     if stated:

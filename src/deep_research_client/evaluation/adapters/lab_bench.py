@@ -54,6 +54,9 @@ LICENSE = "CC-BY-SA-4.0"
 #: default rather than a quotation, and it is recorded per task in the eval set
 #: so a run always says which convention produced its numbers. Override it with
 #: the ``abstention_option`` load option to match another harness exactly.
+#: Timeout for every request this module makes to the datasets host.
+_HTTP_TIMEOUT = 120.0
+
 DEFAULT_ABSTENTION_OPTION = "Insufficient information to answer this question."
 
 #: Rows per datasets-server request. The API caps a page at 100.
@@ -120,7 +123,7 @@ def resolve_revision(client: httpx.Client | None = None) -> str:
         The dataset revision sha.
     """
     owns_client = client is None
-    client = client or httpx.Client(timeout=30.0)
+    client = client or httpx.Client(timeout=_HTTP_TIMEOUT)
     try:
         response = client.get(f"https://huggingface.co/api/datasets/{DATASET}")
         response.raise_for_status()
@@ -208,6 +211,27 @@ def newest_cached_revision(
     ).name
 
 
+def resolve_for(
+    subsets: str | Sequence[str],
+    cache_dir: str | Path | None = None,
+) -> str:
+    """Resolve one revision covering every named subset.
+
+    The public form of `_resolve_or_fall_back`, for callers that want a single
+    revision to thread through several `fetch_subset` calls. It owns the HTTP
+    client so the timeout matches the rest of this module rather than being
+    chosen again at each call site.
+
+    Resolving once is not only cheaper. A revision that changes between subsets
+    caches them under two revision directories, and `newest_cached_revision`
+    requires one revision covering every subset asked for -- so a split cache
+    holds every byte and still sends a later offline load to a network that is
+    not there.
+    """
+    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+        return _resolve_or_fall_back(client, subsets, cache_dir)
+
+
 def _resolve_or_fall_back(
     client: httpx.Client,
     subsets: str | Sequence[str],
@@ -266,7 +290,7 @@ def fetch_subset(
             f"Available: {', '.join(SUBSETS)}"
         )
 
-    with httpx.Client(timeout=120.0) as client:
+    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
         # Resolve unless the caller already did. The datasets-server rows
         # endpoint serves whatever is current and takes no revision parameter,
         # so honouring a requested revision by simply filing the download under
@@ -425,7 +449,7 @@ class LabBenchAdapter(EvalSetAdapter):
         # identical API calls, and a revision that changed between them would
         # silently mix two datasets into one eval set.
         requested_revision: str | None = options.get("revision")
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
             pinned: str = _resolve_or_fall_back(client, subsets, options.get("cache_dir"))
         if requested_revision and requested_revision != pinned:
             raise ValueError(

@@ -697,7 +697,9 @@ predictable directory tree.
 | `--limit INTEGER` | Run only the first N tasks |
 | `--task-id TEXT` | Run only these task ids (repeatable) |
 | `--concurrency`, `-j INTEGER` | Cells to run at a time (default: 4) |
-| `--no-resume` | Re-run cells an earlier run already completed |
+| `--no-resume` | Re-run cells an earlier run already completed (does not bypass the response cache; pair with `--no-cache`) |
+| `--no-cache` | Never replay a response from the client cache; call the provider for every cell |
+| `--cache-dir TEXT` | Override the response cache directory (default: `~/.deep_research_cache`) |
 | `--grade` | Also score multiple-choice answers with the provisional regex extractor |
 | `--dry-run` | Show the matrix and one prompt without calling any provider |
 
@@ -706,6 +708,12 @@ beside the prompt that produced it, so grading can be decided and redone later
 without re-running any provider. `--grade` opts into a provisional regex-based
 multiple-choice grader, which is fine for a quick look but is not the intended
 design — see [Evaluate Providers](../how-to/evaluate-providers.md).
+
+Responses are cached by default, keyed on prompt, provider, model and
+parameters, so a cell can be served from an earlier run rather than measured in
+this one. The end-of-run summary reports how many cells were replays and
+`results.tsv` carries a `cached` column; use `--no-cache` when the number has to
+describe calls made now.
 
 Output layout:
 

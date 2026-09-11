@@ -11,6 +11,9 @@ Everything here runs through the mock provider, so no network and no spend.
 
 from pathlib import Path
 
+import json
+
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -23,8 +26,19 @@ EVAL_INPUT = Path(__file__).parent / "input" / "eval"
 
 
 @pytest.fixture(autouse=True)
-def enable_mock(monkeypatch):
+def enable_mock(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    # `eval run` builds its own client inside `run_matrix`, so these tests
+    # cannot hand it a cache-disabled one the way the matrix tests can. Without
+    # this they read and write the developer's real ~/.deep_research_cache,
+    # keyed on prompts these tests deliberately keep stable -- so a test could
+    # pass on a response recorded before the code under test existed, and a
+    # first run on a clean machine would exercise a different path from every
+    # run after it. `CacheManager` resolves its default as
+    # `Path.home() / ".deep_research_cache"`, so moving HOME moves the cache,
+    # and catches anything else that writes to the home directory too.
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
 
 
 def _write(path: Path, body: str) -> Path:
@@ -244,6 +258,8 @@ def test_every_command_reports_a_malformed_eval_set_the_same_way(tmp_path, comma
     result = runner.invoke(app, args)
     assert result.exit_code == 1
     assert "Could not load the eval set" in result.stdout
+    # Named, because the errors underneath carry a row number and not a file.
+    assert str(path) in result.stdout
 
 
 def test_eval_load_reports_the_number_of_options_actually_asked(tmp_path):
@@ -309,7 +325,10 @@ def test_eval_fetch_refuses_an_empty_subset_argument(arg):
 
 @pytest.mark.parametrize("exc,expected", [
     (ValueError("LitQA2 returned 198 rows, expected 199"), "Could not fetch the dataset"),
-    (__import__("httpx").HTTPError("503 from the datasets server"), "Could not reach the dataset"),
+    (httpx.HTTPError("503 from the datasets server"), "Could not reach the dataset"),
+    # A JSONDecodeError is a ValueError, so without its own clause a truncated
+    # cache file reported "Expecting value: line 1 column 1" and no remedy.
+    (json.JSONDecodeError("Expecting value", "", 0), "re-run with --refresh"),
 ])
 def test_eval_fetch_reports_expected_failures_rather_than_raising(monkeypatch, exc, expected):
     """Its siblings all report these; this command tracebacked.
@@ -386,3 +405,72 @@ def test_the_score_hint_names_a_path_that_exists(tmp_path):
     hint = next(ln for ln in result.stdout.splitlines() if "eval score" in ln)
     printed = Path(hint.split("eval score")[1].split()[0])
     assert printed.exists(), f"hint names a path that does not exist: {printed}"
+
+
+# ---------------------------------------------------------------------------
+# eval run and the response cache
+# ---------------------------------------------------------------------------
+
+
+def _run_twice(tmp_path, extra=()):
+    """Run the same eval set twice under one HOME, so the cache persists."""
+    path = _write(tmp_path / "cache.yaml",
+                  "tasks:\n  - id: t1\n    prompt: CLI cache probe question?\n")
+    outs = []
+    for i in (1, 2):
+        result = runner.invoke(app, [
+            "eval", "run", str(path), "--arm", "mock",
+            "--output-dir", str(tmp_path / f"run{i}"), *extra,
+        ])
+        assert result.exit_code == 0, result.stdout
+        outs.append(result.stdout)
+    return outs
+
+
+def test_eval_run_says_when_cells_were_replayed_rather_than_measured(tmp_path):
+    """Silence here means a score describes calls that never happened.
+
+    The cache re-stamps this run's timings, so a replayed cell reads as fresh
+    everywhere downstream -- in cell.json, in results.tsv and in the manifest.
+    """
+    first, second = _run_twice(tmp_path)
+    assert "replayed from the response cache" not in first
+    assert "1/1 cells were replayed from the response cache" in second
+
+
+def test_eval_run_no_cache_forces_a_live_call(tmp_path):
+    """`--no-resume` re-runs the cell; only this re-calls the provider."""
+    first, second = _run_twice(tmp_path, extra=("--no-cache",))
+    assert "replayed from the response cache" not in first
+    assert "replayed from the response cache" not in second
+
+
+def test_the_cached_column_marks_which_rows_were_replays(tmp_path):
+    """The end-of-run message points at this column, so it has to be there."""
+    _run_twice(tmp_path)
+    header, row = (tmp_path / "run2" / "results.tsv").read_text().splitlines()[:2]
+    columns = header.split("\t")
+    assert "cached" in columns
+    assert row.split("\t")[columns.index("cached")] == "true"
+
+
+def test_the_score_hint_skips_an_arm_whose_cell_failed(tmp_path):
+    """Naming a real arm is only better if that arm actually wrote an output.
+
+    The failing arm is listed first, so picking `arms[0]` would name a cell
+    directory that has no output.md in it.
+    """
+    path = _write(tmp_path / "rep.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    run_dir = tmp_path / "run"
+    result = runner.invoke(app, [
+        "eval", "run", str(path),
+        "--arm", "broken=mock", "--arm", "ok=mock",
+        "--output-dir", str(run_dir),
+    ])
+    assert result.exit_code == 0
+
+    hint = [ln for ln in result.stdout.splitlines() if "eval score" in ln]
+    if hint:
+        printed = Path(hint[0].split("eval score")[1].split()[0])
+        assert printed.exists(), f"hint names a missing path: {printed}"

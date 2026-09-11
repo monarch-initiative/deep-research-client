@@ -64,6 +64,32 @@ in `deep_research_client.evaluation.mcq`, which is the canonical statement and
 carries a worked example of each. It is deliberately not re-enumerated here —
 this list has drifted behind that one before.
 
+## Responses are cached, and a replayed cell is not a measurement
+
+The client caches responses in `~/.deep_research_cache`, keyed on the prompt,
+provider, model and parameters. That makes a resumed or repeated run cheap, and
+it is on by default — but it means a cell can be served from a response
+recorded weeks ago, by a model version that has since changed. The cache
+re-stamps the timings for the current run, so nothing downstream distinguishes
+a replay from a live call.
+
+Two consequences worth knowing before you publish a number:
+
+- `--no-resume` re-runs a cell; it does not re-call the provider. To force real
+  calls, add `--no-cache`.
+- Two arms sharing a provider, model and parameters — the way you ask what a
+  provider's run-to-run spread looks like — will have the second replay the
+  first, reporting one sample as two.
+
+`eval run` says how many cells were replays at the end of a run, and
+`results.tsv` carries a `cached` column marking which rows they were. Use
+`--no-cache` for a calibration run, and `--cache-dir` to keep a benchmark's
+cache separate from your ad-hoc queries.
+
+```
+deep-research-client eval run questions.yaml --arm a=falcon --arm b=falcon --no-cache
+```
+
 TSV works too, for questions that came out of a spreadsheet:
 
 ```

@@ -54,32 +54,53 @@ def _mcq_options(query: str) -> list[tuple[str, str]]:
     r"""The lettered options in a prompt, or [] if it poses no choice.
 
     Matching the pattern anywhere in the prompt is not enough: a question can
-    open with something that looks exactly like an option line. "E. coli grows
-    anaerobically in which condition?" yields ``("E", "coli grows ...")`` ahead
-    of the real A/B/C, and ``answer_policy="first"`` then answers E -- a letter
-    that was never offered, scoring EXTRACTION_FAILED instead of the position
-    the policy promises. That property, that the score an arm should get is
-    computable in advance, is the whole reason this provider exists.
+    open with something that looks exactly like an option line. That property,
+    that the score an arm should get is computable in advance, is the whole
+    reason this provider exists, and a stray match breaks it.
 
-    So take the run of consecutive lines that actually reads as an option list:
-    letters ascending from A with no gaps, which is exactly what the renderer
-    emits. A stray match before or after it is not part of that run.
+    Two shapes of stray match, and the second is why a run of one is refused:
+
+    - "E. coli grows anaerobically ...?" yields ``("E", "coli grows ...")``
+      ahead of the real A/B/C. ``answer_policy="first"`` answers E, a letter
+      never offered, and the cell scores EXTRACTION_FAILED.
+    - "A. thaliana is a model plant. Which gene ...?" is worse, because the
+      stray letter *is* A. It opens a run of exactly one, the blank line after
+      it ends that run, and the real list is never reached. Under
+      ``answer_policy="last"`` the mock then answers A -- a letter that *is* on
+      offer, in the wrong position -- so nothing fails: the cell scores SCORED
+      and counts as correct whenever the ideal shuffles into position one. An
+      arm promising to decline every question is recorded as choosing.
+
+    So a qualifying run is at least two options, ascending from A with no gaps,
+    which is what the renderer emits and what ``present_choices`` guarantees --
+    ``degenerate_reason`` refuses anything that would present fewer. Scanning
+    continues past a run rather than stopping at the first, so the real list
+    wins: it sits last, immediately above the instruction lines.
 
     >>> _mcq_options("E. coli grows how?\n\nA. Fast\nB. Slow\n")
     [('A', 'Fast'), ('B', 'Slow')]
+    >>> _mcq_options("A. thaliana flowers when?\n\nA. FT\nB. CO\n")
+    [('A', 'FT'), ('B', 'CO')]
     >>> _mcq_options("Which base?\n\nA. Thymine\nB. Guanine\n")
     [('A', 'Thymine'), ('B', 'Guanine')]
     >>> _mcq_options("No options here.")
     []
     """
+    best: list[tuple[str, str]] = []
     run: list[tuple[str, str]] = []
     for line in query.splitlines():
         match = _MCQ_OPTION.match(line)
         if match and match.group(1) == chr(ord("A") + len(run)):
             run.append((match.group(1), match.group(2)))
-        elif run:
-            break
-    return run
+            continue
+        if len(run) >= 2:
+            best = run
+        # A line that is not the next letter ends the run -- including a line
+        # that restarts at "A", which is how the real list follows a stray one.
+        run = [(match.group(1), match.group(2))] if match and match.group(1) == "A" else []
+    if len(run) >= 2:
+        best = run
+    return best
 
 
 class MockProvider(ResearchProvider):

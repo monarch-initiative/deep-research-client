@@ -45,6 +45,7 @@ import yaml
 
 from .. import __version__
 from ..client import DeepResearchClient
+from ..models import CacheConfig
 from . import mcq
 from ._fs import atomic_write
 from .datamodel import (
@@ -69,7 +70,7 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _RESULT_COLUMNS = (
     "task_id", "arm_id", "provider", "model", "status", "disposition",
     "correct", "chosen_letter", "duration_seconds", "citation_count",
-    "output_path", "error",
+    "cached", "output_path", "error",
 )
 
 
@@ -257,6 +258,13 @@ class MatrixConfig:
     #: is to materialise results, and the current grader is a provisional
     #: regex-based one whose numbers should not be produced by accident.
     grade: bool = False
+    #: Serve cells from the client's response cache when it has them. Left on
+    #: by default so a resumed or repeated run is cheap, but a benchmarking run
+    #: that must measure the provider now should turn it off: a replay is a
+    #: measurement that did not happen in the run reporting it.
+    use_cache: bool = True
+    #: Where that cache lives. None means the client's default.
+    cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
 
@@ -391,6 +399,9 @@ async def _run_cell(
         citation_count=len(result.citations or []),
         provider_used=result.provider,
         model_used=result.model,
+        # Copied like the rest: a replayed response is otherwise indis-
+        # tinguishable from a live one, because the cache re-stamps the times.
+        cached=bool(result.cached),
     )
 
     # Grading is opt-in: materialising the result is the run's job, and the
@@ -421,6 +432,7 @@ def write_results_tsv(layout: RunLayout, cells: Sequence[CellResult]) -> None:
             "chosen_letter": cell.chosen_letter or "",
             "duration_seconds": "" if cell.duration_seconds is None else f"{cell.duration_seconds:.1f}",
             "citation_count": "" if cell.citation_count is None else str(cell.citation_count),
+            "cached": "" if cell.cached is None else str(cell.cached).lower(),
             "output_path": cell.output_path or "",
             # Tabs and newlines in an error message would corrupt the row.
             "error": " ".join((cell.error or "").split()),
@@ -529,7 +541,15 @@ async def run_matrix(
     if not arms:
         raise ValueError("No arms to run")
 
-    client = client or DeepResearchClient()
+    # Built here when the caller passes none, so the cache settings on the
+    # config are the ones that apply on the CLI path -- which never passes a
+    # client, and so silently took the default: caching on, against a directory
+    # shared with every other use of this client on the machine.
+    if client is None:
+        client = DeepResearchClient(cache_config=CacheConfig(
+            enabled=config.use_cache,
+            directory=config.cache_dir,
+        ))
     layout = RunLayout(Path(config.output_dir))
     layout.root.mkdir(parents=True, exist_ok=True)
 

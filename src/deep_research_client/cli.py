@@ -2713,12 +2713,14 @@ def eval_fetch(
         deep-research-client eval fetch LitQA2,SuppQA --refresh
         deep-research-client eval fetch all
     """
+    import json
+
     import httpx
 
     from .evaluation.adapters.lab_bench import (
         SUBSETS,
-        _resolve_or_fall_back,
         fetch_subset,
+        resolve_for,
         text_only_subsets,
     )
 
@@ -2755,8 +2757,7 @@ def eval_fetch(
     # requested. That is a cache holding every byte that the offline fallback
     # then refuses whole -- assembled by the command meant to prevent it.
     try:
-        with httpx.Client(timeout=30.0) as client:
-            pinned = _resolve_or_fall_back(client, names, cache_dir)
+        pinned = resolve_for(names, cache_dir)
 
         for name in names:
             rows, resolved = fetch_subset(
@@ -2764,6 +2765,16 @@ def eval_fetch(
                 refresh=refresh, resolved_revision=pinned,
             )
             typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
+    except json.JSONDecodeError as exc:
+        # A JSONDecodeError is a ValueError, so without this a truncated or
+        # hand-edited cache file reported as "Expecting value: line 1 column 1"
+        # and nothing else. The row-count guard next door names its remedy.
+        typer.echo(
+            f"A cached LAB-Bench file is not valid JSON: {exc}. It was likely "
+            f"truncated by an interrupted download; re-run with --refresh to "
+            f"replace it."
+        )
+        raise typer.Exit(1) from exc
     except ValueError as exc:
         # Upstream drift trips the row-count guard, which exists precisely so a
         # user finds out. Its siblings report that; this used to traceback.
@@ -2788,13 +2799,16 @@ def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
 
     from .evaluation.runner import load_eval_set
 
+    # The source is named because the errors underneath carry a row number and
+    # not a file: `row 3: 'mcq' is not a valid answer_type` reaches someone who
+    # ran a script over a directory with no way to tell which file it was.
     try:
         return load_eval_set(adapter, source)
     except (ValueError, FileNotFoundError) as exc:
-        typer.echo(f"Could not load the eval set: {exc}")
+        typer.echo(f"Could not load the eval set {source}: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset to load it: {exc}")
+        typer.echo(f"Could not reach the dataset to load {source}: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -2899,7 +2913,13 @@ def eval_run(
     concurrency: Annotated[int, typer.Option(
         "--concurrency", "-j", min=1, help="Cells to run at a time")] = 4,
     no_resume: Annotated[bool, typer.Option(
-        "--no-resume", help="Re-run cells that an earlier run already completed")] = False,
+        "--no-resume",
+        help="Re-run cells that an earlier run already completed (use with --no-cache to force fresh provider calls)")] = False,
+    no_cache: Annotated[bool, typer.Option(
+        "--no-cache",
+        help="Never replay a response from the client cache; call the provider for every cell")] = False,
+    cache_dir: Annotated[Optional[str], typer.Option(
+        "--cache-dir", help="Override the response cache directory (default: ~/.deep_research_cache)")] = None,
     grade: Annotated[bool, typer.Option(
         "--grade", help="Also grade multiple-choice answers with the provisional regex extractor (off by default; see the note it prints)")] = False,
     dry_run: Annotated[bool, typer.Option(
@@ -3034,6 +3054,8 @@ def eval_run(
             concurrency=concurrency,
             resume=not no_resume,
             grade=grade,
+            use_cache=not no_cache,
+            cache_dir=cache_dir,
             on_cell=on_cell,
         ),
     ))
@@ -3045,6 +3067,18 @@ def eval_run(
         typer.echo(f"{len(failed)} failed:")
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
+
+    # Said out loud, because nothing else distinguishes a replay: the cache
+    # re-stamps this run's times, so a months-old report reads as fresh.
+    replayed = [c for c in cells if c.cached]
+    if replayed:
+        typer.echo(
+            f"\n{len(replayed)}/{len(cells)} cells were replayed from the response "
+            f"cache, not measured in this run. Two arms sharing a provider, model "
+            f"and parameters return one sample reported as two. Re-run with "
+            f"--no-cache to call the provider for every cell; the `cached` column "
+            f"in results.tsv marks which rows these were."
+        )
 
     scores = score_by_arm(eval_set, cells) if grade else {}
     if grade and not scores:
@@ -3090,10 +3124,19 @@ def eval_run(
     # under safe_segment(id), which appends a digest to anything it rewrites, so
     # `HP:0001156` writes to `HP_0001156-<digest>/`. The placeholder form told
     # the user to type a path that does not exist and cannot be guessed.
-    report_task = next((t for t in tasks if t.answer_type == AnswerType.REPORT), None)
-    if report_task is not None:
+    report_ids = {t.id for t in tasks if t.answer_type == AnswerType.REPORT}
+    # A COMPLETED cell, not simply the first arm: if that arm's cell FAILED no
+    # output.md was written, and the hint would name a path that is not there --
+    # the very thing naming a real task and arm was meant to fix.
+    done = next(
+        (c for c in cells
+         if c.task_id in report_ids and c.status == CellStatus.COMPLETED),
+        None,
+    )
+    if done is not None:
         from .evaluation.matrix import safe_segment
-        cell_path = f"{safe_segment(report_task.id)}/{safe_segment(arms[0].id)}"
+        report_task = next(t for t in tasks if t.id == done.task_id)
+        cell_path = f"{safe_segment(done.task_id)}/{safe_segment(done.arm_id)}"
         typer.echo(
             "\nTo score a report against its rubric with an LLM judge:\n"
             f"  deep-research-client eval score {run_dir}/{cell_path}/output.md \\\n"

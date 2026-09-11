@@ -711,9 +711,11 @@ design — see [Evaluate Providers](../how-to/evaluate-providers.md).
 
 Responses are cached by default, keyed on prompt, provider, model and
 parameters, so a cell can be served from an earlier run rather than measured in
-this one. The end-of-run summary reports how many cells were replays and
-`results.tsv` carries a `cached` column; use `--no-cache` when the number has to
-describe calls made now.
+this one. The end-of-run summary separates cells measured now, replayed from the
+cache, and resumed from a previous run in the same directory; `results.tsv`
+carries `resumed` and `cached` columns. Use `--no-cache` when the number has to
+describe calls made now, and `--no-resume --no-cache` when the run directory
+already holds results.
 
 Output layout:
 

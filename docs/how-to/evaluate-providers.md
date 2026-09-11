@@ -75,16 +75,25 @@ a replay from a live call.
 
 Two consequences worth knowing before you publish a number:
 
-- `--no-resume` re-runs a cell; it does not re-call the provider. To force real
-  calls, add `--no-cache`.
+- `--no-resume` re-runs a cell; it does not re-call the provider, and on a run
+  directory that already has results `--no-cache` alone cannot reach those
+  cells either — resume skips them before the client is consulted. To force
+  real calls on an existing run directory, pass `--no-resume --no-cache`.
 - Two arms sharing a provider, model and parameters — the way you ask what a
-  provider's run-to-run spread looks like — will have the second replay the
-  first, reporting one sample as two.
+  provider's run-to-run spread looks like — share a cache key, so one may
+  replay another instead of calling the provider. Whether it happens depends on
+  scheduling: at `-j 1` the second arm replays the first, while at the default
+  concurrency both usually reach the provider before either writes the cache.
+  That means the number of independent samples behind a reported spread varies
+  between identical invocations, which is why `eval run` warns about identically
+  configured arms before it starts rather than reporting it afterwards.
 
-`eval run` says how many cells were replays at the end of a run, and
-`results.tsv` carries a `cached` column marking which rows they were. Use
-`--no-cache` for a calibration run, and `--cache-dir` to keep a benchmark's
-cache separate from your ad-hoc queries.
+At the end of a run `eval run` says how many cells were measured, how many were
+replayed from the cache and how many were resumed from a previous run in the
+same directory — three different things, only the first of which describes the
+provider as it is now. `results.tsv` carries `resumed` and `cached` columns
+marking which rows were which. Use `--no-cache` for a calibration run, and
+`--cache-dir` to keep a benchmark's cache separate from your ad-hoc queries.
 
 ```
 deep-research-client eval run questions.yaml --arm a=falcon --arm b=falcon --no-cache

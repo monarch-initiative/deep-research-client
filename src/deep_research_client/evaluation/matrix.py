@@ -70,7 +70,7 @@ _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _RESULT_COLUMNS = (
     "task_id", "arm_id", "provider", "model", "status", "disposition",
     "correct", "chosen_letter", "duration_seconds", "citation_count",
-    "cached", "output_path", "error",
+    "resumed", "cached", "output_path", "error",
 )
 
 
@@ -262,8 +262,13 @@ class MatrixConfig:
     #: by default so a resumed or repeated run is cheap, but a benchmarking run
     #: that must measure the provider now should turn it off: a replay is a
     #: measurement that did not happen in the run reporting it.
+    #:
+    #: Applies only when `run_matrix` builds the client, which is the CLI path.
+    #: A caller passing its own `client` has already chosen its cache settings,
+    #: and this field is not applied on top of them.
     use_cache: bool = True
-    #: Where that cache lives. None means the client's default.
+    #: Where that cache lives. None means the client's default. Applies only
+    #: when `run_matrix` builds the client, as `use_cache` does.
     cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
@@ -432,6 +437,7 @@ def write_results_tsv(layout: RunLayout, cells: Sequence[CellResult]) -> None:
             "chosen_letter": cell.chosen_letter or "",
             "duration_seconds": "" if cell.duration_seconds is None else f"{cell.duration_seconds:.1f}",
             "citation_count": "" if cell.citation_count is None else str(cell.citation_count),
+            "resumed": "" if cell.resumed is None else str(cell.resumed).lower(),
             "cached": "" if cell.cached is None else str(cell.cached).lower(),
             "output_path": cell.output_path or "",
             # Tabs and newlines in an error message would corrupt the row.
@@ -513,6 +519,8 @@ def _manifest(
         partial_reason=eval_set.partial_reason,
         client_version=__version__,
         concurrency=config.concurrency,
+        resume_enabled=config.resume,
+        cache_enabled=config.use_cache,
         arms=list(arms),
         cells=list(cells),
     )
@@ -562,9 +570,15 @@ async def run_matrix(
             done = _completed_cell(layout, task, arm, prompt, choices, config.grade)
             if done is not None:
                 logger.info("Cell %s/%s already complete; skipping", task.id, arm.id)
+                # Marked on the in-memory cell only. cell.json is not rewritten
+                # on resume, so the stored copy keeps the flags of the run that
+                # produced it, and this manifest describes this run.
+                done.resumed = True
                 return done
         async with semaphore:
-            return await _run_cell(client, task, arm, layout, grade=config.grade)
+            cell = await _run_cell(client, task, arm, layout, grade=config.grade)
+            cell.resumed = False
+            return cell
 
     # Stable order in the written outputs, independent of completion order.
     order = {(task.id, arm.id): i

@@ -2713,8 +2713,6 @@ def eval_fetch(
         deep-research-client eval fetch LitQA2,SuppQA --refresh
         deep-research-client eval fetch all
     """
-    import json
-
     import httpx
 
     from .evaluation.adapters.lab_bench import (
@@ -2765,16 +2763,6 @@ def eval_fetch(
                 refresh=refresh, resolved_revision=pinned,
             )
             typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
-    except json.JSONDecodeError as exc:
-        # A JSONDecodeError is a ValueError, so without this a truncated or
-        # hand-edited cache file reported as "Expecting value: line 1 column 1"
-        # and nothing else. The row-count guard next door names its remedy.
-        typer.echo(
-            f"A cached LAB-Bench file is not valid JSON: {exc}. It was likely "
-            f"truncated by an interrupted download; re-run with --refresh to "
-            f"replace it."
-        )
-        raise typer.Exit(1) from exc
     except ValueError as exc:
         # Upstream drift trips the row-count guard, which exists precisely so a
         # user finds out. Its siblings report that; this used to traceback.
@@ -2982,6 +2970,31 @@ def eval_run(
         typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
+    # Said before the spending, because afterwards the answer is not even
+    # stable. Two arms with the same provider, model and params share a
+    # response-cache key, so whether the second replays the first depends on
+    # scheduling: at -j 1 it does, and at the default concurrency both usually
+    # reach the provider before either writes the cache. The number of
+    # independent samples behind a reported spread therefore varies between
+    # identical invocations -- which is the very thing a duplicate-arm run
+    # exists to measure. Duplicate arm *ids* are refused above; this is the
+    # duplicate that matters to the number.
+    def _config_of(a) -> tuple:
+        return (a.provider, a.model,
+                tuple(sorted((p.key, p.value) for p in (a.params or []))))
+
+    if not no_cache:
+        for config_key, n in Counter(_config_of(a) for a in arms).items():
+            if n > 1:
+                same = [a.id for a in arms if _config_of(a) == config_key]
+                typer.echo(
+                    f"\nNOTE: arms {', '.join(same)} are identically configured. "
+                    f"They share a response-cache key, so depending on scheduling "
+                    f"some may replay another instead of calling the provider - "
+                    f"one sample reported as several. Pass --no-cache to measure "
+                    f"each of them."
+                )
+
     eval_set = _load_eval_set_or_exit(adapter, source)
     tasks = eval_set.tasks or []
     if task_id:
@@ -3068,16 +3081,29 @@ def eval_run(
         for cell in failed[:10]:
             typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
 
-    # Said out loud, because nothing else distinguishes a replay: the cache
-    # re-stamps this run's times, so a months-old report reads as fresh.
-    replayed = [c for c in cells if c.cached]
-    if replayed:
+    # Three categories, because they are three different things and the remedy
+    # differs. A resumed cell was read off disk and carries the *earlier* run's
+    # `cached` flag, so counting it as a cache replay describes neither -- and
+    # --no-cache alone cannot re-run it, since resume skips it before the client
+    # is consulted.
+    resumed = [c for c in cells if c.resumed]
+    replayed = [c for c in cells if not c.resumed and c.cached]
+    measured = [c for c in cells if not c.resumed and not c.cached]
+
+    if resumed or replayed:
         typer.echo(
-            f"\n{len(replayed)}/{len(cells)} cells were replayed from the response "
-            f"cache, not measured in this run. Two arms sharing a provider, model "
-            f"and parameters return one sample reported as two. Re-run with "
-            f"--no-cache to call the provider for every cell; the `cached` column "
-            f"in results.tsv marks which rows these were."
+            f"\nOf {len(cells)} cells: {len(measured)} measured in this run, "
+            f"{len(replayed)} replayed from the response cache, "
+            f"{len(resumed)} resumed from a previous run in this directory."
+        )
+        remedy = (
+            "--no-resume --no-cache" if resumed else "--no-cache"
+        )
+        typer.echo(
+            f"  Only the measured cells describe the provider as it is now. "
+            f"Re-run with {remedy} to call the provider for every cell; the "
+            f"`resumed` and `cached` columns in results.tsv mark which rows "
+            f"were which."
         )
 
     scores = score_by_arm(eval_set, cells) if grade else {}

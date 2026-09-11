@@ -1144,3 +1144,43 @@ def test_a_blank_abstention_is_treated_as_no_abstention():
         if re.fullmatch(r"[A-Z]\.\s*", line)
     ]
     assert option_lines == []
+
+
+def test_a_truncated_cache_file_names_itself_and_the_remedy(tmp_path, monkeypatch):
+    """Guarded at the read, so every command that reaches it reports the same.
+
+    The remedy first landed on `eval fetch` only, which left `eval load`, `eval
+    run` and `eval score` printing a bare `Expecting value: line 1 column 1`
+    through `_load_eval_set_or_exit`'s `except ValueError` -- a JSONDecodeError
+    being a ValueError. `eval run` is the one the user reaches with a wallet
+    open.
+    """
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    revision = "cafebabe" * 5
+    cached = tmp_path / "eval_datasets" / "lab-bench" / revision
+    cached.mkdir(parents=True)
+    truncated = cached / "LitQA2.json"
+    truncated.write_text('[{"id": "q1", "question": "Wh')
+
+    monkeypatch.setattr(lab_bench, "resolve_revision", lambda client=None: revision)
+
+    with pytest.raises(ValueError) as excinfo:
+        lab_bench.fetch_subset("LitQA2", cache_dir=str(tmp_path))
+
+    message = str(excinfo.value)
+    assert "not valid JSON" in message
+    assert str(truncated) in message, "the user is told a file is bad but not which"
+    assert "refresh" in message
+
+
+def test_the_resolve_timeout_is_shorter_than_the_download_timeout():
+    """The resolve call gates the offline fallback, so its timeout is a wait.
+
+    Collapsing both onto one constant took the larger, which meant a host that
+    accepts the connection and then stalls held `eval load` for two minutes
+    before falling back to a cache that was already complete on disk.
+    """
+    from deep_research_client.evaluation.adapters import lab_bench
+
+    assert lab_bench._RESOLVE_TIMEOUT < lab_bench._DOWNLOAD_TIMEOUT

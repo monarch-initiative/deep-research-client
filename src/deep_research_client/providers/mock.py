@@ -81,6 +81,11 @@ def _mcq_options(query: str) -> list[tuple[str, str]]:
     [('A', 'Fast'), ('B', 'Slow')]
     >>> _mcq_options("A. thaliana flowers when?\n\nA. FT\nB. CO\n")
     [('A', 'FT'), ('B', 'CO')]
+    >>> # A stray run of two is what distinguishes "last wins" from "first wins":
+    >>> _mcq_options(
+    ...     "A. thaliana is a plant.\nB. subtilis is a bacterium.\n"
+    ...     "Which differs?\n\nA. Kingdom\nB. Size\n")
+    [('A', 'Kingdom'), ('B', 'Size')]
     >>> _mcq_options("Which base?\n\nA. Thymine\nB. Guanine\n")
     [('A', 'Thymine'), ('B', 'Guanine')]
     >>> _mcq_options("No options here.")

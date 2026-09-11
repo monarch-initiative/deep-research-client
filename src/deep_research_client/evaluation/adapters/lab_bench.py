@@ -54,10 +54,18 @@ LICENSE = "CC-BY-SA-4.0"
 #: default rather than a quotation, and it is recorded per task in the eval set
 #: so a run always says which convention produced its numbers. Override it with
 #: the ``abstention_option`` load option to match another harness exactly.
-#: Timeout for every request this module makes to the datasets host.
-_HTTP_TIMEOUT = 120.0
-
 DEFAULT_ABSTENTION_OPTION = "Insufficient information to answer this question."
+
+#: Timeout for a paginated row download: six requests of 100 rows for a large
+#: subset, against a host that is sometimes slow rather than absent.
+_DOWNLOAD_TIMEOUT = 120.0
+
+#: Timeout for the one-line revision lookup. Deliberately shorter than the
+#: download: this call gates the offline fallback, so its timeout is how long a
+#: user waits before a complete local cache is used instead. A host that
+#: accepts the connection and then stalls should not hold `eval load` for two
+#: minutes to reach an answer that was already on disk.
+_RESOLVE_TIMEOUT = 30.0
 
 #: Rows per datasets-server request. The API caps a page at 100.
 _PAGE_SIZE = 100
@@ -123,7 +131,7 @@ def resolve_revision(client: httpx.Client | None = None) -> str:
         The dataset revision sha.
     """
     owns_client = client is None
-    client = client or httpx.Client(timeout=_HTTP_TIMEOUT)
+    client = client or httpx.Client(timeout=_RESOLVE_TIMEOUT)
     try:
         response = client.get(f"https://huggingface.co/api/datasets/{DATASET}")
         response.raise_for_status()
@@ -228,7 +236,7 @@ def resolve_for(
     holds every byte and still sends a later offline load to a network that is
     not there.
     """
-    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+    with httpx.Client(timeout=_RESOLVE_TIMEOUT) as client:
         return _resolve_or_fall_back(client, subsets, cache_dir)
 
 
@@ -290,7 +298,7 @@ def fetch_subset(
             f"Available: {', '.join(SUBSETS)}"
         )
 
-    with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+    with httpx.Client(timeout=_DOWNLOAD_TIMEOUT) as client:
         # Resolve unless the caller already did. The datasets-server rows
         # endpoint serves whatever is current and takes no revision parameter,
         # so honouring a requested revision by simply filing the download under
@@ -310,7 +318,21 @@ def fetch_subset(
 
         if from_cache:
             logger.info("Using cached LAB-Bench %s at revision %s", subset, resolved[:8])
-            rows = json.loads(path.read_text())
+            try:
+                rows = json.loads(path.read_text())
+            except json.JSONDecodeError as exc:
+                # Named here rather than in one command: this read is reached by
+                # `eval fetch` and, through `LabBenchAdapter.load`, by `eval
+                # load`, `eval run` and `eval score` too. Guarding the caller
+                # left the other three printing a bare decoder error with no
+                # file and no remedy -- and `eval run` is the one the user
+                # reaches with a wallet open. The path matters because after
+                # `eval fetch all` there are six candidates.
+                raise ValueError(
+                    f"The cached LAB-Bench file {path} is not valid JSON ({exc}). "
+                    f"It was most likely truncated by an interrupted download; "
+                    f"re-fetch it with refresh=True (`eval fetch --refresh`)."
+                ) from exc
         else:
             logger.info("Downloading LAB-Bench %s at revision %s", subset, resolved[:8])
             rows = _fetch_rows(subset, client)
@@ -449,7 +471,7 @@ class LabBenchAdapter(EvalSetAdapter):
         # identical API calls, and a revision that changed between them would
         # silently mix two datasets into one eval set.
         requested_revision: str | None = options.get("revision")
-        with httpx.Client(timeout=_HTTP_TIMEOUT) as client:
+        with httpx.Client(timeout=_RESOLVE_TIMEOUT) as client:
             pinned: str = _resolve_or_fall_back(client, subsets, options.get("cache_dir"))
         if requested_revision and requested_revision != pinned:
             raise ValueError(

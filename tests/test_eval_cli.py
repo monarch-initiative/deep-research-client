@@ -11,8 +11,6 @@ Everything here runs through the mock provider, so no network and no spend.
 
 from pathlib import Path
 
-import json
-
 import httpx
 import pytest
 from typer.testing import CliRunner
@@ -326,9 +324,11 @@ def test_eval_fetch_refuses_an_empty_subset_argument(arg):
 @pytest.mark.parametrize("exc,expected", [
     (ValueError("LitQA2 returned 198 rows, expected 199"), "Could not fetch the dataset"),
     (httpx.HTTPError("503 from the datasets server"), "Could not reach the dataset"),
-    # A JSONDecodeError is a ValueError, so without its own clause a truncated
-    # cache file reported "Expecting value: line 1 column 1" and no remedy.
-    (json.JSONDecodeError("Expecting value", "", 0), "re-run with --refresh"),
+    # fetch_subset now raises this itself, at the read, so every command that
+    # reaches that read reports the same thing; the CLI only has to surface it.
+    # See test_a_truncated_cache_file_names_itself_and_the_remedy for the read.
+    (ValueError("The cached LAB-Bench file /tmp/x.json is not valid JSON (...). "
+                "re-fetch it with refresh=True"), "refresh=True"),
 ])
 def test_eval_fetch_reports_expected_failures_rather_than_raising(monkeypatch, exc, expected):
     """Its siblings all report these; this command tracebacked.
@@ -435,7 +435,9 @@ def test_eval_run_says_when_cells_were_replayed_rather_than_measured(tmp_path):
     """
     first, second = _run_twice(tmp_path)
     assert "replayed from the response cache" not in first
-    assert "1/1 cells were replayed from the response cache" in second
+    # Distinct output dirs, so the second run is a cache replay, not a resume.
+    assert "1 replayed from the response cache" in second
+    assert "0 resumed from a previous run" in second
 
 
 def test_eval_run_no_cache_forces_a_live_call(tmp_path):
@@ -455,22 +457,110 @@ def test_the_cached_column_marks_which_rows_were_replays(tmp_path):
 
 
 def test_the_score_hint_skips_an_arm_whose_cell_failed(tmp_path):
-    """Naming a real arm is only better if that arm actually wrote an output.
+    """Naming a real arm only helps if that arm actually wrote an output.
 
-    The failing arm is listed first, so picking `arms[0]` would name a cell
-    directory that has no output.md in it.
+    The first version of this test named its arm `broken=mock`, which sets the
+    arm *id* and nothing else -- `parse_arm_flag` carries no provider params, and
+    `MockProvider` raises only when `error_type` or `include_error` is set. So
+    both cells completed, `arms[0]` had an output.md anyway, and the test passed
+    with the fix reverted. Making an arm fail needs the `--arms` file.
     """
     path = _write(tmp_path / "rep.yaml",
                   "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    arms = _write(tmp_path / "arms.yaml",
+                  "arms:\n"
+                  "  - id: broken\n    provider: mock\n"
+                  "    params:\n      error_type: transient\n"
+                  "  - id: ok\n    provider: mock\n")
     run_dir = tmp_path / "run"
     result = runner.invoke(app, [
-        "eval", "run", str(path),
-        "--arm", "broken=mock", "--arm", "ok=mock",
+        "eval", "run", str(path), "--arms", str(arms),
         "--output-dir", str(run_dir),
     ])
     assert result.exit_code == 0
 
+    # The premise the docstring claims: the first arm really failed.
+    assert not (run_dir / "r1" / "broken" / "output.md").exists()
+
     hint = [ln for ln in result.stdout.splitlines() if "eval score" in ln]
-    if hint:
-        printed = Path(hint[0].split("eval score")[1].split()[0])
-        assert printed.exists(), f"hint names a missing path: {printed}"
+    assert hint, "a report task was run, so the scoring hint must be printed"
+    printed = Path(hint[0].split("eval score")[1].split()[0])
+    assert printed.exists(), f"hint names a missing path: {printed}"
+    assert "/ok/" in str(printed), "the hint should name the arm that succeeded"
+
+
+def test_a_fully_resumed_run_says_it_measured_nothing(tmp_path):
+    """The worst case was silence: "1/1 cells completed" for a run that called
+    no provider at all, because resumed cells carried the earlier run's flags
+    and a resumed cell stored with cached=false looked measured.
+    """
+    path = _write(tmp_path / "res.yaml",
+                  "tasks:\n  - id: t1\n    prompt: Resume accounting probe?\n")
+    out = tmp_path / "run"
+    first = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--output-dir", str(out)])
+    assert first.exit_code == 0
+
+    second = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--output-dir", str(out)])
+    assert second.exit_code == 0
+    assert "0 measured in this run" in second.stdout
+    assert "1 resumed from a previous run" in second.stdout
+
+
+def test_the_remedy_offered_for_a_resumed_run_actually_reaches_the_cells(tmp_path):
+    """--no-cache alone cannot: resume skips the cell before the client is used.
+
+    The message used to offer exactly that, so following it changed nothing.
+    """
+    path = _write(tmp_path / "res.yaml",
+                  "tasks:\n  - id: t1\n    prompt: Remedy probe?\n")
+    out = tmp_path / "run"
+    runner.invoke(app, ["eval", "run", str(path), "--arm", "mock", "--output-dir", str(out)])
+
+    resumed = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock", "--output-dir", str(out)])
+    assert "--no-resume --no-cache" in resumed.stdout, (
+        "a resumed run must not offer a remedy that resume itself defeats"
+    )
+
+    # And following it measures the cell again.
+    forced = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "mock",
+        "--no-resume", "--no-cache", "--output-dir", str(out)])
+    assert forced.exit_code == 0
+    assert "resumed from a previous run" not in forced.stdout
+
+
+def test_identically_configured_arms_are_flagged_before_the_run(tmp_path):
+    """Whether they are one sample or two is decided by scheduling.
+
+    At -j 1 the second arm replays the first; at the default concurrency both
+    usually reach the provider first. So it cannot be reported reliably after
+    the fact -- but it is perfectly detectable before any money is spent.
+    """
+    path = _write(tmp_path / "v.yaml",
+                  "tasks:\n  - id: t1\n    prompt: Variance probe?\n")
+    result = runner.invoke(app, [
+        "eval", "run", str(path), "--arm", "a=mock", "--arm", "b=mock",
+        "--dry-run", "--output-dir", str(tmp_path / "run")])
+    assert result.exit_code == 0
+    assert "identically configured" in result.stdout
+    assert "a, b" in result.stdout
+    # Printed before the dry-run return, so before any provider call.
+    assert result.stdout.index("identically configured") < result.stdout.index("Dry run")
+
+
+@pytest.mark.parametrize("args", [
+    ("--arm", "a=mock", "--arm", "b=mock", "--no-cache"),
+    ("--arm", "a=mock:m1", "--arm", "b=mock:m2"),
+])
+def test_the_identical_arms_note_stays_quiet_when_it_does_not_apply(tmp_path, args):
+    """With the cache off, or with genuinely different arms, there is no issue."""
+    path = _write(tmp_path / "v.yaml",
+                  "tasks:\n  - id: t1\n    prompt: Variance probe?\n")
+    result = runner.invoke(app, [
+        "eval", "run", str(path), *args, "--dry-run",
+        "--output-dir", str(tmp_path / "run")])
+    assert result.exit_code == 0
+    assert "identically configured" not in result.stdout

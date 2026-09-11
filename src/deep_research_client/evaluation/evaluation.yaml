@@ -456,10 +456,20 @@ classes:
           attributed to the wrong system is worse than a missing one.
       model_used:
         description: The model that actually answered.
+      resumed:
+        description: >-
+          Whether this cell was restored from an earlier run's `cell.json`
+          rather than executed in this one. Distinct from `cached`: a resumed
+          cell was read off disk and carries the *earlier* run's `cached` value,
+          so counting the two together describes neither. It is a property of
+          the run that produced this manifest, not of the stored cell, and is
+          recomputed on every run.
+        range: boolean
       cached:
         description: >-
           Whether the response was replayed from the client's cache rather than
-          produced by calling the provider in this run. Recorded because a
+          produced by calling the provider. Read together with `resumed`: on a
+          resumed cell this value describes the earlier run that stored it. Recorded because a
           replayed cell is otherwise indistinguishable from a live one: the
           cache re-stamps start and end times for the current run, so duration
           does not give it away. A score computed over replayed cells may
@@ -519,6 +529,19 @@ classes:
       concurrency:
         description: How many cells were run at a time.
         range: integer
+      resume_enabled:
+        description: >-
+          Whether cells completed by an earlier run in this directory were
+          reused rather than re-run. Recorded because it is one of the two
+          settings that decide whether a cell was measured in this run, and
+          unlike the cache it leaves no trace on the cells themselves.
+        range: boolean
+      cache_enabled:
+        description: >-
+          Whether the response cache was consulted. Recoverable per cell from
+          `cached`, but recorded here too so a manifest with no replays can be
+          told apart from one where the cache was off.
+        range: boolean
       arms:
         description: The arms under test.
         range: ArmSpec

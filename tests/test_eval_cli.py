@@ -954,3 +954,65 @@ def test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is(tmp_path):
             f"placeholder key is sent and that a key-checking endpoint "
             f"answers 401"
         )
+
+
+def test_a_task_with_no_rubric_prints_no_rates_it_did_not_measure(tmp_path, monkeypatch):
+    """Three lines had the same shape and only one had been fixed.
+
+    The spot-check line learned to say "no accuracy (no check compared a
+    value)" rather than `accuracy 0.00`; claim recall and topic coverage two
+    lines away still printed `0.00 (0/0)` and `0/0 (0.00)`. The trigger is
+    identical -- a task whose rubric is absent or partial, which is every task
+    from a benchmark that ships without one, and the documented
+    `--source questions.yaml` path -- so a user scoring a rubric-less task read
+    three lines that look like a report which covered nothing.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"matched": true}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-race"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "Claim Recall: no reference claims to match against" in result.stdout
+    assert "Topic Coverage: no expected topics to cover" in result.stdout
+    assert "no accuracy (no check compared a value)" in result.stdout
+    # None of the three may render as a measured zero.
+    for absent in ("Claim Recall: 0.00", "Topic Coverage: 0/0", "accuracy 0.00"):
+        assert absent not in result.stdout, absent
+
+
+def test_the_verifiability_line_says_not_checked_rather_than_could_not_be(
+    tmp_path, monkeypatch,
+):
+    """An identifier this scorer has no resolver for was never looked up.
+
+    "Could not be looked up" reads as an attempt that failed. The alignment
+    line was reworded when it gained this same second cause; its sibling was
+    not, in the same commit.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md",
+                    "FGFR3 drives achondroplasia (PMC11000121). "
+                    "Deposited under GSE68086.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-race"])
+
+    assert result.exit_code == 0, result.stdout
+    line = next(ln for ln in result.stdout.splitlines() if "Citation Verifiability" in ln)
+    assert "2 not checked" in line
+    assert "could not be looked up" not in line

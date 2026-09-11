@@ -186,9 +186,11 @@ def _nested_with_key(obj: object, key: str) -> dict | None:
 def _balanced_span(text: str, start: int) -> int | None:
     """Index just past the region the bracket at ``text[start]`` encloses.
 
-    None only when the bracket never closes at all. A bracket closed by the
-    *wrong* one ends its region at that closer: the text is damaged either way,
-    and the caller's question is where the damage stops, not why it is damaged.
+    None when the bracket never closes at all, and for a ``start`` that is not
+    a bracket -- the two cases no caller can confuse, since no caller passes a
+    non-bracket. A bracket closed by the *wrong* one is not among them: it ends
+    its region at that closer, because the text is damaged either way and the
+    caller's question is where the damage stops, not why it is damaged.
 
     Answering None for both was a two-valued answer to a three-valued question.
     The caller read None as "never closed" and mined the whole remainder as
@@ -245,7 +247,9 @@ def _balanced_span(text: str, start: int) -> int | None:
         elif char in closers:
             stack.append(closers[char])
         elif char in "}]":
-            if not stack or stack[-1] != char:
+            # `stack` is never empty here: the scan starts at an opener, which
+            # pushes, and returns the moment a pop empties it.
+            if stack[-1] != char:
                 # Closed with the wrong bracket. The region ends here: past
                 # this point the text is no longer inside the damaged
                 # container, so whatever follows is top-level again.
@@ -336,7 +340,7 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
     # that point is top-level, because the container has no end to be after.
     inside_unclosed = False
 
-    def file(value: Any) -> None:
+    def record(value: Any) -> None:
         """Put a decoded value in the tier the scan is currently in."""
         (salvage if inside_unclosed else top_level).append(value)
 
@@ -367,13 +371,13 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 # step over it. The recursion here is bounded by how deeply
                 # malformed containers nest, not by the length of the reply.
                 inner_top, inner_salvage = _decode_candidates(text[i + 1 : span - 1])
-                for value in (*inner_top, *inner_salvage):
-                    salvage.append(value)
+                salvage.extend(inner_top)
+                salvage.extend(inner_salvage)
             else:
-                file(repaired)
+                record(repaired)
             i = span
             continue
-        file(parsed)
+        record(parsed)
         i = end  # never rescan inside a value already read
     return top_level, salvage
 
@@ -1174,7 +1178,10 @@ async def score_citation_verifiability(
             # property of the report's own text and still counts against it.
             results.append(CitationExistence(
                 citation_id=cid, exists=False,
-                error=f"No resolver for this identifier kind: {cid.split(':')[0]}",
+                error=(
+                    "No resolver for this identifier kind: "
+                    f"{cid.split(':', 1)[0] if ':' in cid else cid}"
+                ),
                 lookup_failed=True,
             ))
             continue
@@ -1195,12 +1202,18 @@ async def score_citation_verifiability(
         if year:
             years.append(int(year))
 
-    # The distinction is transport failure versus authoritative negative, not
-    # the presence of an `error` string. A CrossRef outage tells us nothing and
-    # is excluded; a PMID that NCBI reports as unknown is precisely what this
-    # scorer exists to catch, and NCBI reports it *as* a per-uid error -- so
-    # filtering on `error` dropped fabricated citations out of the denominator
-    # and scored a report that invented one at 1.00.
+    # The distinction is "nothing was learned" versus "the registry answered
+    # no", not the presence of an `error` string. A CrossRef outage tells us
+    # nothing and is excluded, and so is an identifier kind with no resolver,
+    # which is never attempted; a PMID that NCBI reports as unknown is
+    # precisely what this scorer exists to catch, and NCBI reports it *as* a
+    # per-uid error -- so filtering on `error` dropped fabricated citations out
+    # of the denominator and scored a report that invented one at 1.00.
+    #
+    # Three causes on the excluded side, not two. This sentence said two for a
+    # commit after the third was added, which is the shape that keeps recurring
+    # here: the branch that makes a distinction gets updated and the sentence
+    # that counts the cases does not.
     total = len(results)
     checkable = [r for r in results if not r.lookup_failed]
     verified = sum(1 for r in checkable if r.exists)
@@ -1270,11 +1283,20 @@ async def score_citation_alignment(
                 # unresolvable -- byte-identical to a report that cited
                 # nothing, which is the reading this counter exists to
                 # prevent. Its sibling scorer counts exactly these two as
-                # findings, and the two scorers read the same reference list:
-                # they should not disagree about whether it has citations in
-                # it. Three ways in, not two: an identifier that would not
-                # normalise, one of a kind neither scorer resolves, and a
-                # citation with no identifier at all.
+                # it. Three ways in: an identifier that would not normalise,
+                # one of a kind neither scorer resolves, and a citation with no
+                # identifier at all.
+                #
+                # The sibling agrees about the middle one -- it is
+                # `lookup_failed` there too, so neither scorer treats a PMC
+                # accession as a defect. It disagrees about the other two by
+                # design: an identifier the report's own text mangled is a
+                # finding for verifiability, because it is a property of the
+                # report rather than of anyone's registry, and there is no
+                # claim-title pair for alignment to have an opinion about. One
+                # documented exception to "the two scorers should not disagree
+                # about the same reference list", recorded here because that
+                # argument is load-bearing in two commits now.
                 unresolvable += 1
                 continue
 

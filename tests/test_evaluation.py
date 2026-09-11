@@ -1884,3 +1884,23 @@ def test_a_readable_wrapper_beats_something_scavenged_from_an_unclosed_container
         "the wrapper is readable; the other object is inside a container that "
         "never closes"
     )
+
+
+def test_a_mismatch_inside_a_later_closing_container_costs_the_verdict():
+    """The case where bounding the damage loses something, pinned deliberately.
+
+    `{"breakdown": [1}, "supported": true}` has a mismatched closer at index 16,
+    so the region ends there and the `"supported": true` after it is not inside
+    any value the scan can read. The answer is no verdict -- a lost
+    measurement, which is the side this branch errs on.
+
+    Running the bound out to the *outer* close instead would recover the
+    verdict here and reintroduce the defect the bound exists for, since the
+    scan would be back to guessing where a damaged container ends. Pinned so
+    that trade is made on purpose rather than by someone tidying the bound.
+    """
+    from deep_research_client.evaluation import scorers
+
+    assert scorers._extract_json_object(
+        '{"breakdown": [1}, "supported": true}', key="supported"
+    ) is None

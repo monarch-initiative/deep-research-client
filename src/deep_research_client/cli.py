@@ -3495,7 +3495,14 @@ def eval_score(
         # ground-truth count let a reader divide and get a different number.
         cr = result.claim_recall_score
         judged = cr.total_ground_truth_claims - cr.unjudged_claims
-        line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
+        if not cr.total_ground_truth_claims:
+            # The rate is absent, not zero -- the same distinction the
+            # spot-check line below draws, with the same trigger: a task whose
+            # rubric carries no reference claims, which is every task loaded
+            # from a benchmark that ships without one.
+            line = "  Claim Recall: no reference claims to match against"
+        else:
+            line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
         if cr.unjudged_claims:
             line += f", {cr.unjudged_claims} not judged"
         # Claim recall truncates the report the same way RACE does, and records
@@ -3529,7 +3536,11 @@ def eval_score(
             line = (f"  Citation Verifiability: {cv.verified_exist}/{checked} "
                     f"({cv.verifiability:.2f})")
             if cv.unresolvable:
-                line += f", {cv.unresolvable} could not be looked up"
+                # "not checked" rather than "could not be looked up": the
+                # count now also holds identifiers this scorer never attempts,
+                # and its alignment sibling was reworded for exactly this in
+                # the commit that gave it the second cause.
+                line += f", {cv.unresolvable} not checked"
             typer.echo(line)
             if cv.median_year:
                 typer.echo(f"    Median citation year: {cv.median_year}")
@@ -3540,8 +3551,9 @@ def eval_score(
             if ca.unresolvable:
                 # Its sibling above prints this; without it here, a run where
                 # PubMed was down reads as an alignment rate over everything.
-                # Worded for both things this counts: a lookup that failed, and
-                # a real record that carries no title to align a claim against.
+                # Worded for all three things this counts: a lookup that
+                # failed, a real record carrying no title to align a claim
+                # against, and a citation never looked up at all.
                 line += f", {ca.unresolvable} with nothing to align against"
             typer.echo(line)
         if isc.factual_spot_checks:
@@ -3567,8 +3579,11 @@ def eval_score(
                 )
         if isc.topic_coverage:
             tc = isc.topic_coverage
-            typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
-                       f"({tc.coverage_rate:.2f})")
+            if not tc.total_topics:
+                typer.echo("  Topic Coverage: no expected topics to cover")
+            else:
+                typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
+                           f"({tc.coverage_rate:.2f})")
     if result.error:
         typer.echo(f"  Errors: {result.error}")
 

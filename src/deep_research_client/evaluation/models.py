@@ -305,7 +305,7 @@ class RACEScore(BaseModel):
 
     @property
     def overall_score(self) -> float:
-        """Weighted average over the dimensions that were actually scored.
+        """Mean over the dimensions that were actually scored.
 
         0.0 when none were, which `unscored_count` distinguishes from a report
         that genuinely scored zero.
@@ -333,7 +333,17 @@ class CitationExistence(BaseModel):
     """
 
     citation_id: str = Field(..., description="Normalized citation ID (PMID:xxx or DOI:xxx)")
-    exists: bool = Field(..., description="Whether the citation resolves to a real paper")
+    exists: bool = Field(
+        ...,
+        description=(
+            "Whether the citation resolved to a real paper. False also for a "
+            "citation nothing was learned about -- an outage, or an identifier "
+            "kind with no resolver -- so it is not on its own evidence that a "
+            "paper does not exist. `lookup_failed` is the discriminator, and a "
+            "consumer reading this field alone would call a real PMC article "
+            "fabricated."
+        ),
+    )
     title: Optional[str] = Field(default=None, description="Paper title if retrieved")
     year: Optional[int] = Field(default=None, description="Publication year if retrieved")
     error: Optional[str] = Field(
@@ -380,19 +390,28 @@ class CitationVerifiabilityScore(BaseModel):
     unresolvable: int = Field(
         default=0,
         description=(
-            "Citations whose lookup errored. Excluded from `verifiability`: a "
-            "CrossRef or PubMed outage otherwise reports every DOI in the "
-            "report as hallucinated. Counts only transport failures -- a "
-            "citation the registry says does not exist is fabricated, and "
-            "stays in the rate."
+            "Citations nothing was learned about, so they are excluded from "
+            "`verifiability`. Two causes: a lookup that errored -- a CrossRef "
+            "or PubMed outage otherwise reports every DOI in the report as "
+            "hallucinated -- and an identifier of a kind this scorer has no "
+            "resolver for, such as a PMC accession or a GEO series, whose "
+            "lookup never happened and so never errored. A citation the "
+            "registry says does not exist is NOT here: that is fabricated, and "
+            "stays in the rate. (It said 'only transport failures' for one "
+            "commit after the second cause was added -- the aggregate field "
+            "and `CitationExistence.lookup_failed` have to agree, and only one "
+            "of them was updated.)"
         ),
     )
     verifiability: float = Field(
         ...,
         description=(
-            "Fraction of the citations that could be looked up which resolve to "
-            "real papers. Read with `unresolvable`, which distinguishes "
-            "'all fabricated' from 'none checkable'."
+            "Fraction of the citations this scorer actually looked up which "
+            "resolve to real papers -- not of the citations that 'could be' "
+            "looked up, which is a different set now that an identifier kind "
+            "with no resolver is excluded without being attempted. Read with "
+            "`unresolvable`, which distinguishes 'all fabricated' from "
+            "'none checkable'."
         ),
     )
     year_distribution: dict[int, int] = Field(default_factory=dict, description="Publication year -> count")

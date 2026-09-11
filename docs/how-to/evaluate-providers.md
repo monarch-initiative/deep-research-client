@@ -362,11 +362,70 @@ spot-check, topics to cover. The `dismech` and `ai-gene-review` adapters attach
 bundled rubrics from `src/deep_research_client/evaluation/rubrics/`, and an eval
 set can supply its own instead.
 
+### Writing a rubric in your own eval set
+
+Attach a `rubric` block to any report task:
+
+```yaml
+# questions.yaml
+tasks:
+  - id: brca1_function
+    prompt: What does BRCA1 do, and where is it?
+    answer_type: REPORT
+    rubric:
+      spot_checks:
+        - name: chromosome
+          pattern: 'chromosome\s+(17(?:[pq]\d+(?:\.\d+)?)?)\b'
+          expected: 17q21.31
+          match: prefix
+        - name: ring_domain
+          pattern: '\bRING\s*(?:finger\s*)?domain\b'
+      expected_topics:
+        - name: dna_repair
+          keywords: [homologous recombination, double-strand break]
+      reference_claims:
+        - name: e3_ligase
+          category: molecular_function
+          description: BRCA1 is an E3 ubiquitin ligase in complex with BARD1.
+```
+
 A spot check with an `expected` value and a capturing group is an accuracy
 check: the captured text has to match. One without an `expected` only asks
 whether the pattern appears at all. Presence and accuracy are reported as
 separate rates, because "the report never mentioned it" and "the report got it
 wrong" are different failures.
+
+`match` says how a captured value is compared:
+
+| `match`  | Accepts                                                     |
+| -------- | ----------------------------------------------------------- |
+| `exact`  | Equality, ignoring case, surrounding whitespace and thousands separators. The default. |
+| `prefix` | The above, plus a captured value that is a leading part of `expected`. |
+
+Use `prefix` for hierarchical facts — a cytogenetic locus, an ontology
+identifier, a version — where a shorter answer is less precise rather than
+wrong. A report saying "chromosome 17" where the answer is 17q21.31 is the
+commonest phrasing in the literature; `prefix` accepts it, while a report
+saying 17p13.1 is still scored wrong, which a presence-only check could not
+tell apart from silence.
+
+Patterns are compiled when the eval set loads, not when a report is scored, so
+a typo is reported by `eval load` before any provider is paid. `match: prefix`
+is refused at the same point when it has nothing to compare — no capturing
+group, or no `expected` — because the comparison it asks for cannot happen and
+the check would silently become a presence-only one. So is an empty `rubric:`
+block, which scores exactly what no rubric at all scores.
+
+A check whose pattern matches but captures nothing (any group that can match
+the empty string) counts as present and is left out of the accuracy rate. It
+is not evidence either way, and the two match styles would otherwise disagree
+about the same report.
+
+Every occurrence of a pattern is considered, not just the first. A report on
+BRCA1 that mentions TP53's locus before stating BRCA1's own would otherwise be
+marked wrong for a fact it got right two sentences later. A check is correct if
+any occurrence compares correctly; if none does but some occurrence compared,
+the check is wrong and the detail reports that occurrence.
 
 ## Adding a benchmark
 

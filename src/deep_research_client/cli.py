@@ -3215,6 +3215,33 @@ def eval_run(
     typer.echo(f"Results:  {run_dir}/results.tsv")
 
 
+def _truncation_note(judged_chars: int | None, report_chars: int | None) -> str:
+    """Describe how much of a report a judge actually saw, or nothing.
+
+    Both scorers cut a long report to ``MAX_REPORT_CHARS`` before sending it,
+    and both record what they cut. Neither printed it, so comprehensiveness
+    scored on a report's opening third was indistinguishable from
+    comprehensiveness scored on the whole thing.
+
+    The fields are Optional -- a score built before they existed, or by hand,
+    has neither -- so the comparison is guarded rather than assumed. Formatting
+    an Optional without checking is the defect this command already had once,
+    in the line that renders a dimension's score.
+
+    >>> _truncation_note(12000, 40000)
+    ' (judged on 12,000 of 40,000 characters)'
+    >>> _truncation_note(9000, 9000)
+    ''
+    >>> _truncation_note(None, 40000)
+    ''
+    """
+    if judged_chars is None or report_chars is None:
+        return ""
+    if judged_chars >= report_chars:
+        return ""
+    return f" (judged on {judged_chars:,} of {report_chars:,} characters)"
+
+
 @eval_app.command("score")
 def eval_score(
     report: Annotated[Path, typer.Argument(help="Markdown file with the report to score")],
@@ -3326,6 +3353,10 @@ def eval_score(
         line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
         if cr.unjudged_claims:
             line += f", {cr.unjudged_claims} not judged"
+        # Claim recall truncates the report the same way RACE does, and records
+        # the same pair. Recall measured over a report's opening is an
+        # understatement, and nothing else on this line says the report was cut.
+        line += _truncation_note(cr.judged_chars, cr.report_chars)
         typer.echo(line)
     if result.race_score:
         race = result.race_score
@@ -3335,6 +3366,7 @@ def eval_score(
             # report" both render as 0.00 -- the distinction unscored_count was
             # added to make.
             overall += f" over {len(race.scored_dimensions)}/{len(race.dimensions)} dimensions"
+        overall += _truncation_note(race.judged_chars, race.report_chars)
         typer.echo(overall)
         for d in race.dimensions:
             # `score` is Optional since a judge that cannot be reached records
@@ -3358,19 +3390,34 @@ def eval_score(
                 typer.echo(f"    Median citation year: {cv.median_year}")
         if isc.citation_alignment:
             ca = isc.citation_alignment
-            typer.echo(f"  Citation-Claim Alignment: {ca.aligned_count}/{ca.total_checked} "
-                       f"({ca.alignment_rate:.2f})")
+            line = (f"  Citation-Claim Alignment: {ca.aligned_count}/"
+                    f"{ca.total_checked} ({ca.alignment_rate:.2f})")
+            if ca.unresolvable:
+                # Its sibling above prints this; without it here, a run where
+                # PubMed was down reads as an alignment rate over everything.
+                line += f", {ca.unresolvable} could not be looked up"
+            typer.echo(line)
         if isc.factual_spot_checks:
             sc = isc.factual_spot_checks
             # `correct_count` includes presence-only checks, which are correct
             # whenever they match -- agreement that was never tested. The
             # accuracy rate is over the checks that compared something, and
             # that is the number worth showing.
-            typer.echo(
-                f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} present, "
-                f"accuracy {sc.accuracy_rate:.2f} over {sc.compared_count} "
-                f"check(s) that compared a value"
-            )
+            if sc.compared_count:
+                typer.echo(
+                    f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} "
+                    f"present, accuracy {sc.accuracy_rate:.2f} over "
+                    f"{sc.compared_count} check(s) that compared a value"
+                )
+            else:
+                # `accuracy 0.00 over 0 checks` led with a number that reads as
+                # "every fact wrong" for the commonest case there is: a task
+                # with no rubric, or a rubric of presence-only checks. The rate
+                # is not small here, it is absent.
+                typer.echo(
+                    f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} "
+                    f"present, no accuracy (no check compared a value)"
+                )
         if isc.topic_coverage:
             tc = isc.topic_coverage
             typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "

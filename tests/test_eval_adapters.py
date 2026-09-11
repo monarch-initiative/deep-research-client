@@ -1270,3 +1270,187 @@ def test_a_malformed_rubric_is_refused_with_its_row(tmp_path, block, expected):
         get_adapter("yaml").load(path)
     with pytest.raises(ValueError, match=expected):
         get_adapter("yaml").load(path)
+
+
+def _yaml_with_check(tmp_path, check_lines: str) -> Path:
+    """Write a one-task YAML eval set whose only task carries one spot check."""
+    path = tmp_path / "rubric.yaml"
+    path.write_text(
+        "tasks:\n"
+        "  - id: r1\n"
+        "    prompt: What does BRCA1 do?\n"
+        "    answer_type: REPORT\n"
+        "    rubric:\n"
+        "      spot_checks:\n" + check_lines,
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_an_uncompilable_pattern_is_refused_at_load_not_at_scoring(tmp_path):
+    r"""One bad character used to cost a report all four intrinsic scores.
+
+    `pattern` is a plain string with no validator, so `chromosome\s+(17q21.31`
+    loaded without complaint and raised `re.error` inside
+    `score_factual_spot_checks`. That runs under `score_intrinsic`, whose caller
+    catches every exception and drops the whole `IntrinsicScore` -- so citation
+    verifiability, alignment and topic coverage, none of which touch the rubric,
+    were discarded too, after a matrix run had already been paid for.
+    """
+    path = _yaml_with_check(
+        tmp_path,
+        "        - name: chromosome\n"
+        "          pattern: 'chromosome\\s+(17q21.31'\n"
+        "          expected: 17q21.31\n",
+    )
+
+    with pytest.raises(ValueError, match="not a valid regular expression"):
+        get_adapter("yaml").load(path)
+
+
+def test_the_refusal_names_the_task_and_the_check(tmp_path):
+    """A rubric can hold many checks; "somewhere a regex is bad" is not enough."""
+    path = _yaml_with_check(
+        tmp_path,
+        "        - name: fine\n"
+        "          pattern: '\\bBARD1\\b'\n"
+        "        - name: chromosome\n"
+        "          pattern: 'chromosome\\s+(17q21.31'\n",
+    )
+
+    with pytest.raises(ValueError, match=r"task 'r1' spot check 'chromosome'"):
+        get_adapter("yaml").load(path)
+
+
+@pytest.mark.parametrize("check_lines,expected", [
+    # `prefix` on a pattern with no capturing group: nothing is captured, so
+    # the comparison the author asked for cannot happen and the check silently
+    # becomes presence-only -- coverage reported under an accuracy label.
+    (
+        "        - name: locus\n"
+        "          pattern: 'chromosome\\s+17'\n"
+        "          expected: 17q21.31\n"
+        "          match: prefix\n",
+        "no capturing group",
+    ),
+    # `prefix` with no `expected`: the match style can never be consulted.
+    (
+        "        - name: locus\n"
+        "          pattern: 'chromosome\\s+(17[pq][\\d.]+)'\n"
+        "          match: prefix\n",
+        "no 'expected' value",
+    ),
+])
+def test_a_prefix_check_with_nothing_to_compare_is_refused(
+    tmp_path, check_lines, expected
+):
+    """`match: prefix` asks for a comparison; silently not making one is worse
+    than refusing, because the check still contributes a `present` tick."""
+    path = _yaml_with_check(tmp_path, check_lines)
+
+    with pytest.raises(ValueError, match=expected):
+        get_adapter("yaml").load(path)
+
+
+def test_a_groupless_exact_check_is_still_a_valid_presence_check(tmp_path):
+    """The refusal above must not spread to the documented presence-only form.
+
+    Most of the bundled checks are a groupless pattern with an `expected` that
+    reads as a label -- `\\bBRCT\\b` / `BRCT`. That is coverage, by design, and
+    refusing it would reject the rubrics this repo ships.
+    """
+    path = _yaml_with_check(
+        tmp_path,
+        "        - name: brct\n"
+        "          pattern: '\\bBRCT\\b'\n"
+        "          expected: BRCT\n",
+    )
+
+    task = get_adapter("yaml").load(path).tasks[0]
+    assert [c.name for c in task.rubric.spot_checks] == ["brct"]
+
+
+def test_the_bundled_rubrics_pass_the_check_they_are_validated_by():
+    """The guard runs on every adapter's output, this repo's own data included.
+
+    `build_rubric` merges the bundled YAML into tasks that the Monarch adapter
+    then puts through `validate_tasks`, so a bad pattern committed here would
+    break loading rather than scoring. Asserting it directly means a change to
+    the bundled file fails in this file, naming itself.
+    """
+    from deep_research_client.evaluation.adapters.base import check_rubrics
+
+    rubric = build_rubric("gene_function", [], subject="BRCA1")
+    task = EvalTask(id="t", prompt="p", answer_type=AnswerType.REPORT, rubric=rubric)
+    check_rubrics([task], "bundled")
+
+
+def test_the_documented_rubric_example_loads_and_scores(tmp_path):
+    """Extracted from the how-to and run, rather than retyped here.
+
+    A rubric example is exactly the kind of documentation that rots: the syntax
+    lives in a YAML block nothing executes, and `match: prefix` now has a
+    load-time check that a stale example would trip. Reading it out of the file
+    means the doc breaks this test rather than a reader's first run.
+    """
+    import re
+
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    doc = (
+        Path(__file__).parent.parent / "docs" / "how-to" / "evaluate-providers.md"
+    ).read_text(encoding="utf-8")
+    section = doc[doc.index("### Writing a rubric in your own eval set"):]
+    block = re.search(r"```yaml\n(.*?)```", section, re.S)
+    assert block is not None, "the rubric section lost its YAML example"
+
+    path = tmp_path / "questions.yaml"
+    path.write_text(block.group(1), encoding="utf-8")
+    task = get_adapter("yaml").load(path).tasks[0]
+
+    assert [c.name for c in task.rubric.spot_checks] == ["chromosome", "ring_domain"]
+    assert [t.name for t in task.rubric.expected_topics] == ["dna_repair"]
+    assert [c.name for c in task.rubric.reference_claims] == ["e3_ligase"]
+
+    # And the behaviour the prose promises: a less precise locus is accepted,
+    # the groupless check is presence-only and stays out of the accuracy rate.
+    score = score_factual_spot_checks(
+        parse_dr_output(
+            task, "BRCA1 is on chromosome 17 and has a RING finger domain.", "test"
+        ),
+        task,
+    )
+    assert score.present_count == 2
+    assert score.compared_count == 1
+    assert score.accuracy_rate == 1.0
+
+
+def test_an_empty_rubric_block_is_refused(tmp_path):
+    """`rubric: {}` scores exactly what no rubric at all scores.
+
+    Writing one is therefore always a mistake -- an unfinished edit, or a block
+    indented under the wrong key. Accepting it meant the task reported a
+    scorecard of empty counts with nothing saying the rubric was vacuous.
+    """
+    path = tmp_path / "empty.yaml"
+    path.write_text(
+        "tasks:\n  - id: r1\n    prompt: Q?\n    answer_type: REPORT\n    rubric: {}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="scores nothing"):
+        get_adapter("yaml").load(path)
+
+
+def test_a_task_with_no_rubric_at_all_is_still_fine(tmp_path):
+    """The refusal above is about writing an empty block, not about going
+    without one: most report tasks have no rubric and are scored on their
+    citations."""
+    path = tmp_path / "none.yaml"
+    path.write_text(
+        "tasks:\n  - id: r1\n    prompt: Q?\n    answer_type: REPORT\n",
+        encoding="utf-8",
+    )
+
+    assert get_adapter("yaml").load(path).tasks[0].rubric is None

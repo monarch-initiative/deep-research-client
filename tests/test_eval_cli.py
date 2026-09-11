@@ -657,23 +657,139 @@ def test_eval_score_without_an_api_key_offers_a_remedy_that_works(tmp_path, monk
     assert "Factual Spot Checks" in ok.stdout
 
 
-def test_an_unscored_race_dimension_prints_rather_than_raising():
+def test_an_unscored_race_dimension_prints_rather_than_raising(tmp_path, monkeypatch):
     """`score` is Optional now, and this loop is outside runner._run's except.
 
-    Formatting None with `:.1f` raises TypeError, so a judge that failed
-    mid-run took down the whole command after every scorer had finished.
-    """
-    from deep_research_client.evaluation.models import RACEDimension, RACEScore
+    Formatting None with `:.1f` raises TypeError, so a judge that failed on one
+    dimension took down the whole command after every scorer had finished.
 
-    race = RACEScore(dimensions=[
-        RACEDimension(dimension="comprehensiveness", score=4.0, max_score=5.0),
-        RACEDimension(dimension="accuracy", score=None, max_score=5.0),
-    ])
-    # The property the CLI relies on, exercised the way the CLI uses it.
-    assert race.unscored_count == 1
-    rendered = [
-        "unscored" if d.score is None else f"{d.score:.1f}/5" for d in race.dimensions
-    ]
-    assert rendered == ["4.0/5", "unscored"]
-    # Averaged over what was scored, not over a zero for the failed one.
-    assert race.overall_score == 0.8
+    Driven through the command rather than through the models: an earlier
+    version of this test rebuilt the CLI's own rendering expression and
+    asserted on that, which stayed green with `cli.py` reverted to the code
+    that crashed. The only thing that can prove this is the command's output.
+    """
+    from deep_research_client.evaluation import scorers
+
+    calls: list[str] = []
+
+    async def flaky_judge(prompt, llm_client, model="gpt-4o-mini"):
+        calls.append(prompt)
+        # First RACE dimension answers; the rest fail, the way a judge that
+        # goes away mid-report does. A judge that failed on *every* dimension
+        # would not reach this branch: score_race would still return, but the
+        # mixed case is the one that has to render two shapes in one list.
+        if len(calls) == 1:
+            return '{"score": 4, "explanation": "fine"}'
+        raise RuntimeError("judge unreachable")
+
+    monkeypatch.setattr(scorers, "_llm_judge", flaky_judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    assert result.exception is None, result.exception
+    assert "comprehensiveness: 4.0/5" in result.stdout
+    assert "unscored" in result.stdout
+    # Averaged over what was scored, not over a zero for the ones that failed.
+    assert "over 1/4 dimensions" in result.stdout
+
+
+def test_eval_score_says_when_nothing_compared_a_value(tmp_path, monkeypatch):
+    """`accuracy 0.00` led the line for a task that measured no accuracy.
+
+    A task with no rubric -- the commonest kind, and what `eval run` produces
+    for a bare list of questions -- has no spot check that compares anything.
+    Printing a rate of 0.00 over a denominator of zero reads as "every fact in
+    this report was wrong"; the rate is absent, not small.
+    """
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia.")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-race"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "no accuracy (no check compared a value)" in result.stdout
+    assert "accuracy 0.00" not in result.stdout
+
+
+def test_eval_score_reports_a_report_the_judge_only_partly_saw(tmp_path, monkeypatch):
+    """RACE cuts a long report to MAX_REPORT_CHARS and records what it cut.
+
+    Nothing printed it, so a comprehensiveness score computed on a report's
+    opening third was indistinguishable from one computed on all of it -- the
+    same "a number with no statement of what it covers" the unresolvable counts
+    exist to prevent.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def judge(prompt, llm_client, model="gpt-4o-mini"):
+        return '{"score": 3, "explanation": "ok"}'
+
+    monkeypatch.setattr(scorers, "_llm_judge", judge)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used-by-the-stub")
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    long_report = "FGFR3 drives achondroplasia. " * 1000
+    assert len(long_report) > scorers.MAX_REPORT_CHARS
+    report = _write(tmp_path / "r.md", long_report)
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-intrinsic"])
+
+    assert result.exit_code == 0, result.stdout
+    note = f"judged on {scorers.MAX_REPORT_CHARS:,} of {len(long_report):,} characters"
+    # Both judge-backed scorers cut the report and both record the pair, so both
+    # lines have to say so -- one of them printing it is what made the other
+    # line's silence easy to miss.
+    lines = {
+        ln.strip().split(":")[0]: ln
+        for ln in result.stdout.splitlines() if note in ln
+    }
+    assert set(lines) == {"RACE", "Claim Recall"}, result.stdout
+
+
+def test_eval_score_reports_alignment_lookups_that_failed(tmp_path, monkeypatch):
+    """Its sibling printed this and it did not.
+
+    With PubMed unreachable, every citation-claim pair is unresolvable, so the
+    line reads `0/0 (0.00)` -- identical to a report whose citations support
+    nothing at all.
+    """
+    from deep_research_client.evaluation import scorers
+
+    async def unreachable(pmid, client=None):
+        return {"exists": False, "title": None, "year": None,
+                "error": "ConnectTimeout", "lookup_failed": True}
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_metadata", unreachable)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    path = _write(tmp_path / "t.yaml",
+                  "tasks:\n  - id: r1\n    prompt: What mechanisms?\n")
+    report = _write(tmp_path / "r.md", "FGFR3 drives achondroplasia [PMID:7913883].")
+
+    result = runner.invoke(app, [
+        "eval", "score", str(report), "--source", str(path), "--task-id", "r1",
+        "--no-fact", "--no-recall", "--no-race"])
+
+    assert result.exit_code == 0, result.stdout
+    # On the alignment line specifically. Its sibling above prints the same
+    # phrase, so a bare substring assertion over the whole output passed with
+    # this line reverted -- the failure mode this test exists to catch.
+    alignment = next(
+        ln for ln in result.stdout.splitlines() if "Citation-Claim Alignment" in ln
+    )
+    assert "1 could not be looked up" in alignment

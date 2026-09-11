@@ -699,3 +699,219 @@ def test_well_formed_json_without_the_verdict_key_is_not_a_negative_verdict(
     score = asyncio.run(scorers.score_claim_recall(out, claims, llm_client=object()))
     assert score.matches[0].matched is None, why
     assert score.unjudged_claims == 1
+
+
+@pytest.mark.parametrize("style", ["exact", "prefix"])
+def test_an_empty_capture_is_not_a_comparison(style):
+    """The same report was a factual error under one style and correct under
+    the other, on the strength of a capture that was the empty string.
+
+    A group that can match nothing -- `(\\d*)`, `(17.*)`, anything with `?` or
+    `*` at the top level -- captures "" when the report phrases the fact in
+    words. `"" == "17q21.31"` is False, so `exact` charged the report with
+    getting the locus wrong; `"17q21.31".startswith("")` is True, so `prefix`
+    credited it with getting the locus right. Neither was a measurement, and
+    the pair disagreeing is the proof: nothing about the report changed.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="chromosome", pattern=r"chromosome\s*(\d*)",
+            expected="17q21.31", match=style,
+        )]),
+    )
+    report = "BRCA1 sits on chromosome seventeen, long arm."
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+    check = score.checks[0]
+
+    assert check.present, "the pattern did match"
+    assert not check.compared, "but it captured nothing, so nothing was compared"
+    assert score.compared_count == 0
+    assert score.accuracy_rate == 0.0
+
+
+def test_a_capture_that_is_present_still_compares():
+    """The guard above must not disarm the checks that do measure something."""
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="chromosome", pattern=r"chromosome\s*(\d*)",
+            expected="17q21.31", match="prefix",
+        )]),
+    )
+    score = score_factual_spot_checks(
+        parse_dr_output(task, "BRCA1 sits on chromosome 17.", "test"), task
+    )
+    assert score.checks[0].compared and score.checks[0].correct
+    assert score.compared_count == 1
+
+
+@pytest.mark.parametrize("scenario,meta,expect_rate,expect_checked,expect_unresolvable", [
+    # NCBI reports an unknown uid as a per-uid error: the citation is to a paper
+    # that does not exist, and a paper that does not exist supports nothing.
+    ("fabricated pmid",
+     {"exists": False, "title": None, "year": None,
+      "error": "cannot get document summary", "lookup_failed": False},
+     0.9, 10, 0),
+    # A timeout tells us nothing about the citation, so it leaves the rate.
+    ("pubmed outage",
+     {"exists": False, "title": None, "year": None,
+      "error": "ConnectTimeout", "lookup_failed": True},
+     1.0, 9, 1),
+])
+def test_alignment_separates_a_fabricated_citation_from_a_failed_lookup(
+    scenario, meta, expect_rate, expect_checked, expect_unresolvable, monkeypatch,
+):
+    """The verifiability scorer's inversion, repeated one function along.
+
+    `unresolvable` incremented on any missing title, and a fabricated PMID has
+    no title -- so nine real citations and one invented one scored alignment
+    1.00, with the invented one quietly out of the denominator. The distinction
+    drawn next door in the same commit was not carried across; the predicate
+    has to be `lookup_failed`, because that is the only key every one of the
+    four branches that make the distinction actually sets.
+    """
+    import asyncio
+
+    from deep_research_client.evaluation import scorers
+    from deep_research_client.evaluation.runner import parse_dr_output
+
+    real = {"exists": True, "title": "FGFR3 mutations cause achondroplasia",
+            "year": 2019}
+
+    async def fake_pubmed(pmid, client=None):
+        return meta if pmid == "PMID:99999999" else real
+
+    monkeypatch.setattr(scorers, "fetch_pubmed_metadata", fake_pubmed)
+
+    task = EvalTask(id="c", prompt="?", answer_type=AnswerType.REPORT)
+    body = " ".join(
+        f"FGFR3 mutations cause achondroplasia [PMID:1000000{i}]." for i in range(9)
+    ) + " FGFR3 mutations cause achondroplasia [PMID:99999999]."
+
+    score = asyncio.run(scorers.score_citation_alignment(parse_dr_output(task, body, "test")))
+
+    assert score.alignment_rate == pytest.approx(expect_rate), scenario
+    assert score.total_checked == expect_checked, scenario
+    assert score.unresolvable == expect_unresolvable, scenario
+
+
+def test_a_doi_crossref_does_not_know_is_a_negative_not_a_failed_lookup():
+    """CrossRef's 404 branch carried neither key, so it was a negative only by
+    the default in `meta.get("lookup_failed", False)`.
+
+    Both consumers draw the transport-failure/authoritative-negative line by
+    reading that key. A branch that sets neither is one reader's default away
+    from flipping sides, which is how the alignment scorer got it wrong.
+    """
+    import asyncio
+
+    import httpx
+
+    from deep_research_client.evaluation import scorers
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(404))
+
+    async def resolve():
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await scorers.resolve_doi("DOI:10.1038/nonexistent", client)
+
+    meta = asyncio.run(resolve())
+    assert meta["exists"] is False
+    assert meta["lookup_failed"] is False, "a 404 is the finding, not an outage"
+
+
+@pytest.mark.parametrize("report,expect_correct,expect_found", [
+    # The defect: a report on BRCA1 that mentions TP53's locus first. `re.search`
+    # stopped at the first occurrence, so a report that stated BRCA1's own locus
+    # correctly two sentences later was scored a factual error.
+    ("BRCA1 works with TP53, on chromosome 17p13.1. "
+     "BRCA1 itself is on chromosome 17q21.31.", True, "chromosome 17q21.31"),
+    # Order must not matter either way round.
+    ("BRCA1 is on chromosome 17q21.31. TP53 is on chromosome 17p13.1.",
+     True, "chromosome 17q21.31"),
+    # A report that only ever states the wrong locus is still wrong, and the
+    # occurrence it is wrong at is the one reported.
+    ("BRCA1 is on chromosome 17p13.1.", False, "chromosome 17p13.1"),
+])
+def test_a_spot_check_looks_at_every_occurrence_not_only_the_first(
+    report, expect_correct, expect_found,
+):
+    """Otherwise the score depends on the order a report happens to mention
+    things in, which is not a property of whether it got the fact right."""
+    from deep_research_client.evaluation.adapters.monarch import build_rubric
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=build_rubric("gene_function", [], subject="BRCA1"),
+    )
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+    check = next(c for c in score.checks if c.fact_name == "chromosome")
+
+    assert check.compared
+    assert check.correct is expect_correct
+    assert check.found_in_report == expect_found
+
+
+def test_a_non_capturing_occurrence_does_not_hide_a_disagreement():
+    """"Any occurrence is correct" must not be satisfied by an occurrence that
+    compared nothing.
+
+    A pattern whose group is optional matches both with and without a captured
+    value. Taking the first `correct` verdict would let the non-capturing
+    occurrence -- correct only in the presence-only sense -- stand in for a
+    comparison the report really did fail.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="brca1", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[SpotCheck(
+            name="chromosome", pattern=r"chromosome(?:\s+(17[pq][\d.]+))?",
+            expected="17q21.31",
+        )]),
+    )
+    # The bare "chromosome" comes first and captures nothing; the real claim,
+    # which is wrong, comes second.
+    report = "The chromosome in question is human. BRCA1 sits at chromosome 17p13.1."
+    score = score_factual_spot_checks(parse_dr_output(task, report, "test"), task)
+
+    assert score.checks[0].compared, "a comparison was available and was made"
+    assert score.checks[0].correct is False
+    # The trailing period is inside the match: `[\d.]+` swallows it.
+    assert score.checks[0].found_in_report == "chromosome 17p13.1."
+
+
+def test_a_presence_only_check_records_no_expected_value():
+    """`expected or ""` made "nothing was specified" look like "" was.
+
+    The per-check detail is what a reader consults when a rate surprises them,
+    and a presence-only check has no expected value to hold the report to.
+    """
+    from deep_research_client.evaluation.runner import parse_dr_output
+    from deep_research_client.evaluation.scorers import score_factual_spot_checks
+
+    task = EvalTask(
+        id="t", prompt="?", answer_type=AnswerType.REPORT,
+        rubric=Rubric(spot_checks=[
+            SpotCheck(name="mentions_ring", pattern=r"\bRING domain\b"),
+            SpotCheck(name="length", pattern=r"(\d+)\s*amino acid", expected="1863"),
+        ]),
+    )
+    score = score_factual_spot_checks(
+        parse_dr_output(task, "A 1863 amino acid protein with a RING domain.", "test"),
+        task,
+    )
+    by_name = {c.fact_name: c for c in score.checks}
+
+    assert by_name["mentions_ring"].expected is None
+    assert by_name["length"].expected == "1863"

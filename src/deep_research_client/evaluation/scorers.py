@@ -40,7 +40,7 @@ from .models import (
     TopicCoverage,
     TopicCoverageScore,
 )
-from .datamodel import EvalTask, MatchStyle, ReferenceClaim, Rubric
+from .datamodel import EvalTask, MatchStyle, ReferenceClaim, Rubric, SpotCheck
 from ..validation.extraction import find_reference_ids
 
 logger = logging.getLogger(__name__)
@@ -664,7 +664,15 @@ async def resolve_doi(
             resp = await client.get(url, headers={"Accept": "application/json"})
 
         if resp.status_code == 404:
-            return {"exists": False, "title": None, "year": None}
+            # CrossRef does not know this DOI. That is the authoritative
+            # negative -- the finding, not a failed lookup -- so `lookup_failed`
+            # is False, and stated rather than left to the default: every caller
+            # that draws this distinction reads the key, and a branch that
+            # carries neither key is one rename away from being read as either.
+            return {
+                "exists": False, "title": None, "year": None,
+                "lookup_failed": False,
+            }
         resp.raise_for_status()
         data = resp.json()
 
@@ -818,12 +826,36 @@ async def score_citation_alignment(
                 continue
 
             title = meta.get("title")
-            if not title:
-                # No title to align against. Counted rather than dropped: a
+            if meta.get("lookup_failed"):
+                # A timeout, a 5xx, a connection error: nothing was learned
+                # about this citation, so it leaves the rate rather than
+                # counting against it. Counted rather than dropped, because a
                 # PubMed outage otherwise reports 0/0 (0.00), where "nothing
-                # was checkable" and "nothing aligned" render identically --
-                # the distinction its three sibling scorers just learned.
+                # was checkable" and "nothing aligned" render identically.
                 unresolvable += 1
+                continue
+
+            if not title:
+                # The lookup succeeded and there is no paper to align against:
+                # NCBI reporting an unknown uid, or CrossRef answering 404.
+                # That is the authoritative negative, and a citation to a paper
+                # that does not exist supports nothing -- so it counts against
+                # alignment rather than leaving the rate.
+                #
+                # Reading this off "no title" instead of off `lookup_failed`
+                # was the same inversion the verifiability scorer had one
+                # commit earlier: nine real citations and one invented one
+                # scored 1.00, the metric that exists to catch hallucinated
+                # references calling a report that hallucinated one perfectly
+                # aligned.
+                results.append(CitationAlignmentResult(
+                    citation_id=cid,
+                    claim_text=claim.text[:200],
+                    paper_title="",
+                    aligned=False,
+                    shared_terms=[],
+                    term_overlap_score=0.0,
+                ))
                 continue
 
             title_terms = _extract_key_terms(str(title))
@@ -877,6 +909,71 @@ def _reference_claims(task: EvalTask) -> list[ReferenceClaim]:
     return _rubric_of(task).reference_claims or []
 
 
+def _compare_capture(spec: SpotCheck, match: re.Match[str]) -> tuple[bool, bool]:
+    r"""Compare one occurrence of a spot check's pattern against its `expected`.
+
+    Returns ``(correct, compared)``. ``compared`` is False when this occurrence
+    settles nothing -- a presence-only check, or a pattern that matched without
+    capturing a value -- so that the accuracy rate is over the occurrences that
+    actually tested something.
+
+    "Group 1 has a non-empty captured value" is the property, and three weaker
+    predicates have been wrong here. ``groups()`` is a truthy tuple of Nones
+    when an optional group did not participate -- the bundled
+    ``RING (finger)? domain`` case, which crashed on the commonest phrasing.
+    ``lastindex`` is the index of the *last* group that matched, so
+    ``(?:(17q\d+)|chromosome (17))`` gives lastindex 2 with group(1) still None
+    and crashes identically. And ``is not None`` alone admits the empty string,
+    which any group that can match nothing produces: ``chromosome\s*(\d*)``
+    against "chromosome seventeen" captured "" and then scored a factual error
+    under `exact` and a correct answer under `prefix` -- two opposite verdicts
+    on one report, neither of them a measurement. ``match.re.groups`` guards the
+    groupless pattern, where ``group(1)`` raises IndexError.
+
+    >>> import re
+    >>> from .datamodel import SpotCheck
+    >>> spec = SpotCheck(name="n", pattern=r"(\d+)\s*amino acid", expected="1863")
+    >>> _compare_capture(spec, re.search(spec.pattern, "1863 amino acids"))
+    (True, True)
+    >>> _compare_capture(spec, re.search(spec.pattern, "999 amino acids"))
+    (False, True)
+
+    Thousands separators are removed on both sides: a report writing
+    "1,863 amino acids" is not disagreeing about the number.
+
+    >>> wide = SpotCheck(name="n", pattern=r"([\d,]+)\s*amino acid", expected="1863")
+    >>> _compare_capture(wide, re.search(wide.pattern, "1,863 amino acids"))
+    (True, True)
+
+    `prefix` is for hierarchical facts -- a locus, an ontology id, a version --
+    where a shorter answer is less precise rather than incorrect. A report
+    saying "chromosome 17" where the answer is 17q21.31 is the commonest
+    phrasing in the literature; scoring it a factual error is the mirror of the
+    defect that scored the precise report wrong. A different locus is still
+    wrong, which a presence-only check could not tell apart from silence.
+
+    >>> loc = SpotCheck(name="n", pattern=r"chromosome (17[pq\d.]*)",
+    ...                 expected="17q21.31", match="prefix")
+    >>> _compare_capture(loc, re.search(loc.pattern, "chromosome 17"))
+    (True, True)
+    >>> _compare_capture(loc, re.search(loc.pattern, "chromosome 17p13.1"))
+    (False, True)
+    """
+    if spec.expected is None:
+        return True, False
+
+    captured = ""
+    if match.re.groups and match.group(1) is not None:
+        captured = match.group(1).strip().lower().replace(",", "")
+    if not captured:
+        return True, False
+
+    wanted = spec.expected.strip().lower().replace(",", "")
+    if spec.match == MatchStyle.prefix.value:
+        return wanted.startswith(captured), True
+    return captured == wanted, True
+
+
 def score_factual_spot_checks(
     dr_output: DROutput,
     task: EvalTask,
@@ -917,54 +1014,38 @@ def score_factual_spot_checks(
     checks: list[FactualSpotCheck] = []
 
     for spec in _rubric_of(task).spot_checks or []:
-        match = re.search(spec.pattern, text, re.IGNORECASE)
+        # Every occurrence, not just the first. `re.search` stops at the first
+        # one, so a BRCA1 report that mentions TP53's locus before stating
+        # BRCA1's own -- an ordinary thing for a report on a tumour suppressor
+        # to do -- captured 17p13.1 and was scored a factual error for a fact
+        # it had got right two sentences later.
+        matches = list(re.finditer(spec.pattern, text, re.IGNORECASE))
 
-        if match is None:
+        if not matches:
             present, found, correct, compared = False, None, False, False
         else:
-            present, found, compared = True, match.group(0), False
-            if spec.expected is None:
-                # Presence-only check: appearing is the whole test.
-                correct = True
-            elif match.re.groups and match.group(1) is not None:
-                # The property is "group 1 has a captured value", so that is
-                # what is asked. Two weaker predicates have been wrong here:
-                # `groups()` is a truthy tuple of Nones when an optional group
-                # did not participate -- the bundled `RING (finger)? domain`
-                # case, which crashed on the commonest phrasing -- and
-                # `lastindex` is the index of the *last* group that matched, so
-                # `(?:(17q\d+)|chromosome (17))` gives lastindex 2 with
-                # group(1) still None and crashes identically. `match.re.groups`
-                # guards the groupless pattern, where group(1) raises IndexError.
-                #
-                # The crash matters out of proportion to its size: it reaches
-                # score_intrinsic, whose `except Exception` then discards all
-                # four intrinsic scores for a report that was fine.
-                # Thousands separators removed on both sides: a report writing
-                # "1,863 amino acids" is not disagreeing about the number.
-                captured = match.group(1).strip().lower().replace(",", "")
-                wanted = spec.expected.strip().lower().replace(",", "")
-                # `prefix` is for hierarchical facts -- a locus, an ontology id,
-                # a version -- where a shorter answer is less precise rather
-                # than incorrect. "chromosome 17" against 17q21.31 is the
-                # commonest phrasing in the literature; scoring it a factual
-                # error is the mirror of the defect that scored the precise
-                # report wrong. A different locus is still wrong, which a
-                # presence-only check could not tell apart from silence.
-                correct = (
-                    wanted.startswith(captured)
-                    if spec.match == MatchStyle.prefix.value
-                    else captured == wanted
-                )
-                compared = True
+            present = True
+            verdicts = [(m, *_compare_capture(spec, m)) for m in matches]
+            comparable = [(m, ok) for m, ok, did in verdicts if did]
+
+            if not comparable:
+                # Nothing was compared anywhere: a presence-only check, or a
+                # pattern that matched without capturing. Appearing is the
+                # whole test, and `compared` stays False so the accuracy rate
+                # does not count agreement that was never tested.
+                found, correct, compared = matches[0].group(0), True, False
             else:
-                # A pattern with no participating group cannot disagree with
-                # `expected`; appearing is the whole test, as above.
-                correct = True
+                # A comparison that succeeded anywhere settles it; otherwise
+                # the first one that actually compared is the verdict, and is
+                # the occurrence worth reporting -- a later non-capturing match
+                # would otherwise hide a disagreement the report really made.
+                hit = next((m for m, ok in comparable if ok), None)
+                found = (hit or comparable[0][0]).group(0)
+                correct, compared = hit is not None, True
 
         checks.append(FactualSpotCheck(
             fact_name=spec.name,
-            expected=spec.expected or "",
+            expected=spec.expected,
             found_in_report=found,
             correct=correct,
             present=present,

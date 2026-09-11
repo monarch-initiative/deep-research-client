@@ -420,7 +420,16 @@ class FactualSpotCheck(BaseModel):
     """
 
     fact_name: str = Field(..., description="Name of the fact being checked")
-    expected: str = Field(..., description="Known correct value")
+    expected: Optional[str] = Field(
+        default=None,
+        description=(
+            "Known correct value, or None for a presence-only check, which has "
+            "no expected value to hold the report to. Written as an empty "
+            "string until it was pointed out that a reader of the per-check "
+            "detail could then not tell 'no value was specified' from 'the "
+            "value specified was empty'."
+        ),
+    )
     found_in_report: Optional[str] = Field(default=None, description="Value found in DR output, if any")
     correct: Optional[bool] = Field(default=None, description="Whether report value matches expected")
     present: bool = Field(default=False, description="Whether the fact is mentioned at all")

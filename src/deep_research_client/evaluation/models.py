@@ -839,9 +839,16 @@ class MCQScore(BaseModel):
     failure counts partition `total`; a score whose counts do not add up is
     rejected rather than written to a file a spreadsheet subtracts from.
 
-    Three guards live here and nowhere else in this module: derived rates,
-    the accounting validator below, and `ge=0` on every count. Scoped to this
-    class deliberately, not because the arguments are special to it. The six
+    Three guards live here and nowhere else in this module: rates derived
+    INSTEAD of stored beside the counts they duplicate, the accounting
+    validator below, and `ge=0` on every count. The first needs that
+    qualifier: `computed_field` itself is used all over this module --
+    `RACEDimension.normalized_score`, `RACEScore.unscored_count` and
+    `overall_score`, `CitationAlignmentScore.total_pairs`, the last of which
+    `normalized_score` names as the precedent for the technique. None of
+    those duplicates a stored field, so nothing can disagree with them and
+    deriving them was never this guard. Scoped to this class
+    deliberately, not because the arguments are special to it. The six
     scores it sits beside -- `FACTScore`, `ClaimRecallScore`,
     `CitationVerifiabilityScore`, `CitationAlignmentScore`,
     `FactualSpotCheckScore` and `TopicCoverageScore` -- predate this branch
@@ -1074,6 +1081,16 @@ class MCQScore(BaseModel):
         one producer's output is not a claim about the type, and every count
         is independently settable.
 
+        The `answers` check is the one conditional clause: the field defaults
+        to empty and a score built from counts alone carries none, which is
+        every hand-built fixture in the suite, so it can only compare the two
+        when there is something to compare. That rationale is here rather
+        than in the message because a caller who trips it has a non-empty
+        `answers` by construction -- and reading "a score built from counts
+        alone legitimately carries none" while holding a row whose counts and
+        answers disagree suggests dropping the answers, which is the one
+        repair that loses data instead of fixing it.
+
         History: this closed "-- the way `correct`'s does", citing that
         description as the model of a claim holding by construction. Fair
         when written; `14c9662` then corrected `correct` on the grounds that
@@ -1109,11 +1126,8 @@ class MCQScore(BaseModel):
             raise ValueError(
                 f"total={self.total} does not match the {len(self.answers)} "
                 f"answer(s) carried: `score_mcq` sets `total = len(answers)` "
-                f"and grades every one of them, so a row whose `answers` "
-                f"disagree with its `total` describes a run that did not "
-                f"happen. Conditional on `answers` being non-empty, because "
-                f"it defaults to empty and a score built from counts alone "
-                f"legitimately carries none."
+                f"and grades every one of them, so `total` counts the answers "
+                f"in this row and nothing else."
             )
         if self.unusable > self.attempted:
             raise ValueError(

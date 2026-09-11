@@ -359,39 +359,69 @@ def test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it(
     )
 
 
-def _page_guards() -> set[str]:
-    """Tests that read the how-to, by name, excluding the caller.
+def _page_guards(root: Path | None = None) -> set[str]:
+    """Every test naming the how-to, by name, with nothing excluded.
 
-    Derived by reading the two test files rather than listed, because the
-    exemption in `test_the_page_names_every_column_the_writer_emits` argues
-    from what the existing guards cover -- and that argument is only as good
-    as the enumeration behind it. Written from memory twice and wrong twice:
-    once naming a guard that does not exist, once omitting the one prose
-    guard the argument is about.
+    `root` defaults to `tests/` and exists so the scanner can be run over a
+    fixture tree: an instrument's own behaviour is a claim like any other,
+    and this one was wrong once already (see below).
 
-    Over every file in `tests/`, not the two that happen to hold them
-    today, so a guard added in a third file is not invisible to the list it
-    would belong in. Matches on the page's filename appearing in a line,
-    then walks back to the enclosing `def test_`. A test naming the page in
-    a failure message as well as reading it is counted once.
+    Derived rather than listed, because the exemption in
+    `test_the_page_names_every_column_the_writer_emits` argues from what the
+    existing guards cover -- and that argument is only as good as the
+    enumeration behind it. Written from memory twice and wrong twice: once
+    naming a guard that does not exist, once omitting the one prose guard
+    the argument is about.
 
-    What this does NOT cover: a reader that never spells the filename on one
-    line -- built from a variable, or split across a wrap. Every guard in the
-    tree writes it whole, and a guard this cannot see does not change the set
-    below, so it would go unnoticed exactly as the hand-written list did.
+    Over every file in `tests/`, not the two that happen to hold them today,
+    so a guard added in a third file is not invisible to the list it would
+    belong in. Matches on the page's filename appearing in a line, then
+    walks back to the enclosing `def test_`.
+
+    NOTHING is excluded, including the two tests that only talk ABOUT the
+    page guards. The first version subtracted one name, which made the
+    return value a describer with a hardcoded exception in it -- and then
+    the tripwire moved to another test and the exception was pointing at the
+    wrong one. A set with no exceptions has nothing to keep in step; the
+    caller's docstring says what each member reads, which is the part that
+    has to be maintained anyway.
+
+    Every top-level `def` resets the attribution, not only a `def test_`,
+    and that is load-bearing rather than tidy: this function's own body
+    spells the filename, and under the first version -- which set `current`
+    at a test and cleared it nowhere -- that line was counted as a page read
+    and attributed to whichever test happened to precede the helper. It
+    was invisible only because the test above does read the page, so the
+    self-hit re-added a name already in the set. Move the helper and the
+    derivation gains a member that reads nothing. An instrument that counts
+    itself is the fourth on this branch.
+
+    What this does NOT cover, in the order it matters:
+
+    - WHAT each guard reads. This returns the set of guard NAMES, and the
+      exemption argues from the per-guard mapping beside it. Teaching an
+      existing guard to pin the rate paragraphs leaves this set identical
+      and that mapping silently wrong -- the one drift the assertion is
+      named for and cannot see.
+    - A reader that never spells the filename on one line: built from a
+      variable, or split across a wrap. Every guard in the tree writes it
+      whole, and one this cannot see does not change the set, so it would go
+      unnoticed exactly as the hand-written list did.
+    - A test defined inside a class, since `def` is matched at column zero.
+      `CLAUDE.md` asks for functional-style tests and the suite is entirely
+      functional, so this is a property of the convention holding.
     """
-    import re
-
     guards: set[str] = set()
-    for path in sorted(Path(__file__).parent.rglob("*.py")):
+    for path in sorted((root or Path(__file__).parent).rglob("*.py")):
         current: str | None = None
         for line in path.read_text(encoding="utf-8").splitlines():
-            match = re.match(r"def (test_\w+)", line)
+            match = re.match(r"def (\w+)", line)
             if match:
-                current = match.group(1)
+                name = match.group(1)
+                current = name if name.startswith("test_") else None
             elif "evaluate-providers.md" in line and current:
                 guards.add(current)
-    return guards - {"test_the_page_names_every_column_the_writer_emits"}
+    return guards
 
 
 def _scores_tsv_header(tmp_path: Path, score: MCQScore) -> list[str]:
@@ -409,6 +439,104 @@ def _scores_tsv_header(tmp_path: Path, score: MCQScore) -> list[str]:
     root.mkdir(parents=True, exist_ok=True)
     write_scores_tsv(RunLayout(root=root), {"a": score})
     return (root / "scores.tsv").read_text(encoding="utf-8").splitlines()[0].split("\t")
+
+
+
+def test_the_set_of_page_guards_is_the_one_the_exemption_argues_from(tmp_path):
+    """A tripwire on the exemption above, and on the scanner behind it.
+
+    `test_the_page_names_every_column_the_writer_emits` exempts the three
+    rates on the grounds that NOTHING pins the paragraphs defining them. That
+    is an argument about what the other guards cover, so it is only as good
+    as the enumeration behind it -- and the enumeration was written from
+    memory twice and was wrong twice: once naming a guard that does not
+    exist, once omitting the one prose guard the argument is about.
+
+    Its own test rather than an assertion over there, because it fails when a
+    docs guard is added, removed or renamed anywhere under `tests/`, for
+    reasons that have nothing to do with `write_scores_tsv` or any column.
+    The line pytest prints is a describer too.
+
+    Every test naming the page, and what each one reads:
+
+      test_the_page_quotes_the_extraction_failures_note_...  a printed note
+      test_an_arm_that_attempted_nothing_shows_no_precision  the rendered
+          `--grade` row AND the unconditional extractor note -- two of the
+          six content items in this list come from one guard
+      test_the_docs_do_not_claim_the_skip_is_narrower_...    a PROSE
+          paragraph, the only one in the tree
+      test_the_docs_quote_a_line_the_command_can_...         the
+          verifiability line
+      test_the_documented_rubric_example_loads_and_scores    a rubric
+          example (tests/test_eval_adapters.py)
+      test_the_page_names_every_column_the_writer_emits      column NAMES,
+          not content -- it is the test the exemption lives in
+      test_the_set_of_page_guards_is_the_one_the_exemption_argues_from
+          nothing: this test, which names the page only in its fixture and
+          its message
+
+    The last two read no page CONTENT and are here because the set excludes
+    nothing; see `_page_guards`. Every one of the first five but the third
+    reads a RENDERED line, built by running the
+    command and asserted against the page. The rate paragraphs are prose and
+    no command prints them, so the third is the shape a guard for them would
+    take: it splits the page on blank lines and asserts two facts co-occur in
+    ONE paragraph, after a whole-page containment check let an unrelated
+    `--template PATH | ... placeholders` row satisfy half of it.
+    """
+    # The scanner first, because the set below is only as good as it is and
+    # it was wrong in exactly this way: it set the current test at a
+    # `def test_` and cleared it at no other `def`, so a page mention inside
+    # a helper counted, attributed to whichever test preceded that helper.
+    # `_page_guards`' own body spells the filename, so the instrument
+    # counted itself -- invisible only because the test above it does read
+    # the page, which made the self-hit a duplicate.
+    fixture = tmp_path / "decoys"
+    fixture.mkdir()
+    (fixture / "test_decoy.py").write_text(
+        'def test_reads_nothing():\n'
+        '    assert True\n'
+        '\n\n'
+        'def _helper_that_names_the_page():\n'
+        '    return "docs/how-to/evaluate-providers.md"\n'
+        '\n\n'
+        'def test_actually_reads_it():\n'
+        '    assert "docs/how-to/evaluate-providers.md"\n',
+        encoding="utf-8",
+    )
+    assert _page_guards(root=fixture) == {"test_actually_reads_it"}, (
+        "the scanner credits a test for a page mention that is not in its "
+        "body, so the derived set can name a guard that reads nothing"
+    )
+
+    # The exemption sends a reader here by name. A citation is the claim that
+    # rots without either text being touched, so it is pinned rather than
+    # trusted: rename this test and the reference fails instead of dangling.
+    import inspect
+
+    own_name = test_the_set_of_page_guards_is_the_one_the_exemption_argues_from.__name__
+    exemption = inspect.getsource(test_the_page_names_every_column_the_writer_emits)
+    assert own_name in exemption, (
+        "the exemption in test_the_page_names_every_column_the_writer_emits "
+        "no longer names this test, so its argument points at nothing"
+    )
+
+    assert _page_guards() == {
+        "test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it",
+        "test_an_arm_that_attempted_nothing_shows_no_precision",
+        "test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is",
+        "test_the_docs_quote_a_line_the_command_can_actually_print",
+        "test_the_documented_rubric_example_loads_and_scores",
+        "test_the_page_names_every_column_the_writer_emits",
+        "test_the_set_of_page_guards_is_the_one_the_exemption_argues_from",
+    }, (
+        "the set of tests reading docs/how-to/evaluate-providers.md has "
+        f"changed to {sorted(_page_guards())}; this test's docstring says "
+        f"what each of them reads and the exemption in "
+        f"`test_the_page_names_every_column_the_writer_emits` argues from "
+        f"it, so update both -- a new guard may already pin the rate "
+        f"paragraphs that exemption claims nothing covers"
+    )
 
 
 def test_the_page_names_every_column_the_writer_emits(tmp_path):
@@ -441,52 +569,12 @@ def test_the_page_names_every_column_the_writer_emits(tmp_path):
 
     # `arm_id` identifies the row; the three rates the page discusses at
     # length, so a name-presence check would add nothing for them. NOT
-    # because something else pins those paragraphs -- nothing does. Grepping
-    # every test that reads this page gives five besides this one, and what
-    # each reads:
-    #
-    #   test_the_page_quotes_the_extraction_failures_note_...  a printed note
-    #   test_an_arm_that_attempted_nothing_shows_no_precision  the rendered
-    #       `--grade` row AND the unconditional extractor note -- two of the
-    #       six things in this list come from one guard
-    #   test_the_docs_do_not_claim_the_skip_is_narrower_...    a PROSE
-    #       paragraph, the only one in the tree
-    #   test_the_docs_quote_a_line_the_command_can_...         the
-    #       verifiability line
-    #   test_the_documented_rubric_example_loads_and_scores    a rubric
-    #       example (tests/test_eval_adapters.py)
-    #
-    # Every one but the third reads a RENDERED line, built by running the
-    # command and asserted against the page. The rate paragraphs are prose
-    # and no command prints them, so the third is the shape a guard for them
-    # would take: it splits the page on blank lines and asserts two facts
-    # co-occur in ONE paragraph, after a whole-page containment check let an
-    # unrelated `--template PATH | ... placeholders` row satisfy half of it.
-    #
-    # A wrong sentence about `precision` lived in these paragraphs until it
-    # was fixed by hand. An exemption list is a describer too: this one says
-    # what it does not cover rather than implying someone else does.
-    #
-    # History: this named "the two printed notes, the rendered `--grade` row,
-    # the verifiability line and a rubric example" -- five items for five
-    # guards, which reads as one apiece and is not the mapping. It omitted
-    # the prose guard, the single one whose shape the argument is about.
-    # Twice now this list has been written from memory and been wrong, so it
-    # is derived below rather than trusted: a list asserts nothing about
-    # completeness, and neither does a count of one.
-    assert _page_guards() == {
-        "test_the_page_quotes_the_extraction_failures_note_as_the_command_prints_it",
-        "test_an_arm_that_attempted_nothing_shows_no_precision",
-        "test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is",
-        "test_the_docs_quote_a_line_the_command_can_actually_print",
-        "test_the_documented_rubric_example_loads_and_scores",
-    }, (
-        "the set of tests reading docs/how-to/evaluate-providers.md has "
-        f"changed to {sorted(_page_guards())}; the exemption comment above "
-        f"enumerates them and says what each reads, so update it -- a new "
-        f"guard may already pin the rate paragraphs this exemption claims "
-        f"nothing covers"
-    )
+    # because something else pins those paragraphs -- nothing does, and
+    # `test_the_set_of_page_guards_is_the_one_the_exemption_argues_from`
+    # carries that argument, its enumeration, and the tripwire that keeps
+    # the enumeration honest. Kept out of this test because it fails when a
+    # docs guard moves anywhere under `tests/`, which is not a fact about
+    # any column.
     exempt = {"arm_id", "accuracy", "coverage", "precision"}
     missing = [c for c in emitted if c not in exempt and f"`{c}`" not in page]
     assert not missing, (

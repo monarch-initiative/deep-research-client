@@ -944,7 +944,7 @@ def test_a_bare_string_runtime_fragment_no_longer_matches_every_basename():
     assert not policy.decide("provenance/iter1_transcript.json", 100).keep
 
 
-@pytest.mark.parametrize("spelling", ["csv", ".CSV", "CSV"])
+@pytest.mark.parametrize("spelling", ["csv", ".csv", ".CSV", "CSV"])
 def test_an_extension_is_normalized_at_every_door_not_only_from_params(spelling):
     """_normalize_extensions ran only in from_params, so these matched nothing.
 
@@ -1013,4 +1013,115 @@ def test_from_params_still_merges_extra_extensions_onto_the_defaults():
 
     assert policy.decide("results/table.csv", 100).keep
     assert policy.decide("config/run.yaml", 100).keep
+    assert policy.decide("results/table.json", 100).keep
+
+
+@pytest.mark.parametrize(
+    "field,setting",
+    [
+        ("runtime_name_fragments", ["stderr", ""]),
+        ("runtime_suffixes", ["", ".log"]),
+    ],
+)
+def test_an_empty_entry_in_a_runtime_list_does_not_drop_the_whole_bundle(
+    field, setting
+):
+    """An empty name is inert in a glob and lethal in a substring test.
+
+    `"" in basename` and `basename.endswith("")` are both true for every
+    member, and both rules sit above the extension allowlist — so one blank
+    entry dropped everything, and only when keep_runtime was False.
+
+    `["a", ""]` is what `"a,".split(",")` produces, so a caller assembling
+    the list from their own config is the way in. The string spelling
+    `"stderr,"` was already handled; the list was the surprising one.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, **{field: setting})
+
+    assert policy.decide("results/table.csv", 100).keep
+
+
+def test_the_runtime_names_that_are_not_empty_still_match():
+    """The empty entry is dropped, not the whole setting.
+
+    Asserts the *rule*, not just that the member was dropped: neither .txt
+    nor .log is in the default allowlist, so both files are refused anyway
+    and a keep/drop assertion would pass even if the setting were emptied
+    entirely.
+    """
+    fragments = ArtifactSelectionPolicy(
+        max_bytes=1024, runtime_name_fragments=["stderr", ""]
+    )
+    suffixes = ArtifactSelectionPolicy(max_bytes=1024, runtime_suffixes=["", ".log"])
+
+    assert fragments.decide("logs/stderr.txt", 100).rule == "runtime"
+    assert suffixes.decide("agent-container.log", 100).rule == "runtime"
+
+
+def test_a_name_in_a_list_is_stripped_the_way_a_name_in_a_string_is():
+    """The string branch stripped and the collection branches did not.
+
+    `runtime_suffixes=" .log"` worked and `[" .log"]` silently matched
+    nothing — one function answering the same question two ways.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, runtime_suffixes=[" .log"])
+
+    assert policy.runtime_suffixes == (".log",)
+    assert not policy.decide("agent-container.log", 100).keep
+
+
+@pytest.mark.parametrize(
+    "value,expected_message",
+    [
+        ({".claude/": 1}, "its keys are unlikely"),
+        (iter([".claude/"]), "one-shot iterator"),
+        (b".claude/", "decode it to str first"),
+    ],
+)
+def test_scaffolding_refuses_what_every_other_setting_refuses(
+    value, expected_message
+):
+    """It was the loosest field in a module built around being strict.
+
+    A mapping and a one-shot iterator were accepted where every other setting
+    raises, and bytes produced `AttributeError: 'int' object has no attribute
+    'endswith'` rather than the corrective TypeError.
+    """
+    with pytest.raises(TypeError, match=expected_message):
+        ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes=value)
+
+
+def test_scaffolding_names_from_an_unordered_collection_are_sorted():
+    """Asserted as an order, not as equality between two policies.
+
+    Equality would pass either way: CPython iterates two equal small string
+    sets alike, so the property would have held by coincidence rather than by
+    construction — which is the failure mode this branch keeps catching in
+    its own tests.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes={"b", "a/"})
+
+    assert policy.scaffolding_prefixes == ("a/", "b/")
+
+
+def test_a_bare_string_scaffolding_prefix_is_still_refused_not_comma_split():
+    """The one place the shared rule is deliberately not applied.
+
+    Scaffolding names are not a CLI knob, so there is no comma-separated
+    spelling to honour, and iterating a string yields characters that match
+    wrongly rather than not at all.
+    """
+    with pytest.raises(TypeError, match="not a single string"):
+        ArtifactSelectionPolicy(max_bytes=1024, scaffolding_prefixes=".claude/")
+
+
+def test_a_glob_is_stored_in_the_form_it_is_matched_in():
+    """_matches_any lowercased per pattern per member; now __post_init__ does.
+
+    Behaviourally identical, but `policy.include_globs` showed a form other
+    than the one actually used.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, include_globs="*.JSON")
+
+    assert policy.include_globs == ("*.json",)
     assert policy.decide("results/table.json", 100).keep

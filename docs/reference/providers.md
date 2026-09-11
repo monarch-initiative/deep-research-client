@@ -765,6 +765,14 @@ string.
 Extensions are normalized wherever they are set, so `csv`, `.csv` and `.CSV`
 all mean the same thing; the paths they are matched against are lowercased
 first, so an unnormalized uppercase spelling would otherwise match nothing.
+The list-element-never-split rule applies to them as well as to globs, so
+`artifact_extra_extensions=["csv,tsv"]` is one extension named `.csv,tsv`
+rather than two — pass `["csv", "tsv"]` or the string `"csv,tsv"`.
+
+Surrounding whitespace is stripped and empty entries are dropped, from a list
+as well as from a string. That matters more than it sounds: an empty runtime
+fragment is a substring of every filename, so a stray blank left by
+`"stderr,".split(",")` would otherwise drop the entire bundle.
 
 ### Keeping OpenScientist agent transcripts
 

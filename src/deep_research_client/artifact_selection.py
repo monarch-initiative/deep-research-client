@@ -113,6 +113,27 @@ DEFAULT_RUNTIME_NAME_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+def _stripped_names(items: Iterable[str]) -> tuple[str, ...]:
+    """Strip each name and drop the empties.
+
+    Applied to every branch of :func:`split_name_list`, because an empty name
+    is not harmless in every matcher that consumes one: ``"" in basename`` is
+    true for every member, so a single blank entry in ``runtime_name_fragments``
+    drops the whole bundle.
+
+    Args:
+        items: Raw names.
+
+    Returns:
+        The non-empty names, in the order given.
+
+    Example:
+        >>> _stripped_names([" a/* ", "", "  "])
+        ('a/*',)
+    """
+    return tuple(name for name in (item.strip() for item in items) if name)
+
+
 def split_name_list(value: object) -> tuple[str, ...]:
     """Read a list-valued artifact setting, accepting a comma-separated string.
 
@@ -149,8 +170,13 @@ def split_name_list(value: object) -> tuple[str, ...]:
             equal sets compare equal.
 
     Returns:
-        The names. Empty for None, for an empty collection, and for a string
-        holding nothing but separators and whitespace (``",,"``, ``"   "``).
+        The names, stripped of surrounding whitespace, with empty entries
+        dropped — the same answer whichever shape it was handed, so a list
+        assembled from ``"stderr,".split(",")`` behaves like the string it
+        came from. That matters because an empty name is not inert in every
+        matcher: an empty runtime fragment is a substring of every basename.
+        Empty for None, for an empty collection, for a collection of blanks,
+        and for a string holding nothing but separators and whitespace.
 
     Raises:
         TypeError: If given a mapping, bytes, a one-shot iterator, or
@@ -169,7 +195,7 @@ def split_name_list(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, str):
-        return tuple(item.strip() for item in value.split(",") if item.strip())
+        return _stripped_names(value.split(","))
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
@@ -185,9 +211,9 @@ def split_name_list(value: object) -> tuple[str, ...]:
     # Set is just as unordered, and sorting only real sets would make the
     # promise above true of some unordered collections and not others.
     if isinstance(value, AbstractSet):
-        return tuple(sorted(str(item) for item in value))
+        return tuple(sorted(_stripped_names(str(item) for item in value)))
     if isinstance(value, Collection):
-        return tuple(str(item) for item in value)
+        return _stripped_names(str(item) for item in value)
     if isinstance(value, Iterable):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
@@ -220,23 +246,38 @@ def _lowercased(names: object) -> tuple[str, ...]:
     return tuple(name.lower() for name in split_name_list(names))
 
 
-def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
+def _with_trailing_slashes(directories: object) -> tuple[str, ...]:
     """Normalize directory names for segment matching.
 
     Lowercased and slash-terminated, so both sides of the comparison are
     normalized the way every other matcher in this module does it — a caller
     passing ``".Codex/"`` would otherwise match nothing at all.
 
+    Everything except the bare-string case is delegated to
+    :func:`split_name_list`, so this field is not quietly the *loosest* one in
+    a module built around being strict. Before that composition it accepted a
+    mapping and a one-shot iterator that every other setting refuses, turned
+    ``bytes`` into ``AttributeError: 'int' object has no attribute 'endswith'``
+    rather than the corrective ``TypeError``, and did not sort an unordered
+    collection — so two policies built from equal sets of scaffolding names
+    were equal only when CPython happened to iterate them alike.
+
     Args:
         directories: Directory names, any case, with or without a trailing
             slash. A bare string is rejected rather than iterated as
-            characters.
+            characters, and — unlike the user-facing lists — is not
+            comma-split either: these names are not a CLI knob.
 
     Returns:
-        The normalized names.
+        The normalized names, sorted when given an unordered collection.
 
     Raises:
-        TypeError: If given a single string instead of a collection.
+        TypeError: If given a single string instead of a collection, or
+            anything :func:`split_name_list` refuses.
+
+    Example:
+        >>> _with_trailing_slashes({"B", ".Codex/"})
+        ('.codex/', 'b/')
     """
     if isinstance(directories, str):
         raise TypeError(
@@ -244,8 +285,10 @@ def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
             f"pass [{directories!r}] rather than {directories!r}"
         )
     return tuple(
-        directory.lower() if directory.endswith("/") else f"{directory.lower()}/"
-        for directory in directories
+        name if name.endswith("/") else f"{name}/"
+        for name in (
+            directory.lower() for directory in split_name_list(directories)
+        )
     )
 
 
@@ -428,8 +471,8 @@ class ArtifactSelectionPolicy:
         object.__setattr__(
             self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
         )
-        object.__setattr__(self, "include_globs", split_name_list(self.include_globs))
-        object.__setattr__(self, "exclude_globs", split_name_list(self.exclude_globs))
+        object.__setattr__(self, "include_globs", _lowercased(self.include_globs))
+        object.__setattr__(self, "exclude_globs", _lowercased(self.exclude_globs))
         object.__setattr__(
             self,
             "allowed_extensions",
@@ -702,8 +745,14 @@ def normalize_member_path(name: str) -> str:
 
 
 def _matches_any(normalized_name: str, patterns: Iterable[str]) -> bool:
-    """Return whether a normalized path matches any fnmatch pattern."""
-    return any(fnmatch(normalized_name, pattern.lower()) for pattern in patterns)
+    """Return whether a normalized path matches any fnmatch pattern.
+
+    Both sides arrive lowercased — the path by :func:`normalize_member_path`
+    and the patterns by ``__post_init__`` — so this does not lowercase again.
+    It used to, once per pattern per member, which was harmless but left the
+    stored ``include_globs`` showing a form other than the one matched.
+    """
+    return any(fnmatch(normalized_name, pattern) for pattern in patterns)
 
 
 def _normalize_extensions(extensions: Iterable[str]) -> frozenset[str]:

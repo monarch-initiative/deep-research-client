@@ -401,11 +401,14 @@ four ways one was not. Those five account for `total` exactly, so an arm's
 row says where each of its questions went, and `correct` says how many of
 the attempts were right — the `n` column of the table above is `correct` over
 `total`. The row also carries `unusable`, which is not a disposition but a
-subset of `attempted` — answers whose correctness was never recorded, which
-cost precision and accuracy but not coverage, and which only a hand-edited or
-older-format run produces.
+subset of `attempted` — answers whose correctness was never recorded. Those
+are left out of precision's denominator rather than counted against it, since
+nothing can be said about whether they were right; they stay in coverage,
+because an option was chosen; and they lower accuracy exactly as a wrong
+answer would, since accuracy is over every question asked. Only a hand-edited
+or older-format run produces them.
 
-Two of those get a note under the table as well as a column: `unusable` and
+Two of those columns get a note under the table as well: `unusable` and
 `extraction_failures`, the two harness defects, on the principle that a
 record gap moving a published rate has to say so where the rate is printed.
 The other causes have columns only, so an arm that declined every question

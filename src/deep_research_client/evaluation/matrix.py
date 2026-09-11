@@ -272,27 +272,26 @@ class MatrixConfig:
     cache_dir: str | None = None
     #: Called with each completed cell, for progress reporting.
     on_cell: Callable[[CellResult], None] | None = field(default=None, repr=False)
-    #: Called with the per-arm scores EXACTLY ONCE per graded run,
-    #: including with an empty mapping when the selection had no
-    #: multiple-choice cells to score. What that buys is uniformity, not
-    #: information: a caller already holds `config.grade`, since it built
-    #: the config, so it could always infer "grading was off" from no call
-    #: at all. Firing anyway means a sink wired to this -- a list, a
-    #: `dict.update`, a metrics push -- never has to treat "graded but
-    #: empty" as a missing event. So it is NOT folded under the sibling
-    #: `if scores:` guard beside it. The `on_scores` test in
+    #: Called with the per-arm scores EXACTLY ONCE per graded run, including
+    #: with an empty mapping when the selection had no multiple-choice cells to
+    #: score. What that buys is uniformity, not information: a caller already
+    #: holds `config.grade`, since it built the config, so it could always
+    #: infer "grading was off" from no call at all. Firing anyway means a sink
+    #: wired to this -- a list, a `dict.update`, a metrics push -- never has to
+    #: treat "graded but empty" as a missing event. So it is NOT folded under
+    #: the sibling `if scores:` guard beside it. The `on_scores` test in
     #: tests/test_eval_matrix.py asserting one event for a graded run with
-    #: nothing to score is what holds that fold open; its sibling,
-    #: asserting no event for an ungraded run, guards a different mutation
-    #: and leaves the fold green.
+    #: nothing to score is what holds that fold open; its sibling, asserting no
+    #: event for an ungraded run, guards a different mutation and leaves the
+    #: fold green.
     #:
-    #: A caller that needs the numbers takes them from here rather than
-    #: calling `score_by_arm` again: grading is not idempotent in its
-    #: OUTPUT -- `score_mcq` logs one warning per arm whose records carry
-    #: no correctness -- so a second pass over the same cells recomputes
-    #: identical numbers and emits a second identical warning. The CLI did
-    #: exactly that, and the arm id added to make those warnings
-    #: distinguishable could not: the duplicate is the SAME arm.
+    #: A caller that needs the numbers takes them from here rather than calling
+    #: `score_by_arm` again: grading is not idempotent in its OUTPUT --
+    #: `score_mcq` logs one warning per arm whose records carry no correctness
+    #: -- so a second pass over the same cells recomputes identical numbers and
+    #: emits a second identical warning. The CLI did exactly that, and the arm
+    #: id added to make those warnings distinguishable could not: the duplicate
+    #: is the SAME arm.
     on_scores: Callable[[dict[str, MCQScore]], None] | None = field(
         default=None, repr=False
     )

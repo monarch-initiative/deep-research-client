@@ -517,6 +517,27 @@ def test_a_scored_answer_with_no_recorded_correctness_is_not_a_wrong_answer(capl
     )
     assert "t2" in caplog.text and "correctness" in caplog.text
 
+    # DIRECTIONALLY, against the same run with that answer judged wrong. The
+    # numbers above pin what the rates ARE; this pins which way each MOVES,
+    # which is what every describer of this record claims -- and the how-to
+    # got it backwards, saying unusable answers "cost precision" when leaving
+    # the denominator RAISES it. Absolute assertions could not see that.
+    judged_wrong = mcq.score_mcq([
+        MCQAnswer(task_id="t1", provider="p",
+                  disposition=ScoreDisposition.SCORED, correct=True),
+        MCQAnswer(task_id="t2", provider="p",
+                  disposition=ScoreDisposition.SCORED, correct=False),
+    ])
+    assert score.precision > judged_wrong.precision, (
+        "an unusable record LEAVES precision's denominator, so precision is "
+        "no lower than if the answer had been judged -- it does not cost it"
+    )
+    assert score.coverage == judged_wrong.coverage, "coverage is untouched"
+    assert score.accuracy == judged_wrong.accuracy, (
+        "accuracy is over every question asked, so an unusable record costs "
+        "it exactly as a wrong answer would"
+    )
+
 
 def test_a_correct_flag_on_an_answer_that_was_never_scored_does_not_count():
     """`correct` is set on the SCORED path and filtered on no other.

@@ -77,13 +77,31 @@ def _cited_names(text: str) -> list[tuple[int, str]]:
         # Even index = outside a citation, odd = inside. A trailing odd part
         # means the citation is still open when the line ends.
         for i in range(1, len(parts) - 1, 2):
-            match = re.fullmatch(r"(test_\w+)", parts[i])
+            # A trailing `.py` comes off first: a module can be cited as a
+            # bare stem, as a `tests/...` path, or as a backticked FILENAME,
+            # and the third spelling matched neither resolver -- `.` is not
+            # `\w` for this regex, and the path check needs the directory.
+            # The tree's one instance was this file's own module docstring,
+            # so the file introducing the guard opened with a citation the
+            # guard could not see.
+            token = re.sub(r"\.py$", "", parts[i])
+            match = re.fullmatch(r"(test_\w+)", token)
             if match:
                 names.append((opened_at, match.group(1)))
         # Only an identifier-shaped fragment continues; see the docstring.
         open_fragment = parts[-1] if len(parts) % 2 == 0 else ""
         identifier_shaped = re.fullmatch(r"[\w.]+", open_fragment)
         pending = open_fragment if identifier_shaped else None
+
+    # A fragment still open at EOF is a citation that was never closed, and
+    # dropping it is the silent direction this whole function argues
+    # against. Reported as a name instead, so it reaches the caller's
+    # resolution: if it names a real test the missing backtick costs
+    # nothing, and if it does not it is listed rather than skipped.
+    if pending is not None:
+        match = re.fullmatch(r"(test_\w+)", re.sub(r"\.py$", "", pending))
+        if match:
+            names.append((opened_at, match.group(1)))
 
     return names
 
@@ -138,12 +156,16 @@ def test_no_comment_cites_a_test_that_does_not_exist():
     - `_cited_names` itself, which rejoined a wrapped citation correctly
       and then looked for it at a parity the scan never reads
 
-    Its blind spots are worth stating for the same reason: it treats any
-    backticked `test_`-prefixed token as a claim that something exists, and
-    `known` is built from `^def test_` at column zero, so a test defined
-    inside a class would be absent and every citation of it reported. That
-    last one fails loudly rather than silently, which is the direction to
-    prefer.
+    Its blind spots are worth stating for the same reason:
+
+    - it treats any backticked `test_`-prefixed token as a claim that
+      something exists
+    - `known` is built from `^def test_` at column zero, so a test defined
+      inside a class would be absent and every citation of it reported --
+      loudly, which is the direction to prefer
+    - the PATH spelling is matched per line, so a path reference that wraps
+      is invisible where a wrapped backticked name is not. No instance
+      today; the asymmetry is here because both checks now sit in one place
     """
     root = Path(__file__).parent.parent
     tests_dir = root / "tests"
@@ -205,6 +227,28 @@ def test_no_comment_cites_a_test_that_does_not_exist():
         "being rejoined"
     )
 
+    # An unclosed citation reaches the caller rather than vanishing. Only
+    # the WRAP-shaped one can: a fragment followed by prose on the same line
+    # is not identifier-shaped and is correctly never carried, so the case
+    # that survives to EOF is a line ending right after the name -- a wrap
+    # whose continuation never came. It names nothing here, so the guard
+    # below lists it; the alternative was to drop it, which renders the same
+    # as a file with no citations at all.
+    unclosed = f"# see {tick}test_never_closed\n"
+    assert _cited_names(unclosed) == [(1, "test_never_closed")], (
+        "a citation left open at end of file is being dropped instead of "
+        "reported"
+    )
+
+    # The third spelling of a module citation: a backticked FILENAME. The
+    # bare stem resolves through `path.stem` and the `tests/...` path
+    # through the regex below; this one matched neither, and the tree's only
+    # instance was this file's own module docstring.
+    with_extension = f"{tick}test_on_one_line.py{tick} and prose"
+    assert _cited_names(with_extension) == [(1, "test_on_one_line")], (
+        "a module cited as a backticked filename is invisible to the scan"
+    )
+
     # A path reference is a citation too, and the one in `src/` that the
     # backtick rule cannot reach: `MatrixConfig.on_scores` cites
     # tests/test_eval_matrix.py by path. The backtick requirement exists
@@ -229,21 +273,80 @@ def test_no_comment_cites_a_test_that_does_not_exist():
         "them finds nothing:\n  " + "\n  ".join(dangling)
     )
 
-    # The other direction, which the checks above cannot see: they fail when
-    # a citation points at nothing, and stay green when a citation is simply
-    # DELETED. `MCQScore`'s class comment says naming its test is deliberate
-    # and that describing the recipe without saying what runs it "is what
-    # left this comment unexecuted for four commits" -- so a tidy-up that
-    # drops the name, keeping the recipe the other guards pin, returns the
-    # comment to the state its own sentence calls the failure.
-    #
-    # From out here rather than from the cited test, so deleting that test
-    # does not delete the checker with it.
+
+
+def _tests_whose_body_contains(needle: str) -> set[str]:
+    """Names of the tests under `tests/` whose body carries `needle`.
+
+    Attribution resets at every top-level `def`, for the reason
+    `_page_guards` records: crediting a helper's text to the test above it
+    is how that function came to count its own source.
+    """
+    found: set[str] = set()
+    for path in sorted((Path(__file__).parent).rglob("*.py")):
+        current: str | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"def (\w+)", line)
+            if match:
+                name = match.group(1)
+                current = name if name.startswith("test_") else None
+            elif needle in line and current:
+                found.add(current)
+    return found
+
+
+def test_mcqscore_still_names_the_test_that_runs_its_recipe():
+    """The citing direction, which the dangling check cannot see.
+
+    `test_no_comment_cites_a_test_that_does_not_exist` fails when a citation
+    points at nothing. It stays green when a citation is simply DELETED --
+    and `MCQScore`'s class comment says naming its test is deliberate, and
+    that describing the recipe without saying what runs it "is what left
+    this comment unexecuted for four commits". A tidy-up that drops the name
+    while keeping the recipe the other guards pin returns the comment to the
+    state its own sentence calls the failure.
+
+    Its own test rather than an assertion over there, because it is the
+    opposite defect under a name about citations that point at nothing --
+    the line pytest prints is a describer too.
+
+    The SPECIFIC name, not merely that some test is cited: the first version
+    asserted non-emptiness, so swapping the citation for any other existing
+    test left it green while its message's premise was false, and the
+    dangling check could not catch it either because the substitute
+    resolves. That is the same widening the recipe check was corrected for
+    two files over -- a predicate wider than the message it prints.
+
+    The expected name is DERIVED, not written: the recipe test is whichever
+    test function executes the reconstruction expression, found by reading
+    `tests/` for the one whose body carries it. So a rename of that test
+    still passes (it is the same test), swapping the citation for an
+    unrelated test fails, and no literal name is duplicated here to go
+    stale. Importing it would have been the other way, and `tests/` is not
+    an importable package.
+
+    From outside that test, so deleting it cannot delete the checker.
+    """
     from deep_research_client.evaluation.models import MCQScore
 
-    cited_by_mcqscore = _cited_names(inspect.getsource(MCQScore))
-    assert cited_by_mcqscore, (
-        "MCQScore's class comment no longer names the test that executes "
-        "its documented recipe; the expression is still pinned, but a "
-        "reader has nothing to run it by"
+    source = inspect.getsource(MCQScore)
+    recipe = "{k: v for k, v in dump.items() if k in MCQScore.model_fields}"
+    assert recipe in source, (
+        "MCQScore's class comment no longer carries the recipe, so there is "
+        "no reconstruction expression for a cited test to be running"
+    )
+
+    runs_the_recipe = _tests_whose_body_contains(f"counts = {recipe}")
+    assert len(runs_the_recipe) == 1, (
+        f"expected exactly one test executing the recipe, found "
+        f"{sorted(runs_the_recipe)} -- this check cannot say which one "
+        f"MCQScore should name"
+    )
+    expected = runs_the_recipe.pop()
+
+    cited = [name for _, name in _cited_names(source)]
+    assert expected in cited, (
+        f"MCQScore's class comment no longer names {expected}, the test "
+        f"that executes its documented recipe; the expression is still "
+        f"pinned, but a reader has nothing to run it by. Cited: {cited}"
     )

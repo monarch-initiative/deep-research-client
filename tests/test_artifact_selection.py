@@ -814,7 +814,9 @@ def test_a_setting_that_is_not_a_list_of_names_raises(value):
         split_name_list(value)
 
 
-@pytest.mark.parametrize("value", [b"*.json", bytearray(b"*.json")])
+@pytest.mark.parametrize(
+    "value", [b"*.json", bytearray(b"*.json"), memoryview(b"*.json")]
+)
 def test_bytes_are_not_read_as_a_list_of_names(value):
     """The one string-like that is also an iterable of something else.
 
@@ -822,7 +824,7 @@ def test_bytes_are_not_read_as_a_list_of_names(value):
     against patterns named "42" and "46" — a deny list that denies nothing
     and an allow list that allows nothing.
     """
-    with pytest.raises(TypeError, match="decode it first"):
+    with pytest.raises(TypeError, match="decode it to str first"):
         split_name_list(value)
 
 
@@ -887,3 +889,128 @@ def test_the_constructor_refuses_a_glob_list_the_splitter_refuses():
         ArtifactSelectionPolicy(
             max_bytes=1024, exclude_globs=iter(["*.log"])
         )
+
+
+def test_a_bare_string_archive_extension_drops_every_extensionless_member():
+    """"suffix in self.archive_extensions" is a substring test on a string.
+
+    PurePosixPath("results/LICENSE").suffix is "", and "" is a substring of
+    every string, so the whole extensionless tail of a bundle was dropped as
+    a nested archive — above the allowlist, so nothing downstream could
+    rescue it.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, archive_extensions=".zip")
+
+    assert policy.archive_extensions == frozenset({".zip"})
+    assert policy.decide("raw/bundle.zip", 100).rule == "archive"
+    assert policy.decide("results/LICENSE", 100).rule != "archive"
+    assert policy.decide("results/x.zi", 100).rule != "archive"
+
+
+def test_a_bare_string_allowed_extension_keeps_every_extensionless_member():
+    """The mirror of the archive case, failing in the opposite direction.
+
+    Same mistake, one field over: there it dropped everything extensionless,
+    here it kept everything extensionless as "allowed extension".
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024, allowed_extensions=".json")
+
+    assert policy.allowed_extensions == frozenset({".json"})
+    assert policy.decide("results/table.json", 100).keep
+    assert not policy.decide("results/LICENSE", 100).keep
+
+
+def test_a_bare_string_allowed_extension_no_longer_breaks_the_runtime_union():
+    """effective_extensions evaluated `str | frozenset` and raised.
+
+    Loud with keep_runtime=True and silent without it — the same mistake
+    reported differently depending on an unrelated knob.
+    """
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, allowed_extensions=".json", keep_runtime=True
+    )
+
+    assert ".json" in policy.effective_extensions
+    assert ".log" in policy.effective_extensions
+
+
+def test_a_bare_string_runtime_fragment_no_longer_matches_every_basename():
+    """Iterated into characters, "t" in basename dropped nearly everything."""
+    policy = ArtifactSelectionPolicy(
+        max_bytes=1024, runtime_name_fragments="transcript"
+    )
+
+    assert policy.decide("results/table.csv", 100).keep
+    assert not policy.decide("provenance/iter1_transcript.json", 100).keep
+
+
+@pytest.mark.parametrize("spelling", ["csv", ".CSV", "CSV"])
+def test_an_extension_is_normalized_at_every_door_not_only_from_params(spelling):
+    """_normalize_extensions ran only in from_params, so these matched nothing.
+
+    normalize_member_path lowercases the path before any matcher sees it, so
+    an uppercase spelling could never match, and a dotless one never acquired
+    a dot — a setting that silently selects nothing, which is the failure this
+    module keeps closing off.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024).with_overrides(
+        allowed_extensions=frozenset({spelling})
+    )
+
+    assert policy.decide("results/table.csv", 100).keep
+
+
+def test_a_runtime_suffix_is_lowercased_to_match_the_normalized_path():
+    """Same silent-nothing-matches shape as an uppercase extension.
+
+    Deliberately not spelled with "transcript": that is a default runtime
+    *fragment*, so the member would be dropped by a different rule and the
+    test would pass whether or not the suffix was lowercased.
+    """
+    policy = ArtifactSelectionPolicy(max_bytes=1024).with_overrides(
+        runtime_suffixes=("_DUMP.JSON",)
+    )
+
+    dropped = policy.decide("provenance/iter1_dump.json", 100)
+
+    assert not dropped.keep
+    assert dropped.rule == "runtime"
+    assert policy.decide("results/table.json", 100).keep
+
+
+def test_every_unordered_collection_is_sorted_not_only_a_real_set():
+    """The Args promise covers unordered collections, not `set` specifically.
+
+    A KeysView and a custom Set are just as unordered as a set; sorting only
+    the concrete types made the promise true of some of them and not others.
+    """
+    from collections.abc import Set as AbstractSet
+
+    class OrderedLikeASet(AbstractSet):
+        def __init__(self, items):
+            self._items = list(items)
+
+        def __contains__(self, item):
+            return item in self._items
+
+        def __iter__(self):
+            return iter(self._items)
+
+        def __len__(self):
+            return len(self._items)
+
+    assert split_name_list(OrderedLikeASet(["b/*", "a/*"])) == ("a/*", "b/*")
+    assert split_name_list({"b/*": 1, "a/*": 2}.keys()) == ("a/*", "b/*")
+
+
+def test_from_params_still_merges_extra_extensions_onto_the_defaults():
+    """__post_init__ now normalizes, so from_params only has to merge."""
+
+    class LooseParams:
+        artifact_extra_extensions = "csv, YAML"
+
+    policy = ArtifactSelectionPolicy.from_params(LooseParams())
+
+    assert policy.decide("results/table.csv", 100).keep
+    assert policy.decide("config/run.yaml", 100).keep
+    assert policy.decide("results/table.json", 100).keep

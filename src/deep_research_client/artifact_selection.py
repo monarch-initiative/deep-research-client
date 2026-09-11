@@ -44,6 +44,7 @@ from fnmatch import fnmatch
 import mimetypes
 from pathlib import PurePosixPath
 from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Set as AbstractSet
 
 # Default per-artifact size cap. Declared here and referenced by the pydantic
 # field, so the value cannot drift between the policy and the params model.
@@ -148,7 +149,8 @@ def split_name_list(value: object) -> tuple[str, ...]:
             equal sets compare equal.
 
     Returns:
-        The names, empty only for None or an empty collection.
+        The names. Empty for None, for an empty collection, and for a string
+        holding nothing but separators and whitespace (``",,"``, ``"   "``).
 
     Raises:
         TypeError: If given a mapping, bytes, a one-shot iterator, or
@@ -171,15 +173,18 @@ def split_name_list(value: object) -> tuple[str, ...]:
     if isinstance(value, (bytes, bytearray, memoryview)):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
-            f"{type(value).__name__}; decode it first, because iterating it "
-            "yields integers rather than names"
+            f"{type(value).__name__}; decode it to str first, because "
+            "iterating it yields integers rather than names"
         )
     if isinstance(value, Mapping):
         raise TypeError(
             "expected a list of names or a comma-separated string, not a "
             f"{type(value).__name__}; its keys are unlikely to be the names meant"
         )
-    if isinstance(value, (set, frozenset)):
+    # AbstractSet rather than the concrete types: a KeysView or a custom
+    # Set is just as unordered, and sorting only real sets would make the
+    # promise above true of some unordered collections and not others.
+    if isinstance(value, AbstractSet):
         return tuple(sorted(str(item) for item in value))
     if isinstance(value, Collection):
         return tuple(str(item) for item in value)
@@ -193,6 +198,26 @@ def split_name_list(value: object) -> tuple[str, ...]:
         "expected a list of names or a comma-separated string, not a "
         f"{type(value).__name__}: {value!r}"
     )
+
+
+def _lowercased(names: object) -> tuple[str, ...]:
+    """Read a list setting and lowercase it for matching a normalized path.
+
+    :func:`normalize_member_path` lowercases the path before any matcher sees
+    it, so an uppercase suffix or fragment can never match — the same silent
+    nothing-matches failure as a dotless extension.
+
+    Args:
+        names: A collection of names or a comma-separated string.
+
+    Returns:
+        The names, lowercased.
+
+    Example:
+        >>> _lowercased("Transcript, LOG")
+        ('transcript', 'log')
+    """
+    return tuple(name.lower() for name in split_name_list(names))
 
 
 def _with_trailing_slashes(directories: Iterable[str]) -> tuple[str, ...]:
@@ -300,19 +325,42 @@ class ArtifactDecision:
 class ArtifactSelectionPolicy:
     """A resolved, provider-agnostic answer to "is this member an artifact?".
 
+    Every collection field is normalized by ``__post_init__``, so what a field
+    *accepts* is wider than what it is annotated as: any of the shapes
+    :func:`split_name_list` reads, including a comma-separated string. The
+    annotations describe what a *read* returns, which is always the normalized
+    tuple or frozenset — widening them would push a union onto :meth:`decide`
+    and onto every caller inspecting a policy, to describe a moment that only
+    exists inside ``__init__``.
+
+    The cost is that a type checker rejects the wider input at an annotated
+    call site: ``ArtifactSelectionPolicy(include_globs="*.json")`` is an
+    ``arg-type`` error even though it is exactly what the CLI produces and
+    what the tests assert works. Nothing in this repository catches that,
+    because mypy skips unannotated test bodies, ``from_params`` reads through
+    ``getattr`` (which is ``Any``), and ``with_overrides`` takes
+    ``**changes: object``. So treat the wider input as a runtime convenience
+    for duck-typed and CLI-shaped callers; pass the annotated type from typed
+    Python.
+
     Args:
         max_bytes: Largest uncompressed size preserved for a single member.
             0 or less keeps nothing at all, including a zero-byte member.
-        allowed_extensions: Extension allowlist, lowercase and dot-prefixed.
-        archive_extensions: Extensions refused as nested archives.
+        allowed_extensions: Extension allowlist. Normalized to lowercase and
+            dot-prefixed, so ``{"csv"}`` and ``{".CSV"}`` both mean ``.csv``
+            rather than matching nothing.
+        archive_extensions: Extensions refused as nested archives, normalized
+            the same way as ``allowed_extensions``.
         scaffolding_prefixes: Directory names treated as agent working
             state, matched as a whole path segment at any depth rather than
             only at the bundle root. Normalized to lowercase and a trailing
             slash by ``__post_init__``, which :meth:`decide` then relies on —
             a policy reconstructed without ``__init__`` (unpickling,
             ``object.__new__``) would stop matching scaffolding.
-        runtime_suffixes: Filename suffixes treated as runtime logs.
-        runtime_name_fragments: Substrings in a basename marking runtime output.
+        runtime_suffixes: Filename suffixes treated as runtime logs,
+            lowercased to match the normalized path.
+        runtime_name_fragments: Substrings in a basename marking runtime
+            output, lowercased the same way.
         include_globs: Patterns force-kept, bypassing every default deny.
             Read by :func:`split_name_list` in ``__post_init__``, so a
             comma-separated string is a list of patterns here too, not a list
@@ -344,33 +392,58 @@ class ArtifactSelectionPolicy:
     keep_runtime: bool = False
 
     def __post_init__(self) -> None:
-        """Normalize the list settings, so no door can be handed a bare string.
+        """Normalize every collection setting, whichever door it came through.
 
-        Scaffolding matching relies on each name ending in a slash: without
-        it, ``scaffolding_prefixes=("logs",)`` would drop
-        ``run/logs_summary.csv`` as a directory.
+        A read of any of these fields is a normalized tuple or frozenset, so
+        :meth:`decide` can match against them directly. Each matcher relies on
+        a different part of that, and each fails silently without it:
 
-        The glob lists are read here rather than only in :meth:`from_params`,
-        because that left the constructor and :meth:`with_overrides` taking
-        ``exclude_globs="*.log"`` as six one-character patterns — the same
-        defect, at the two doors the params-side fix did not reach, and
-        ``**changes: object`` means the type checker does not reach them
-        either. Normalizing in ``__post_init__`` also means ``replace()``
-        re-runs it, gives the rule one home instead of three callers that have
-        to remember it, and makes equality between policies built from equal
-        sets structural rather than a property of one caller that sorts.
+        * Scaffolding names end in a slash, or ``scaffolding_prefixes=("logs",)``
+          drops ``run/logs_summary.csv`` as a directory.
+        * Extensions are lowercase and dot-prefixed, because
+          :func:`normalize_member_path` lowercases the path first — so
+          ``{"csv"}`` and ``{".CSV"}`` each match nothing at all.
+        * Every list is split, or a bare string is iterated as characters.
+
+        That last one is why the settings are all normalized here rather than
+        in :meth:`from_params`. Doing it there left the constructor and
+        :meth:`with_overrides` unguarded, and they fail in opposite directions
+        on the same mistake: ``archive_extensions=".zip"`` turns
+        ``suffix in self.archive_extensions`` into a substring test, and since
+        an extensionless member has suffix ``""``, every one of them is
+        dropped as a nested archive; ``allowed_extensions=".json"`` keeps
+        every one of them instead. ``**changes: object`` on ``with_overrides``
+        means the type checker sees neither. ``replace()`` re-runs this
+        method, so normalizing here covers both doors and leaves the rule one
+        home rather than a caller per field that has to remember it.
 
         Raises:
-            TypeError: If ``scaffolding_prefixes`` is a single string
-                (iterating one yields characters, which match wrongly rather
-                than not at all — see :func:`is_under_directory`), or if
-                either glob list is something :func:`split_name_list` refuses.
+            TypeError: If ``scaffolding_prefixes`` is a single string —
+                iterating one yields characters, which match wrongly rather
+                than not at all (see :func:`is_under_directory`), so it is
+                refused rather than comma-split like the user-facing lists —
+                or if any other collection setting is something
+                :func:`split_name_list` refuses.
         """
         object.__setattr__(
             self, "scaffolding_prefixes", _with_trailing_slashes(self.scaffolding_prefixes)
         )
         object.__setattr__(self, "include_globs", split_name_list(self.include_globs))
         object.__setattr__(self, "exclude_globs", split_name_list(self.exclude_globs))
+        object.__setattr__(
+            self,
+            "allowed_extensions",
+            _normalize_extensions(split_name_list(self.allowed_extensions)),
+        )
+        object.__setattr__(
+            self,
+            "archive_extensions",
+            _normalize_extensions(split_name_list(self.archive_extensions)),
+        )
+        object.__setattr__(self, "runtime_suffixes", _lowercased(self.runtime_suffixes))
+        object.__setattr__(
+            self, "runtime_name_fragments", _lowercased(self.runtime_name_fragments)
+        )
 
     @classmethod
     def from_params(cls, params: object) -> "ArtifactSelectionPolicy":
@@ -385,6 +458,11 @@ class ArtifactSelectionPolicy:
 
         Returns:
             The resolved policy.
+
+        Raises:
+            TypeError: If a list-valued setting is something
+                :func:`split_name_list` refuses. Raised from ``__post_init__``
+                rather than here, so the traceback names the field.
         """
         # Explicitly against None rather than falsiness: this is documented
         # as duck-typed, and a params object declaring ``Optional[int] = None``
@@ -393,12 +471,10 @@ class ArtifactSelectionPolicy:
         max_bytes = getattr(params, "artifact_max_bytes", None)
         if max_bytes is None:
             max_bytes = DEFAULT_MAX_BYTES
-        extra = _normalize_extensions(
-            split_name_list(getattr(params, "artifact_extra_extensions", ()))
-        )
-        # The glob lists are handed over as they come: ``__post_init__``
-        # reads them, so splitting here as well would be a second copy of the
-        # rule to keep in step.
+        # Split here only because the extra names have to be separate before
+        # they can join the defaults — that is a merge, not a second copy of
+        # the rule. Dots, case and the other lists are left to __post_init__.
+        extra = frozenset(split_name_list(getattr(params, "artifact_extra_extensions", ())))
         return cls(
             max_bytes=max_bytes,
             allowed_extensions=DEFAULT_ALLOWED_EXTENSIONS | extra,

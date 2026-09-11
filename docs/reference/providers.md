@@ -754,11 +754,17 @@ pattern; a list element is never split. That escape hatch is a Python one:
 `--param` splits on the first `=` only, so every CLI value arrives as a string
 and is always split on commas.
 
-A list setting must also be re-readable. A generator or other one-shot iterator
-is refused rather than read, because a params object outlives the policy built
-from it: the second reader would get no patterns at all and say nothing about
-it. `bytes` is refused for the same reason — iterating it yields integers, not
-names.
+From Python, where a list setting can be something other than a string, it
+must be a *re-readable collection*. A generator or other one-shot iterator is
+refused rather than read: a params object outlives the policy built from it,
+so the second reader would get no patterns at all and say nothing about it.
+`bytes` is refused for the same reason — iterating it yields integers, not
+names. Neither shape is reachable from `--param`, which only ever produces a
+string.
+
+Extensions are normalized wherever they are set, so `csv`, `.csv` and `.CSV`
+all mean the same thing; the paths they are matched against are lowercased
+first, so an unnormalized uppercase spelling would otherwise match nothing.
 
 ### Keeping OpenScientist agent transcripts
 

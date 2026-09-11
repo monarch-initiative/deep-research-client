@@ -216,3 +216,25 @@ def test_eval_load_reports_the_number_of_options_actually_asked(tmp_path):
     result = runner.invoke(app, ["eval", "load", str(path)])
     assert result.exit_code == 0
     assert "4 options" in result.stdout
+
+
+def test_eval_load_counts_options_after_blanks_are_dropped(tmp_path):
+    """The other half of the count fix: blanks are never presented either."""
+    path = _write(tmp_path / "blanks.tsv",
+                  "id\tquestion\tideal\tdistractors\n"
+                  "m1\tWhich base?\tThymine\tGuanine||Cytosine\n")
+    result = runner.invoke(app, ["eval", "load", str(path), "--adapter", "tsv"])
+    assert result.exit_code == 0
+    assert "3 options" in result.stdout
+
+
+def test_eval_load_reports_too_many_options_as_a_message(tmp_path):
+    """It renders a question to count options, so this must not traceback."""
+    distractors = ", ".join(f"d{i}" for i in range(26))
+    path = _write(tmp_path / "big.yaml",
+                  f"tasks:\n  - id: big\n    prompt: Q?\n    ideal: right\n"
+                  f"    distractors: [{distractors}]\n")
+    result = runner.invoke(app, ["eval", "load", str(path)])
+    assert result.exit_code == 1
+    assert "Could not load the eval set" in result.stdout
+    assert "26 letters" in result.stdout

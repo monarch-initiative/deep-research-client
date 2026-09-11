@@ -120,8 +120,35 @@ def _comparable(text: str) -> str:
     very questions this keeps apart, the downstream text fallback still sees two
     matches and declines to resolve. Being unable to recover an answer from
     prose is the safe failure; refusing a valid question is not.
+
+    Being exact after folding, this also lets *near* misses through - LitQA2 has
+    a distractor reading "Insufficient information to answer the question"
+    against an abstention reading "...to answer this question." Two options that
+    mean the same thing, neither refused. That is the same trade as allowing
+    duplicate distractors: a benchmark that cannot be loaded is worse than one
+    with an awkward question in it.
     """
     return " ".join(text.split()).casefold()
+
+
+def usable_abstention(spec: AnswerSpec) -> str | None:
+    """The abstention that will actually be presented, or None.
+
+    The abstention is the third place an option comes from, and it reads the
+    same rule as the other two: a blank one renders as a bare letter that no
+    provider can choose, so the task would offer a way to decline that cannot be
+    taken while the prompt says otherwise. A single space in a spreadsheet cell
+    is truthy, which is all it takes.
+
+    >>> usable_abstention(AnswerSpec(ideal="A", distractors=["B"])) is None
+    True
+    >>> usable_abstention(AnswerSpec(ideal="A", distractors=["B"], abstention_option="   ")) is None
+    True
+    >>> usable_abstention(AnswerSpec(ideal="A", distractors=["B"], abstention_option="No idea."))
+    'No idea.'
+    """
+    abstention = spec.abstention_option
+    return abstention if abstention and abstention.strip() else None
 
 
 def usable_distractors(spec: AnswerSpec) -> list[str]:
@@ -142,8 +169,9 @@ def usable_distractors(spec: AnswerSpec) -> list[str]:
 def degenerate_reason(spec: AnswerSpec) -> str | None:
     """Why this spec cannot pose an answerable question, or None if it can.
 
-    Two shapes are refused, and only two - both because they produce a number
-    rather than an error:
+    Every shape refused here produces a number rather than an error, which is
+    the whole reason the check exists. The list is exhaustive - the paragraph
+    below about what is *not* refused depends on that:
 
     - No ideal answer at all. The correct option renders blank, no provider can
       choose it, and every arm is marked wrong - accuracy 0.000 across the
@@ -151,9 +179,12 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     - Fewer than two distinct options. One option and a right answer is not a
       question: every arm answers it correctly.
     - The ideal answer repeated among the distractors, or shared with the
-      abstention text. Two lettered options then read identically, so a provider
-      that knows the answer is marked wrong - or recorded as declining - at
-      random, depending which of the two it happens to name.
+      abstention text, or an abstention repeating a distractor. Two lettered
+      options then read identically, so a provider that knows the answer is
+      marked wrong - or recorded as declining - at random, depending which of
+      the two it happens to name.
+    - More options than there are letters to label them. Checked here rather
+      than at render time so it is caught before a run is paid for.
 
     Distractors that duplicate *each other* are not refused. Both are wrong
     however the model answers, so no accuracy changes, and real benchmarks
@@ -170,7 +201,8 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
     True
     >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=[])))
     offers 1 distinct option(s) besides any abstention; at least two are needed for the answer to mean anything
-    >>> print(degenerate_reason(AnswerSpec(ideal="Thymine", distractors=["thymine "])))
+    >>> print(degenerate_reason(
+    ...     AnswerSpec(ideal="Thymine", distractors=["thymine ", "Guanine"])))
     repeats its ideal answer among the distractors, so two options read identically and only one counts as correct
     >>> print(degenerate_reason(AnswerSpec(ideal="  ", distractors=["Guanine", "Cytosine"])))
     has no ideal answer, so its correct option would render blank and every arm would be marked wrong
@@ -186,7 +218,17 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
 
     ideal = _comparable(spec.ideal)
     distractors = [_comparable(d) for d in usable_distractors(spec)]
-    abstention = _comparable(spec.abstention_option or "")
+    abstention = _comparable(usable_abstention(spec) or "")
+
+    # Basic problems first, so the message names the simplest thing wrong: a
+    # task with one option and a colliding abstention should be reported as
+    # having one option.
+    distinct = len({ideal, *distractors})
+    if distinct < 2:
+        return (
+            f"offers {distinct} distinct option(s) besides any abstention; at "
+            f"least two are needed for the answer to mean anything"
+        )
 
     if ideal in distractors:
         return (
@@ -211,11 +253,14 @@ def degenerate_reason(spec: AnswerSpec) -> str | None:
             "and choosing wrongly are the same line"
         )
 
-    distinct = len({ideal, *distractors})
-    if distinct < 2:
+    # The letter budget belongs here with the rest: checked only at render time
+    # it validates clean and then raises from inside a paid run, and from the
+    # inspection command that renders a question to count its options.
+    presented = 1 + len(distractors) + (1 if abstention else 0)
+    if presented > len(_LETTERS):
         return (
-            f"offers {distinct} distinct option(s) besides any abstention; at "
-            f"least two are needed for the answer to mean anything"
+            f"has {presented} options, more than the {len(_LETTERS)} letters "
+            f"available to label them"
         )
     return None
 
@@ -271,8 +316,9 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
     # Appended after the guard: declining is not one of the things being chosen
     # between, so "one right answer, or say you don't know" is still not a
     # question.
-    if spec.abstention_option:
-        options.append((spec.abstention_option, False))
+    abstention = usable_abstention(spec)
+    if abstention:
+        options.append((abstention, False))
 
     if len(options) > len(_LETTERS):
         raise ValueError(
@@ -285,7 +331,7 @@ def present_choices(task: EvalTask, seed: str | None = None) -> list[Choice]:
             letter=_LETTERS[i],
             text=text,
             is_ideal=is_ideal,
-            is_abstention=bool(spec.abstention_option) and i == len(options) - 1,
+                is_abstention=bool(abstention) and i == len(options) - 1,
         )
         for i, (text, is_ideal) in enumerate(options)
     ]

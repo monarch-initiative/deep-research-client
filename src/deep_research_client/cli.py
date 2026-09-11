@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .evaluation.datamodel import EvalSet
     from .validation import (
         ReferenceValidationReport,
         ReferenceValidator,
@@ -2731,7 +2732,7 @@ def eval_fetch(
         typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
 
 
-def _load_eval_set_or_exit(adapter: str, source: str):
+def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
     """Load an eval set, reporting bad input rather than raising through typer.
 
     A malformed eval set, an unknown adapter and an unreachable dataset are all

@@ -7,6 +7,7 @@ where this project is BSD-3-Clause, and would make `just test` depend on
 HuggingFace being up. Tests that need the real thing are marked ``integration``.
 """
 
+import re
 from pathlib import Path
 
 import httpx
@@ -836,8 +837,10 @@ def test_an_abstention_does_not_count_towards_the_two_options():
     ("    answer_type: MULTIPLE_CHOICE\n    ideal: Thymine\n",
      "distinct option"),
     ("    ideal: Thymine\n    distractors: [Thymine]\n",
+     "1 distinct option"),
+    ("    ideal: Thymine\n    distractors: [Thymine, Guanine]\n",
      "repeats its ideal answer"),
-    ("    ideal: Thymine\n    distractors: ['  thymine ']\n",
+    ("    ideal: Thymine\n    distractors: ['  thymine ', Guanine]\n",
      "repeats its ideal answer"),
 ])
 def test_a_degenerate_set_is_refused_when_it_loads(tmp_path, body, expected):
@@ -885,7 +888,7 @@ def test_present_choices_keeps_its_own_guard_as_a_backstop():
     """Tasks built in code never pass through an adapter."""
     task = EvalTask(
         id="in_code", prompt="Which?", answer_type=AnswerType.MULTIPLE_CHOICE,
-        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Thymine"]),
+        answer_spec=AnswerSpec(ideal="Thymine", distractors=["Thymine", "Guanine"]),
     )
     with pytest.raises(ValueError, match="repeats its ideal answer"):
         mcq.present_choices(task)
@@ -995,3 +998,52 @@ def test_a_null_distractor_does_not_become_an_option_reading_None():
     task = _task_from_row(row, "LitQA2", None)
     assert task.answer_spec.distractors == ["B"]
     assert "None" not in {c.text for c in mcq.present_choices(task)}
+
+
+def test_too_many_options_is_refused_at_load_not_at_render():
+    """The letter budget was the last shape guard still firing mid-run.
+
+    Checked only in `present_choices`, it validated clean and then raised from
+    inside a paid run — and from `eval load`, which renders a question to count
+    its options and so tracebacked in the command taught not to.
+    """
+    spec = AnswerSpec(ideal="right", distractors=[f"d{i}" for i in range(26)])
+    assert "more than the 26 letters" in (mcq.degenerate_reason(spec) or "")
+
+
+def test_the_letter_budget_counts_the_abstention_too():
+    """25 distractors plus an ideal plus an abstention is 27 options."""
+    spec = AnswerSpec(
+        ideal="right", distractors=[f"d{i}" for i in range(25)],
+        abstention_option="Insufficient information.",
+    )
+    assert "more than the 26 letters" in (mcq.degenerate_reason(spec) or "")
+
+    without = AnswerSpec(ideal="right", distractors=[f"d{i}" for i in range(25)])
+    assert mcq.degenerate_reason(without) is None
+
+
+def test_a_blank_abstention_is_treated_as_no_abstention():
+    """A space in a spreadsheet cell is truthy, and would render a bare letter.
+
+    The task would then offer a way to decline that no provider can take, while
+    the prompt says otherwise — the same rule `usable_distractors` enforces, in
+    the third place an option comes from.
+    """
+    task = EvalTask(
+        id="ws", prompt="Which base?", answer_type=AnswerType.MULTIPLE_CHOICE,
+        answer_spec=AnswerSpec(
+            ideal="Thymine", distractors=["Guanine"], abstention_option="   ",
+        ),
+    )
+    choices = mcq.present_choices(task)
+    assert len(choices) == 2
+    assert not any(c.is_abstention for c in choices)
+    assert all(c.text.strip() for c in choices)
+
+    # The visible symptom being prevented: a rendered line that is a bare letter.
+    option_lines = [
+        line for line in mcq.format_prompt(task, choices).splitlines()
+        if re.fullmatch(r"[A-Z]\.\s*", line)
+    ]
+    assert option_lines == []

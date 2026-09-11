@@ -5,6 +5,7 @@ import stat
 import tempfile
 from pathlib import Path
 
+
 def _default_mode(directory: Path) -> int:
     """The mode an ordinary file creation would produce in ``directory``.
 
@@ -59,11 +60,17 @@ def atomic_write(path: Path, text: str) -> None:
     The default is probed rather than derived from the umask, so this never
     changes process-global state - see :func:`_default_mode`.
     """
-    # Resolved before any try, so that a failure probing the directory is
-    # reported as itself rather than chained onto an unrelated FileNotFoundError
-    # from the stat above.
-    existing = path.stat().st_mode if path.exists() else None
-    mode = stat.S_IMODE(existing) if existing is not None else _default_mode(path.parent)
+    try:
+        mode: int | None = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        # Asking whether the file exists and then stat-ing it would let a file
+        # removed between the two raise out of here; this cannot.
+        mode = None
+    if mode is None:
+        # Probed outside the except, so a failure here - a read-only directory,
+        # a full filesystem - is reported as itself rather than chained onto the
+        # FileNotFoundError that merely told us the destination is new.
+        mode = _default_mode(path.parent)
 
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
     try:

@@ -16,11 +16,18 @@ only in a trusted/sandboxed environment.
 """
 
 import asyncio
+from contextlib import contextmanager
 from datetime import datetime
 import importlib.util
 import logging
 import os
-from typing import Any, List, Optional, Sequence
+from pathlib import Path
+import sys
+import tempfile
+from typing import Any, Iterator, List, Optional, Sequence
+from uuid import uuid4
+
+import yaml
 
 from . import ResearchProvider
 from ..exceptions import ProviderNotInstalledError, classify_exception
@@ -244,6 +251,8 @@ class BiomniProvider(ResearchProvider):
             raise ProviderNotInstalledError(self.name, self.unavailable_reason())
 
         start_time = datetime.now()
+        if self.params.tooluniverse:
+            await asyncio.to_thread(self.params.tooluniverse.prepare, self.name)
         logger.info("Starting Biomni agent run (data path: %s)", self.data_path)
         logger.debug("Query: %s%s", query[:100], "..." if len(query) > 100 else "")
 
@@ -299,6 +308,7 @@ class BiomniProvider(ResearchProvider):
             start_time=start_time,
             end_time=end_time,
             duration_seconds=duration,
+            run_metadata=self.params.toolset_run_metadata() or None,
         )
 
     def _agent_kwargs(self) -> dict[str, Any]:
@@ -354,7 +364,45 @@ class BiomniProvider(ResearchProvider):
         trade until upstream states otherwise.
         """
         agent = self._build_agent()
-        return agent.go(query)
+        if self.params.tooluniverse is None:
+            return agent.go(query)
+        # A1.add_mcp uses nest_asyncio, which expects a current event loop even
+        # in our worker thread. Keep its loop and MCP configuration alive for go().
+        # The default Runner clears the current-loop binding on close, allowing
+        # nest_asyncio to create a fresh loop if the pooled worker is reused.
+        with asyncio.Runner() as runner:
+            asyncio.set_event_loop(runner.get_loop())
+            with self._attach_tooluniverse(agent):
+                return agent.go(query)
+
+    @contextmanager
+    def _attach_tooluniverse(self, agent: Any) -> Iterator[None]:
+        """Register TU via A1's MCP API, verifying discovery instead of silently continuing."""
+        toolset = self.params.tooluniverse
+        if toolset is None:
+            yield
+            return
+        # A1 0.0.8 only constructs this registry when retrieval is enabled,
+        # but add_mcp uses it unconditionally. Supply the real registry for
+        # no-retriever runs as well; this does not enable the LLM retriever.
+        if not hasattr(agent, "tool_registry"):
+            from biomni.tool.tool_registry import ToolRegistry  # type: ignore[import-not-found, import-untyped]
+
+            agent.tool_registry = ToolRegistry(agent.module2api)
+        # A1 registers an importable module for each server. Unique namespaces
+        # keep concurrent runs from overwriting each other's wrapper functions.
+        server_name = f"tu_{uuid4().hex}"
+        with tempfile.TemporaryDirectory(prefix="biomni_tooluniverse_") as directory:
+            config_path = Path(directory) / "mcp.yaml"
+            config_path.write_text(yaml.safe_dump(toolset.biomni_mcp_config(server_name)), encoding="utf-8")
+            try:
+                agent.add_mcp(config_path)
+                missing = set(toolset.tools) - set(agent.list_custom_tools())
+                if missing:
+                    raise ValueError(f"Biomni failed to register ToolUniverse tools: {sorted(missing)}")
+                yield
+            finally:
+                sys.modules.pop(f"mcp_servers.{server_name}", None)
 
     @staticmethod
     def _result_to_markdown(result: Any) -> str:

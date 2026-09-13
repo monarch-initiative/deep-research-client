@@ -4,7 +4,7 @@ from typing import Optional, Literal, List, Type, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 from .artifact_selection import DEFAULT_MAX_BYTES, split_name_list
-from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseToolset
+from .toolsets.tooluniverse import ToolUniverseMixin, ToolUniverseSelection
 
 
 class BaseProviderParams(BaseModel):
@@ -470,7 +470,10 @@ class CyberianParams(ToolUniverseMixin, BaseProviderParams):
     @property
     def effective_agent_type(self) -> str:
         """Resolve an explicit None from the declared agent_type default."""
-        return self.agent_type or str(type(self).model_fields["agent_type"].default)
+        agent_type = self.agent_type or type(self).model_fields["agent_type"].default
+        if not isinstance(agent_type, str) or not agent_type:
+            raise ValueError("Cyberian requires a non-empty agent_type")
+        return agent_type
 
 
 class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
@@ -615,7 +618,7 @@ class BiomniParams(ToolUniverseMixin, BaseProviderParams):
     )
 
 
-class ToolUniverseParams(ToolUniverseToolset, BaseProviderParams):
+class ToolUniverseParams(ToolUniverseSelection, BaseProviderParams):
     """Parameters for a local ToolUniverse co-scientist.
 
     ``model`` selects the research model card; ``llm`` selects the underlying

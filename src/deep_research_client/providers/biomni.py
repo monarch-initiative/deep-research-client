@@ -368,6 +368,8 @@ class BiomniProvider(ResearchProvider):
             return agent.go(query)
         # A1.add_mcp uses nest_asyncio, which expects a current event loop even
         # in our worker thread. Keep its loop and MCP configuration alive for go().
+        # The default Runner clears the current-loop binding on close, allowing
+        # nest_asyncio to create a fresh loop if the pooled worker is reused.
         with asyncio.Runner() as runner:
             asyncio.set_event_loop(runner.get_loop())
             with self._attach_tooluniverse(agent):

@@ -654,14 +654,14 @@ used for reasoning and code generation.
 | `max_steps` | `20` | Agent step limit (1–100); exhausted runs raise an error |
 | `request_timeout` | `120` | Timeout in seconds for each LLM HTTP request |
 | `workspace` | `None` | SDK workspace; otherwise `TOOLUNIVERSE_HOME` or `./.tooluniverse` |
-| `env_vars` | `["NCBI_API_KEY"]` | Environment names forwarded to Biomni's MCP child; applies to composition with Biomni |
 | `system_prompt` | Scientific investigation instructions | Custom agent instructions |
 
 The default tools are `PubMed_search_articles`, `PubMed_get_article`,
 `EuropePMC_search_articles`, `OpenTargets_get_disease_id_description_by_name`,
 and `OpenTargets_get_associated_targets_by_disease_efoId`. Only selected tools
 are exposed to the agent. Unknown or unavailable tool names fail before any
-LLM request. Additional tools may require tool-specific environment credentials
+LLM request with a provider configuration error, allowing opt-in fallback.
+Additional tools may require tool-specific environment credentials
 and packages. `allowed_domains` is unsupported and rejected; select appropriate
 tools instead.
 
@@ -764,7 +764,11 @@ each MCP session.
 This integration supplies **tools**, not TU's skill library or an additional
 research loop. TU can coexist with skills already installed in the host. Reports
 retain the host provider identity and record the selected toolset in run
-metadata; cache keys distinguish tool selections regardless of list order. Unsupported hosts reject the
+metadata; cache keys normalize tool order, default selections, and disabled
+spellings. Workspace and environment-variable selections remain in cache identity
+because profiles and credentials can change tool behavior. Cache identity does
+not track edits to files inside a workspace; bypass or clear cached reports when
+changing those files. Unsupported hosts reject the
 parameter, and Cyberian rejects it for unmanaged servers or non-Claude agents.
 
 ### Limitations
@@ -776,12 +780,16 @@ parameter, and Cyberian rejects it for unmanaged servers or non-Claude agents.
 - `request_timeout` applies to individual LLM HTTP requests. Scientific-tool
   execution and the whole investigation have no wall-clock deadline;
   `ProviderConfig.timeout` is rejected rather than reinterpreted as a request
-  timeout. Use `max_steps` to limit agent steps. Cancelling the async caller
+  timeout. This makes ToolUniverse unavailable for the run while preserving
+  other configured providers. Use `max_steps` to limit agent steps. Cancelling the async caller
   does not terminate an already running worker thread.
 - Returns the inline markdown report and recognized reference identifiers;
   generated files are not collected as report artifacts.
 - Available resources and analysis capabilities depend on the selected tools
   and installed scientific packages. The default tools focus on biomedicine.
+- Biomni starts a fresh MCP process and initializes the SDK for each tool call.
+  This keeps process cleanup predictable but adds per-call startup latency;
+  persistent sessions remain a possible future optimization.
 
 For a local SDK check, run `uv run --extra tooluniverse --group dev pytest
 tests/test_tooluniverse_provider.py`. Live PubMed access is covered by the

@@ -5,6 +5,7 @@ usage-tips tool. Paid host-agent tests require an explicit integration flag.
 """
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
 import os
@@ -210,6 +211,22 @@ def test_composition_cache_identity(tmp_path: Path) -> None:
     assert params("tooluniverse", {"tools": selection}) == params(
         "tooluniverse", {"tools": list(reversed(selection))},
     )
+    assert params("tooluniverse") == params("tooluniverse", {"tools": ToolUniverseParams().tools})
+
+
+@pytest.mark.parametrize("disabled", [False, None, "false", "null"])
+@pytest.mark.parametrize("host", ["claude_code", "biomni", "cyberian"])
+def test_disabled_composition_cache_identity(host: str, disabled: Any) -> None:
+    """Every disabled spelling has the same cache identity as an absent toolset."""
+    params = DeepResearchClient._get_cache_provider_params
+    assert params(host, {"tooluniverse": disabled}) == params(host)
+
+
+@pytest.mark.parametrize("setting", [{"workspace": "/different/profile"}, {"env_vars": ["CUSTOM_KEY"]}])
+def test_sdk_configuration_stays_in_cache_identity(setting: dict[str, Any]) -> None:
+    """Profiles and credential forwarding can change results even with the same tool names."""
+    params = DeepResearchClient._get_cache_provider_params
+    assert params("biomni", {"tooluniverse": setting}) != params("biomni", {"tooluniverse": True})
 
 
 def test_missing_mixin_install_explains_toolset_extra() -> None:
@@ -228,10 +245,30 @@ async def test_real_mcp_bridge(tools: list[str], tmp_path: Path, monkeypatch: py
     from mcp import ClientSession, StdioServerParameters  # type: ignore[import-not-found, import-untyped]
     from mcp.client.stdio import stdio_client  # type: ignore[import-not-found, import-untyped]
 
-    # Explicit local workspace and no inherited remote profile: loading schemas
-    # reads packaged JSON; the usage-tips operation itself is entirely offline.
+    # Start with empty caches and audit real socket operations in the child.
+    # This checks packaged schema discovery stays offline with a cold cache,
+    # including attempts the SDK might catch and otherwise hide from the test.
     monkeypatch.delenv("TOOLUNIVERSE_PROFILE", raising=False)
+    monkeypatch.delenv("TOOLUNIVERSE_CACHE_PATH", raising=False)
+    monkeypatch.setenv("TOOLUNIVERSE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "huggingface"))
     server = ToolUniverseToolset(tools=tools, workspace=str(tmp_path)).mcp_server()
+    network_attempts = tmp_path / "network-attempts"
+    guard = '''
+import sys
+from pathlib import Path
+attempt_path = Path(sys.argv[1])
+def audit(event: str, args: tuple[object, ...]) -> None:
+    """Record and block real network operations without replacing SDK code."""
+    if event in {"socket.connect", "socket.getaddrinfo"}:
+        attempt_path.write_text(event)
+        raise RuntimeError("Offline MCP test attempted network access")
+sys.addaudithook(audit)
+del sys.argv[1]
+from deep_research_client.toolsets.tooluniverse_mcp import main
+main()
+'''
+    server["args"] = ["-c", guard, str(network_attempts), *server["args"][2:]]
     async with asyncio.timeout(60):
         async with stdio_client(StdioServerParameters(**server, env=os.environ.copy())) as (reader, writer):
             async with ClientSession(reader, writer) as session:
@@ -247,6 +284,7 @@ async def test_real_mcp_bridge(tools: list[str], tmp_path: Path, monkeypatch: py
                     assert "loading" in str(result.content)
                     failed = await session.call_tool(LOCAL_TOOL, {"topic": "invalid-topic"})
                     assert failed.isError
+    assert not network_attempts.exists(), "ToolUniverse attempted network access with an empty cache"
 
 
 def test_real_biomni_mcp_attachment(tmp_path: Path) -> None:
@@ -265,19 +303,38 @@ def test_real_biomni_mcp_attachment(tmp_path: Path) -> None:
             tooluniverse=ToolUniverseToolset(tools=[LOCAL_TOOL]),
         ),
     )
-    agent = provider._build_agent()
-    before = mcp_child_pids()
-    modules_before = {name for name in sys.modules if name.startswith("mcp_servers.tu_")}
-    with asyncio.Runner() as runner:
-        asyncio.set_event_loop(runner.get_loop())
-        with provider._attach_tooluniverse(agent):
-            assert LOCAL_TOOL in agent.list_custom_tools()
-            assert mcp_child_pids() == before  # discovery's stdio session has already closed
-            result = agent.get_custom_tool(LOCAL_TOOL)(topic="loading")
-            assert "loading" in str(result)
-            assert mcp_child_pids() == before  # calls own short-lived stdio sessions too
-    assert mcp_child_pids() == before
-    assert {name for name in sys.modules if name.startswith("mcp_servers.tu_")} == modules_before
+    def attach_in_worker() -> asyncio.AbstractEventLoop:
+        """Exercise the same Runner/attachment lifetime as the production worker."""
+        agent = provider._build_agent()
+        before = mcp_child_pids()
+        modules_before = {name for name in sys.modules if name.startswith("mcp_servers.tu_")}
+        with asyncio.Runner() as runner:
+            loop = runner.get_loop()
+            asyncio.set_event_loop(loop)
+            with provider._attach_tooluniverse(agent):
+                assert LOCAL_TOOL in agent.list_custom_tools()
+                assert mcp_child_pids() == before  # discovery's stdio session has already closed
+                result = agent.get_custom_tool(LOCAL_TOOL)(topic="loading")
+                assert "loading" in str(result)
+                assert mcp_child_pids() == before  # calls own short-lived stdio sessions too
+        assert mcp_child_pids() == before
+        assert {name for name in sys.modules if name.startswith("mcp_servers.tu_")} == modules_before
+        assert loop.is_closed()
+        return loop
+
+    def check_reused_worker(old_loop: asyncio.AbstractEventLoop) -> None:
+        """Biomni's nest_asyncio policy must create a fresh loop after Runner clears it."""
+        loop = asyncio.get_event_loop()
+        try:
+            assert loop is not old_loop
+            assert not loop.is_closed()
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        closed_loop = executor.submit(attach_in_worker).result()
+        executor.submit(check_reused_worker, closed_loop).result()
 
 
 @pytest.mark.integration

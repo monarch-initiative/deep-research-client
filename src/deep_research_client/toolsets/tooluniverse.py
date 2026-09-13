@@ -44,22 +44,13 @@ def tooluniverse_result_is_error(result: Any) -> bool:
     return False
 
 
-class ToolUniverseToolset(BaseModel):
-    """Select scientific tools independently of the host LLM and agent loop.
-
-    >>> config = ToolUniverseToolset(tools=["PubMed_get_article"])
-    >>> config.claude_allowed_tools()
-    ['mcp__tu__PubMed_get_article']
-    """
+class ToolUniverseSelection(BaseModel):
+    """Shared scientific selection and SDK lifetime, independent of MCP or agents."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
     tools: list[str] = Field(
         default_factory=default_tooluniverse_tools, min_length=1,
         description="Exact ToolUniverse tool names exposed to the host agent (no wildcards)",
-    )
-    env_vars: list[str] = Field(
-        default_factory=lambda: ["NCBI_API_KEY"],
-        description="Environment variable names to forward to Biomni's scientific MCP child",
     )
     workspace: str | None = Field(
         default=None,
@@ -75,14 +66,6 @@ class ToolUniverseToolset(BaseModel):
         if len(set(tools)) != len(tools):
             raise ValueError("tools must not contain duplicate names")
         return sorted(tools)
-
-    @field_validator("env_vars")
-    @classmethod
-    def validate_environment_names(cls, names: list[str]) -> list[str]:
-        """Require portable names for explicit credential forwarding."""
-        if any(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None for name in names):
-            raise ValueError("env_vars must contain portable environment variable names")
-        return sorted(set(names))
 
     def require_runtime(self, provider: str) -> None:
         """Check the optional scientific SDK without requiring smolagents or an LLM key."""
@@ -104,29 +87,58 @@ class ToolUniverseToolset(BaseModel):
     def prepare(self, provider: str) -> None:
         """Validate installation and tool selection before the host spends LLM tokens."""
         self.require_runtime(provider)
-        try:
-            with self.open_universe():
-                pass
-        except ValueError as error:
-            raise ProviderNotConfiguredError(provider, str(error)) from error
+        with self.open_universe(provider):
+            pass
 
     @contextmanager
-    def open_universe(self) -> Iterator[Any]:
+    def open_universe(self, provider: str = "tooluniverse") -> Iterator[Any]:
         """Own the SDK lifetime independently of any particular agent runtime."""
         from tooluniverse import ToolUniverse  # type: ignore[import-not-found, import-untyped]
 
         universe = ToolUniverse(workspace=self.workspace)
         try:
-            self.load_tools(universe)
+            # Only selection errors are configuration failures. Exceptions
+            # from the caller's run must retain their original classification.
+            try:
+                self.load_tools(universe)
+            except ValueError as error:
+                raise ProviderNotConfiguredError(provider, str(error)) from error
             yield universe
         finally:
             universe.close()
+
+    def provenance(self) -> dict[str, Any]:
+        """Describe the requested composition without secrets or machine paths."""
+        return {"name": "tooluniverse", "tools": sorted(self.tools)}
+
+
+class ToolUniverseToolset(ToolUniverseSelection):
+    """Attach a scientific selection to a host using MCP.
+
+    >>> config = ToolUniverseToolset(tools=["PubMed_get_article"])
+    >>> config.claude_allowed_tools()
+    ['mcp__tu__PubMed_get_article']
+    """
+
+    env_vars: list[str] = Field(
+        default_factory=lambda: ["NCBI_API_KEY"],
+        description="Environment variable names to forward to Biomni's scientific MCP child",
+    )
+
+    @field_validator("env_vars")
+    @classmethod
+    def validate_environment_names(cls, names: list[str]) -> list[str]:
+        """Require portable names for explicit credential forwarding."""
+        if any(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None for name in names):
+            raise ValueError("env_vars must contain portable environment variable names")
+        return sorted(set(names))
 
     def mcp_server(self) -> dict[str, Any]:
         """Describe a stdio server using this installation's interpreter and tools.
 
         The small MCP bridge exposes exactly the selection, with no generic
         dispatcher that could bypass it. It requires no smolagents dependency.
+        Serialize only toolset fields so subclasses cannot send host parameters.
         """
         return {
             "command": sys.executable,
@@ -156,10 +168,6 @@ class ToolUniverseToolset(BaseModel):
             "command": [server["command"], *server["args"]],
             "env": {key: "${" + key + "}" for key in self.env_vars if key in os.environ},
         }}}
-
-    def provenance(self) -> dict[str, Any]:
-        """Describe the requested composition without secrets or machine paths."""
-        return {"name": "tooluniverse", "tools": sorted(self.tools)}
 
 
 class ToolUniverseMixin(BaseModel):

@@ -410,14 +410,15 @@ class DeepResearchClient:
         effective_params = dict(provider_params or {})
         # Canonicalize the mixin shorthand so true and an explicit default
         # selection represent the same composition, independently of host LLM.
-        toolset = effective_params.get("tooluniverse")
-        if toolset is not None and toolset is not False:
+        if provider_name != "tooluniverse" and "tooluniverse" in effective_params:
             from .toolsets.tooluniverse import ToolUniverseMixin
 
-            selection = ToolUniverseMixin(tooluniverse=toolset).tooluniverse
+            selection = ToolUniverseMixin(tooluniverse=effective_params.pop("tooluniverse")).tooluniverse
             if selection is not None:
+                # Workspaces load profiles/.env files; credential selection can
+                # affect accessible data. These remain part of cache identity.
                 effective_params["tooluniverse"] = selection.model_dump()
-                effective_params["_tooluniverse_bridge_version"] = "mcp-v1"
+                effective_params["_tooluniverse_bridge_version"] = "mcp-v2"
 
         # Asta response parsing and paper metadata changed after initial release;
         # keep stale cache entries from shadowing current live results.
@@ -439,11 +440,10 @@ class DeepResearchClient:
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
         elif provider_name == "tooluniverse":
-            if "tools" in effective_params:
-                from .provider_params import ToolUniverseParams
-
-                effective_params["tools"] = ToolUniverseParams.model_validate(effective_params).tools
-            effective_params["_cache_version"] = "smolagents-tooluniverse-v1"
+            effective_params = create_provider_params(
+                provider_name, provider_params=provider_params,
+            ).model_dump(exclude_none=True)
+            effective_params["_cache_version"] = "smolagents-tooluniverse-v2"
 
         return effective_params or None
 
@@ -863,10 +863,6 @@ class DeepResearchClient:
             effective_model = model if first else None
             effective_params = provider_params if first else None
 
-            cache_provider_params = self._get_cache_provider_params(
-                candidate, effective_params
-            )
-
             try:
                 research_provider = self._prepare_provider(
                     candidate, effective_model, effective_params
@@ -890,7 +886,8 @@ class DeepResearchClient:
                 # the run fails exactly as it did before any of this, which is
                 # what keeps the default, no-fallback path byte-identical.
                 served = await serve_cached(
-                    candidate, effective_model, cache_provider_params, exc
+                    candidate, effective_model,
+                    self._get_cache_provider_params(candidate, effective_params), exc,
                 )
                 if served is not None:
                     return served
@@ -902,6 +899,9 @@ class DeepResearchClient:
                 continue
 
             # The ordinary read, for a provider we were able to prepare.
+            # Parameter validation runs first, so a caller error comes from
+            # the provider's validation path rather than cache computation.
+            cache_provider_params = self._get_cache_provider_params(candidate, effective_params)
             served = await serve_cached(
                 candidate, effective_model, cache_provider_params
             )

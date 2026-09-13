@@ -8,12 +8,13 @@ PubMed or an explicitly enabled LLM backend; no SDKs or services are mocked.
 import os
 from pathlib import Path
 from typing import Any
+import traceback
 
 import pytest
 from pydantic import ValidationError
 
 from deep_research_client.client import DeepResearchClient
-from deep_research_client.exceptions import ProviderNotConfiguredError, ProviderNotInstalledError
+from deep_research_client.exceptions import ProviderNotConfiguredError, ProviderNotInstalledError, is_fallback_worthy
 from deep_research_client.model_cards import ProviderArchetype, ResearchCapability
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import ToolUniverseParams, create_provider_params
@@ -59,7 +60,7 @@ def test_model_card_and_params() -> None:
     {"tools": []}, {"tools": [""]}, {"tools": [" PubMed_get_article"]},
     {"tools": ["PubMed_get_article", "PubMed_get_article"]},
     {"max_steps": 0}, {"max_steps": 101}, {"request_timeout": 0}, {"timeout": 120},
-    {"llm": ""}, {"unknown": True}, {"allowed_domains": ["example.org"]},
+    {"env_vars": ["FOO"]}, {"llm": ""}, {"unknown": True}, {"allowed_domains": ["example.org"]},
 ])
 def test_invalid_parameters_fail_fast(params: dict[str, Any]) -> None:
     """Reject invalid requests before any tools or models are constructed."""
@@ -77,16 +78,32 @@ def test_model_configuration(request_timeout: int) -> None:
         ),
         ToolUniverseParams(llm="custom-model", request_timeout=request_timeout),
     )
-    assert provider._model_kwargs() == {
-        "model_id": "custom-model", "api_key": "offline-test-key",
-        "api_base": "https://example.org/v1", "client_kwargs": {"timeout": request_timeout},
+    assert provider._client_kwargs() == {
+        "api_key": "offline-test-key",
+        "base_url": "https://example.org/v1", "timeout": request_timeout,
     }
 
 
-def test_whole_run_timeout_is_not_reinterpreted_as_request_timeout() -> None:
-    """A shared deadline cannot silently become a much longer per-request limit."""
+@pytest.mark.asyncio
+async def test_whole_run_timeout_is_scoped_to_tooluniverse(tmp_path: Path) -> None:
+    """Uniform client deadlines preserve other providers and fail TU before SDK imports."""
+    client = DeepResearchClient(
+        provider_configs={
+            name: ProviderConfig(name=name, api_key="offline-test-key", timeout=30)
+            for name in ("tooluniverse", "openai")
+        },
+        cache_config=CacheConfig(directory=str(tmp_path)),
+    )
+    provider = client.registry.get_provider("tooluniverse")
+    assert isinstance(provider, ToolUniverseProvider)
+    assert not provider.is_available()
+    assert "whole-run ProviderConfig.timeout" in provider.unavailable_reason()
+    other = client.registry.get_provider("openai")
+    assert other is not None and other.is_available()
     with pytest.raises(ProviderNotConfiguredError, match="whole-run ProviderConfig.timeout"):
-        ToolUniverseProvider(ProviderConfig(name="tooluniverse", timeout=30))
+        await provider.research("Investigate scurvy")
+    with pytest.raises(ProviderNotConfiguredError, match="whole-run ProviderConfig.timeout"):
+        await client.aresearch("Investigate scurvy", provider="tooluniverse")
 
 
 def test_availability_requires_key_and_runtime() -> None:
@@ -151,11 +168,9 @@ def test_environment_registration(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_build_agent_with_clean_extra(tmp_path: Path) -> None:
     """Construct actual default tools/model and run Python without contacting an LLM."""
     require_runtime()
-    from tooluniverse import ToolUniverse  # type: ignore[import-not-found, import-untyped]
-
-    provider = make_provider(system_prompt="Custom scientific instructions.", max_steps=3)
-    universe = ToolUniverse(workspace=str(tmp_path))
-    try:
+    provider = make_provider(system_prompt="Custom scientific instructions.", max_steps=3, workspace=str(tmp_path))
+    with provider.params.open_universe() as universe:
+        loaded = list(universe.all_tools)
         with provider._agent_session(universe) as agent:
             assert set(agent.tools) == {*provider.params.tools, "final_answer"}
             assert agent.max_steps == 3
@@ -163,6 +178,9 @@ def test_build_agent_with_clean_extra(tmp_path: Path) -> None:
             assert "Custom scientific instructions." in agent.system_prompt
             assert agent.model.model_id == provider.params.llm
             assert agent.model.client.timeout == 120
+            assert universe.all_tools == loaded  # agent construction must not load a second time
+            assert agent.model.client_kwargs["api_key"] is None
+            assert agent.model.client_kwargs["base_url"] is None
             # PubMed's union result schema must not break construction or be
             # rewritten in the ToolUniverse registry to placate the adapter.
             assert universe.all_tool_dict["PubMed_get_article"]["return_schema"]["type"] == [
@@ -178,22 +196,51 @@ def test_build_agent_with_clean_extra(tmp_path: Path) -> None:
             agent.python_executor.send_tools(agent.tools)
             output = agent.python_executor("sum([1, 2, 3])")
             assert output.output == 6
-    finally:
-        universe.close()
 
 
-def test_unknown_tool_fails_before_llm_request(tmp_path: Path) -> None:
-    """The upstream adapter otherwise silently creates an unusable empty tool."""
+@pytest.mark.asyncio
+async def test_unknown_tool_fails_before_llm_request(tmp_path: Path) -> None:
+    """The public research path classifies tool selection failures for fallback."""
     require_runtime()
-    from tooluniverse import ToolUniverse  # type: ignore[import-not-found, import-untyped]
+    provider = make_provider(tools=["No_such_scientific_tool"], workspace=str(tmp_path))
+    with pytest.raises(ProviderNotConfiguredError, match="No_such_scientific_tool") as caught:
+        await provider.research("Investigate scurvy")
+    assert is_fallback_worthy(caught.value)
 
-    universe = ToolUniverse(workspace=str(tmp_path))
-    try:
-        with pytest.raises(ProviderNotConfiguredError, match="No_such_scientific_tool"):
-            with make_provider(tools=["No_such_scientific_tool"])._agent_session(universe):
-                pytest.fail("An unknown tool must fail before the agent is yielded")
-    finally:
-        universe.close()
+
+@pytest.mark.asyncio
+async def test_unknown_tool_reaches_next_provider(tmp_path: Path) -> None:
+    """A real failed SDK selection reaches fallback even when the next provider is unavailable."""
+    require_runtime()
+    client = DeepResearchClient(
+        provider_configs={
+            "tooluniverse": ProviderConfig(name="tooluniverse", api_key="offline-test-key"),
+            "openai": ProviderConfig(name="openai", enabled=False),
+        },
+        cache_config=CacheConfig(directory=str(tmp_path / "cache")),
+    )
+    with pytest.raises(ProviderNotConfiguredError, match="disabled") as caught:
+        await client.aresearch(
+            "Investigate scurvy", provider="tooluniverse", fallback=["openai"],
+            provider_params={"tools": ["No_such_scientific_tool"], "workspace": str(tmp_path)},
+        )
+    assert [attempt.provider for attempt in caught.value.provider_attempts] == ["tooluniverse", "openai"]
+    assert "No_such_scientific_tool" in (caught.value.provider_attempts[0].reason or "")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("params", [{"tooluniverse": True}, {"tools": ["PubMed_get_article"], "tooluniverse": True}])
+async def test_invalid_params_fail_in_provider_validation(tmp_path: Path, params: dict[str, Any]) -> None:
+    """Invalid CLI combinations fail before the cache is asked to construct a key."""
+    require_runtime()
+    client = DeepResearchClient(
+        provider_configs={"tooluniverse": ProviderConfig(name="tooluniverse", api_key="offline-test-key")},
+        cache_config=CacheConfig(directory=str(tmp_path)),
+    )
+    with pytest.raises(ValueError, match="Invalid parameters for tooluniverse") as caught:
+        await client.aresearch("Investigate scurvy", provider="tooluniverse", provider_params=params)
+    assert not isinstance(caught.value, ValidationError)
+    assert "_get_cache_provider_params" not in [frame.name for frame in traceback.extract_tb(caught.value.__traceback__)]
 
 
 def test_agent_error_survives_missing_sdk_client_attribute(tmp_path: Path) -> None:
@@ -218,6 +265,7 @@ def test_default_workspace_resolution(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setenv("TOOLUNIVERSE_CACHE_DIR", str(tmp_path / "cache"))
     provider = make_provider()
     with provider.params.open_universe() as universe:
+        # The SDK exposes no public workspace accessor; pin its actual resolution here.
         assert universe._workspace_dir == tmp_path / ".tooluniverse"
         assert set(provider.params.tools) <= set(universe.all_tool_dict)
     # Upstream creates the persistent cache but does not create a missing
@@ -251,18 +299,14 @@ def test_real_run_result_parsing(output: Any, state: str, error: str | None) -> 
 def test_pubmed_tool_integration(tmp_path: Path, positional: bool) -> None:
     """Retrieve a real PubMed record through the scientific tool adapter."""
     require_runtime()
-    from tooluniverse import ToolUniverse  # type: ignore[import-not-found, import-untyped]
-
-    universe = ToolUniverse(workspace=str(tmp_path))
-    try:
-        with make_provider()._agent_session(universe) as agent:
+    provider = make_provider(workspace=str(tmp_path))
+    with provider.params.open_universe() as universe:
+        with provider._agent_session(universe) as agent:
             tool = agent.tools["PubMed_get_article"]
             result = tool("942051") if positional else tool(pmid="942051")
             assert "942051" in str(result)
             assert "title" in str(result)
             assert "Error executing tool" not in str(result)
-    finally:
-        universe.close()
 
 
 @pytest.mark.integration

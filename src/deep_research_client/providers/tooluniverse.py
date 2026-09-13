@@ -58,12 +58,6 @@ class ToolUniverseProvider(ResearchProvider):
     ) -> None:
         """Initialize configuration without constructing an agent or making requests."""
         self.params = params or ToolUniverseParams()
-        if config.timeout is not None:
-            raise ProviderNotConfiguredError(
-                config.name,
-                "ToolUniverse does not yet support a whole-run ProviderConfig.timeout. "
-                "Use request_timeout for individual LLM requests, and max_steps for the agent limit.",
-            )
         super().__init__(config, self.params.model)
 
     def get_default_model(self) -> str:
@@ -78,7 +72,7 @@ class ToolUniverseProvider(ResearchProvider):
     def is_available(self) -> bool:
         """Check credentials and optional runtime presence without network access."""
         return bool(
-            self.config.enabled and self.config.api_key
+            self.config.enabled and self.config.api_key and self.config.timeout is None
             and not missing_tooluniverse_runtime_modules()
         )
 
@@ -86,6 +80,11 @@ class ToolUniverseProvider(ResearchProvider):
         """Explain disabled configuration, missing credentials, or missing SDKs."""
         if not self.config.enabled:
             return super().unavailable_reason()
+        if self.config.timeout is not None:
+            return (
+                "ToolUniverse does not yet support a whole-run ProviderConfig.timeout. "
+                "Use request_timeout for individual LLM requests, and max_steps for the agent limit."
+            )
         if not self.config.api_key:
             return (
                 "no underlying LLM API key configured (set TOOLUNIVERSE_API_KEY "
@@ -99,19 +98,16 @@ class ToolUniverseProvider(ResearchProvider):
             )
         return super().unavailable_reason()
 
-    def _model_kwargs(self) -> dict[str, Any]:
+    def _client_kwargs(self) -> dict[str, Any]:
         """Build LLM configuration with an explicit per-request timeout."""
         return {
-            "model_id": self.params.llm,
             "api_key": self.config.api_key,
-            "api_base": self.config.base_url,
-            "client_kwargs": {
-                "timeout": self.params.request_timeout,
-            },
+            "base_url": self.config.base_url,
+            "timeout": self.params.request_timeout,
         }
 
     def _build_agent(self, universe: Any, client: Any) -> Any:
-        """Load selected tools and construct the real upstream CodeAgent.
+        """Construct the real upstream CodeAgent from an already-loaded selection.
 
         Unknown or unavailable tool names fail before an LLM request. Exposing
         only the requested tools keeps the model context bounded and prevents
@@ -120,14 +116,10 @@ class ToolUniverseProvider(ResearchProvider):
         from smolagents import CodeAgent, OpenAIModel  # type: ignore[import-not-found, import-untyped]
         from ._tooluniverse_tools import create_tooluniverse_tool
 
-        try:
-            self.params.load_tools(universe)
-        except ValueError as error:
-            raise ProviderNotConfiguredError(self.name, str(error)) from error
         tools = [create_tooluniverse_tool(name, universe) for name in self.params.tools]
         return CodeAgent(
             tools=tools,
-            model=OpenAIModel(**self._model_kwargs(), client=client),
+            model=OpenAIModel(model_id=self.params.llm, client=client),
             instructions=self.params.system_prompt or RESEARCH_INSTRUCTIONS,
             max_steps=self.params.max_steps,
             verbosity_level=0,
@@ -139,15 +131,12 @@ class ToolUniverseProvider(ResearchProvider):
         """Own the LLM client directly so SDK attribute drift cannot mask run errors."""
         from openai import OpenAI
 
-        kwargs = self._model_kwargs()
-        with OpenAI(
-            api_key=kwargs["api_key"], base_url=kwargs["api_base"], **kwargs["client_kwargs"],
-        ) as client:
+        with OpenAI(**self._client_kwargs()) as client:
             yield self._build_agent(universe, client)
 
     def _run_agent(self, query: str) -> str:
         """Run synchronously with independent conversation and tool state per call."""
-        with self.params.open_universe() as universe, self._agent_session(universe) as agent:
+        with self.params.open_universe(self.name) as universe, self._agent_session(universe) as agent:
             return self._result_to_markdown(agent.run(query))
 
     @staticmethod
@@ -167,7 +156,7 @@ class ToolUniverseProvider(ResearchProvider):
         """Investigate a question and return markdown, citations, and run timing."""
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
-        if not self.config.enabled or not self.config.api_key:
+        if not self.config.enabled or not self.config.api_key or self.config.timeout is not None:
             raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
         if missing_tooluniverse_runtime_modules():
             raise ProviderNotInstalledError(self.name, self.unavailable_reason())

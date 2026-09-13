@@ -217,11 +217,11 @@ class CyberianProvider(ResearchProvider):
             return
         root = Path(workdir)
         # Exclusive creation prevents this helper from overwriting host/user configuration.
-        with (root / ".mcp.json").open("x") as stream:
+        with (root / ".mcp.json").open("x", encoding="utf-8") as stream:
             json.dump(toolset.claude_mcp_config(), stream)
         settings_dir = root / ".claude"
         settings_dir.mkdir(exist_ok=True)
-        with (settings_dir / "settings.local.json").open("x") as stream:
+        with (settings_dir / "settings.local.json").open("x", encoding="utf-8") as stream:
             json.dump({
                 "enabledMcpjsonServers": ["tu"],
                 "permissions": {"allow": toolset.claude_allowed_tools()},

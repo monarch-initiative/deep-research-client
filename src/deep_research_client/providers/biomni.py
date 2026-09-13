@@ -394,7 +394,7 @@ class BiomniProvider(ResearchProvider):
         server_name = f"tu_{uuid4().hex}"
         with tempfile.TemporaryDirectory(prefix="biomni_tooluniverse_") as directory:
             config_path = Path(directory) / "mcp.yaml"
-            config_path.write_text(yaml.safe_dump(toolset.biomni_mcp_config(server_name)))
+            config_path.write_text(yaml.safe_dump(toolset.biomni_mcp_config(server_name)), encoding="utf-8")
             try:
                 agent.add_mcp(config_path)
                 missing = set(toolset.tools) - set(agent.list_custom_tools())

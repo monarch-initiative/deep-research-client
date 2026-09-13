@@ -171,8 +171,8 @@ def test_cyberian_workspace_configuration(tmp_path: Path) -> None:
         ProviderConfig(name="cyberian"), CyberianParams(tooluniverse=toolset),
     )
     provider._prepare_tooluniverse_workdir(str(tmp_path))
-    assert json.loads((tmp_path / ".mcp.json").read_text()) == toolset.claude_mcp_config()
-    assert json.loads((tmp_path / ".claude/settings.local.json").read_text()) == {
+    assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8")) == toolset.claude_mcp_config()
+    assert json.loads((tmp_path / ".claude/settings.local.json").read_text(encoding="utf-8")) == {
         "enabledMcpjsonServers": ["tu"], "permissions": {"allow": [f"mcp__tu__{LOCAL_TOOL}"]},
     }
     with pytest.raises(FileExistsError):
@@ -261,7 +261,7 @@ attempt_path = Path(sys.argv[1])
 def audit(event: str, args: tuple[object, ...]) -> None:
     """Record and block real network operations without replacing SDK code."""
     if event in {"socket.connect", "socket.getaddrinfo"}:
-        attempt_path.write_text(event)
+        attempt_path.write_text(event, encoding="utf-8")
         raise RuntimeError("Offline MCP test attempted network access")
 sys.addaudithook(audit)
 del sys.argv[1]

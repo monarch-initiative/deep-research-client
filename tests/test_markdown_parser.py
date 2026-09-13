@@ -199,7 +199,7 @@ Machine learning is a subset of artificial intelligence (AI) that enables system
 1. Wikipedia - Machine Learning
 2. DeepMind Research"""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -240,7 +240,7 @@ Test query
 
 Some content here."""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -263,7 +263,7 @@ Simple question
 
 Simple answer"""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 
@@ -299,7 +299,7 @@ Query 1
 
 # Answer 1
 
-Content 1""")
+Content 1""", encoding="utf-8")
 
             # Create file 2
             (dir_path / "file2.md").write_text("""---
@@ -315,7 +315,7 @@ Query 2
 
 # Answer 2
 
-Content 2""")
+Content 2""", encoding="utf-8")
 
             # Create subdirectory with file
             subdir = dir_path / "subdir"
@@ -332,10 +332,10 @@ Query 3
 
 # Answer 3
 
-Content 3""")
+Content 3""", encoding="utf-8")
 
             # Create a non-md file (should be ignored)
-            (dir_path / "notes.txt").write_text("Not a markdown file")
+            (dir_path / "notes.txt").write_text("Not a markdown file", encoding="utf-8")
 
             yield dir_path
 
@@ -441,7 +441,7 @@ This is a document that doesn't follow our standard sections.
 
 It just has regular markdown content."""
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding="utf-8") as f:
             f.write(content)
             path = Path(f.name)
 

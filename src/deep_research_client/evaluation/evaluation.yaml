@@ -1,0 +1,586 @@
+id: https://w3id.org/monarch-initiative/deep-research-client/evaluation
+name: evaluation
+title: Deep Research Client Evaluation
+description: >-
+  Data model for evaluating deep research tools and co-scientists: the questions
+  put to them, the shape of answer each question expects, and the reference
+  material a scorer weighs an answer against.
+
+  The model is deliberately domain-neutral. An earlier iteration of this
+  framework could only read two Monarch knowledge bases (dismech and
+  ai-gene-review) and could only score long-form biomedical reports, because the
+  benchmark's shape was baked into the code. That made every new benchmark a
+  rewrite. Here the benchmark is data: an adapter converts some upstream format
+  into `EvalSet` instances, and scorers dispatch on `EvalTask.answer_type`
+  rather than on what the question happens to be about.
+
+  Two answer shapes matter today and they score in entirely different ways. A
+  multiple-choice benchmark such as LAB-Bench has one right option and a fixed
+  set of distractors, so it is scored by matching the chosen option. A long-form
+  report has no single right answer, so it is scored against a `Rubric` -
+  reference claims to recall, facts to spot-check, topics to cover. Keeping both
+  in one model is what lets a single runner send the same providers at both.
+
+  This schema is the source of truth for
+  deep_research_client/evaluation/datamodel.py, which is generated from it with
+  `just gen-datamodel-eval`. Scoring results, which are computed rather than
+  authored, stay in deep_research_client/evaluation/models.py.
+
+license: BSD-3-Clause
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  evaluation: https://w3id.org/monarch-initiative/deep-research-client/evaluation/
+
+default_prefix: evaluation
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+  MatchStyle:
+    description: How a spot check compares a captured value against its expected one.
+    permissible_values:
+      exact:
+        description: Case- and whitespace-insensitive equality.
+      prefix:
+        description: >-
+          Equality, or the captured value being a leading part of the expected
+          one. For hierarchical facts, where a shorter answer is less precise
+          rather than incorrect.
+
+
+  AnswerType:
+    description: >-
+      The shape of answer a task expects, and so which scorers can read it. This
+      is the dispatch key of the whole framework: a scorer declares the answer
+      types it understands, instead of inspecting the subject matter.
+    permissible_values:
+      MULTIPLE_CHOICE:
+        description: >-
+          One correct option among a fixed set of distractors. Scored by
+          matching the option the model chose, which means an extraction step is
+          needed whenever the provider emits prose rather than a bare choice.
+      SHORT_ANSWER:
+        description: >-
+          A free-text answer short enough to compare against a reference answer
+          directly, without a rubric. Distinct from MULTIPLE_CHOICE because
+          there are no distractors to match against, and from REPORT because it
+          is not long enough for recall and coverage to mean anything.
+      REPORT:
+        description: >-
+          A long-form, cited report. There is no single correct answer, so
+          scoring is against a `Rubric` and against the citations the report
+          carries.
+
+  CellStatus:
+    description: >-
+      How one task-arm cell of a matrix run ended. Kept apart from
+      ``ScoreDisposition``: this says whether the provider produced anything at
+      all, which is a different question from whether what it produced was
+      right.
+    permissible_values:
+      COMPLETED:
+        description: The provider returned a result, which was saved.
+      FAILED:
+        description: >-
+          The provider raised. The run continues - one arm being out of quota
+          must not discard the cells that did succeed.
+      SKIPPED:
+        description: >-
+          The cell was not run, because a filter excluded it or a previous run
+          had already completed it.
+
+  ScoreDisposition:
+    description: >-
+      What became of one task-arm pair when it was scored. Kept separate from
+      the numeric scores because a benchmark run's most important number is
+      often how much of it did not run.
+    permissible_values:
+      SCORED:
+        description: The answer was produced and scored.
+      ABSTAINED:
+        description: >-
+          The model declined to answer, by choosing the task's
+          `abstention_option`. Counted apart from a wrong answer: a benchmark
+          that rewards calibration wants precision over answered questions, and
+          an abstention is not evidence of error.
+      PROVIDER_ERROR:
+        description: >-
+          The provider failed to return an answer at all - a quota, an
+          authentication failure, a timeout. Not evidence about the model's
+          ability, and must never be silently folded in as a wrong answer.
+      EXTRACTION_FAILED:
+        description: >-
+          The provider answered, but no option could be recovered from its
+          response. This is a measurement failure of the harness rather than of
+          the provider, and is reported separately so that it can be driven down
+          instead of being mistaken for provider quality.
+      SKIPPED:
+        description: The pair was not run, typically because a filter excluded it.
+
+classes:
+
+  MetadataItem:
+    description: >-
+      One free-form key/value pair. Used where an upstream benchmark carries
+      fields this model does not name, so that an adapter never has to discard
+      information it cannot place.
+    attributes:
+      key:
+        description: The field name, as the upstream source spells it.
+        required: true
+      value:
+        description: The value, rendered as a string.
+        required: true
+
+  OntologyTerm:
+    description: An ontology term referenced by a reference claim.
+    attributes:
+      id:
+        description: Ontology CURIE, for example GO:0008543.
+        required: true
+      label:
+        description: Human-readable label.
+        required: true
+
+  EvidenceItem:
+    description: >-
+      A single piece of published evidence backing a reference claim. The
+      reference is what a citation-verification scorer compares a report's own
+      citations against.
+    attributes:
+      reference:
+        description: PMID, DOI, or other reference identifier.
+        required: true
+      snippet:
+        description: Verbatim quote from the source supporting the claim.
+      supports:
+        description: >-
+          Whether the evidence supports, refutes or partially supports the
+          claim, in the source's own vocabulary. Left as free text because
+          curated knowledge bases disagree about the values here, and coercing
+          them into one enum would lose the distinction the curator drew.
+      explanation:
+        description: Why this evidence is relevant to the claim.
+
+  ReferenceClaim:
+    description: >-
+      One verifiable claim that a good report on this task would be expected to
+      make. Recall against these claims is the main quality signal for
+      REPORT-shaped tasks.
+
+      Claims nest: a curated knowledge base often records a broad mechanism with
+      finer sub-mechanisms beneath it, and flattening that loses the distinction
+      between missing a whole mechanism and missing one detail of it.
+    attributes:
+      name:
+        description: Short name for the claim.
+        required: true
+      description:
+        description: Full text of the claim.
+        required: true
+      category:
+        description: >-
+          The kind of claim this is, in the source benchmark's own vocabulary -
+          for example pathophysiology, phenotype, treatment, gene_function.
+          Deliberately an open string rather than an enum: the set of useful
+          categories is a property of each benchmark, and a closed list here
+          would mean editing this schema to add a benchmark.
+        required: true
+      ontology_terms:
+        description: Ontology terms associated with the claim.
+        range: OntologyTerm
+        multivalued: true
+        inlined_as_list: true
+      evidence:
+        description: Published evidence supporting the claim.
+        range: EvidenceItem
+        multivalued: true
+        inlined_as_list: true
+      subclaims:
+        description: Finer-grained claims beneath this one.
+        range: ReferenceClaim
+        multivalued: true
+        inlined_as_list: true
+
+  SpotCheck:
+    description: >-
+      One objectively checkable fact, expressed as a regular expression over the
+      report text. Spot checks live in benchmark data rather than in code: an
+      earlier version of this framework hardcoded checks for two named genes in
+      a Python dict, which made the scorer useless for any third subject.
+    attributes:
+      name:
+        description: Name of the fact being checked, for example chromosome_location.
+        required: true
+      pattern:
+        description: >-
+          Regular expression searched for in the report, case-insensitively. A
+          capturing group, when present, is the value compared against
+          `expected`.
+        required: true
+      expected:
+        description: >-
+          The correct value. When absent, the check tests only that the pattern
+          appears at all, which is a coverage signal rather than an accuracy
+          one.
+      match:
+        description: >-
+          How the captured value is compared against `expected`. `exact` is
+          case- and whitespace-insensitive equality. `prefix` additionally
+          accepts a captured value that is a leading part of the expected one,
+          for facts whose correct answer is hierarchical: a cytogenetic locus,
+          an ontology identifier, a version. A report saying "chromosome 17"
+          where the answer is 17q21.31 is less precise, not wrong, and scoring
+          it wrong marks the commonest phrasing in the literature as a factual
+          error - while a report saying 17p13.1 is still wrong, which a
+          presence-only check could not tell apart from silence.
+        range: MatchStyle
+        ifabsent: string(exact)
+
+  ExpectedTopic:
+    description: >-
+      A subject area a good report on this task would be expected to address,
+      detected by keyword. Coverage measured this way is cheap and needs no LLM
+      judge, at the cost of being fooled by a passing mention.
+    attributes:
+      name:
+        description: Name of the topic.
+        required: true
+      keywords:
+        description: >-
+          Keywords whose presence counts as covering the topic. Any one match is
+          enough.
+        multivalued: true
+        required: true
+
+  Rubric:
+    description: >-
+      Reference material for scoring a REPORT-shaped task, where there is no
+      single correct answer to match against.
+    attributes:
+      reference_claims:
+        description: Claims a good report would be expected to make.
+        range: ReferenceClaim
+        multivalued: true
+        inlined_as_list: true
+      spot_checks:
+        description: Objectively checkable facts.
+        range: SpotCheck
+        multivalued: true
+        inlined_as_list: true
+      expected_topics:
+        description: Subject areas a good report would be expected to address.
+        range: ExpectedTopic
+        multivalued: true
+        inlined_as_list: true
+
+  AnswerSpec:
+    description: >-
+      The reference answer for a task that has one, together with the wrong
+      options it must be told apart from.
+    attributes:
+      ideal:
+        description: The correct answer.
+        annotations:
+          lab_bench_field: ideal
+        required: true
+      distractors:
+        description: >-
+          Incorrect options presented alongside the correct answer. Empty for
+          SHORT_ANSWER tasks.
+        annotations:
+          lab_bench_field: distractors
+        multivalued: true
+      abstention_option:
+        description: >-
+          An option offered to let the model decline rather than guess, for
+          example "Insufficient information to answer this question". Present
+          only when the benchmark defines one.
+
+          Whether this option is offered materially changes the headline number,
+          because it separates accuracy over all questions from precision over
+          answered ones. It is recorded per task so that a run can never be
+          reported without saying which convention produced it.
+
+  EvalTask:
+    description: >-
+      One question put to a research tool, together with whatever a scorer needs
+      to judge the answer.
+    attributes:
+      id:
+        description: >-
+          Task identifier, unique within its `EvalSet`. Used as a directory name
+          in run output, so it should stay filesystem-safe.
+        annotations:
+          lab_bench_field: id
+        required: true
+      prompt:
+        description: The question text, exactly as it should reach the provider.
+        annotations:
+          lab_bench_field: question
+        required: true
+      answer_type:
+        description: >-
+          Shape of the expected answer, and so which scorers apply.
+        range: AnswerType
+        required: true
+      answer_spec:
+        description: >-
+          Reference answer and distractors. Required for MULTIPLE_CHOICE and
+          SHORT_ANSWER tasks; absent for REPORT tasks, which are scored against
+          `rubric` instead.
+        range: AnswerSpec
+        inlined: true
+      rubric:
+        description: >-
+          Reference material for scoring a REPORT-shaped task. Absent for tasks
+          that have a single reference answer.
+        range: Rubric
+        inlined: true
+      task_type:
+        description: >-
+          The family of question this is, in the source benchmark's vocabulary -
+          for example litqa2, disease_mechanism, gene_function. Open string for
+          the same reason as `ReferenceClaim.category`: closing it would mean
+          editing this schema to add a benchmark.
+        annotations:
+          lab_bench_field: subtask
+      subject_id:
+        description: >-
+          Identifier of the entity the question is about, when it has one - a
+          MONDO or HGNC identifier, a UniProt accession. Lets results be grouped
+          by subject across benchmarks that ask different questions about the
+          same thing.
+      tags:
+        description: >-
+          Free-form labels for slicing results - domain, difficulty, whatever
+          the analysis needs.
+        multivalued: true
+      source_id:
+        description: >-
+          The task's identifier in the upstream benchmark, when the adapter had
+          to rewrite it to make `id` unique or filesystem-safe. Keeps a run
+          traceable back to the published dataset.
+      metadata:
+        description: Upstream fields this model does not name.
+        range: MetadataItem
+        multivalued: true
+        inlined_as_list: true
+
+  EvalSet:
+    description: >-
+      A named, versioned collection of tasks, together with the provenance a
+      published score has to carry to be meaningful.
+
+      The provenance slots are not bookkeeping. A benchmark whose upstream data
+      changes will silently change scores, and a benchmark with a private
+      holdout cannot be compared against its own leaderboard; both facts belong
+      with the tasks rather than in a README.
+    attributes:
+      name:
+        description: Short name of the eval set, for example lab-bench-litqa2.
+        required: true
+      version:
+        description: Version of the eval set as assembled here.
+      description:
+        description: What this eval set measures.
+      source:
+        description: >-
+          Where the tasks came from - a dataset identifier, repository URL, or
+          local path.
+      source_revision:
+        description: >-
+          The exact upstream revision the tasks were built from, such as a
+          dataset commit hash. Pinned rather than implied: this is what makes a
+          score reproducible, and it is stronger than vendoring a copy of the
+          data because it also records which version produced a given number.
+      license:
+        description: >-
+          License of the upstream task data. Recorded because it governs what
+          may be redistributed, and it is frequently not the license of this
+          repository.
+      homepage:
+        description: Documentation or citation URL for the benchmark.
+      is_partial:
+        description: >-
+          Whether these tasks are only part of the published benchmark - because
+          a subset was selected, or because the publisher withholds a portion.
+          When true, scores are not comparable with published leaderboard
+          figures, and anything that reports them should say so.
+        range: boolean
+        required: true
+        ifabsent: "False"
+      partial_reason:
+        description: Why the set is partial, when it is.
+      tasks:
+        description: The tasks in this set.
+        range: EvalTask
+        multivalued: true
+        inlined_as_list: true
+
+  ArmSpec:
+    description: >-
+      One configuration under test: a provider, optionally a model, optionally
+      provider parameters. An "arm" rather than a "provider" because the same
+      provider appears more than once in most useful comparisons - a plain agent
+      with web search and the same agent with none are different arms, and
+      telling them apart is the point of running both.
+    attributes:
+      id:
+        description: >-
+          Short identifier for this arm, unique within a run. Used as a
+          directory name in run output, so it should stay filesystem-safe.
+        required: true
+      provider:
+        description: Registered provider name, for example falcon or claude_code.
+        required: true
+      model:
+        description: Model override, when the provider's default is not wanted.
+      description:
+        description: What this arm is for - notably, what it is a baseline against.
+      params:
+        description: Provider-specific parameters.
+        range: MetadataItem
+        multivalued: true
+        inlined_as_list: true
+
+  CellResult:
+    description: >-
+      What one task produced under one arm. The unit of a run: a run of N tasks
+      across M arms has N*M cells, and each records its own outcome so that one
+      provider failing does not invalidate the rest.
+    attributes:
+      task_id:
+        description: The task this cell ran.
+        required: true
+      arm_id:
+        description: The arm this cell ran under.
+        required: true
+      status:
+        description: How the cell ended.
+        range: CellStatus
+        required: true
+      output_path:
+        description: >-
+          Path to the saved output, relative to the run directory. Absent when
+          the cell produced nothing.
+      duration_seconds:
+        description: Wall-clock time the provider took.
+        range: float
+      citation_count:
+        description: Number of citations the provider returned, when it reports them.
+        range: integer
+      provider_used:
+        description: >-
+          The provider that actually answered. Normally the arm's own provider,
+          but recorded separately because a provider may fall back, and a score
+          attributed to the wrong system is worse than a missing one.
+      model_used:
+        description: The model that actually answered.
+      resumed:
+        description: >-
+          Whether this cell was restored from an earlier run's `cell.json`
+          rather than executed in this one. Distinct from `cached`: a resumed
+          cell was read off disk and carries the *earlier* run's `cached` value,
+          so counting the two together describes neither. It is a property of
+          the run that produced this manifest, not of the stored cell, and is
+          recomputed on every run.
+        range: boolean
+      cached:
+        description: >-
+          Whether the response was replayed from the client's cache rather than
+          produced by calling the provider. Read together with `resumed`: on a
+          resumed cell this value describes the earlier run that stored it. Recorded because a
+          replayed cell is otherwise indistinguishable from a live one: the
+          cache re-stamps start and end times for the current run, so duration
+          does not give it away. A score computed over replayed cells may
+          describe a model version that is months old, and two arms sharing a
+          provider, model and parameters return one sample reported as two.
+        range: boolean
+      disposition:
+        description: >-
+          For a multiple-choice task, what became of the answer. Absent for
+          report tasks, which are scored in a later pass.
+        range: ScoreDisposition
+      chosen_letter:
+        description: The option letter recovered from the response, when one was.
+      correct:
+        description: >-
+          Whether the chosen option was the ideal one. Meaningful only when
+          `disposition` is SCORED.
+        range: boolean
+      error:
+        description: Error message, when the cell failed.
+
+  RunManifest:
+    description: >-
+      The record of one matrix run: which eval set, which arms, and what every
+      cell produced.
+
+      Written before results are analysed and kept beside them, because a number
+      without the arms and dataset revision that produced it cannot be checked
+      or reproduced.
+    attributes:
+      run_id:
+        description: Identifier for this run, also its output directory name.
+        required: true
+      created_at:
+        description: When the run started, as an ISO-8601 timestamp.
+        required: true
+      eval_set_name:
+        description: Name of the eval set that was run.
+        required: true
+      eval_set_source:
+        description: Where the eval set came from.
+      eval_set_revision:
+        description: >-
+          Upstream revision of the eval set data, when it has one. Copied here
+          so the run record is self-contained.
+      is_partial:
+        description: >-
+          Whether the eval set covered only part of its benchmark, making these
+          scores non-comparable with published figures.
+        range: boolean
+        required: true
+        ifabsent: "False"
+      partial_reason:
+        description: Why the eval set is partial, when it is.
+      client_version:
+        description: Version of deep-research-client that produced the run.
+      concurrency:
+        description: How many cells were run at a time.
+        range: integer
+      resume_enabled:
+        description: >-
+          Whether cells completed by an earlier run in this directory were
+          reused rather than re-run. Recorded because it is one of the two
+          settings that decide whether a cell was measured in this run, and
+          unlike the cache it leaves no trace on the cells themselves.
+        range: boolean
+      cache_dir:
+        description: >-
+          The response cache directory the run read from. A run whose replays
+          came from a per-project cache has a different provenance from one
+          that used the shared default, and `cache_enabled` alone does not say
+          which. Absent when the cache was not consulted at all, and absent
+          when the client's default location was used - read it together with
+          `cache_enabled`, which distinguishes those two.
+      cache_enabled:
+        description: >-
+          Whether the response cache was consulted. Recoverable per cell from
+          `cached`, but recorded here too so a manifest with no replays can be
+          told apart from one where the cache was off.
+        range: boolean
+      arms:
+        description: The arms under test.
+        range: ArmSpec
+        multivalued: true
+        inlined_as_list: true
+      cells:
+        description: Per-cell outcomes.
+        range: CellResult
+        multivalued: true
+        inlined_as_list: true

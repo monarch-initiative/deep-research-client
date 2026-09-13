@@ -239,7 +239,7 @@ class CyberianProvider(ResearchProvider):
 
         # Load workflow definition
         logger.debug(f"Loading workflow from: {self.workflow_file}")
-        with open(self.workflow_file, 'r') as f:
+        with open(self.workflow_file, 'r', encoding='utf-8') as f:
             workflow_data = yaml.safe_load(f)
 
         task = Task(**workflow_data)
@@ -309,7 +309,7 @@ class CyberianProvider(ResearchProvider):
                 "Workflow may have failed to complete."
             )
 
-        with open(report_path, 'r') as f:
+        with open(report_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
         logger.debug(f"Read report: {len(content)} characters")

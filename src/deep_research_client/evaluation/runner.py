@@ -1,22 +1,21 @@
-"""Evaluation runner: orchestrates task generation, DR execution, and scoring.
+"""Evaluation runner: loads eval sets and scores outputs against them.
 
-The main entry point is ``run_evaluation``, which:
-1. Loads ground truth from dismech and/or ai-gene-review repos
-2. Generates evaluation tasks
-3. Runs each task through specified DR providers
-4. Scores the outputs with FACT, claim recall, and RACE
-5. Returns structured results
+The runner is deliberately thin and knows nothing about any particular
+benchmark. It asks an adapter for an :class:`EvalSet`, and it asks the scorers
+appropriate to each task's ``answer_type`` to grade an output. Adding a
+benchmark or a scoring dimension therefore does not touch this module.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from .loaders import load_dismech_entity, load_dismech_repo, load_gene_review_entity, load_gene_review_repo
-from .models import DROutput, EvalResult, EvalTask, GroundTruthEntity
+from .adapters import get_adapter
+from .datamodel import AnswerType, EvalSet, EvalTask
+from .models import DROutput, EvalResult
 from .scorers import (
     extract_claims_with_citations,
     extract_citations_from_markdown,
@@ -25,98 +24,61 @@ from .scorers import (
     score_intrinsic,
     score_race,
 )
-from .tasks import generate_tasks
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class EvalConfig:
-    """Configuration for an evaluation run."""
+    """Which scorers to run, and how.
 
-    dismech_dir: Path | None = None
-    gene_review_dir: Path | None = None
-    entity_names: list[str] = field(default_factory=list)
-    entity_files: list[Path] = field(default_factory=list)
-    max_entities: int | None = None
+    Deliberately free of any benchmark-specific fields. An earlier version
+    carried a ``gene_symbol``, which is the kind of thing that belongs on a task
+    rather than on a run.
+    """
+
     run_fact: bool = True
     run_claim_recall: bool = True
     run_race: bool = True
     run_intrinsic: bool = True
-    gene_symbol: str | None = None
     llm_model: str = "gpt-4o-mini"
 
 
-def load_entities(config: EvalConfig) -> list[GroundTruthEntity]:
-    """Load ground truth entities based on config.
+def load_eval_set(adapter_name: str, source: str | Path, **options: Any) -> EvalSet:
+    """Load an eval set through a named adapter.
 
     Args:
-        config: Evaluation configuration specifying data sources.
+        adapter_name: Registered adapter name, e.g. ``lab-bench`` or ``yaml``.
+        source: Whatever that adapter takes as its source.
+        **options: Adapter-specific options.
 
     Returns:
-        List of GroundTruthEntity objects to evaluate against.
+        The loaded EvalSet.
     """
-    entities: list[GroundTruthEntity] = []
-
-    # Load from specific files
-    for fpath in config.entity_files:
-        if not fpath.exists():
-            logger.warning("File not found: %s", fpath)
-            continue
-        if "disorders" in str(fpath) or (fpath.name.endswith(".yaml") and "ai-review" not in fpath.name):
-            entities.append(load_dismech_entity(fpath))
-        else:
-            entities.append(load_gene_review_entity(fpath))
-
-    # Load from repos
-    if config.dismech_dir:
-        entities.extend(load_dismech_repo(config.dismech_dir))
-    if config.gene_review_dir:
-        entities.extend(load_gene_review_repo(config.gene_review_dir))
-
-    # Filter by name if specified
-    if config.entity_names:
-        name_set = {n.lower() for n in config.entity_names}
-        entities = [e for e in entities if e.name.lower() in name_set]
-
-    # Limit
-    if config.max_entities is not None:
-        entities = entities[: config.max_entities]
-
-    logger.info("Loaded %d entities for evaluation", len(entities))
-    return entities
+    eval_set = get_adapter(adapter_name).load(source, **options)
+    logger.info(
+        "Loaded eval set %r: %d tasks from %s",
+        eval_set.name, len(eval_set.tasks or []), eval_set.source,
+    )
+    return eval_set
 
 
-def generate_all_tasks(entities: list[GroundTruthEntity]) -> list[EvalTask]:
-    """Generate evaluation tasks for all entities.
-
-    Args:
-        entities: Ground truth entities.
-
-    Returns:
-        List of EvalTask objects.
-    """
-    tasks = []
-    for entity in entities:
-        tasks.extend(generate_tasks(entity))
-    logger.info("Generated %d evaluation tasks from %d entities", len(tasks), len(entities))
-    return tasks
-
-
-def parse_dr_output(task: EvalTask, markdown: str, provider: str, model: str | None = None) -> DROutput:
-    """Parse raw markdown DR output into a structured DROutput.
+def parse_dr_output(
+    task: EvalTask, markdown: str, provider: str, model: str | None = None
+) -> DROutput:
+    """Parse raw markdown output into a structured DROutput.
 
     Args:
         task: The evaluation task.
-        markdown: Raw markdown output from the DR tool.
-        provider: Name of the DR provider.
+        markdown: Raw markdown output from the research tool.
+        provider: Name of the provider.
         model: Model name if known.
 
     Returns:
         DROutput with extracted claims and citations.
     """
     return DROutput(
-        task_id=task.task_id,
+        task_id=task.id,
         provider=provider,
         model=model,
         raw_markdown=markdown,
@@ -132,101 +94,69 @@ async def score_output(
     config: EvalConfig,
     pubmed_client: httpx.AsyncClient | None = None,
 ) -> EvalResult:
-    """Score a single DR output against its task's ground truth.
+    """Score one report-shaped output against its task.
+
+    Each scorer is run independently and its failure recorded rather than
+    raised, so that one unreachable API does not discard the dimensions that did
+    compute.
 
     Args:
-        dr_output: Parsed DR output.
-        task: The evaluation task with ground truth claims.
+        dr_output: Parsed output.
+        task: The evaluation task, carrying the rubric.
         llm_client: OpenAI-compatible async client for LLM judging.
-        config: Evaluation config (controls which scorers to run).
-        pubmed_client: Optional httpx client for PubMed API.
+        config: Which scorers to run.
+        pubmed_client: Optional httpx client for PubMed.
 
     Returns:
-        EvalResult with FACT, claim recall, and RACE scores.
+        EvalResult with whichever scores succeeded.
     """
+    if task.answer_type != AnswerType.REPORT:
+        raise ValueError(
+            f"Task {task.id!r} has answer_type={task.answer_type}; "
+            f"report scorers apply only to REPORT tasks. Use "
+            f"deep_research_client.evaluation.mcq for multiple-choice tasks."
+        )
+
     result = EvalResult(
         task_id=dr_output.task_id,
         provider=dr_output.provider,
         model=dr_output.model,
         duration_seconds=dr_output.duration_seconds,
     )
+    errors: list[str] = []
 
-    try:
-        if config.run_fact:
-            result.fact_score = await score_fact(dr_output, llm_client, pubmed_client, model=config.llm_model)
-            logger.info(
-                "FACT score for %s/%s: accuracy=%.2f, effective=%d",
-                task.task_id,
-                dr_output.provider,
-                result.fact_score.citation_accuracy,
-                result.fact_score.effective_citations,
-            )
-    except Exception as e:
-        logger.error("FACT scoring failed for %s: %s", task.task_id, e)
-        result.error = f"FACT error: {e}"
+    async def _run(label: str, enabled: bool, coro_factory: Any) -> Any:
+        if not enabled:
+            return None
+        try:
+            return await coro_factory()
+        except Exception as exc:  # noqa: BLE001 - one scorer must not sink the rest
+            logger.error("%s scoring failed for %s: %s", label, task.id, exc)
+            errors.append(f"{label} error: {exc}")
+            return None
 
-    try:
-        if config.run_claim_recall:
-            result.claim_recall_score = await score_claim_recall(
-                dr_output, task.ground_truth_claims, llm_client, model=config.llm_model
-            )
-            logger.info(
-                "Claim recall for %s/%s: %.2f (%d/%d)",
-                task.task_id,
-                dr_output.provider,
-                result.claim_recall_score.claim_recall,
-                result.claim_recall_score.matched_claims,
-                result.claim_recall_score.total_ground_truth_claims,
-            )
-    except Exception as e:
-        logger.error("Claim recall scoring failed for %s: %s", task.task_id, e)
-        if result.error:
-            result.error += f"; Claim recall error: {e}"
-        else:
-            result.error = f"Claim recall error: {e}"
+    result.fact_score = await _run(
+        "FACT", config.run_fact,
+        lambda: score_fact(dr_output, llm_client, pubmed_client, model=config.llm_model),
+    )
+    result.claim_recall_score = await _run(
+        "Claim recall", config.run_claim_recall,
+        lambda: score_claim_recall(
+            dr_output,
+            (task.rubric.reference_claims if task.rubric else []) or [],
+            llm_client,
+            model=config.llm_model,
+        ),
+    )
+    result.race_score = await _run(
+        "RACE", config.run_race,
+        lambda: score_race(dr_output, task, llm_client, model=config.llm_model),
+    )
+    result.intrinsic_score = await _run(
+        "Intrinsic", config.run_intrinsic,
+        lambda: score_intrinsic(dr_output, task, pubmed_client=pubmed_client),
+    )
 
-    try:
-        if config.run_race:
-            result.race_score = await score_race(dr_output, task, llm_client, model=config.llm_model)
-            logger.info(
-                "RACE score for %s/%s: %.2f",
-                task.task_id,
-                dr_output.provider,
-                result.race_score.overall_score,
-            )
-    except Exception as e:
-        logger.error("RACE scoring failed for %s: %s", task.task_id, e)
-        if result.error:
-            result.error += f"; RACE error: {e}"
-        else:
-            result.error = f"RACE error: {e}"
-
-    try:
-        if config.run_intrinsic:
-            result.intrinsic_score = await score_intrinsic(
-                dr_output, task,
-                gene_symbol=config.gene_symbol,
-                pubmed_client=pubmed_client,
-            )
-            if result.intrinsic_score.citation_verifiability:
-                cv = result.intrinsic_score.citation_verifiability
-                logger.info(
-                    "Citation verifiability for %s/%s: %.2f (%d/%d exist)",
-                    task.task_id, dr_output.provider,
-                    cv.verifiability, cv.verified_exist, cv.total_citations,
-                )
-            if result.intrinsic_score.topic_coverage:
-                tc = result.intrinsic_score.topic_coverage
-                logger.info(
-                    "Topic coverage for %s/%s: %.2f (%d/%d topics)",
-                    task.task_id, dr_output.provider,
-                    tc.coverage_rate, tc.covered_count, tc.total_topics,
-                )
-    except Exception as e:
-        logger.error("Intrinsic scoring failed for %s: %s", task.task_id, e)
-        if result.error:
-            result.error += f"; Intrinsic error: {e}"
-        else:
-            result.error = f"Intrinsic error: {e}"
-
+    if errors:
+        result.error = "; ".join(errors)
     return result

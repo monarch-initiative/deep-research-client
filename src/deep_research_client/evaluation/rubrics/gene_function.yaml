@@ -1,0 +1,41 @@
+# Rubric for gene-function report tasks.
+#
+# These lists used to be Python constants inside the scorer, which meant the
+# scorer only worked for one domain and adding a subject meant editing code.
+# They are data now: an eval set may ship its own rubric and never touch this
+# file.
+#
+# Topic coverage by keyword is cheap and needs no LLM judge. The cost is that a
+# passing mention counts the same as a section, so read coverage as "did the
+# report go here at all", not as a quality score.
+
+expected_topics:
+  - name: molecular_function
+    keywords: [catalytic, binding, enzyme, kinase, ligase, transferase, receptor, transporter]
+  - name: biological_process
+    keywords: [signaling, repair, replication, transcription, translation, apoptosis, cell cycle, differentiation, proliferation]
+  - name: protein_structure
+    keywords: [domain, motif, fold, terminus, residue, helix, sheet, conformation]
+  - name: protein_interactions
+    keywords: [interact, complex, partner, binding partner, hetero, homo, recruit, associate]
+  - name: subcellular_localization
+    keywords: [nucleus, cytoplasm, membrane, foci, compartment, localization, nuclear, cytoplasmic]
+  - name: regulation
+    keywords: [phosphorylation, ubiquitin, acetylation, methylation, regulation, post-translational, modification]
+  - name: disease_relevance
+    keywords: [cancer, disease, pathogenic, mutation, variant, clinical, therapeutic, hereditary]
+  - name: model_organisms
+    keywords: [mouse, yeast, drosophila, zebrafish, model organism, knockout, homolog]
+
+# Checks that apply to any gene. Each tests only that the report reaches for
+# some term of the right kind, so these measure coverage rather than accuracy;
+# a check with no `expected` is presence-only by design.
+spot_checks:
+  - name: has_protein_function
+    pattern: \b(catalytic|binding|signaling|kinase|ligase|transferase|receptor)\b
+  - name: has_cellular_location
+    pattern: \b(nucleus|cytoplasm|membrane|mitochondria|endoplasmic|golgi)\b
+  - name: has_pathway_context
+    pattern: \b(pathway|signaling|cascade|network)\b
+  - name: has_disease_association
+    pattern: \b(disease|disorder|syndrome|cancer|mutation|pathogenic)\b

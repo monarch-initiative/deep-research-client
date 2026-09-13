@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .evaluation.datamodel import ArmSpec, EvalSet
     from .transcript_stats import TranscriptStats
     from .validation import (
         ReferenceValidationReport,
@@ -2765,204 +2766,973 @@ def browse_files(
 # Evaluation commands
 # ---------------------------------------------------------------------------
 
-eval_app = typer.Typer(help="Evaluate deep research tools against curated ground truth")
+#: Column width for the three rate columns of the `--grade` table. One
+#: place, so the header and both precision branches cannot drift apart.
+_RATE_WIDTH = 7
+
+eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
 
 
-@eval_app.command("load-ground-truth")
-def eval_load_ground_truth(
-    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
-    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
-    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
-    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
-    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities to load")] = None,
-):
-    """Load and display ground truth entities from dismech and/or ai-gene-review.
+def _adapter_help() -> str:
+    """Render the registered adapter names for CLI help text."""
+    from .evaluation.adapters import available_adapters
+    return ", ".join(available_adapters())
+
+
+@eval_app.command("adapters")
+def eval_adapters():
+    """List the benchmark formats this client can read.
 
     \b
     Examples:
-        deep-research-client eval load-ground-truth --dismech-dir /path/to/dismech/kb/disorders
-        deep-research-client eval load-ground-truth --entity-file /path/to/Achondroplasia.yaml
-        deep-research-client eval load-ground-truth --gene-review-dir /path/to/genes/human --max 5
+        deep-research-client eval adapters
     """
-    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
+    from .evaluation.adapters import available_adapters, get_adapter
 
-    config = EvalConfig(
-        dismech_dir=dismech_dir,
-        gene_review_dir=gene_review_dir,
-        entity_files=list(entity_file or []),
-        entity_names=list(entity_name or []),
-        max_entities=max_entities,
-    )
-    entities = load_entities(config)
-    if not entities:
-        typer.echo("No entities loaded. Check your paths.")
-        raise typer.Exit(1)
-
-    tasks = generate_all_tasks(entities)
-
-    typer.echo(f"\nLoaded {len(entities)} entities, generated {len(tasks)} evaluation tasks:\n")
-    for entity in entities:
-        typer.echo(f"  {entity.entity_type.upper()}: {entity.name} ({entity.entity_id})")
-        typer.echo(f"    Claims: {len(entity.claims)}, References: {len(entity.all_references)}")
-        entity_tasks = [t for t in tasks if t.ground_truth_entity_id == entity.entity_id]
-        for t in entity_tasks:
-            typer.echo(f"    Task: {t.task_type.value} -> {t.query[:80]}...")
+    typer.echo("Available eval-set adapters:\n")
+    for name in available_adapters():
+        adapter = get_adapter(name)
+        network = " (downloads data)" if adapter.requires_network else ""
+        typer.echo(f"  {name:<16} {adapter.description}{network}")
     typer.echo()
 
 
-@eval_app.command("generate-tasks")
-def eval_generate_tasks(
-    dismech_dir: Annotated[Optional[Path], typer.Option("--dismech-dir", help="Path to dismech kb/disorders/ directory")] = None,
-    gene_review_dir: Annotated[Optional[Path], typer.Option("--gene-review-dir", help="Path to ai-gene-review genes/human/ directory")] = None,
-    entity_file: Annotated[Optional[List[Path]], typer.Option("--entity-file", help="Specific YAML file(s) to load")] = None,
-    entity_name: Annotated[Optional[List[str]], typer.Option("--entity-name", help="Filter by entity name")] = None,
-    max_entities: Annotated[Optional[int], typer.Option("--max", help="Maximum number of entities")] = None,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for tasks (JSON)")] = None,
+@eval_app.command("fetch")
+def eval_fetch(
+    subset: Annotated[str, typer.Argument(
+        help="LAB-Bench subset(s), comma-separated, or 'all' for every text-only subset")] = "LitQA2",
+    cache_dir: Annotated[Optional[Path], typer.Option(
+        "--cache-dir", help="Cache directory (default: ~/.deep_research_cache)")] = None,
+    revision: Annotated[Optional[str], typer.Option(
+        "--revision", help="Fail unless the dataset's current revision is this one. The dataset API only serves the current revision, so this asserts rather than selects")] = None,
+    refresh: Annotated[bool, typer.Option(
+        "--refresh", help="Re-download even if a cached copy exists")] = False,
 ):
-    """Generate evaluation tasks as JSON for use in scoring pipelines.
+    """Download a benchmark dataset into the local cache.
+
+    The data is cached rather than committed to this repository: LAB-Bench ships
+    a contamination canary, is CC-BY-SA-4.0 where this project is BSD-3-Clause,
+    and is large. The revision downloaded is recorded so a score can name the
+    exact data behind it.
 
     \b
     Examples:
-        deep-research-client eval generate-tasks --entity-file Achondroplasia.yaml -o tasks.json
+        deep-research-client eval fetch LitQA2
+        deep-research-client eval fetch LitQA2,SuppQA --refresh
+        deep-research-client eval fetch all
+    """
+    import httpx
+
+    from .evaluation.adapters.lab_bench import (
+        SUBSETS,
+        fetch_subset,
+        resolve_for,
+        text_only_subsets,
+    )
+
+    names = text_only_subsets() if subset.lower() == "all" else [
+        s.strip() for s in subset.split(",") if s.strip()
+    ]
+
+    # An empty argument used to exit 0 having printed nothing: no download, no
+    # error, no sign the argument was blank. Refused here for the same reason
+    # `LabBenchAdapter.load` refuses it.
+    if not names:
+        typer.echo("No subset named.")
+        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        raise typer.Exit(1)
+
+    unknown = [n for n in names if n not in SUBSETS]
+    if unknown:
+        typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
+        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        raise typer.Exit(1)
+
+    multimodal = [n for n in names if not SUBSETS[n][1]]
+    if multimodal:
+        typer.echo(
+            f"NOTE: {', '.join(multimodal)} ask about figures or tables supplied as "
+            f"images. They will be cached, but `eval load` refuses them, so there is "
+            f"no path from this download to a run."
+        )
+
+    # Resolved once and threaded down, as `LabBenchAdapter.load` does. Resolving
+    # per subset is not just five extra round trips for `all`: a revision that
+    # changes mid-fetch caches subsets under two different revision directories,
+    # and `newest_cached_revision` requires one revision covering every subset
+    # requested. That is a cache holding every byte that the offline fallback
+    # then refuses whole -- assembled by the command meant to prevent it.
+    try:
+        pinned = resolve_for(names, cache_dir)
+
+        for name in names:
+            rows, resolved = fetch_subset(
+                name, cache_dir=cache_dir, revision=revision,
+                refresh=refresh, resolved_revision=pinned,
+            )
+            typer.echo(f"{name}: {len(rows)} rows at revision {resolved[:12]}")
+    except ValueError as exc:
+        # Upstream drift trips the row-count guard, which exists precisely so a
+        # user finds out. Its siblings report that; this used to traceback.
+        typer.echo(f"Could not fetch the dataset: {exc}")
+        raise typer.Exit(1) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"Could not reach the dataset: {exc}")
+        raise typer.Exit(1) from exc
+
+
+def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
+    """Load an eval set, reporting bad input rather than raising through typer.
+
+    A malformed eval set, an unknown adapter and an unreachable dataset are all
+    expected outcomes of pointing these commands at something - `eval load`
+    exists to find the first before providers are paid for - and every other
+    kind of bad input in this command group prints and exits. Without this the
+    same eval set produces a clean message from one command and a stack trace
+    from the next.
+    """
+    import httpx
+
+    from .evaluation.runner import load_eval_set
+
+    # The source is named because the errors underneath carry a row number and
+    # not a file: `row 3: 'mcq' is not a valid answer_type` reaches someone who
+    # ran a script over a directory with no way to tell which file it was.
+    try:
+        return load_eval_set(adapter, source)
+    except (ValueError, FileNotFoundError) as exc:
+        typer.echo(f"Could not load the eval set {source}: {exc}")
+        raise typer.Exit(1) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"Could not reach the dataset to load {source}: {exc}")
+        raise typer.Exit(1) from exc
+
+
+@eval_app.command("load")
+def eval_load(
+    source: Annotated[str, typer.Argument(
+        help="Source for the adapter: a file, a directory, or a dataset subset name")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o", help="Write the eval set as JSON instead of summarising it")] = None,
+    limit: Annotated[Optional[int], typer.Option(
+        "--limit", help="Show only the first N tasks in the summary")] = 10,
+):
+    """Load an eval set and show what it contains.
+
+    Use this to check that a benchmark parses, and that its tasks carry the
+    answer shape and reference material you expect, before spending money
+    running providers against it.
+
+    \b
+    Examples:
+        deep-research-client eval load questions.yaml
+        deep-research-client eval load questions.tsv --adapter tsv
+        deep-research-client eval load LitQA2 --adapter lab-bench
+        deep-research-client eval load /path/to/dismech/kb/disorders --adapter dismech
+        deep-research-client eval load LitQA2 --adapter lab-bench -o litqa2.json
     """
     import json as json_mod
-    from .evaluation.runner import EvalConfig, load_entities, generate_all_tasks
 
-    config = EvalConfig(
-        dismech_dir=dismech_dir,
-        gene_review_dir=gene_review_dir,
-        entity_files=list(entity_file or []),
-        entity_names=list(entity_name or []),
-        max_entities=max_entities,
-    )
-    entities = load_entities(config)
-    tasks = generate_all_tasks(entities)
+    from .evaluation.datamodel import AnswerType
+    from .evaluation.mcq import present_choices
 
-    tasks_json = [t.model_dump(mode="json") for t in tasks]
+    eval_set = _load_eval_set_or_exit(adapter, source)
+    tasks = eval_set.tasks or []
 
     if output:
-        output.write_text(json_mod.dumps(tasks_json, indent=2))
+        output.write_text(
+            json_mod.dumps(eval_set.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
         typer.echo(f"Wrote {len(tasks)} tasks to {output}")
-    else:
-        typer.echo(json_mod.dumps(tasks_json, indent=2))
+        return
+
+    typer.echo(f"\nEval set: {eval_set.name}")
+    if eval_set.description:
+        typer.echo(f"  {eval_set.description}")
+    typer.echo(f"  Tasks:    {len(tasks)}")
+    if eval_set.source_revision:
+        typer.echo(f"  Revision: {eval_set.source_revision}")
+    if eval_set.license:
+        typer.echo(f"  License:  {eval_set.license}")
+
+    by_type: dict[str, int] = {}
+    for task in tasks:
+        by_type[task.answer_type] = by_type.get(task.answer_type, 0) + 1
+    typer.echo(f"  Shapes:   {', '.join(f'{k}={v}' for k, v in sorted(by_type.items()))}")
+
+    # The shape line reports the fact; this says what follows from it. This is
+    # the command whose job is to catch problems before spending, so it is the
+    # earliest place the consequence can be stated.
+    n_short = by_type.get(AnswerType.SHORT_ANSWER, 0)
+    if n_short:
+        typer.echo(
+            f"\n  NOTE: {n_short} of these are SHORT_ANSWER, which nothing in this "
+            f"client scores yet. Running them materialises responses; no score "
+            f"will come back for them."
+        )
+
+    if eval_set.is_partial:
+        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
+
+    typer.echo()
+    for task in tasks[:limit]:
+        typer.echo(f"  [{task.answer_type}] {task.id}")
+        typer.echo(f"      {task.prompt[:100]}...")
+        if task.answer_type == AnswerType.MULTIPLE_CHOICE:
+            # Rendered rather than counted from the spec: distractors alone omit
+            # the abstention and include blanks that are never presented, so the
+            # inspection command would report a number no provider ever sees.
+            typer.echo(f"      {len(present_choices(task))} options")
+        if task.rubric and task.rubric.reference_claims:
+            typer.echo(f"      {len(task.rubric.reference_claims)} reference claims")
+    if limit is not None and len(tasks) > limit:
+        typer.echo(f"  ... and {len(tasks) - limit} more")
+    typer.echo()
+
+
+@eval_app.command("run")
+def eval_run(
+    source: Annotated[str, typer.Argument(
+        help="Eval set source: a file, a directory, or a dataset subset name")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    arm: Annotated[Optional[List[str]], typer.Option(
+        "--arm", help="Arm to run, as 'provider', 'provider:model', or 'id=provider:model' (repeatable)")] = None,
+    arms_file: Annotated[Optional[Path], typer.Option(
+        "--arms", help="YAML file defining arms, for arms that need provider params")] = None,
+    output_dir: Annotated[Optional[Path], typer.Option(
+        "--output-dir", "-o", help="Run directory (default: runs/<timestamp>)")] = None,
+    limit: Annotated[Optional[int], typer.Option(
+        "--limit", help="Run only the first N tasks; use this to price a run before committing")] = None,
+    task_id: Annotated[Optional[List[str]], typer.Option(
+        "--task-id", help="Run only these task ids (repeatable)")] = None,
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", "-j", min=1, help="Cells to run at a time")] = 4,
+    no_resume: Annotated[bool, typer.Option(
+        "--no-resume",
+        help="Re-run cells that an earlier run already completed (use with --no-cache to force fresh provider calls)")] = False,
+    no_cache: Annotated[bool, typer.Option(
+        "--no-cache",
+        help="Never replay a response from the client cache; call the provider for every cell")] = False,
+    cache_dir: Annotated[Optional[str], typer.Option(
+        "--cache-dir", help="Override the response cache directory (default: ~/.deep_research_cache)")] = None,
+    grade: Annotated[bool, typer.Option(
+        "--grade", help="Also grade multiple-choice answers with the provisional regex extractor (off by default; see the note it prints)")] = False,
+    dry_run: Annotated[bool, typer.Option(
+        "--dry-run", help="Show the matrix and the prompt for one cell, without calling any provider")] = False,
+):
+    """Run every task in an eval set against every arm.
+
+    Results go into a predictable directory tree: one directory per task, one
+    per arm beneath it, holding exactly what was sent and what came back. Cells
+    are written as they finish, so a run can be inspected while it is going and
+    resumed if it is interrupted.
+
+    A run materialises results: for every cell, exactly what the provider was
+    sent and exactly what it returned. Scoring is a separate concern, so that a
+    run stays useful when the grading method changes and never has to be paid
+    for twice.
+
+    `--grade` additionally scores multiple-choice answers with a provisional
+    regex extractor. It is off by default and should not be the basis of a
+    published number; see the note it prints.
+
+    \b
+    Examples:
+        # Price it first: two tasks, one arm, no provider calls
+        deep-research-client eval run questions.yaml --arm falcon --limit 2 --dry-run
+
+        # A single arm over your own questions
+        deep-research-client eval run questions.yaml --arm falcon
+
+        # Compare a deep research tool against a plain-agent baseline
+        deep-research-client eval run LitQA2 --adapter lab-bench \\
+            --arm edison=falcon --arm baseline=claude_code --limit 20
+
+        # Arms that need provider parameters
+        deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml
+
+        # Resume an interrupted run
+        deep-research-client eval run LitQA2 --adapter lab-bench --arms arms.yaml \\
+            --output-dir runs/2026-09-10T14-22Z
+    """
+    import asyncio
+    from collections import Counter
+    from datetime import datetime, timezone
+    from .evaluation.datamodel import AnswerType, CellStatus
+    from .evaluation.matrix import (
+        MatrixConfig, load_arms, parse_arm_flag, run_matrix,
+    )
+    from .evaluation.models import MCQScore
+    if not arm and not arms_file:
+        typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
+        raise typer.Exit(1)
+
+    arms: list = []
+    if arms_file:
+        arms.extend(load_arms(arms_file))
+    for flag in arm or []:
+        arms.append(parse_arm_flag(flag))
+
+    duplicate_ids = {arm_id for arm_id, n in Counter(a.id for a in arms).items() if n > 1}
+    if duplicate_ids:
+        typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
+        raise typer.Exit(1)
+
+    eval_set = _load_eval_set_or_exit(adapter, source)
+    tasks = eval_set.tasks or []
+    if task_id:
+        wanted = set(task_id)
+        tasks = [t for t in tasks if t.id in wanted]
+        missing = wanted - {t.id for t in tasks}
+        if missing:
+            typer.echo(f"No task with id(s): {', '.join(sorted(missing))}")
+            raise typer.Exit(1)
+    if limit is not None:
+        tasks = tasks[:limit]
+    if not tasks:
+        typer.echo("No tasks selected.")
+        raise typer.Exit(1)
+    eval_set.tasks = tasks
+
+    typer.echo(f"\nEval set: {eval_set.name}")
+    typer.echo(f"  Tasks: {len(tasks)}  x  Arms: {len(arms)}  =  {len(tasks) * len(arms)} cells")
+    for a in arms:
+        model = f":{a.model}" if a.model else ""
+        note = f"  ({a.description})" if a.description else ""
+        typer.echo(f"    {a.id:<20} {a.provider}{model}{note}")
+    if eval_set.is_partial:
+        typer.echo(f"\n  NOTE: {eval_set.partial_reason}")
+
+    # Printed after the run is described, so the advice follows the thing it
+    # is about; after the eval set loads, so it cannot advise on a run that
+    # then refuses to start; and before the dry-run return, so it still
+    # arrives before any provider call. It must be up front at all because
+    # afterwards the answer is not even stable: two arms with the same
+    # provider, model and params share a response-cache key, so whether the
+    # second replays the first depends on scheduling: at -j 1 it does, and at
+    # the default concurrency both usually reach the provider before either
+    # writes the cache. The number of independent samples behind a reported
+    # spread therefore varies between identical invocations -- which is the
+    # very thing a duplicate-arm run exists to measure. Duplicate arm *ids* are
+    # refused above; this is the duplicate that matters to the number.
+    def _config_of(a: "ArmSpec") -> tuple:
+        return (a.provider, a.model,
+                tuple(sorted((p.key, p.value) for p in (a.params or []))))
+
+    if not no_cache:
+        for config_key, n in Counter(_config_of(a) for a in arms).items():
+            if n > 1:
+                same = [a.id for a in arms if _config_of(a) == config_key]
+                typer.echo(
+                    f"\nNOTE: arms {', '.join(same)} are identically configured. "
+                    f"They share a response-cache key, so depending on scheduling "
+                    f"some may replay another instead of calling the provider - "
+                    f"one sample reported as several. Pass --no-cache to measure "
+                    f"each of them - or --no-resume --no-cache if this output "
+                    f"directory already holds results."
+                )
+
+    # Printed before the dry-run return and before any provider is called: this
+    # note exists to stop someone paying for tasks nothing can grade, so saying
+    # it only after `run_matrix` would be telling them once the money is gone.
+    # It is repeated at the end because a long run scrolls it off the screen.
+    unscoreable = sum(1 for t in tasks if t.answer_type == AnswerType.SHORT_ANSWER)
+    unscoreable_note = (
+        f"\nNOTE: {unscoreable} task(s) are SHORT_ANSWER, which nothing in this "
+        f"client scores yet - not by running them and not with `eval score`. "
+        f"Their responses are saved like any other. A task with an ideal answer "
+        f"and no distractors infers this shape; add distractors to make it "
+        f"multiple choice, or drop the ideal answer to make it a report task."
+    ) if unscoreable else ""
+    if unscoreable_note:
+        typer.echo(unscoreable_note)
+
+    if dry_run:
+        from .evaluation.matrix import _prompt_for
+        prompt, _ = _prompt_for(tasks[0])
+        typer.echo(f"\n--- prompt that would be sent for {tasks[0].id} ---")
+        typer.echo(prompt)
+        typer.echo("--- end ---\n")
+        typer.echo("Dry run: no providers were called.")
+        return
+
+    run_dir = output_dir or Path("runs") / datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+
+    completed = {"n": 0}
+    total = len(tasks) * len(arms)
+
+    def on_cell(cell) -> None:
+        completed["n"] += 1
+        mark = "ok " if cell.status == CellStatus.COMPLETED else "FAIL"
+        extra = ""
+        if cell.correct is True:
+            extra = " correct"
+        elif cell.disposition:
+            extra = f" {cell.disposition}"
+        typer.echo(f"  [{completed['n']}/{total}] {mark} {cell.task_id} / {cell.arm_id}{extra}")
+
+    typer.echo(f"\nWriting to {run_dir}\n")
+    # Filled by `run_matrix` through `on_scores`, not derived here. Grading the
+    # same cells twice recomputes the same numbers AND re-emits `score_mcq`'s
+    # per-arm warning, so a five-arm resume logged ten lines where two for each
+    # arm were byte-identical -- which is what naming the arm in that warning
+    # was meant to stop. `run_matrix` already has them; this takes them.
+    scores: dict[str, MCQScore] = {}
+    manifest = asyncio.run(run_matrix(
+        eval_set, arms,
+        MatrixConfig(
+            output_dir=run_dir,
+            concurrency=concurrency,
+            resume=not no_resume,
+            grade=grade,
+            use_cache=not no_cache,
+            cache_dir=cache_dir,
+            on_cell=on_cell,
+            on_scores=scores.update,
+        ),
+    ))
+
+    cells = manifest.cells or []
+    # Both counts read off the statuses. `completed` was `len(cells) - len(failed)`,
+    # which is the subtraction rejected below for the same reason: CellStatus
+    # has a SKIPPED member, and the day something emits it that arithmetic
+    # would report a skipped cell as completed.
+    failed = [c for c in cells if c.status == CellStatus.FAILED]
+    completed_cells = [c for c in cells if c.status == CellStatus.COMPLETED]
+    typer.echo(f"\n{len(completed_cells)}/{len(cells)} cells completed")
+    if failed:
+        # The count belongs here rather than only in the accounting paragraph
+        # below, which is gated on a resume or a replay and so never prints on
+        # a fresh run -- the run where every cell failing is most likely.
+        typer.echo(f"{len(failed)} failed:")
+        for cell in failed[:10]:
+            typer.echo(f"  {cell.task_id} / {cell.arm_id}: {cell.error}")
+        if len(failed) > 10:
+            typer.echo(f"  ... and {len(failed) - 10} more; see results.tsv")
+
+    # Anything neither completed nor failed has no other line to appear on:
+    # the accounting paragraph below is gated on a resume or a replay. Nothing
+    # emits CellStatus.SKIPPED today, so this is how it would surface rather
+    # than vanish if something starts to -- and so it is deliberately untested:
+    # reaching it needs a hand-built manifest, not a run. `use_enum_values=True`
+    # on ConfiguredBaseModel makes `c.status` a plain str, so this renders the
+    # same spelling results.tsv carries.
+    other = [c for c in cells
+             if c.status not in (CellStatus.COMPLETED, CellStatus.FAILED)]
+    if other:
+        by_status = Counter(str(c.status) for c in other)
+        typer.echo(
+            "Neither completed nor failed: "
+            + ", ".join(f"{n} {status}" for status, n in sorted(by_status.items()))
+        )
+
+    # Three categories, because they are three different things and the remedy
+    # differs. A resumed cell was read off disk and carries the *earlier* run's
+    # `cached` flag, so counting it as a cache replay describes neither -- and
+    # --no-cache alone cannot re-run it, since resume skips it before the client
+    # is consulted.
+    # `failed` is excluded from `measured` rather than falling into it: a FAILED
+    # cell has cached=None, and the sentence below claims the measured cells
+    # describe the provider as it is now. A cell that raised describes nothing.
+    resumed = [c for c in cells if c.resumed]
+    replayed = [c for c in cells if not c.resumed and c.cached]
+    measured = [c for c in cells
+                if not c.resumed and not c.cached and c.status == CellStatus.COMPLETED]
+
+    if resumed or replayed:
+        counts = (
+            f"\nOf {len(cells)} cells: {len(measured)} measured in this run, "
+            f"{len(replayed)} replayed from the response cache, "
+            f"{len(resumed)} resumed from a previous run in this directory"
+        )
+        # `failed` is read off the statuses rather than derived by subtraction:
+        # the categories happen to be disjoint today, but CellStatus.SKIPPED
+        # exists, and the day something emits it subtraction would call it a
+        # failure.
+        typer.echo(f"{counts}, {len(failed)} failed." if failed else f"{counts}.")
+        remedy = (
+            "--no-resume --no-cache" if resumed else "--no-cache"
+        )
+        typer.echo(
+            f"  Only the measured cells describe the provider as it is now. "
+            f"Re-run with {remedy} to call the provider for every cell; the "
+            f"`resumed` and `cached` columns in results.tsv mark which rows "
+            f"were which."
+        )
+
+    if grade and not scores:
+        typer.echo(
+            "\nNothing to grade: --grade scores multiple-choice answers, and this "
+            "selection has none. The responses are materialised either way."
+        )
+    if scores:
+        typer.echo("\nMultiple-choice scores:\n")
+        # One width for the seven places that format a rate column: the
+        # three headers, both precision branches, and `accuracy` and
+        # `coverage` on the row line. It was written out at each of them,
+        # which is how a six-space literal came to sit beside a `:>7`. The
+        # how-to's hand-aligned table is an eighth, pinned by a test.
+        # (Counted from the `{w}` occurrences below, not from memory: this
+        # said three, then five, and both were short.)
+        w = _RATE_WIDTH
+        typer.echo(f"  {'arm':<20} {'acc':>{w}} {'cov':>{w}} {'prec':>{w}}   {'n':>5}")
+        for arm_id, score in sorted(scores.items()):
+            # An em dash where no attempted answer had its correctness
+            # established. `prec 0.000` in a column beside arms that answered
+            # reads as "got them all wrong", and an arm with nothing to be
+            # precise about is exactly the one a comparison must not read
+            # that way. Which case it is comes from `scores.tsv`, and from
+            # nothing on this surface: one column per disposition -- SCORED's
+            # is `attempted`, and the four failure ones are `abstained`,
+            # `provider_errors`, `extraction_failures` and `skipped` -- plus
+            # `unusable`, which is not a disposition but a subset of
+            # `attempted`. The five account for `total` exactly.
+            #
+            # History: this was stated as a list of causes, three times with
+            # three different counts. The causes COMPOSE -- every question
+            # declined, the endpoint down all run, every response unreadable,
+            # the pair skipped, every attempted answer carrying no recorded
+            # correctness, and any mixture -- so no count was a partition and
+            # two cases fell through all three. Hence the condition above.
+            # Two surfaces were then read as saying which case it is, and
+            # neither does. `cov` does not: it is 0.000 when nothing was
+            # attempted, 1.000 when everything was and none of it usable, and
+            # anything between for a mixture -- and reading it that way is
+            # the disambiguator-beside-a-rate trade the citation lines
+            # rejected one command over, where it was at least in the same
+            # sentence rather than an adjacent column. The notes below the
+            # table do not either: one prints for `unusable` and one for
+            # `extraction_failures`, the two HARNESS defects, so an arm that
+            # declined everything gets the dash and no note at all.
+            prec = (f"{'—':>{w}}" if score.precision is None
+                    else f"{score.precision:>{w}.3f}")
+            typer.echo(
+                f"  {arm_id:<20} {score.accuracy:>{w}.3f} {score.coverage:>{w}.3f} "
+                f"{prec}   {score.correct:>2}/{score.total}"
+            )
+        if any(s.unusable for s in scores.values()):
+            # The same disclosure `EXTRACTION_FAILED` gets, for the same
+            # reason: a harness record gap that moves a published rate has to
+            # say so on the surface that printed the rate. This one had only a
+            # `logger.warning`, which goes to stderr while the table goes to
+            # stdout.
+            typer.echo(
+                "\n  Some answers were recorded with no correctness. They "
+                "count toward coverage and are left out of precision, and "
+                "they lower accuracy exactly as a wrong answer would, since "
+                "accuracy is over every question asked; see the unusable "
+                "column in scores.tsv. Only a hand-edited or older-format run "
+                "produces them."
+            )
+        if any(s.extraction_failures for s in scores.values()):
+            typer.echo(
+                "\n  Some responses had no recoverable answer. Those count "
+                "against coverage and against accuracy, which is over every "
+                "question asked -- but they are a harness limitation, not a "
+                "provider result; see the extraction_failures column in "
+                "scores.tsv."
+            )
+        if eval_set.is_partial:
+            typer.echo(f"\n  {eval_set.partial_reason}")
+
+    if grade and scores:
+        typer.echo(
+            "\n  These come from a provisional regex extractor, not an LLM judge. "
+            "It has produced plausible-looking but wrong numbers before; treat them "
+            "as a quick look, not as a result."
+        )
+
+    if not grade:
+        typer.echo(
+            "\nResults materialised, not scored. Every response is on disk with the "
+            "prompt that produced it, so scoring can be decided and redone later "
+            "without re-running any provider."
+        )
+
+    if unscoreable_note:
+        typer.echo(unscoreable_note)
+
+    # Named with a real task and arm rather than <placeholders>: cells live
+    # under safe_segment(id), which appends a digest to anything it rewrites, so
+    # `HP:0001156` writes to `HP_0001156-<digest>/`. The placeholder form told
+    # the user to type a path that does not exist and cannot be guessed.
+    report_ids = {t.id for t in tasks if t.answer_type == AnswerType.REPORT}
+    # A COMPLETED cell, not simply the first arm: if that arm's cell FAILED no
+    # output.md was written, and the hint would name a path that is not there --
+    # the very thing naming a real task and arm was meant to fix.
+    done = next(
+        (c for c in cells
+         if c.task_id in report_ids and c.status == CellStatus.COMPLETED),
+        None,
+    )
+    if done is not None:
+        from .evaluation.matrix import safe_segment
+        report_task = next(t for t in tasks if t.id == done.task_id)
+        cell_path = f"{safe_segment(done.task_id)}/{safe_segment(done.arm_id)}"
+        typer.echo(
+            "\nTo score a report against its rubric with an LLM judge:\n"
+            f"  deep-research-client eval score {run_dir}/{cell_path}/output.md \\\n"
+            f"    --source {source} --adapter {adapter} --task-id {report_task.id}"
+        )
+
+    typer.echo(f"\nManifest: {run_dir}/manifest.json")
+    typer.echo(f"Results:  {run_dir}/results.tsv")
+
+
+def _truncation_note(judged_chars: int | None, report_chars: int | None) -> str:
+    """Describe how much of a report a judge actually saw, or nothing.
+
+    Both scorers cut a long report to ``MAX_REPORT_CHARS`` before sending it,
+    and both record what they cut. Neither printed it, so comprehensiveness
+    scored on a report's opening third was indistinguishable from
+    comprehensiveness scored on the whole thing.
+
+    The fields are Optional -- a score built before they existed, or by hand,
+    has neither -- so the comparison is guarded rather than assumed. Formatting
+    an Optional without checking is the defect this command already had once,
+    in the line that renders a dimension's score.
+
+    >>> _truncation_note(12000, 40000)
+    ' (judged on 12,000 of 40,000 characters)'
+    >>> _truncation_note(9000, 9000)
+    ''
+    >>> _truncation_note(None, 40000)
+    ''
+
+    Nothing judged is not a truncated judgement: claim recall with no reference
+    claims asks the judge nothing, and "judged on 0 of 29,000 characters" reads
+    as a judge that gave up rather than one that was never called.
+
+    >>> _truncation_note(0, 29000)
+    ''
+    """
+    if judged_chars is None or report_chars is None:
+        return ""
+    if judged_chars <= 0 or judged_chars >= report_chars:
+        return ""
+    return f" (judged on {judged_chars:,} of {report_chars:,} characters)"
 
 
 @eval_app.command("score")
 def eval_score(
-    report: Annotated[Path, typer.Argument(help="Markdown file with DR output to score")],
-    entity_file: Annotated[Path, typer.Option("--entity-file", help="Ground truth YAML file")],
-    provider_name: Annotated[str, typer.Option("--provider", help="Name of the DR provider that generated the report")] = "unknown",
-    task_type: Annotated[Optional[str], typer.Option("--task-type", help="Task type filter (disease_mechanism, gene_function, etc.)")] = None,
+    report: Annotated[Path, typer.Argument(help="Markdown file with the report to score")],
+    source: Annotated[str, typer.Option(
+        "--source", help="Eval set source (file, directory, or dataset subset)")],
+    adapter: Annotated[str, typer.Option(
+        "--adapter", "-a", help=f"Eval set format ({_adapter_help()})")] = "yaml",
+    task_id: Annotated[Optional[str], typer.Option(
+        "--task-id", help="Score against this task; required when the set has more than one")] = None,
+    provider_name: Annotated[str, typer.Option(
+        "--provider", help="Name of the provider that generated the report")] = "unknown",
     no_fact: Annotated[bool, typer.Option("--no-fact", help="Skip FACT scoring")] = False,
     no_recall: Annotated[bool, typer.Option("--no-recall", help="Skip claim recall scoring")] = False,
     no_race: Annotated[bool, typer.Option("--no-race", help="Skip RACE scoring")] = False,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output file for results (JSON)")] = None,
-    llm_base_url: Annotated[Optional[str], typer.Option("--llm-base-url", help="Base URL for LLM judge API")] = None,
-    llm_api_key_env: Annotated[str, typer.Option("--llm-api-key-env", help="Env var for LLM judge API key")] = "OPENAI_API_KEY",
-    llm_model: Annotated[str, typer.Option("--llm-model", help="Model for LLM judge")] = "gpt-4o-mini",
+    no_intrinsic: Annotated[bool, typer.Option("--no-intrinsic", help="Skip intrinsic scoring")] = False,
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o", help="Output file for results (JSON)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL for LLM judge API")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var for LLM judge API key")] = "OPENAI_API_KEY",
+    llm_model: Annotated[str, typer.Option(
+        "--llm-model", help="Model for LLM judge")] = "gpt-4o-mini",
 ):
-    """Score a deep research report against ground truth.
+    """Score a saved report against one task from an eval set.
 
     \b
     Examples:
-        deep-research-client eval score report.md --entity-file Achondroplasia.yaml --provider falcon
-        deep-research-client eval score report.md --entity-file BRCA1-ai-review.yaml --no-race
+        deep-research-client eval score report.md --source questions.yaml --task-id fgfr3_mech
+        deep-research-client eval score report.md --source Achondroplasia.yaml --adapter dismech --provider falcon
+        deep-research-client eval score report.md --source questions.yaml --no-fact --no-race
     """
     import asyncio
     import json as json_mod
     from openai import AsyncOpenAI
-    from .evaluation.runner import (
-        EvalConfig, load_entities, generate_all_tasks, parse_dr_output, score_output,
-    )
-    from .evaluation.models import TaskType
+    from .evaluation.datamodel import AnswerType
+    from .evaluation.runner import EvalConfig, parse_dr_output, score_output
 
-    # Load ground truth and generate tasks
+    eval_set = _load_eval_set_or_exit(adapter, source)
+    tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
+    if not tasks:
+        present = sorted({t.answer_type for t in (eval_set.tasks or [])})
+        typer.echo(
+            f"No report-shaped tasks in {eval_set.name}; it holds "
+            f"{', '.join(present) or 'nothing'}."
+        )
+        if AnswerType.MULTIPLE_CHOICE in present:
+            typer.echo("  Multiple-choice sets are graded by `eval run --grade`, not here.")
+        if AnswerType.SHORT_ANSWER in present:
+            typer.echo("  Short-answer sets are not scored by this client at all yet.")
+        raise typer.Exit(1)
+
+    if task_id:
+        tasks = [t for t in tasks if t.id == task_id]
+        if not tasks:
+            typer.echo(f"No task with id {task_id!r} in {eval_set.name}.")
+            raise typer.Exit(1)
+    elif len(tasks) > 1:
+        typer.echo(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
+        for t in tasks[:20]:
+            typer.echo(f"  {t.id}")
+        raise typer.Exit(1)
+
+    task = tasks[0]
+    markdown_text = report.read_text(encoding="utf-8")
+
+    api_key = os.environ.get(llm_api_key_env, "")
+    wants_judge = not (no_fact and no_recall and no_race)
+
+    # Built only when a judge-backed scorer will actually run. AsyncOpenAI
+    # raises OpenAIError on an empty key at *construction*, so building it
+    # unconditionally made `--no-fact --no-recall --no-race` -- the remedy this
+    # command's own warning offers -- traceback before any scoring, leaving no
+    # way to get the intrinsic scores without a key at all.
+    llm_client = None
+    if wants_judge:
+        if not api_key and llm_base_url:
+            # A key is the default endpoint's requirement, not the judge's. A
+            # local OpenAI-compatible server -- vLLM, Ollama, LM Studio --
+            # accepts any string, and refusing here took away a configuration
+            # that worked before the construction was made lazy. The SDK still
+            # needs something non-empty, so it gets a placeholder that names
+            # itself if it ever reaches a server that does check.
+            #
+            # Said aloud, because the condition is "a custom base URL" while
+            # the thing it stands for is "an endpoint that needs no key". The
+            # commonest custom base URL after localhost is a corporate or
+            # cloud proxy, which does check -- and silently sending a
+            # placeholder there trades one pre-flight message for a 401 inside
+            # every judge call, after the report has been read.
+            api_key = "not-required-by-this-endpoint"
+            typer.echo(
+                f"{llm_api_key_env} is not set; sending a placeholder key "
+                f"because --llm-base-url was given. A local endpoint will "
+                f"accept it; an endpoint that checks keys will answer 401."
+            )
+        if not api_key:
+            typer.echo(
+                f"{llm_api_key_env} is not set, so the judge-backed scorers "
+                f"cannot run. Either set it (or point --llm-api-key-env at a "
+                f"variable that is set), pass --llm-base-url for a local "
+                f"endpoint that needs no key, or re-run with --no-fact "
+                f"--no-recall --no-race for the intrinsic scores, which need "
+                f"no API key."
+            )
+            raise typer.Exit(1)
+        llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
+
     config = EvalConfig(
-        entity_files=[entity_file],
         run_fact=not no_fact,
         run_claim_recall=not no_recall,
         run_race=not no_race,
+        run_intrinsic=not no_intrinsic,
+        llm_model=llm_model,
     )
-    entities = load_entities(config)
-    if not entities:
-        typer.echo("No entities loaded from the ground truth file.")
-        raise typer.Exit(1)
 
-    tasks = generate_all_tasks(entities)
-    if task_type:
-        try:
-            tt = TaskType(task_type)
-            tasks = [t for t in tasks if t.task_type == tt]
-        except ValueError:
-            typer.echo(f"Unknown task type: {task_type}. Valid: {[t.value for t in TaskType]}")
-            raise typer.Exit(1)
+    dr_output = parse_dr_output(task, markdown_text, provider_name)
+    result = asyncio.run(score_output(dr_output, task, llm_client, config))
 
-    if not tasks:
-        typer.echo("No evaluation tasks generated for the given entity/task-type.")
-        raise typer.Exit(1)
-
-    # Read the report
-    markdown_text = report.read_text()
-
-    # Set up LLM judge client
-    api_key = os.environ.get(llm_api_key_env, "")
-    if not api_key:
-        typer.echo(f"Warning: {llm_api_key_env} not set. LLM-based scoring will fail.")
-    llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
-    config.llm_model = llm_model
-
-    async def _run():
-        results = []
-        for eval_task in tasks:
-            dr_output = parse_dr_output(eval_task, markdown_text, provider_name)
-            result = await score_output(dr_output, eval_task, llm_client, config)
-            results.append(result)
-        return results
-
-    results = asyncio.run(_run())
-
-    # Display results
-    for r in results:
-        typer.echo(f"\n{'='*60}")
-        typer.echo(f"Task: {r.task_id} | Provider: {r.provider}")
-        if r.fact_score:
-            typer.echo(f"  FACT: accuracy={r.fact_score.citation_accuracy:.2f}, "
-                       f"effective_citations={r.fact_score.effective_citations}/{r.fact_score.total_citations}")
-        if r.claim_recall_score:
-            typer.echo(f"  Claim Recall: {r.claim_recall_score.claim_recall:.2f} "
-                       f"({r.claim_recall_score.matched_claims}/{r.claim_recall_score.total_ground_truth_claims})")
-        if r.race_score:
-            typer.echo(f"  RACE: overall={r.race_score.overall_score:.2f}")
-            for d in r.race_score.dimensions:
-                typer.echo(f"    {d.dimension}: {d.score:.1f}/5")
-        if r.intrinsic_score:
-            isc = r.intrinsic_score
-            if isc.citation_verifiability:
-                cv = isc.citation_verifiability
-                typer.echo(f"  Citation Verifiability: {cv.verified_exist}/{cv.total_citations} "
-                           f"({cv.verifiability:.2f})")
-                if cv.median_year:
-                    typer.echo(f"    Median citation year: {cv.median_year}")
-            if isc.citation_alignment:
-                ca = isc.citation_alignment
-                typer.echo(f"  Citation-Claim Alignment: {ca.aligned_count}/{ca.total_checked} "
-                           f"({ca.alignment_rate:.2f})")
-            if isc.factual_spot_checks:
-                sc = isc.factual_spot_checks
-                typer.echo(f"  Factual Spot Checks: {sc.correct_count}/{sc.total_checks} correct, "
-                           f"{sc.present_count}/{sc.total_checks} present")
-            if isc.topic_coverage:
-                tc = isc.topic_coverage
+    typer.echo(f"\n{'='*60}")
+    typer.echo(f"Task: {result.task_id} | Provider: {result.provider}")
+    if result.fact_score:
+        fact = result.fact_score
+        # Over the pairs the judge ruled on, which is the rate's own
+        # denominator; the rest are named separately so a reader who divides
+        # gets the number printed.
+        judged_pairs = fact.total_citations - fact.unjudged_citations
+        if not fact.total_citations:
+            line = "  FACT: no citations to verify"
+        elif not judged_pairs:
+            # "none checkable" was a property of the citations, and the set it
+            # describes is wider than that: `score_fact` records `supported=
+            # None` for a judge call that raised and for a reply it could not
+            # read, so a judge that was simply down reported three entirely
+            # checkable PMIDs as uncheckable. Worded with the suffix's own
+            # count and words -- `not judged` -- which is the true thing and
+            # is already on this line in the measured case.
+            line = (f"  FACT: not measured, "
+                    f"{fact.unjudged_citations} not judged")
+        else:
+            line = (f"  FACT: accuracy={fact.citation_accuracy:.2f}, "
+                    f"effective_citations={fact.effective_citations}/"
+                    f"{judged_pairs}")
+        if fact.unjudged_citations and judged_pairs:
+            # The fourth score line to say what it could not measure. A report
+            # citing only DOIs printed 0.00 over 0/0 and looked like a report
+            # whose citations support nothing.
+            line += f", {fact.unjudged_citations} not judged"
+        typer.echo(line)
+    if result.claim_recall_score:
+        # The fraction is the rate's own numerator and denominator: recall is
+        # over the claims the judge ruled on, so printing it against the full
+        # ground-truth count let a reader divide and get a different number.
+        cr = result.claim_recall_score
+        judged = cr.total_ground_truth_claims - cr.unjudged_claims
+        if not cr.total_ground_truth_claims:
+            # The rate is absent, not zero -- the same distinction every other
+            # line in this block now draws, with the same trigger: a task whose
+            # rubric carries no reference claims, which is every task loaded
+            # from a benchmark that ships without one.
+            line = "  Claim Recall: no reference claims to match against"
+        elif not judged:
+            # Claims to match, and a judge that ruled on none of them. The
+            # `not judged` suffix made this tolerable; it is still a rate over
+            # a zero denominator, which is what the branch above refuses. In
+            # the suffix's words, not a second phrasing: `(5 to match)` said
+            # the same count in different words from the line it replaced.
+            line = (f"  Claim Recall: not measured, "
+                    f"{cr.unjudged_claims} not judged")
+        else:
+            line = f"  Claim Recall: {cr.claim_recall:.2f} ({cr.matched_claims}/{judged})"
+        if cr.unjudged_claims and judged:
+            line += f", {cr.unjudged_claims} not judged"
+        # Claim recall truncates the report the same way RACE does, and records
+        # the same pair. Recall measured over a report's opening is an
+        # understatement, and nothing else on this line says the report was cut.
+        #
+        # Only where something was judged. `judged_chars` is the length that
+        # was *sent*, set on the main path whether or not a judge answered, so
+        # appending it unconditionally printed "no claim was judged" and
+        # "judged on 12,000 of 51,044 characters" in one line. That is
+        # `_truncation_note`'s own argument about "judged on 0 of 29,000",
+        # reached with a non-zero count, which its guard cannot see.
+        if judged:
+            line += _truncation_note(cr.judged_chars, cr.report_chars)
+        typer.echo(line)
+    if result.race_score:
+        race = result.race_score
+        if not race.scored_dimensions:
+            # The sixth line of this shape, and the one found by enumerating
+            # scorers rather than lines: RACE has no citation count to reach
+            # it from. `overall_score` WAS 0.0 over an empty list (it is None
+            # now) and the four dimensions are always emitted, so a judge that
+            # could not be reached -- an endpoint that is down, a rate limit,
+            # the 401 this command warns a custom `--llm-base-url` will
+            # answer -- printed `overall=0.00 over 0/4 dimensions`: a rate
+            # over a zero denominator with a suffix to disambiguate it, which
+            # is exactly what the citation lines stopped doing. All four fail
+            # together, so this is the commonest RACE failure, not the
+            # rarest.
+            overall = (f"  RACE: not measured, 0/{len(race.dimensions)} "
+                       f"dimensions scored")
+        else:
+            # Safe to format: `overall_score` is None exactly when
+            # `scored_dimensions` is empty, which is the branch above.
+            overall = f"  RACE: overall={race.overall_score:.2f}"
+            if race.unscored_count:
+                # Without this, "every dimension failed" and "a genuinely
+                # terrible report" both render as 0.00 -- the distinction
+                # unscored_count was added to make.
+                overall += (f" over {len(race.scored_dimensions)}"
+                            f"/{len(race.dimensions)} dimensions")
+            # As on claim recall: what was sent is not what was judged, so the
+            # note goes only on a line that reports a judgement.
+            overall += _truncation_note(race.judged_chars, race.report_chars)
+        typer.echo(overall)
+        for d in race.dimensions:
+            # `score` is Optional since a judge that cannot be reached records
+            # no score. Formatting None with :.1f raises, and this loop is
+            # outside runner._run's except -- so a missing API key, which this
+            # command warns about and offers --no-race for, tracebacked here
+            # after every scorer had run.
+            # `normalized_score`, not `score` -- the same predicate
+            # `scored_dimensions` uses, so the header and the lines under it
+            # answer one question. Asking `d.score is None` made this a THIRD
+            # accessor: a dimension scored against a non-positive scale printed
+            # a number beneath a header saying nothing was measured. And the
+            # denominator is the dimension's own, where `/5` was a literal.
+            shown = (
+                "unscored" if d.normalized_score is None
+                else f"{d.score:.1f}/{d.max_score:g}"
+            )
+            typer.echo(f"    {d.dimension}: {shown}")
+    if result.intrinsic_score:
+        isc = result.intrinsic_score
+        if isc.citation_verifiability:
+            cv = isc.citation_verifiability
+            checked = cv.total_citations - cv.unresolvable
+            if not cv.total_citations:
+                line = "  Citation Verifiability: no citations to check"
+            elif not checked:
+                # Citations present and not one of them checked. The rate is
+                # absent, so this says so -- and says it with the same count
+                # and the same words the suffix below uses, rather than a
+                # second phrasing for the same fact that no test pins.
+                line = (f"  Citation Verifiability: not measured, "
+                        f"{cv.unresolvable} not checked")
+            else:
+                line = (f"  Citation Verifiability: {cv.verified_exist}/{checked} "
+                        f"({cv.verifiability:.2f})")
+            if cv.unresolvable and checked:
+                # "not checked" rather than "could not be looked up": the
+                # count now also holds identifiers this scorer never attempts,
+                # and its alignment sibling was reworded for exactly this in
+                # the commit that gave it the second cause.
+                line += f", {cv.unresolvable} not checked"
+            typer.echo(line)
+            if cv.median_year:
+                typer.echo(f"    Median citation year: {cv.median_year}")
+        if isc.citation_alignment:
+            ca = isc.citation_alignment
+            if not ca.total_pairs:
+                line = "  Citation-Claim Alignment: no citation-claim pairs"
+            elif not ca.total_checked:
+                # As above: nothing left to take a rate over, said in the
+                # words of the suffix below so the two cannot drift apart.
+                line = (f"  Citation-Claim Alignment: not measured, "
+                        f"{ca.unresolvable} with nothing to align against")
+            else:
+                line = (f"  Citation-Claim Alignment: {ca.aligned_count}/"
+                        f"{ca.total_checked} ({ca.alignment_rate:.2f})")
+            if ca.unresolvable and ca.total_checked:
+                # Its sibling above prints this; without it here, a run where
+                # PubMed was down reads as an alignment rate over everything.
+                # Worded for all three things this counts: a lookup that
+                # failed, a real record carrying no title to align a claim
+                # against, and a citation never looked up at all.
+                line += f", {ca.unresolvable} with nothing to align against"
+            typer.echo(line)
+        if isc.factual_spot_checks:
+            sc = isc.factual_spot_checks
+            # `correct_count` includes presence-only checks, which are correct
+            # whenever they match -- agreement that was never tested. The
+            # accuracy rate is over the checks that compared something, and
+            # that is the number worth showing.
+            if sc.compared_count:
+                typer.echo(
+                    f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} "
+                    f"present, accuracy {sc.accuracy_rate:.2f} over "
+                    f"{sc.compared_count} check(s) that compared a value"
+                )
+            else:
+                # `accuracy 0.00 over 0 checks` led with a number that reads as
+                # "every fact wrong" for the commonest case there is: a task
+                # with no rubric, or a rubric of presence-only checks. The rate
+                # is not small here, it is absent.
+                typer.echo(
+                    f"  Factual Spot Checks: {sc.present_count}/{sc.total_checks} "
+                    f"present, no accuracy (no check compared a value)"
+                )
+        if isc.topic_coverage:
+            tc = isc.topic_coverage
+            if not tc.total_topics:
+                typer.echo("  Topic Coverage: no expected topics to cover")
+            else:
                 typer.echo(f"  Topic Coverage: {tc.covered_count}/{tc.total_topics} "
                            f"({tc.coverage_rate:.2f})")
-        if r.error:
-            typer.echo(f"  Errors: {r.error}")
+    if result.error:
+        typer.echo(f"  Errors: {result.error}")
 
-    # Save JSON output
     if output:
-        results_json = [r.model_dump(mode="json") for r in results]
-        output.write_text(json_mod.dumps(results_json, indent=2))
+        output.write_text(
+            json_mod.dumps(result.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
         typer.echo(f"\nResults written to {output}")
 
 

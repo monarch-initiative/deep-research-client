@@ -76,7 +76,7 @@ class TestCyberianProvider:
             # Create a test REPORT.md
             report_path = Path(workdir) / "REPORT.md"
             report_content = "# Test Report\n\nThis is a test research report."
-            report_path.write_text(report_content)
+            report_path.write_text(report_content, encoding="utf-8")
 
             # Read the report
             result = provider._read_report(workdir)
@@ -101,9 +101,9 @@ class TestCyberianProvider:
             citations_dir.mkdir()
 
             # Create test citation files
-            (citations_dir / "smith-2002-autophagy-abstract.md").write_text("Abstract...")
-            (citations_dir / "jones-2003-regulation-fulltext.txt").write_text("Full text...")
-            (citations_dir / "doe-2024-review-summary.md").write_text("Summary...")
+            (citations_dir / "smith-2002-autophagy-abstract.md").write_text("Abstract...", encoding="utf-8")
+            (citations_dir / "jones-2003-regulation-fulltext.txt").write_text("Full text...", encoding="utf-8")
+            (citations_dir / "doe-2024-review-summary.md").write_text("Summary...", encoding="utf-8")
 
             # Extract citations
             citations = provider._extract_citations(workdir)
@@ -232,7 +232,7 @@ class TestCyberianProvider:
         import yaml
         assert os.path.exists(workflow_path)
 
-        with open(workflow_path) as f:
+        with open(workflow_path, encoding="utf-8") as f:
             workflow = yaml.safe_load(f)
             assert workflow["name"] == "deep-research"
             assert "subtasks" in workflow

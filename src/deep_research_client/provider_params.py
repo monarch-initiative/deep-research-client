@@ -251,6 +251,21 @@ class MockParams(BaseProviderParams):
         default=None,
         description="Custom response text instead of default"
     )
+    answer_policy: Literal["none", "first", "last", "echo"] = Field(
+        default="none",
+        description=(
+            "How to respond to a multiple-choice prompt, for exercising the "
+            "evaluation harness without paying a provider. The mock cannot know "
+            "which option is correct, so it answers by position - and because "
+            "option order is deterministic for a given task, the score such an "
+            "arm should get is computable in advance and can be asserted "
+            "exactly. 'none' answers nothing (the default, and what a report "
+            "provider does); 'first' always picks option A; 'last' always picks "
+            "the final option, which is the abstention when one is offered; "
+            "'echo' restates every option before answering A, reproducing the "
+            "habit real research tools have of quoting the question back."
+        ),
+    )
 
 
 class ArtifactSelectionParams(BaseProviderParams):

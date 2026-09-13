@@ -465,8 +465,12 @@ def test_summarize_paths_reads_a_directory(tmp_path, run_transcript):
     """A directory is searched for transcript-named JSON."""
     provenance = tmp_path / "provenance"
     provenance.mkdir()
-    (provenance / "iter1_transcript.json").write_text(json.dumps(run_transcript))
-    (provenance / "evidence_matrix.json").write_text(json.dumps([{"type": "nope"}]))
+    (provenance / "iter1_transcript.json").write_text(
+        json.dumps(run_transcript), encoding="utf-8"
+    )
+    (provenance / "evidence_matrix.json").write_text(
+        json.dumps([{"type": "nope"}]), encoding="utf-8"
+    )
 
     stats = summarize_paths([tmp_path])
 
@@ -484,7 +488,7 @@ def test_same_named_transcripts_in_different_runs_are_both_read(tmp_path):
         provenance = tmp_path / run / "provenance"
         provenance.mkdir(parents=True)
         (provenance / "iter1_transcript.json").write_text(
-            json.dumps([tool_call("a", tool)])
+            json.dumps([tool_call("a", tool)]), encoding="utf-8"
         )
 
     stats = summarize_paths([tmp_path])
@@ -497,7 +501,7 @@ def test_same_named_transcripts_in_different_runs_are_both_read(tmp_path):
 def test_summarize_paths_takes_a_named_file_as_given(tmp_path, run_transcript):
     """An explicitly named file is read whatever it is called."""
     path = tmp_path / "oddly-named.json"
-    path.write_text(json.dumps(run_transcript))
+    path.write_text(json.dumps(run_transcript), encoding="utf-8")
 
     assert summarize_paths([path]).entries == len(run_transcript)
 
@@ -519,7 +523,7 @@ def test_summarize_paths_rejects_a_missing_path(tmp_path):
 def test_a_malformed_transcript_is_rejected(tmp_path, payload):
     """A transcript that is not a list of objects is an error, not empty stats."""
     path = tmp_path / "bad_transcript.json"
-    path.write_text(json.dumps(payload))
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError):
         summarize_paths([path])
@@ -797,7 +801,7 @@ def test_one_file_named_two_ways_is_a_single_source(tmp_path, run_transcript):
     provenance = tmp_path / "provenance"
     provenance.mkdir()
     path = provenance / "iter1_transcript.json"
-    path.write_text(json.dumps(run_transcript))
+    path.write_text(json.dumps(run_transcript), encoding="utf-8")
 
     # Two spellings of one file: as given, and via a redundant parent hop.
     detoured = provenance / ".." / "provenance" / "iter1_transcript.json"

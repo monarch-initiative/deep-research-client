@@ -1,0 +1,17 @@
+# Rubric for disease-mechanism, treatment and phenotype report tasks.
+#
+# See gene_function.yaml for why these are data rather than code.
+
+expected_topics:
+  - name: genetic_basis
+    keywords: [gene, mutation, variant, allele, inheritance, autosomal, dominant, recessive]
+  - name: molecular_mechanism
+    keywords: [protein, pathway, signaling, receptor, enzyme, binding]
+  - name: cellular_effects
+    keywords: [cell, proliferation, apoptosis, differentiation, migration]
+  - name: clinical_features
+    keywords: [phenotype, symptom, presentation, diagnosis, severity]
+  - name: treatment
+    keywords: [therapy, treatment, drug, inhibitor, intervention, clinical trial]
+  - name: epidemiology
+    keywords: [prevalence, incidence, population, risk, frequency]

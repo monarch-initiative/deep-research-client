@@ -131,6 +131,7 @@ extend-exclude = [
   "src/deep_research_client/datamodel/deep_research_client_pydantic.py",
   "src/deep_research_client/validation/datamodel.py",
   "src/deep_research_client/validation/term_datamodel.py",
+  "src/deep_research_client/evaluation/datamodel.py",
 ]
 
 # Ref.: https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
@@ -149,6 +150,7 @@ skip = [
   "src/deep_research_client/datamodel/deep_research_client.py",
   "src/deep_research_client/validation/datamodel.py",
   "src/deep_research_client/validation/term_datamodel.py",
+  "src/deep_research_client/evaluation/datamodel.py",
 ]
 
 # Reminder: words have to be lowercased for the ignore-words-list

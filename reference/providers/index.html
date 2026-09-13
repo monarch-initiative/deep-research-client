@@ -1333,6 +1333,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tooluniverse" class="md-nav__link">
+    <span class="md-ellipsis">
+      ToolUniverse
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ToolUniverse">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models-and-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models and parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#composing-tooluniverse-with-another-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      Composing ToolUniverse with another agent
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -2245,6 +2296,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tooluniverse" class="md-nav__link">
+    <span class="md-ellipsis">
+      ToolUniverse
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ToolUniverse">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setup
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#models-and-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      Models and parameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#composing-tooluniverse-with-another-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      Composing ToolUniverse with another agent
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#provider-detection" class="md-nav__link">
     <span class="md-ellipsis">
       Provider Detection
@@ -2421,6 +2523,12 @@
 <td>Biomni</td>
 <td>(upstream local environment)</td>
 <td>Biomedical co-scientist, runs code</td>
+<td>Very slow</td>
+</tr>
+<tr>
+<td>ToolUniverse</td>
+<td><code>TOOLUNIVERSE_API_KEY</code> or <code>OPENAI_API_KEY</code> + optional extra</td>
+<td>Local co-scientist, scientific tools and Python execution</td>
 <td>Very slow</td>
 </tr>
 <tr>
@@ -2995,6 +3103,235 @@ params = BiomniParams(
 <li>Needs an LLM API key (e.g. <code>ANTHROPIC_API_KEY</code>) for the underlying model</li>
 <li>Very slow and non-deterministic</li>
 </ul>
+<hr />
+<h2 id="tooluniverse">ToolUniverse</h2>
+<p><a href="https://github.com/mims-harvard/ToolUniverse">ToolUniverse</a> provides scientific
+tools for AI scientists. This wrapper exposes those tools to a
+<a href="https://huggingface.co/docs/smolagents/reference/agents"><code>smolagents.CodeAgent</code></a>
+to accept research questions, investigate hypotheses, execute Python, and return
+markdown reports. It is a <code>co_scientist</code>, like Biomni and OpenScientist.</p>
+<h3 id="setup_9">Setup</h3>
+<pre><code class="language-bash">uv add 'deep-research-client[tooluniverse]'
+export TOOLUNIVERSE_API_KEY=&quot;your-llm-key&quot;
+# OPENAI_API_KEY is used if TOOLUNIVERSE_API_KEY is unset.
+# Optional: point the LLM at an OpenAI-compatible server.
+export TOOLUNIVERSE_BASE_URL=&quot;https://your-server.example/v1&quot;
+</code></pre>
+<p>Leave <code>TOOLUNIVERSE_BASE_URL</code> unset to use OpenAI. These are <strong>underlying LLM</strong>
+credentials; ToolUniverse does not issue a research-service API key. With Python
+configuration, pass them as <code>ProviderConfig.api_key</code> and <code>ProviderConfig.base_url</code>.
+Explicit configuration takes precedence over environment auto-detection.</p>
+<p>The extra installs the ToolUniverse SDK and smolagents; it does not install every
+scientific tool's optional packages. Auto-detection requires both SDKs and an LLM
+key. Set <code>DISABLE_TOOLUNIVERSE_PROVIDER=true</code> to opt out. Listing providers does
+not load scientific tools or make an LLM request.</p>
+<h3 id="models-and-parameters">Models and parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Aliases</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tooluniverse-coscientist</code></td>
+<td>tooluniverse, tu</td>
+<td>Local scientific CodeAgent</td>
+</tr>
+</tbody>
+</table>
+<p>The harmonized <code>model</code> field selects this card. <code>llm</code> selects the actual model
+used for reasoning and code generation.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llm</code></td>
+<td><code>gpt-4.1-mini</code></td>
+<td>Underlying OpenAI-compatible model ID</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td>See below</td>
+<td>Non-empty list of exact ToolUniverse tool names</td>
+</tr>
+<tr>
+<td><code>max_steps</code></td>
+<td><code>20</code></td>
+<td>Agent step limit (1–100); exhausted runs raise an error</td>
+</tr>
+<tr>
+<td><code>request_timeout</code></td>
+<td><code>120</code></td>
+<td>Timeout in seconds for each LLM HTTP request</td>
+</tr>
+<tr>
+<td><code>workspace</code></td>
+<td><code>None</code></td>
+<td>SDK workspace; otherwise <code>TOOLUNIVERSE_HOME</code> or <code>./.tooluniverse</code></td>
+</tr>
+<tr>
+<td><code>system_prompt</code></td>
+<td>Scientific investigation instructions</td>
+<td>Custom agent instructions</td>
+</tr>
+</tbody>
+</table>
+<p>The default tools are <code>PubMed_search_articles</code>, <code>PubMed_get_article</code>,
+<code>EuropePMC_search_articles</code>, <code>OpenTargets_get_disease_id_description_by_name</code>,
+and <code>OpenTargets_get_associated_targets_by_disease_efoId</code>. Only selected tools
+are exposed to the agent. Unknown or unavailable tool names fail before any
+LLM request with a provider configuration error, allowing opt-in fallback.
+Additional tools may require tool-specific environment credentials
+and packages. <code>allowed_domains</code> is unsupported and rejected; select appropriate
+tools instead.</p>
+<p>The shared toolset also accepts <code>workspace</code> and <code>env_vars</code> when composed into a
+host. Use an absolute workspace path to share the same SDK configuration across
+host working directories. The SDK reads an existing workspace's <code>.env</code> and
+<code>profile.yaml</code>, and seeds a default profile if the directory exists without one.
+It does not create a missing default workspace. Its persistent cache defaults to
+<code>~/.tooluniverse/cache.sqlite</code>; set <code>TOOLUNIVERSE_CACHE_DIR</code> or
+<code>TOOLUNIVERSE_CACHE_PATH</code> to relocate it.</p>
+<pre><code class="language-python">from deep_research_client import DeepResearchClient
+from deep_research_client.models import ProviderConfig
+
+client = DeepResearchClient(provider_configs={
+    &quot;tooluniverse&quot;: ProviderConfig(
+        name=&quot;tooluniverse&quot;,
+        api_key=&quot;your-llm-key&quot;,
+        # base_url=&quot;https://your-server.example/v1&quot;,
+    ),
+})
+result = await client.research(
+    &quot;Investigate therapeutic targets for Parkinson disease and propose experiments.&quot;,
+    provider=&quot;tooluniverse&quot;,
+    provider_params={&quot;llm&quot;: &quot;gpt-4.1-mini&quot;, &quot;max_steps&quot;: 20},
+)
+print(result.markdown)
+</code></pre>
+<pre><code class="language-bash">deep-research-client research &quot;Investigate therapeutic targets for Parkinson disease&quot; \
+  --provider tooluniverse --param max_steps=20 --param llm=gpt-4.1-mini
+</code></pre>
+<h3 id="composing-tooluniverse-with-another-agent">Composing ToolUniverse with another agent</h3>
+<p><code>tooluniverse</code> is also a shared optional parameter for local agent providers:</p>
+<table>
+<thead>
+<tr>
+<th>Host provider</th>
+<th>Integration</th>
+<th>Requirements</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude_code</code></td>
+<td>Per-run MCP configuration and explicit tool permissions</td>
+<td>Local authenticated Claude CLI</td>
+</tr>
+<tr>
+<td><code>biomni</code></td>
+<td>A1's <code>add_mcp</code> API</td>
+<td>Biomni runtime/environment; see its setup above</td>
+</tr>
+<tr>
+<td><code>cyberian</code></td>
+<td>MCP configuration in the new workflow workspace</td>
+<td><code>agent_type="claude"</code>, <code>manage_server=true</code></td>
+</tr>
+<tr>
+<td><code>openscientist</code> and other hosted APIs</td>
+<td>Unsupported</td>
+<td>Requires upstream API support</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">uv add 'deep-research-client[tooluniverse-tools]'
+deep-research-client research &quot;Investigate therapeutic targets for Parkinson disease&quot; \
+  --provider claude_code --param tooluniverse=true
+</code></pre>
+<p>The <code>tooluniverse-tools</code> extra installs the scientific SDK and MCP dependencies
+without smolagents. The <code>tooluniverse</code> extra remains the standalone smolagents
+agent installation. Composed runs use the <strong>host's</strong> LLM and authentication;
+<code>TOOLUNIVERSE_API_KEY</code> and <code>TOOLUNIVERSE_BASE_URL</code> configure only the standalone
+provider. Individual scientific tools still use their own environment keys.
+Biomni forwards <code>NCBI_API_KEY</code> by default, alongside MCP's basic process
+environment such as <code>PATH</code> and <code>HOME</code>. For other scientific credentials, set
+<code>"env_vars": ["NCBI_API_KEY", "MY_SCIENTIFIC_API_KEY"]</code> inside the toolset object.
+The temporary configuration stores variable references, not credential values.
+Include any SDK environment settings such as <code>TOOLUNIVERSE_CACHE_DIR</code> in
+<code>env_vars</code> too when Biomni's child should inherit them.
+Claude and Cyberian use their host CLI's inherited environment.</p>
+<p><code>true</code> selects the same default tools as the standalone provider, <code>false</code>/<code>null</code>
+disables the mixin, and an object selects tools explicitly:</p>
+<pre><code class="language-python">from deep_research_client import DeepResearchClient
+
+client = DeepResearchClient()  # auto-detect the authenticated local Claude CLI
+result = await client.research(
+    &quot;Investigate therapeutic targets for Parkinson disease.&quot;,
+    provider=&quot;claude_code&quot;,
+    provider_params={
+        &quot;tooluniverse&quot;: {&quot;tools&quot;: [&quot;PubMed_search_articles&quot;, &quot;PubMed_get_article&quot;]},
+    },
+)
+</code></pre>
+<p>For the CLI, pass that object as JSON:</p>
+<pre><code class="language-bash">deep-research-client research &quot;Summarize recent Parkinson disease research&quot; \
+  --provider claude_code \
+  --param 'tooluniverse={&quot;tools&quot;:[&quot;PubMed_search_articles&quot;,&quot;PubMed_get_article&quot;]}'
+</code></pre>
+<p>The shared MCP bridge exposes exactly the configured tools. It preserves input
+schemas and structured results, with no general dispatcher exposing unselected
+tools. Claude receives explicit MCP tool permissions alongside its existing
+allowlist; enabling TU does not turn on permission bypass. Cyberian configures
+only its fresh workspace. Biomni uses temporary MCP configuration. No global
+Claude/MCP settings are modified. Tool failures are marked as MCP errors, and
+both Python and native stdout diagnostics are redirected to stderr to protect
+the protocol stream. Biomni closes discovery and execution subprocesses after
+each MCP session.</p>
+<p>This integration supplies <strong>tools</strong>, not TU's skill library or an additional
+research loop. TU can coexist with skills already installed in the host. Reports
+retain the host provider identity and record the selected toolset in run
+metadata; cache keys normalize tool order, default selections, and disabled
+spellings. Workspace and environment-variable selections remain in cache identity
+because profiles and credentials can change tool behavior. Cache identity does
+not track edits to files inside a workspace; bypass or clear cached reports when
+changing those files. Unsupported hosts reject the
+parameter, and Cyberian rejects it for unmanaged servers or non-Claude agents.</p>
+<h3 id="limitations_3">Limitations</h3>
+<ul>
+<li>Executes generated Python locally; use a trusted environment or run the
+  wrapper inside an external sandbox. Configurable Docker/E2B executors remain
+  a follow-up; the local executor is not a security sandbox.</li>
+<li>Costs depend on the underlying LLM, tools, and number of steps.</li>
+<li><code>request_timeout</code> applies to individual LLM HTTP requests. Scientific-tool
+  execution and the whole investigation have no wall-clock deadline;
+  <code>ProviderConfig.timeout</code> is rejected rather than reinterpreted as a request
+  timeout. This makes ToolUniverse unavailable for the run while preserving
+  other configured providers. Use <code>max_steps</code> to limit agent steps. Cancelling the async caller
+  does not terminate an already running worker thread.</li>
+<li>Returns the inline markdown report and recognized reference identifiers;
+  generated files are not collected as report artifacts.</li>
+<li>Available resources and analysis capabilities depend on the selected tools
+  and installed scientific packages. The default tools focus on biomedicine.</li>
+<li>Biomni starts a fresh MCP process and initializes the SDK for each tool call.
+  This keeps process cleanup predictable but adds per-call startup latency;
+  persistent sessions remain a possible future optimization.</li>
+</ul>
+<p>For a local SDK check, run <code>uv run --extra tooluniverse --group dev pytest
+tests/test_tooluniverse_provider.py</code>. Live PubMed access is covered by the
+integration tests. A paid LLM integration run additionally requires
+<code>RUN_TOOLUNIVERSE_INTEGRATION=1</code> and an LLM key:</p>
+<pre><code class="language-bash">RUN_TOOLUNIVERSE_INTEGRATION=1 uv run --extra tooluniverse --group dev \
+  pytest -m integration tests/test_tooluniverse_provider.py
+</code></pre>
 <hr />
 <h2 id="provider-detection">Provider Detection</h2>
 <p>Providers are auto-detected based on environment variables:</p>

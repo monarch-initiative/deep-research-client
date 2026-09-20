@@ -1256,13 +1256,31 @@ The following providers were researched but not yet implemented:
 
 These providers could be added based on user demand and API availability. Contributions welcome!
 
-## Claude Code Skill
+## Agent Skills
 
-This repository includes a Claude Code skill that makes it easy to use deep-research-client directly from Claude Code.
+This repository includes [run-deep-research](.claude/skills/run-deep-research/SKILL.md)
+and [gene-set-enrichment](.claude/skills/gene-set-enrichment/SKILL.md) skills.
+They provide agent instructions; install DRC and configure the chosen provider
+separately using the instructions above.
 
 ### Installation
 
-To use the skill:
+Use the [skills CLI](https://skills.sh/) (requires Node.js) to preview the skills
+before selecting one:
+
+```bash
+npx skills add monarch-initiative/deep-research-client --list
+npx skills add monarch-initiative/deep-research-client --skill run-deep-research
+```
+
+Installation defaults to the current project. Use `-a codex` or
+`-a claude-code` to choose an agent; add `-g` for user-wide installation:
+
+```bash
+npx skills add monarch-initiative/deep-research-client --skill run-deep-research -a codex -g
+```
+
+For Claude Code, manual copying from a checkout also remains available:
 
 ```bash
 # Copy to your local Claude skills directory
@@ -1275,7 +1293,7 @@ cp -r .claude/skills/run-deep-research ~/.claude/skills/
 ### Features
 
 The skill provides:
-- **Guided research workflow**: Automatically asks about speed vs depth preferences
+- **Guided research workflow**: Uses your requested depth and clarifies unresolved cost/depth choices
 - **Provider selection**: Helps choose the right provider and model for your needs
 - **Template support**: Easy access to research templates for common patterns
 - **Smart defaults**: Leverages caching and best practices automatically
@@ -1291,7 +1309,8 @@ Once installed, simply ask Claude to research topics:
 ```
 
 Claude will automatically:
-1. Ask whether you want a fast/light or comprehensive/slow approach
+
+1. Use your requested approach, clarifying depth and cost only when needed
 2. Select the appropriate provider and model
 3. Execute the research with proper caching
 4. Save results with citations and metadata

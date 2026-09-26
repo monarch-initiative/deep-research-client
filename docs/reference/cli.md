@@ -880,6 +880,12 @@ stdout even when it describes failures: the `providers --check` health report
 lists broken providers on stdout, because that list is the answer you asked
 for.
 
+The line is drawn at whether there is a report to give. `providers --check
+--provider falcon` without `EDISON_API_KEY` still reports on falcon, so its
+`falcon: NOT CONFIGURED` line goes to stdout. `providers --check --provider
+flacon` names no provider at all, so there is nothing to report on: the
+`Error: Unknown provider` goes to stderr and a redirected file stays empty.
+
 Library code (the client and providers) still logs through Python's `logging`,
 which the CLI sends to stderr.
 

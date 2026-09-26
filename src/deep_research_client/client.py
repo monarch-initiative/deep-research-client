@@ -973,10 +973,19 @@ class DeepResearchClient:
                 if params_dict:
                     result.provider_config['parameters'] = params_dict
 
-            # Cache the result
-            await self.cache.set(
-                query, candidate, result, effective_model, cache_provider_params
-            )
+            # Cache the result -- unless the provider says it could not answer.
+            # A cached non-answer would be served to every rerun of the same
+            # query, turning one failed retrieval into a permanent one (#52).
+            if result.answer_successful is not False:
+                await self.cache.set(
+                    query, candidate, result, effective_model, cache_provider_params
+                )
+            else:
+                logger.warning(
+                    "%s could not answer this query; the result is not cached, "
+                    "so a rerun will try again",
+                    candidate,
+                )
 
             # After caching, so that which providers this run tried never
             # becomes part of what a later run reads back.

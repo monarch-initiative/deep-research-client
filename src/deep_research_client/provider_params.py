@@ -251,6 +251,15 @@ class MockParams(BaseProviderParams):
         default=None,
         description="Custom response text instead of default"
     )
+    unsuccessful_answer: bool = Field(
+        default=False,
+        description=(
+            "Return a response the provider marks as not an answer, the way "
+            "falcon does when retrieval finds nothing. Lets the unsuccessful-"
+            "answer handling (warning, frontmatter, no caching, exit code) be "
+            "exercised without a real failed run."
+        ),
+    )
     answer_policy: Literal["none", "first", "last", "echo"] = Field(
         default="none",
         description=(

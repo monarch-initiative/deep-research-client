@@ -182,6 +182,14 @@ class MockProvider(ResearchProvider):
         # Generate mock citations
         citations = self._generate_mock_citations(query)
 
+        if self.params.unsuccessful_answer:
+            # The shape falcon returns when retrieval finds nothing: an
+            # explanation instead of a report, and nothing to cite.
+            markdown_content = (
+                "No sources were retrieved, so this is not an answer to the question."
+            )
+            citations = []
+
         return ResearchResult(
             markdown=markdown_content,
             citations=citations,
@@ -189,7 +197,10 @@ class MockProvider(ResearchProvider):
             query=query,
             model=self.model,
             start_time=datetime.now(),
-            end_time=datetime.now()
+            end_time=datetime.now(),
+            # The mock only speaks for itself when told to fail; otherwise it
+            # says nothing, like most providers.
+            answer_successful=False if self.params.unsuccessful_answer else None,
         )
 
     def _mock_answer(self, query: str) -> str:

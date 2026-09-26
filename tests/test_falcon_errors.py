@@ -19,7 +19,8 @@ from deep_research_client.exceptions import (
 from deep_research_client.models import ProviderConfig
 from deep_research_client.providers.falcon import FalconProvider
 
-EDISON = "deep_research_client.providers.falcon.EdisonClient"
+# The provider imports the SDK where it uses it, so patch it at its source.
+EDISON = "edison_client.EdisonClient"
 
 
 def _provider(api_key: str | None = "test-key") -> FalconProvider:

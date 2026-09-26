@@ -1,4 +1,13 @@
-"""Edison Scientific provider (formerly FutureHouse Falcon)."""
+"""Edison Scientific provider (formerly FutureHouse Falcon).
+
+``edison_client`` is imported where it is used, not at module scope. It pulls
+in aviary and litellm -- seconds of imports, and litellm fetches a price list
+over the network on import -- and this module is imported just to read the
+class's declared credential whenever the CLI lists providers (issue #70).
+Tests that substitute the client patch ``edison_client.EdisonClient``.
+"""
+
+from __future__ import annotations
 
 import asyncio
 import base64
@@ -7,12 +16,8 @@ import logging
 import mimetypes
 import re
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Sequence, TypedDict, cast
 from uuid import UUID
-
-from edison_client import EdisonClient, JobNames
-from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
-from edison_client.models.data_storage_methods import RawFetchResponse
 
 from . import ResearchProvider
 from ..exceptions import ProviderNotConfiguredError, classify_exception
@@ -26,6 +31,11 @@ from ..models import (
 from ..provider_params import FalconParams
 from ..model_cards import ProviderModelCards, create_falcon_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
+
+if TYPE_CHECKING:
+    from edison_client import EdisonClient
+    from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+    from edison_client.models.data_storage_methods import RawFetchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +84,8 @@ class FalconProvider(ResearchProvider):
 
         if not self.is_available():
             raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+
+        from edison_client import EdisonClient, JobNames
 
         # EdisonClient authenticates in its constructor, so a rejected key
         # fails here rather than on the first call.
@@ -141,6 +153,8 @@ class FalconProvider(ResearchProvider):
                 detail=self.unavailable_reason(),
             )
 
+        from edison_client import EdisonClient
+
         client = None
         try:
             # EdisonClient authenticates in its constructor, so a bad key fails
@@ -170,6 +184,8 @@ class FalconProvider(ResearchProvider):
         """Retrieve an existing Edison trajectory and preserve its artifacts."""
         if not self.is_available():
             raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+
+        from edison_client import EdisonClient
 
         client = EdisonClient(api_key=self.config.api_key)
         logger.info(f"Retrieving Edison trajectory {trajectory_id}")
@@ -212,6 +228,8 @@ class FalconProvider(ResearchProvider):
 
     def _coerce_response(self, response: Sequence[Any]) -> EdisonResponse:
         """Validate Edison client responses against the shapes this provider supports."""
+        from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+
         if not response:
             raise ValueError("Unexpected Edison response structure: empty response")
 
@@ -231,6 +249,8 @@ class FalconProvider(ResearchProvider):
         verbose=True, it returns TaskResponseVerbose objects and the answer must
         be read from the final environment frame.
         """
+        from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+
         if not isinstance(response, list) or len(response) == 0:
             raise ValueError(f"Unexpected Edison response structure: {type(response)}")
 
@@ -316,6 +336,8 @@ class FalconProvider(ResearchProvider):
 
     def _extract_artifacts(self, client: Any, response: EdisonResponse) -> list[ResearchArtifact]:
         """Fetch artifacts listed in the final Edison environment frame."""
+        from edison_client.models.app import TaskResponseVerbose
+
         if not response:
             return []
 
@@ -586,6 +608,8 @@ class FalconProvider(ResearchProvider):
         used_filenames: set[str],
     ) -> list[ResearchArtifact]:
         """Convert an Edison data-storage fetch result into research artifacts."""
+        from edison_client.models.data_storage_methods import RawFetchResponse
+
         if fetched is None:
             return []
 

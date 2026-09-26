@@ -30,6 +30,11 @@ class ResearchProvider(ABC):
     #: sentence asserting *why* would sometimes be false.
     registration_requirement: ClassVar[Optional[str]] = None
 
+    #: Set on a provider that is registered only so it can be discovered: the
+    #: upstream system has no public API yet, so no credential, install or
+    #: flag would make it work. Names the system and where to read about it.
+    stub_reason: ClassVar[Optional[str]] = None
+
     #: Whether this provider's output is real research. False for a provider
     #: that fabricates its reports, which keeps it out of the *automatic*
     #: fallback ordering: a run that ran out of credits should fail rather

@@ -23,11 +23,10 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
-from .client import PROVIDER_CLASS_PATHS, DeepResearchClient
+from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
 from .processing import ResearchProcessor
 from .model_cards import (
     PROVIDER_MODEL_CARDS,
-    DEEPER_MED_ARXIV_ID,
     ModelCard,
     get_provider_model_cards,
     find_models_by_cost,
@@ -87,14 +86,21 @@ PROVIDER_CREDENTIAL_HINTS = {
     "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
 }
 
-# Providers registered as stubs: the upstream system has no public API yet, so
-# they are not merely missing credentials and cannot be enabled by the user.
-# Keyed by provider name, valued by a short reason shown in `providers` output.
-PROVIDER_STUB_HINTS = {
-    "deeper_med": (
-        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
-    ),
-}
+def _stub_hints() -> dict[str, str]:
+    """Providers registered as stubs, with the reason each one is.
+
+    The upstream system has no public API yet, so these are not merely
+    missing credentials and cannot be enabled by the user. Read from each
+    class's ``stub_reason`` rather than kept as a table here (issue #70).
+
+    Returns:
+        Provider name -> short reason shown in `providers` output
+    """
+    return {
+        name: provider_class.stub_reason
+        for name in PROVIDER_CLASS_PATHS
+        if (provider_class := load_provider_class(name)).stub_reason
+    }
 
 
 def setup_logging(verbosity: int) -> None:
@@ -369,12 +375,13 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
     """
     available = set(client.get_available_providers())
     settable = set(_settable_credential_hints())
+    stubs = _stub_hints()
     other = [
         name
         for name in PROVIDER_CLASS_PATHS
         if name not in available
         and name not in settable
-        and name not in PROVIDER_STUB_HINTS
+        and name not in stubs
     ]
     if not other:
         return
@@ -420,10 +427,11 @@ def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None
 
 def _echo_stub_hints() -> None:
     """Print the stub providers, which no credential can enable."""
-    if not PROVIDER_STUB_HINTS:
+    stubs = _stub_hints()
+    if not stubs:
         return
     typer.echo("\nStub providers (not yet callable):")
-    for provider_name, reason in PROVIDER_STUB_HINTS.items():
+    for provider_name, reason in stubs.items():
         typer.echo(f"  - {provider_name}: {reason}")
 
 
@@ -1812,7 +1820,7 @@ def providers(
         is_available = provider in available
         if is_available:
             status = "Available"
-        elif provider in PROVIDER_STUB_HINTS:
+        elif provider in _stub_hints():
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
         elif provider in _settable_credential_hints():
@@ -1828,7 +1836,7 @@ def providers(
             # One helper for both paths, so the two cannot drift into two
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
-            label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
+            label = "Status" if provider in _stub_hints() else "Required"
             typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters

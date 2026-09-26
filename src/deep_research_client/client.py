@@ -44,6 +44,36 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
 }
 
 
+def load_provider_class(provider_name: str) -> type[ResearchProvider]:
+    """Import a provider's class by name, without constructing it.
+
+    The class is where a provider declares what it needs -- its credential,
+    its registration requirement, whether it is a stub -- so this is how the
+    CLI reads those facts instead of keeping its own copy (issue #70).
+    Provider modules import their optional dependencies lazily, so this is
+    safe without any extra installed.
+
+    Args:
+        provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+    Returns:
+        The provider class.
+
+    Raises:
+        ValueError: If the name is not a provider.
+
+    >>> load_provider_class("falcon").credential_env_var
+    'EDISON_API_KEY'
+    """
+    class_path = PROVIDER_CLASS_PATHS.get(provider_name)
+    if class_path is None:
+        raise ValueError(f"Unknown provider: {provider_name}")
+
+    module_name, class_name = class_path
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
 class DeepResearchClient:
     """Main client for accessing deep research tools."""
 
@@ -311,12 +341,8 @@ class DeepResearchClient:
         Returns:
             Human-readable explanation of what is missing
         """
-        paths = PROVIDER_CLASS_PATHS.get(provider_name)
-        if paths is None:
-            return f"'{provider_name}' is not configured"
-        module_name, class_name = paths
         try:
-            provider_class = getattr(importlib.import_module(module_name), class_name)
+            provider_class = load_provider_class(provider_name)
         except Exception:
             return f"'{provider_name}' is not configured"
         if provider_class.registration_requirement:
@@ -328,13 +354,7 @@ class DeepResearchClient:
 
     def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
         """Resolve a provider class only when it is actually needed."""
-        class_path = PROVIDER_CLASS_PATHS.get(provider_name)
-        if class_path is None:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-        module_name, class_name = class_path
-        module = importlib.import_module(module_name)
-        return getattr(module, class_name)
+        return load_provider_class(provider_name)
 
     def _create_provider(
         self,

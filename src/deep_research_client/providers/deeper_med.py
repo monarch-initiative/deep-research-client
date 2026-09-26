@@ -15,6 +15,7 @@ from typing import Optional
 
 from . import ResearchProvider
 from ..model_cards import (
+    DEEPER_MED_ARXIV_ID,
     DEEPER_MED_ARXIV_URL,
     ProviderModelCards,
     create_deeper_med_model_cards,
@@ -47,6 +48,8 @@ class DeeperMedProvider(ResearchProvider):
     :meth:`research` runs; :meth:`unavailable_reason` is what carries the
     explanation (and the arXiv pointer) out to them.
 
+    >>> DeeperMedProvider.stub_reason
+    'DeepER-Med - no public API released yet (arXiv:2604.15456)'
     >>> provider = DeeperMedProvider(ProviderConfig(name="deeper_med"))
     >>> provider.is_available()
     False
@@ -55,6 +58,8 @@ class DeeperMedProvider(ResearchProvider):
     >>> "arxiv.org" in provider.unavailable_reason()
     True
     """
+
+    stub_reason = f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
 
     def __init__(self, config: ProviderConfig, params: Optional[DeeperMedParams] = None):
         """Initialize the stub provider.

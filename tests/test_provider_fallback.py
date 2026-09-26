@@ -1536,11 +1536,9 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     sequence while claiming to pin the right one. Membership is the half that
     can be derived honestly, and is the half that actually drifted.
     """
-    import importlib
     import re
 
-    from deep_research_client.cli import PROVIDER_STUB_HINTS
-    from deep_research_client.client import PROVIDER_CLASS_PATHS
+    from deep_research_client.client import PROVIDER_CLASS_PATHS, load_provider_class
 
     doc = (
         pathlib.Path(__file__).resolve().parents[1]
@@ -1551,11 +1549,11 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     documented = {name.strip() for name in listed.group(1).split(",")}
 
     eligible = set()
-    for name, (module_name, class_name) in PROVIDER_CLASS_PATHS.items():
-        provider_class = getattr(importlib.import_module(module_name), class_name)
+    for name in PROVIDER_CLASS_PATHS:
+        provider_class = load_provider_class(name)
         # `_plan_providers` filters the automatic route by produces_real_reports,
         # and a stub can never be available to reach it in the first place.
-        if provider_class.produces_real_reports and name not in PROVIDER_STUB_HINTS:
+        if provider_class.produces_real_reports and not provider_class.stub_reason:
             eligible.add(name)
 
     assert documented == eligible, (

@@ -299,10 +299,10 @@ class NoProvidersConfiguredError(ProviderNotConfiguredError):
     >>> isinstance(err, ProviderNotConfiguredError), err.provider
     (True, '')
     >>> print(err)
-    No research providers available -- no provider is configured. Try: `deep-research-client providers` to list what could be configured, and `deep-research-client providers --check` to see which of those work
+    No research providers available -- set up at least one: an API key, a local CLI, or an optional package. Try: `deep-research-client providers` to list what could be configured, and `deep-research-client providers --check` to see which of those work
     """
 
-    remedy = "no provider is configured"
+    remedy = "set up at least one: an API key, a local CLI, or an optional package"
 
     def __init__(self, detail: str = "No research providers available"):
         """Build the error with no provider to name."""

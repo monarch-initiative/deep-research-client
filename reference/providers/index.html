@@ -3400,6 +3400,12 @@ apart from "try again":</p>
 <td>A locally-backed provider's binary is not on PATH, or its optional package is not installed (a kind of "not configured")</td>
 </tr>
 <tr>
+<td><code>NoProvidersConfiguredError</code></td>
+<td>—</td>
+<td>No</td>
+<td>No provider was named and none is available to pick automatically (a kind of "not configured"; <code>provider</code> is <code>""</code>)</td>
+</tr>
+<tr>
 <td><code>ProviderRateLimitError</code></td>
 <td>429</td>
 <td>Yes</td>
@@ -3413,9 +3419,10 @@ apart from "try again":</p>
 </tr>
 </tbody>
 </table>
-<p><code>ProviderNotInstalledError</code> subclasses <code>ProviderNotConfiguredError</code>, so one
-<code>except ProviderNotConfiguredError</code> covers a missing key, a missing CLI, and a
-missing optional package alike. All of them subclass <code>ProviderError</code> (itself a <code>ValueError</code>, so older callers
+<p><code>ProviderNotInstalledError</code> and <code>NoProvidersConfiguredError</code> subclass
+<code>ProviderNotConfiguredError</code>, so one <code>except ProviderNotConfiguredError</code> covers
+a missing key, a missing CLI, a missing optional package, and nothing being
+configured at all. All of them subclass <code>ProviderError</code> (itself a <code>ValueError</code>, so older callers
 still work) and carry <code>provider</code>, <code>status_code</code>, <code>detail</code>, and a <code>retryable</code>
 flag:</p>
 <pre><code class="language-python">from deep_research_client import ProviderBillingError, ProviderError

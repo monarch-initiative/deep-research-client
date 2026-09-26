@@ -59,6 +59,8 @@ class DeeperMedProvider(ResearchProvider):
     True
     """
 
+    #: Registered only so it can be discovered: no key, install or flag would
+    #: make it work until an upstream endpoint ships.
     stub_reason = f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
 
     def __init__(self, config: ProviderConfig, params: Optional[DeeperMedParams] = None):

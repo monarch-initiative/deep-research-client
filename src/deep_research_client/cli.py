@@ -2910,20 +2910,20 @@ def eval_fetch(
     # error, no sign the argument was blank. Refused here for the same reason
     # `LabBenchAdapter.load` refuses it.
     if not names:
-        typer.echo("No subset named.")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error("No subset named.")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     unknown = [n for n in names if n not in SUBSETS]
     if unknown:
-        typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error(f"Unknown subset(s): {', '.join(unknown)}")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     multimodal = [n for n in names if not SUBSETS[n][1]]
     if multimodal:
-        typer.echo(
-            f"NOTE: {', '.join(multimodal)} ask about figures or tables supplied as "
+        _warn(
+            f"{', '.join(multimodal)} ask about figures or tables supplied as "
             f"images. They will be cached, but `eval load` refuses them, so there is "
             f"no path from this download to a run."
         )
@@ -2946,10 +2946,10 @@ def eval_fetch(
     except ValueError as exc:
         # Upstream drift trips the row-count guard, which exists precisely so a
         # user finds out. Its siblings report that; this used to traceback.
-        typer.echo(f"Could not fetch the dataset: {exc}")
+        _error(f"Could not fetch the dataset: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset: {exc}")
+        _error(f"Could not reach the dataset: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -2973,10 +2973,10 @@ def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
     try:
         return load_eval_set(adapter, source)
     except (ValueError, FileNotFoundError) as exc:
-        typer.echo(f"Could not load the eval set {source}: {exc}")
+        _error(f"Could not load the eval set {source}: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset to load {source}: {exc}")
+        _error(f"Could not reach the dataset to load {source}: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -3140,7 +3140,7 @@ def eval_run(
     )
     from .evaluation.models import MCQScore
     if not arm and not arms_file:
-        typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
+        _error("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
         raise typer.Exit(1)
 
     arms: list = []
@@ -3151,7 +3151,7 @@ def eval_run(
 
     duplicate_ids = {arm_id for arm_id, n in Counter(a.id for a in arms).items() if n > 1}
     if duplicate_ids:
-        typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
+        _error(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
     eval_set = _load_eval_set_or_exit(adapter, source)
@@ -3161,12 +3161,12 @@ def eval_run(
         tasks = [t for t in tasks if t.id in wanted]
         missing = wanted - {t.id for t in tasks}
         if missing:
-            typer.echo(f"No task with id(s): {', '.join(sorted(missing))}")
+            _error(f"No task with id(s): {', '.join(sorted(missing))}")
             raise typer.Exit(1)
     if limit is not None:
         tasks = tasks[:limit]
     if not tasks:
-        typer.echo("No tasks selected.")
+        _error("No tasks selected.")
         raise typer.Exit(1)
     eval_set.tasks = tasks
 
@@ -3531,25 +3531,25 @@ def eval_score(
     tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
     if not tasks:
         present = sorted({t.answer_type for t in (eval_set.tasks or [])})
-        typer.echo(
+        _error(
             f"No report-shaped tasks in {eval_set.name}; it holds "
             f"{', '.join(present) or 'nothing'}."
         )
         if AnswerType.MULTIPLE_CHOICE in present:
-            typer.echo("  Multiple-choice sets are graded by `eval run --grade`, not here.")
+            _stderr("  Multiple-choice sets are graded by `eval run --grade`, not here.")
         if AnswerType.SHORT_ANSWER in present:
-            typer.echo("  Short-answer sets are not scored by this client at all yet.")
+            _stderr("  Short-answer sets are not scored by this client at all yet.")
         raise typer.Exit(1)
 
     if task_id:
         tasks = [t for t in tasks if t.id == task_id]
         if not tasks:
-            typer.echo(f"No task with id {task_id!r} in {eval_set.name}.")
+            _error(f"No task with id {task_id!r} in {eval_set.name}.")
             raise typer.Exit(1)
     elif len(tasks) > 1:
-        typer.echo(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
+        _error(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
         for t in tasks[:20]:
-            typer.echo(f"  {t.id}")
+            _stderr(f"  {t.id}")
         raise typer.Exit(1)
 
     task = tasks[0]

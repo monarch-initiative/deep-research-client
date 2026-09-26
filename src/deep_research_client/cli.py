@@ -1136,6 +1136,9 @@ def research(
         # adds is the trail, so that is all it prints. render_trail owns the
         # console-versus-report split that used to be argued here.
         if result.fell_back:
+            # One warning, so only its first line carries the prefix; the
+            # trail beneath reads as its body, as the failure path's does
+            # under its error. Prefixing each line would split it into many.
             _warn(
                 "Providers tried:\n"
                 + ProviderAttempt.render_trail(result.provider_attempts)

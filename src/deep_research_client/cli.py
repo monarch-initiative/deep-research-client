@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import asyncio
 import logging
 import os
-import re
 import typer
 from pathlib import Path
 from enum import Enum
@@ -73,18 +72,6 @@ logger = logging.getLogger("deep_research_client")
 
 app = typer.Typer(
     help="deep-research-client: Wrapper for multiple deep research tools")
-
-PROVIDER_CREDENTIAL_HINTS = {
-    "openai": ("OPENAI_API_KEY", "OpenAI Deep Research"),
-    "falcon": ("EDISON_API_KEY", "Edison Scientific"),
-    "asta": ("ASTA_API_KEY", "Asta"),
-    "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
-    "consensus": ("CONSENSUS_API_KEY", "Consensus"),
-    "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
-    "tooluniverse": ("TOOLUNIVERSE_API_KEY", "ToolUniverse underlying LLM"),
-    "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
-    "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
-}
 
 def _stub_hints() -> dict[str, str]:
     """Providers registered as stubs, with the reason each one is.
@@ -391,25 +378,22 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
         typer.echo(f"  - {name}: {client.unregistered_reason(name)}")
 
 
-#: A credential hint that names an environment variable, rather than something
-#: else the provider needs (a binary on PATH, an installed package).
-_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
-
-
 def _settable_credential_hints() -> list[str]:
-    """Providers a user can enable by setting an environment variable.
+    """Providers a user can enable by exporting an API key.
 
-    Under a heading that says "set API keys", a CLI on PATH and a test double
-    are not answers. Those entries exist for the `providers` listing, which
-    describes what each provider needs rather than telling anyone to set it.
+    Read from each class's ``credential_env_var`` rather than kept as a table
+    here (issue #70). That is also what keeps the list honest: a provider that
+    needs a binary on PATH, an optional install or an opt-in flag declares no
+    credential variable, so it can never appear under "set API keys". Those
+    providers are described under "Other unavailable providers" instead.
 
     Returns:
-        Provider names whose hint is a variable the reader can export
+        Provider names, in registry order, whose credential is a variable
     """
     return [
         name
-        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
-        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+        for name in PROVIDER_CLASS_PATHS
+        if load_provider_class(name).credential_env_var
     ]
 
 
@@ -421,8 +405,9 @@ def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None
         err: Write to stderr rather than stdout, to stay with a heading there.
     """
     for provider_name in provider_names:
-        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        typer.echo(f"  - {env_var} for {label}", err=err)
+        provider_class = load_provider_class(provider_name)
+        label = provider_class.credential_label or provider_name
+        typer.echo(f"  - {provider_class.credential_env_var} for {label}", err=err)
 
 
 def _echo_stub_hints() -> None:
@@ -473,7 +458,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # absent one is usually an unset key rather than a typo. Saying
             # "unknown" here would send the reader hunting for a spelling
             # mistake instead of exporting a variable.
-            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+            if provider in PROVIDER_PARAMS_REGISTRY:
                 typer.echo("Provider health:")
                 unconfigured = ProviderHealth(
                     provider=provider,

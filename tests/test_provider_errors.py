@@ -355,29 +355,23 @@ def test_every_keyed_provider_reports_a_missing_key_the_same_way(name, provider_
     assert provider.credential_env_var in str(excinfo.value)
 
 
-@pytest.mark.parametrize(
-    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else None
-)
-def test_the_cli_hint_table_agrees_with_the_provider_it_describes(name, provider_class):
-    """Two places name each credential; they must not drift into two answers."""
-    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
+def test_the_cli_offers_exactly_the_keyed_providers_and_names_their_keys(capsys):
+    """The CLI reads each credential from the class, so there is nothing to drift.
 
-    assert name in PROVIDER_CREDENTIAL_HINTS, (
-        f"{name} needs an entry in PROVIDER_CREDENTIAL_HINTS so the CLI can name its key"
-    )
-    assert PROVIDER_CREDENTIAL_HINTS[name] == (
-        provider_class.credential_env_var,
-        provider_class.credential_label,
-    )
+    Before issue #70 the CLI kept its own table, and a test compared the two.
+    What is left to pin is the reading itself: every keyed provider is offered,
+    nothing else is, and each line says the variable the class declares.
+    """
+    from deep_research_client import cli as cli_module
 
+    keyed = _keyed_provider_classes()
+    assert cli_module._settable_credential_hints() == [name for name, _ in keyed]
 
-def test_the_hint_table_names_no_provider_that_no_longer_exists():
-    """The cross-check above runs one way; this closes the other direction."""
-    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
-    from deep_research_client.client import PROVIDER_CLASS_PATHS
-
-    stale = set(PROVIDER_CREDENTIAL_HINTS) - set(PROVIDER_CLASS_PATHS)
-    assert not stale, f"hint entries naming providers that no longer exist: {stale}"
+    cli_module._echo_credential_hints([name for name, _ in keyed])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        f"  - {cls.credential_env_var} for {cls.credential_label}" for _, cls in keyed
+    ]
 
 
 def test_the_registry_actually_yields_keyed_providers():

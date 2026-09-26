@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import asyncio
 import logging
 import os
-import re
 import typer
 from pathlib import Path
 from enum import Enum
@@ -23,11 +22,10 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
-from .client import PROVIDER_CLASS_PATHS, DeepResearchClient
+from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
 from .processing import ResearchProcessor
 from .model_cards import (
     PROVIDER_MODEL_CARDS,
-    DEEPER_MED_ARXIV_ID,
     ModelCard,
     get_provider_model_cards,
     find_models_by_cost,
@@ -75,26 +73,21 @@ logger = logging.getLogger("deep_research_client")
 app = typer.Typer(
     help="deep-research-client: Wrapper for multiple deep research tools")
 
-PROVIDER_CREDENTIAL_HINTS = {
-    "openai": ("OPENAI_API_KEY", "OpenAI Deep Research"),
-    "falcon": ("EDISON_API_KEY", "Edison Scientific"),
-    "asta": ("ASTA_API_KEY", "Asta"),
-    "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
-    "consensus": ("CONSENSUS_API_KEY", "Consensus"),
-    "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
-    "tooluniverse": ("TOOLUNIVERSE_API_KEY", "ToolUniverse underlying LLM"),
-    "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
-    "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
-}
+def _stub_hints() -> dict[str, str]:
+    """Providers registered as stubs, with the reason each one is.
 
-# Providers registered as stubs: the upstream system has no public API yet, so
-# they are not merely missing credentials and cannot be enabled by the user.
-# Keyed by provider name, valued by a short reason shown in `providers` output.
-PROVIDER_STUB_HINTS = {
-    "deeper_med": (
-        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
-    ),
-}
+    The upstream system has no public API yet, so these are not merely
+    missing credentials and cannot be enabled by the user. Read from each
+    class's ``stub_reason`` rather than kept as a table here (issue #70).
+
+    Returns:
+        Provider name -> short reason shown in `providers` output
+    """
+    return {
+        name: provider_class.stub_reason
+        for name in PROVIDER_CLASS_PATHS
+        if (provider_class := load_provider_class(name)).stub_reason
+    }
 
 
 def setup_logging(verbosity: int) -> None:
@@ -369,12 +362,13 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
     """
     available = set(client.get_available_providers())
     settable = set(_settable_credential_hints())
+    stubs = _stub_hints()
     other = [
         name
         for name in PROVIDER_CLASS_PATHS
         if name not in available
         and name not in settable
-        and name not in PROVIDER_STUB_HINTS
+        and name not in stubs
     ]
     if not other:
         return
@@ -384,25 +378,22 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
         typer.echo(f"  - {name}: {client.unregistered_reason(name)}")
 
 
-#: A credential hint that names an environment variable, rather than something
-#: else the provider needs (a binary on PATH, an installed package).
-_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
-
-
 def _settable_credential_hints() -> list[str]:
-    """Providers a user can enable by setting an environment variable.
+    """Providers a user can enable by exporting an API key.
 
-    Under a heading that says "set API keys", a CLI on PATH and a test double
-    are not answers. Those entries exist for the `providers` listing, which
-    describes what each provider needs rather than telling anyone to set it.
+    Read from each class's ``credential_env_var`` rather than kept as a table
+    here (issue #70). That is also what keeps the list honest: a provider that
+    needs a binary on PATH, an optional install or an opt-in flag declares no
+    credential variable, so it can never appear under "set API keys". Those
+    providers are described under "Other unavailable providers" instead.
 
     Returns:
-        Provider names whose hint is a variable the reader can export
+        Provider names, in registry order, whose credential is a variable
     """
     return [
         name
-        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
-        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+        for name in PROVIDER_CLASS_PATHS
+        if load_provider_class(name).credential_env_var
     ]
 
 
@@ -414,16 +405,18 @@ def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None
         err: Write to stderr rather than stdout, to stay with a heading there.
     """
     for provider_name in provider_names:
-        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        typer.echo(f"  - {env_var} for {label}", err=err)
+        provider_class = load_provider_class(provider_name)
+        label = provider_class.credential_label or provider_name
+        typer.echo(f"  - {provider_class.credential_env_var} for {label}", err=err)
 
 
 def _echo_stub_hints() -> None:
     """Print the stub providers, which no credential can enable."""
-    if not PROVIDER_STUB_HINTS:
+    stubs = _stub_hints()
+    if not stubs:
         return
     typer.echo("\nStub providers (not yet callable):")
-    for provider_name, reason in PROVIDER_STUB_HINTS.items():
+    for provider_name, reason in stubs.items():
         typer.echo(f"  - {provider_name}: {reason}")
 
 
@@ -465,7 +458,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # absent one is usually an unset key rather than a typo. Saying
             # "unknown" here would send the reader hunting for a spelling
             # mistake instead of exporting a variable.
-            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+            if provider in PROVIDER_PARAMS_REGISTRY:
                 typer.echo("Provider health:")
                 unconfigured = ProviderHealth(
                     provider=provider,
@@ -1809,13 +1802,17 @@ def providers(
             _report_unknown_provider(provider)
             raise typer.Exit(1)
 
+        # One provider, so ask its class directly rather than building the
+        # stub and credential lists for all of them.
+        provider_class = load_provider_class(provider)
+        is_stub = provider_class.stub_reason is not None
         is_available = provider in available
         if is_available:
             status = "Available"
-        elif provider in PROVIDER_STUB_HINTS:
+        elif is_stub:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        elif provider in _settable_credential_hints():
+        elif provider_class.credential_env_var:
             status = "Not available (missing API key)"
         else:
             # Not every hint is a credential: claude_code needs a binary and
@@ -1828,7 +1825,7 @@ def providers(
             # One helper for both paths, so the two cannot drift into two
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
-            label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
+            label = "Status" if is_stub else "Required"
             typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters

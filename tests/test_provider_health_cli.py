@@ -12,10 +12,10 @@ import typer
 from typer.testing import CliRunner
 
 from deep_research_client.cli import (
-    PROVIDER_CREDENTIAL_HINTS,
     _check_provider_health,
     _settable_credential_hints,
 )
+from deep_research_client.client import PROVIDER_CLASS_PATHS, load_provider_class
 from deep_research_client.models import ProviderHealth
 
 if TYPE_CHECKING:
@@ -182,19 +182,18 @@ def bare_machine(monkeypatch):
     whole point of the client's availability guard. Fixing the environment is
     what makes these assertions about wording rather than about the machine.
 
-    The variables are read out of the CLI's own hint table rather than listed
-    here, so a provider added to that table cannot leave a stale exception.
+    The variables are read from the provider classes rather than listed here,
+    so a keyed provider added to the registry cannot leave a stale exception.
     """
     import shutil
 
     monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
     for provider_name in _settable_credential_hints():
-        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        monkeypatch.delenv(requirement.split("=")[0], raising=False)
-    # Three gates the table cannot supply: the deprecated alias the client still
-    # accepts for falcon, the mock that `_settable_credential_hints` filters out
-    # by name, and biomni, which is gated on an import rather than a variable --
-    # so `uv sync --extra biomni` would otherwise register it.
+        monkeypatch.delenv(load_provider_class(provider_name).credential_env_var, raising=False)
+    # Three gates no credential variable covers: the deprecated alias the client
+    # still accepts for falcon, the mock's opt-in flag, and biomni, which is
+    # gated on an import rather than a variable -- so `uv sync --extra biomni`
+    # would otherwise register it.
     monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
     monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
     monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
@@ -480,12 +479,10 @@ def _sections_by_provider(output: str) -> dict[str, list[str]]:
     Returns:
         Provider name to the headings under which it appeared
     """
-    # Only settable hints are ever printed as credential lines. Mapping the rest
-    # would invent keys from their prose -- claude_code's "the `claude` CLI on
-    # PATH" registers "the" -- and attribute any future line starting "- the" to
-    # a provider that is not in that section at all.
+    # Only keyed providers are ever printed as credential lines, so only their
+    # variables identify a provider; every other line names it directly.
     owner_of = {
-        PROVIDER_CREDENTIAL_HINTS[name][0].split("=")[0]: name
+        load_provider_class(name).credential_env_var: name
         for name in _settable_credential_hints()
     }
     seen: dict[str, list[str]] = {}
@@ -543,3 +540,32 @@ def test_every_provider_lands_in_exactly_one_section(
             f"{name} is explained under {sections[name]} -- twice, and so "
             f"possibly with two different answers"
         )
+
+
+#: What the client and base class say when a provider declares nothing about
+#: what it needs. Each is true, and none tells a reader what to do.
+_GENERIC_ABSENCE = (
+    "is not registered in this environment",
+    "is not configured",
+    "is not available",
+)
+
+
+@pytest.mark.parametrize("name", list(PROVIDER_CLASS_PATHS))
+def test_every_provider_says_what_it_needs_on_a_bare_machine(bare_machine, name):
+    """The class declarations must cover every provider, or #70 is half done.
+
+    A provider gated at registration (an opt-out, an opt-in flag, a probed
+    binary) that forgot `registration_requirement`, or a keyed one that forgot
+    `credential_env_var`, falls through to one of the generic sentences above.
+    Derived from the registry, so a provider added later is covered too.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    client = DeepResearchClient()
+    assert name not in client.get_available_providers(), "the fixture should leave nothing usable"
+
+    reason = client.unregistered_reason(name)
+    assert not any(generic in reason for generic in _GENERIC_ABSENCE), (
+        f"{name} explains its absence only as {reason!r}; declare what it needs on the class"
+    )

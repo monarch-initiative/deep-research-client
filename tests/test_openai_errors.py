@@ -95,7 +95,7 @@ def test_research_raises_the_classified_error(monkeypatch):
         responses = _FailingResponses()
 
     monkeypatch.setattr(
-        "deep_research_client.providers.openai.OpenAI", lambda **kwargs: _FailingClient()
+        "openai.OpenAI", lambda **kwargs: _FailingClient()
     )
 
     with pytest.raises(ProviderBillingError) as excinfo:
@@ -120,7 +120,7 @@ def test_probe_reports_unreachable_on_bad_key(monkeypatch):
             """Match the real client, which the probe closes."""
 
     monkeypatch.setattr(
-        "deep_research_client.providers.openai.OpenAI", lambda **kwargs: _FailingClient()
+        "openai.OpenAI", lambda **kwargs: _FailingClient()
     )
 
     health = asyncio.run(provider.check_health())
@@ -144,7 +144,7 @@ def test_probe_says_what_it_cannot_prove(monkeypatch):
             """Match the real client, which the probe closes."""
 
     monkeypatch.setattr(
-        "deep_research_client.providers.openai.OpenAI", lambda **kwargs: _Client()
+        "openai.OpenAI", lambda **kwargs: _Client()
     )
 
     health = asyncio.run(provider.check_health())
@@ -166,7 +166,7 @@ def test_probe_returns_a_record_even_if_the_client_cannot_be_built(monkeypatch):
     def _bad_client(**kwargs):
         raise ValueError("Invalid base_url: 'not-a-url'")
 
-    monkeypatch.setattr("deep_research_client.providers.openai.OpenAI", _bad_client)
+    monkeypatch.setattr("openai.OpenAI", _bad_client)
 
     health = asyncio.run(_provider().check_health())
 

@@ -10,7 +10,6 @@ from uuid import UUID
 # Skip all tests in this module if edison_client is not installed
 pytest.importorskip("edison_client")
 
-from deep_research_client.providers import falcon as falcon_module
 from deep_research_client.providers.falcon import FalconProvider
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import FalconParams
@@ -731,7 +730,8 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
         created_clients.append(client)
         return client
 
-    monkeypatch.setattr(falcon_module, "EdisonClient", fake_client_factory)
+    # The provider imports the SDK where it uses it, so patch it at its source.
+    monkeypatch.setattr("edison_client.EdisonClient", fake_client_factory)
 
     provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
     research_result = asyncio.run(provider.research("fresh query"))

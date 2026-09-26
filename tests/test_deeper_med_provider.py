@@ -100,13 +100,15 @@ def test_disabled_provider_says_so():
 
 
 def test_a_provider_that_names_its_credential_says_which_one():
-    """The whole point of the base implementation: name the variable to set."""
+    """The whole point of the base implementation: name the variable to set.
+
+    Named for the account the key belongs to. "OpenAI Deep Research API key"
+    suggested a key specific to one product, which does not exist.
+    """
     from deep_research_client.providers.openai import OpenAIProvider
 
     provider = OpenAIProvider(ProviderConfig(name="openai", api_key=None, enabled=True))
-    assert provider.unavailable_reason() == (
-        "no OpenAI Deep Research API key configured (set OPENAI_API_KEY)"
-    )
+    assert provider.unavailable_reason() == "no OpenAI API key configured (set OPENAI_API_KEY)"
 
 
 # --- Client-level integration of the stub ---------------------------------

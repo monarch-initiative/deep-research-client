@@ -255,6 +255,14 @@ longer reach* below.
 
 ### Things to know
 
+**A provider that could not answer is not a failure to fall back from.** When
+a run completes but the provider reports it could not answer -- falcon when its
+retrieval finds no papers -- the report is written and marked
+`answer_status: unsuccessful`, the CLI exits with code 4, and the next
+candidate is *not* tried. The run did complete, and trying another provider
+would bill a second one for a question the first may have found no literature
+for. To try another provider, rerun with `--provider`.
+
 **`--model` and `--param` apply to the first provider only.** They were chosen
 for the provider you named -- a Perplexity model name means nothing to OpenAI,
 and an unknown parameter is a hard error. A fallback provider therefore runs on

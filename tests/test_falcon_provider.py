@@ -18,7 +18,7 @@ from deep_research_client.provider_params import FalconParams
 def create_mock_pqa_response(
     answer: str = "Test answer",
     formatted_answer: str = "Test formatted answer with references",
-    has_successful_answer: bool = True
+    has_successful_answer: bool | None = True
 ):
     """Create a mock PQATaskResponse for testing."""
     from edison_client.models.app import PQATaskResponse
@@ -82,6 +82,86 @@ def test_extract_text_from_pqa_response():
 
     text = provider._extract_text_content(response)
     assert text == "Formatted answer with (smith2020study pages 1-5) citations"
+
+
+def _answer_frame(answer: dict) -> dict:
+    """Wrap an answer dict in the environment frame Edison returns."""
+    return {"state": {"state": {"response": {"answer": answer}}}}
+
+
+def test_the_echoed_prompt_is_not_repeated_in_the_output():
+    """paper-qa restates the question atop formatted_answer; the report has it already.
+
+    Issue #52: on a failed run the echo was ~200 lines of prompt around a
+    one-paragraph answer, easy to skim past as if it were a report.
+    """
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_verbose_response(_answer_frame({
+        "answer": "No contexts were retrieved.",
+        "formatted_answer": (
+            "Question: test query\n\nNo contexts were retrieved.\n\n"
+            "References\n\n1. (smith2020 pages 1-2): Smith. A paper. 2020."
+        ),
+    }))]
+
+    text = provider._extract_text_content(response)
+
+    assert not text.startswith("Question:")
+    assert "test query" not in text
+    assert text.startswith("No contexts were retrieved.")
+    assert "References" in text, "the references stay, for citation extraction"
+
+
+def test_a_question_that_does_not_match_the_query_is_kept(caplog):
+    """Only the exact echo goes: an unfamiliar format costs a duplicate, not the answer.
+
+    It is logged, so a returning duplicate can be traced to a mismatch.
+    """
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    formatted = "Question: something else\n\nThe answer."
+    response = [create_verbose_response(_answer_frame({"formatted_answer": formatted}))]
+
+    with caplog.at_level("DEBUG", logger="deep_research_client.providers.falcon"):
+        assert provider._extract_text_content(response) == formatted
+
+    assert "does not match the query" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "answer,expected",
+    [
+        ({"formatted_answer": "A", "has_successful_answer": True}, True),
+        ({"formatted_answer": "A", "has_successful_answer": False}, False),
+        # The agent never completed: after a finished run, not an answer either.
+        ({"formatted_answer": "A", "has_successful_answer": None}, False),
+        # The key is missing: Edison said nothing, so neither do we.
+        ({"formatted_answer": "A"}, None),
+    ],
+    ids=["sure", "unsure", "never-completed", "not-reported"],
+)
+def test_the_result_records_whether_edison_answered(answer, expected):
+    """has_successful_answer is how a failed run like issue #52's shows up."""
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_verbose_response(_answer_frame(answer))]
+
+    result = provider._result_from_response(None, response, "test query")
+
+    assert result.answer_successful is expected
+
+
+@pytest.mark.parametrize(
+    "flag,expected",
+    [(True, True), (False, False), (None, None)],
+    ids=["sure", "unsure", "unset-is-unknown"],
+)
+def test_a_non_verbose_response_passes_its_flag_through(flag, expected):
+    """PQATaskResponse cannot tell a missing flag from None, so None stays unknown."""
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_mock_pqa_response(has_successful_answer=flag)]
+
+    result = provider._result_from_response(None, response, "test query")
+
+    assert result.answer_successful is expected
 
 
 def test_extract_text_from_verbose_response():

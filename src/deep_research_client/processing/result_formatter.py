@@ -85,9 +85,8 @@ class ResultFormatter:
         # make a report produced by a stand-in read as a deliberate choice.
         metadata.update(result.fallback_frontmatter())
 
-        # Add citation count
-        if result.citations:
-            metadata["citation_count"] = len(result.citations)
+        # Whether the provider answered at all, and how many citations back it.
+        metadata.update(result.answer_frontmatter())
 
         # Add reference validation summary
         if reference_validation is not None:
@@ -146,6 +145,10 @@ class ResultFormatter:
         # Add output section
         parts.append("## Output")
         parts.append("")
+        # First thing under the heading, so a reader skimming for the report
+        # meets it before the provider's text.
+        if warning := result.answer_warning():
+            parts.extend([warning, ""])
         parts.append(result.markdown)
 
         if result.artifacts:

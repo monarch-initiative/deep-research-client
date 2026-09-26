@@ -135,6 +135,8 @@ params = FalconParams(
 - **Speed**: 2-5 minutes
 - **Capabilities**: Scientific literature, powered by PaperQA3
 - **Artifacts**: Edison output artifacts are fetched from the completed task. Image artifacts such as diagrams, charts, and figures are written beside saved reports and embedded in the generated Markdown; other artifact files are linked from an `Artifacts` section.
+- **Runs that find nothing**: when Edison's agent was not sure of its answer (`has_successful_answer` false or never set) -- typically because retrieval found no papers -- the report is still written with its artifacts, but its frontmatter says `answer_status: unsuccessful`, `## Output` opens with a warning, the result is not cached, and the CLI exits with code 4. Which papers Edison can retrieve is up to its own corpus and search, not this client.
+- **Failures cached before this was added**: a run that failed this way under an earlier version was cached like any report, and a cache entry records no `answer_status`, so it is still served as one. If you hit this before upgrading, rerun that query with `--no-cache` (or `deep-research-client clear-cache`, which clears everything) to get a fresh run.
 
 ---
 

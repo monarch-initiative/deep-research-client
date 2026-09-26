@@ -45,6 +45,48 @@ type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
 
 
+def _without_echoed_question(formatted_answer: str, query: str | None) -> str:
+    r"""Drop the question paper-qa restates at the top of its formatted answer.
+
+    paper-qa builds ``formatted_answer`` as ``f"Question: {question}\n\n{answer}"``
+    plus references. The question is the whole prompt we sent, which the
+    report already carries under ``## Question``, so keeping the echo put every
+    templated prompt in the file twice -- and on a failed run, where the answer
+    is one paragraph, the echo was most of the file (issue #52).
+
+    Removed only on an exact match with what was sent. Anything else is left
+    alone, so a change to Edison's format costs a duplicate, never the answer.
+
+    Args:
+        formatted_answer: Edison's formatted answer.
+        query: The query the task was sent with.
+
+    Returns:
+        The answer and its references, without the restated question.
+
+    >>> _without_echoed_question("Question: Why?\n\nBecause.\n\nReferences\n\n1. X", "Why?")
+    'Because.\n\nReferences\n\n1. X'
+    >>> _without_echoed_question("Question: Why not?\n\nBecause.", "Why?")
+    'Question: Why not?\n\nBecause.'
+    >>> _without_echoed_question("Because.", None)
+    'Because.'
+    """
+    if query is None:
+        return formatted_answer
+    echo = f"Question: {query}\n\n"
+    if formatted_answer.startswith(echo):
+        return formatted_answer[len(echo):]
+    if formatted_answer.startswith("Question: "):
+        # The shape is there but the text differs -- whitespace normalised
+        # upstream, say. Left alone, as documented, but visible under -v so a
+        # returning duplicate can be traced to this rather than rediscovered.
+        logger.debug(
+            "Edison's answer restates a question that does not match the query "
+            "sent, so it was kept; the report will show the prompt twice"
+        )
+    return formatted_answer
+
+
 class _ImageMessageGroup(TypedDict):
     """Representative embedded Edison image plus its optional description."""
 
@@ -224,7 +266,45 @@ class FalconProvider(ResearchProvider):
             artifacts=artifacts,
             provider=self.name,
             query=query,
+            answer_successful=self._answer_successful(response),
         )
+
+    def _answer_successful(self, response: EdisonResponse) -> Optional[bool]:
+        """Read whether Edison's agent says it answered the question.
+
+        paper-qa's ``has_successful_answer`` is True when the agent was sure of
+        its answer, False when it was not, and None when it never completed.
+        After a finished run, None and False both mean the text is not a
+        report -- the case in issue #52, where retrieval found no papers and
+        the "answer" explains why there is none.
+
+        A verbose frame that lacks the key entirely says nothing either way,
+        so that is None: reading a format change as a failed run would mark
+        every report failed.
+
+        The non-verbose ``PQATaskResponse`` is passed through as it is, None
+        included, because it cannot draw that distinction: its validator
+        assigns ``answer.get("has_successful_answer")`` unconditionally, so a
+        missing key and an explicit None arrive identical. Treating that None
+        as a failure would be the false alarm the verbose path avoids. Falcon
+        requests verbose responses for every run, so this path is reached only
+        by a caller handing in a non-verbose response.
+
+        Args:
+            response: The validated Edison response.
+
+        Returns:
+            True or False when Edison says, None when it does not.
+        """
+        from edison_client.models.app import TaskResponseVerbose
+
+        task_response = response[0]
+        if isinstance(task_response, TaskResponseVerbose):
+            answer = self._get_verbose_answer(task_response)
+            if "has_successful_answer" not in answer:
+                return None
+            return answer["has_successful_answer"] is True
+        return task_response.has_successful_answer
 
     def _coerce_response(self, response: Sequence[Any]) -> EdisonResponse:
         """Validate Edison client responses against the shapes this provider supports."""
@@ -259,7 +339,7 @@ class FalconProvider(ResearchProvider):
         if isinstance(task_response, TaskResponseVerbose):
             answer = self._get_verbose_answer(task_response)
             if formatted_answer := answer.get("formatted_answer"):
-                return str(formatted_answer)
+                return _without_echoed_question(str(formatted_answer), task_response.query)
             if plain_answer := answer.get("answer"):
                 return str(plain_answer)
             raise ValueError(
@@ -274,7 +354,7 @@ class FalconProvider(ResearchProvider):
 
         # Prefer formatted_answer as it includes references
         if task_response.formatted_answer:
-            return task_response.formatted_answer
+            return _without_echoed_question(task_response.formatted_answer, task_response.query)
         elif task_response.answer:
             return task_response.answer
         else:

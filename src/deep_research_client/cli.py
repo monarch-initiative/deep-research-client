@@ -420,6 +420,35 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+#: Exit code for a run that wrote its output, but whose provider says it could
+#: not answer. Distinct from 1 (nothing was produced) and from 2 and 3
+#: (validation), so a script can tell "no report" from "a bad report".
+EXIT_UNSUCCESSFUL_ANSWER = 4
+
+
+def _exit_if_unsuccessful(result: ResearchResult) -> None:
+    """End a run whose provider could not answer, after its output is written.
+
+    The output is still written, since a long paid run's drafts and artifacts
+    are worth keeping, but the exit code is not 0: a pipeline that checks only
+    the exit status must not file this as a report (issue #52).
+
+    Args:
+        result: The result just written or printed.
+
+    Raises:
+        typer.Exit: With EXIT_UNSUCCESSFUL_ANSWER, when the provider says it
+            could not answer.
+    """
+    if result.answer_successful is not False:
+        return
+    _warn(
+        f"{result.provider} could not answer this question. The output is its "
+        f"response, not a finished report (answer_status: unsuccessful)."
+    )
+    raise typer.Exit(EXIT_UNSUCCESSFUL_ANSWER)
+
+
 def _report_unknown_provider(provider: str) -> None:
     """Tell the user a provider name is not one, and list the names that are.
 
@@ -1211,6 +1240,12 @@ def research(
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
+    # Before validation, not after it: the provider's explanation of why it
+    # could not answer has nothing worth validating, the lookups would cost
+    # network calls, and a validation failure (exit 3) would otherwise mask
+    # the more fundamental one.
+    _exit_if_unsuccessful(result)
+
     if not validate_references and not validate_terms:
         return
 
@@ -1665,6 +1700,10 @@ def edison_trajectory(
         _error(str(e))
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    # Outside the try: typer.Exit is a RuntimeError, which the handler above
+    # would report as an error and turn into exit 1.
+    _exit_if_unsuccessful(result)
 
 
 class TranscriptStatsFormat(str, Enum):

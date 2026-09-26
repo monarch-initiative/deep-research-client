@@ -304,7 +304,8 @@ Research content...
 | `start_time` | datetime | When research started |
 | `end_time` | datetime | When research completed |
 | `duration_seconds` | float | Total duration |
-| `citation_count` | integer | Number of citations |
+| `citation_count` | integer | Number of citations; always present, so `0` means none rather than not recorded. A provider that does not extract citations also writes `0`, so check `answer_status` to tell a failed run apart |
+| `answer_status` | string | `successful` or `unsuccessful`, when the provider reports whether it answered (falcon does). `unsuccessful` means the output is the provider's explanation, not a report; `## Output` then opens with a warning line |
 | `template_file` | string | Template file used (if any) |
 | `template_variables` | object | Variables passed to template |
 | `provider_config` | object | Provider configuration |

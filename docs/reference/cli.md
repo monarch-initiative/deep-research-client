@@ -894,7 +894,10 @@ which the CLI sends to stderr.
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Error (invalid options, API failure, etc.) |
+| 1 | Error (invalid options, API failure, etc.); nothing was produced |
+| 2 | `--fail-on-unresolved` and validation found unresolved references or terms |
+| 3 | Reference or term validation itself failed (e.g. a service was unreachable); the report was already written |
+| 4 | The output was written, but the provider reported it could not answer the question; the file is marked `answer_status: unsuccessful`, was not cached, and was not validated even if `--validate-references` / `--validate-terms` were given |
 
 ## Shell Completion
 

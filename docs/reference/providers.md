@@ -847,12 +847,14 @@ apart from "try again":
 | `ProviderQuotaError` | — | No | Plan's usage allowance is spent; carries `resets_at` when the provider says (bounded by the class, so a trailing `…` on it came from us, not the provider) |
 | `ProviderNotConfiguredError` | — | No | No credential set; nothing was sent, so nothing was rejected |
 | `ProviderNotInstalledError` | — | No | A locally-backed provider's binary is not on PATH, or its optional package is not installed (a kind of "not configured") |
+| `NoProvidersConfiguredError` | — | No | No provider was named and none is available to pick automatically (a kind of "not configured"; `provider` is `""`) |
 | `ProviderRateLimitError` | 429 | Yes | Throttled; wait and retry |
 | `ProviderTransientError` | 5xx | Yes | Temporary server-side failure |
 
-`ProviderNotInstalledError` subclasses `ProviderNotConfiguredError`, so one
-`except ProviderNotConfiguredError` covers a missing key, a missing CLI, and a
-missing optional package alike. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
+`ProviderNotInstalledError` and `NoProvidersConfiguredError` subclass
+`ProviderNotConfiguredError`, so one `except ProviderNotConfiguredError` covers
+a missing key, a missing CLI, a missing optional package, and nothing being
+configured at all. All of them subclass `ProviderError` (itself a `ValueError`, so older callers
 still work) and carry `provider`, `status_code`, `detail`, and a `retryable`
 flag:
 

@@ -55,6 +55,7 @@ __all__ = [
     "ProviderQuotaError",
     "ProviderNotConfiguredError",
     "ProviderNotInstalledError",
+    "NoProvidersConfiguredError",
     "ProviderRateLimitError",
     "ProviderTransientError",
     "truncate_detail",
@@ -277,6 +278,58 @@ class ProviderNotInstalledError(ProviderNotConfiguredError):
     """
 
     remedy = "the required local tool or package is not installed"
+
+
+class NoProvidersConfiguredError(ProviderNotConfiguredError):
+    """No provider was named, and none is set up to be picked automatically.
+
+    The most ordinary misconfiguration of all, so it belongs under
+    :class:`ProviderNotConfiguredError`: a caller skipping unusable providers
+    with that one ``except`` clause should not need a second for "nothing is
+    configured". It is a subclass rather than a nameless base instance because
+    there is no provider to name, and the inherited message leads with one.
+
+    ``provider`` is an empty string rather than ``None``, keeping the base's
+    type; nothing here renders it.
+
+    Args:
+        detail: What was found, in place of a provider's own description.
+
+    >>> err = NoProvidersConfiguredError()
+    >>> isinstance(err, ProviderNotConfiguredError), err.provider
+    (True, '')
+    >>> print(err)
+    No research providers available -- no provider is configured. Try: `deep-research-client providers` to list what could be configured, and `deep-research-client providers --check` to see which of those work
+    """
+
+    remedy = "no provider is configured"
+
+    def __init__(self, detail: str = "No research providers available"):
+        """Build the error with no provider to name."""
+        super().__init__("", detail)
+
+    def __reduce__(self) -> tuple:
+        """Rebuild through ``__init__``, which takes only the detail.
+
+        Returns:
+            Callable and arguments that reconstruct an equal error
+        """
+        return (type(self), (self.detail,))
+
+    def actionable_message(self) -> str:
+        """Render a message that names the next step without naming a provider.
+
+        The base's advice -- re-run with another provider -- does not apply
+        when there is no first one, so this points at discovery instead.
+
+        Returns:
+            The diagnosis, followed by the commands that find a provider to set up.
+        """
+        return (
+            f"{self.diagnosis}. Try: `deep-research-client providers` to list "
+            f"what could be configured, and `deep-research-client providers "
+            f"--check` to see which of those work"
+        )
 
 
 class ProviderRateLimitError(ProviderError):

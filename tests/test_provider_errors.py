@@ -249,6 +249,30 @@ def test_not_configured_is_one_catchable_class():
     assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)
 
 
+def test_no_providers_configured_reads_without_a_provider_name():
+    """With no provider to name, the message must not lead with an empty one.
+
+    It must still point at the next step: the listing that says what could be
+    configured, and the check that says what works.
+    """
+    import pickle
+
+    from deep_research_client import NoProvidersConfiguredError, ProviderNotConfiguredError
+
+    err = NoProvidersConfiguredError()
+    message = str(err)
+    assert isinstance(err, ProviderNotConfiguredError)
+    assert not message.startswith(":")
+    assert message.startswith("No research providers available")
+    assert "`deep-research-client providers`" in message
+    assert "`deep-research-client providers --check`" in message
+    assert "--provider <other>" not in message
+
+    rebuilt = pickle.loads(pickle.dumps(err))
+    assert isinstance(rebuilt, NoProvidersConfiguredError)
+    assert str(rebuilt) == message
+
+
 def test_a_long_body_never_costs_the_remedy():
     """Truncation must cut evidence, never the part that says what to do.
 

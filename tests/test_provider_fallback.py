@@ -18,6 +18,7 @@ from deep_research_client import cli as cli_module
 from deep_research_client.client import DeepResearchClient
 from deep_research_client.exceptions import (
     FALLBACK_WORTHY_ERRORS,
+    NoProvidersConfiguredError,
     ProviderAuthError,
     ProviderBillingError,
     ProviderNotConfiguredError,
@@ -622,15 +623,20 @@ def test_nothing_is_cached_when_every_provider_fails(tmp_path):
     assert list(tmp_path.glob("*.json")) == []
 
 
-def test_no_providers_at_all_is_still_a_plain_error():
-    """An empty registry reports itself the same way it always did."""
+def test_no_providers_at_all_is_a_configuration_error():
+    """An empty registry is not configured, with or without a fallback.
+
+    Still a ValueError with the same text, so callers written before it was
+    typed keep matching it.
+    """
     client = DeepResearchClient(
         cache_config=CacheConfig(enabled=False),
         provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
     )
     client.registry._providers.clear()
-    with pytest.raises(ValueError, match="No research providers available"):
+    with pytest.raises(NoProvidersConfiguredError, match="No research providers available") as excinfo:
         client.research("q", fallback=True)
+    assert isinstance(excinfo.value, ValueError)
 
 
 def test_an_unknown_provider_name_is_still_a_plain_error():

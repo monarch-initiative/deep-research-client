@@ -985,8 +985,10 @@ class DeepResearchClient:
             return result
 
         # Unreachable: _fallback_candidates never returns an empty list, and the
-        # last candidate re-raises rather than falling out of the loop.
-        raise ValueError("No research providers available")
+        # last candidate re-raises rather than falling out of the loop. Same
+        # type as the empty-list case it guards, so the one message in this
+        # client always arrives as the one class.
+        raise NoProvidersConfiguredError()
 
     def knows_provider(self, name: str) -> bool:
         """Report whether a name is a provider at all, configured or not.

@@ -1878,7 +1878,12 @@ Research content...
 <tr>
 <td><code>citation_count</code></td>
 <td>integer</td>
-<td>Number of citations</td>
+<td>Number of citations; always present, so <code>0</code> means none rather than not recorded. A provider that does not extract citations also writes <code>0</code>, so check <code>answer_status</code> to tell a failed run apart</td>
+</tr>
+<tr>
+<td><code>answer_status</code></td>
+<td>string</td>
+<td><code>successful</code> or <code>unsuccessful</code>, when the provider reports whether it answered (falcon does). <code>unsuccessful</code> means the output is the provider's explanation, not a report; <code>## Output</code> then opens with a warning line</td>
 </tr>
 <tr>
 <td><code>template_file</code></td>

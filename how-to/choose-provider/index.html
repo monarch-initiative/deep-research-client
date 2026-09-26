@@ -1612,6 +1612,13 @@ everything failed.</p>
 cached report is served and nothing falls back — see <em>A provider you can no
 longer reach</em> below.</p>
 <h3 id="things-to-know">Things to know</h3>
+<p><strong>A provider that could not answer is not a failure to fall back from.</strong> When
+a run completes but the provider reports it could not answer -- falcon when its
+retrieval finds no papers -- the report is written and marked
+<code>answer_status: unsuccessful</code>, the CLI exits with code 4, and the next
+candidate is <em>not</em> tried. The run did complete, and trying another provider
+would bill a second one for a question the first may have found no literature
+for. To try another provider, rerun with <code>--provider</code>.</p>
 <p><strong><code>--model</code> and <code>--param</code> apply to the first provider only.</strong> They were chosen
 for the provider you named -- a Perplexity model name means nothing to OpenAI,
 and an unknown parameter is a hard error. A fallback provider therefore runs on

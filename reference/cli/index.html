@@ -3693,7 +3693,19 @@ which the CLI sends to stderr.</p>
 </tr>
 <tr>
 <td>1</td>
-<td>Error (invalid options, API failure, etc.)</td>
+<td>Error (invalid options, API failure, etc.); nothing was produced</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>--fail-on-unresolved</code> and validation found unresolved references or terms</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Reference or term validation itself failed (e.g. a service was unreachable); the report was already written</td>
+</tr>
+<tr>
+<td>4</td>
+<td>The output was written, but the provider reported it could not answer the question; the file is marked <code>answer_status: unsuccessful</code>, was not cached, and was not validated even if <code>--validate-references</code> / <code>--validate-terms</code> were given</td>
 </tr>
 </tbody>
 </table>

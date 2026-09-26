@@ -539,7 +539,7 @@ def _build_reference_validator(
     from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
 
     if not validator_is_available():
-        logger.error(INSTALL_HINT)
+        _error(INSTALL_HINT)
         raise typer.Exit(1)
 
     kwargs: dict = {
@@ -568,7 +568,7 @@ def _build_term_validator(
     from .validation import DEFAULT_ADAPTER, TERM_INSTALL_HINT, TermValidator, term_validator_is_available
 
     if not term_validator_is_available():
-        logger.error(TERM_INSTALL_HINT)
+        _error(TERM_INSTALL_HINT)
         raise typer.Exit(1)
 
     return TermValidator(
@@ -583,7 +583,11 @@ def _build_term_validator(
 
 
 def _echo_term_validation_summary(report: "TermValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a term validation report."""
+    """Summarise a term validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_terms:
         logger.info("No ontology term identifiers found to validate")
         return
@@ -597,15 +601,15 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_terms_failed:
-        logger.warning(
+        _warn(
             "Every term failed to resolve, which usually means the ontology service "
             "could not be reached rather than a report full of invented identifiers"
         )
     for check in report.confabulated_terms:
-        logger.warning("Unresolved term: %s (%s)", check.term_id, check.message)
+        _warn(f"Unresolved term: {check.term_id} ({check.message})")
     for check in report.obsolete_terms:
         replacement = f", replaced by {check.replaced_by}" if check.replaced_by else ""
-        logger.warning("Obsolete term: %s%s", check.term_id, replacement)
+        _warn(f"Obsolete term: {check.term_id}{replacement}")
     if report.labels_checked:
         logger.info(
             "Checked %d labels: %d match the term, %d name a different one",
@@ -614,12 +618,8 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
             len(report.mislabelled_terms),
         )
     for check in report.mislabelled_terms:
-        logger.warning(
-            "%s is %r, but the report calls it %s",
-            check.term_id,
-            check.ontology_label,
-            ", ".join(repr(label) for label in check.reported_labels or []),
-        )
+        reported = ", ".join(repr(label) for label in check.reported_labels or [])
+        _warn(f"{check.term_id} is {check.ontology_label!r}, but the report calls it {reported}")
     if report.unresolvable_prefixes:
         logger.info(
             "No resolver covers these prefixes, so their terms were not checked: %s",
@@ -668,7 +668,11 @@ def _refresh_validation_frontmatter(
 
 
 def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a reference validation report."""
+    """Summarise a reference validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_references:
         logger.info("No PMID or DOI references found to validate")
         return
@@ -681,12 +685,12 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_references_failed:
-        logger.warning(
+        _warn(
             "Every reference failed to resolve, which usually means a network or "
             "rate-limit problem rather than a report full of fabrications"
         )
     for check in report.confabulated_references:
-        logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
+        _warn(f"Unresolved reference: {check.reference_id} ({check.message})")
     if report.quote_checks:
         logger.info(
             "Checked %d quoted claims: %d found in the cited source, %d not",
@@ -695,9 +699,7 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             len(report.unsupported_quotes),
         )
     for quote_check in report.unsupported_quotes:
-        logger.warning(
-            "Quote not found in %s: %r", quote_check.reference_id, quote_check.quote[:120]
-        )
+        _warn(f"Quote not found in {quote_check.reference_id}: {quote_check.quote[:120]!r}")
     if report.unchecked_quotes:
         logger.info(
             "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
@@ -709,10 +711,9 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             report.on_topic_count,
         )
     for check in report.off_topic_references:
-        logger.warning(
-            "Reference %s resolves but looks off topic: %s",
-            check.reference_id,
-            check.title or "(no title)",
+        _warn(
+            f"Reference {check.reference_id} resolves but looks off topic: "
+            f"{check.title or '(no title)'}"
         )
 
 
@@ -1358,17 +1359,17 @@ def validate_references_command(
     from .validation import VALIDATION_SECTION_HEADING, render_with_sections, split_validation_sections
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_reference_validator(
@@ -1404,7 +1405,7 @@ def validate_references_command(
             # OSError covers network failures (urllib raises subclasses of it);
             # ValueError covers a malformed cached record. Neither should reach
             # the user as a traceback when every neighbouring path exits cleanly.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_validation_summary(report)
@@ -1436,7 +1437,7 @@ def validate_references_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1444,7 +1445,7 @@ def validate_references_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
 
 
@@ -1511,17 +1512,17 @@ def validate_terms_command(
     )
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_term_validator(
@@ -1556,7 +1557,7 @@ def validate_terms_command(
             # which it raises rather than reporting the term as absent. None of
             # them should reach the user as a traceback when every neighbouring
             # path exits cleanly.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_term_validation_summary(report)
@@ -1588,7 +1589,7 @@ def validate_terms_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1596,7 +1597,7 @@ def validate_terms_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 

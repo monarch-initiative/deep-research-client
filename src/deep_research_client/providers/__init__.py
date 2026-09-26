@@ -17,8 +17,15 @@ class ResearchProvider(ABC):
     #: needs one. Set by subclasses so the base can name it in error messages.
     credential_env_var: ClassVar[Optional[str]] = None
 
-    #: Human-facing name for this provider's credential, e.g. "OpenAI".
+    #: Human-facing name for what this credential unlocks, as the CLI lists
+    #: it: ``- OPENAI_API_KEY for OpenAI Deep Research``.
     credential_label: ClassVar[Optional[str]] = None
+
+    #: Name of the account the key belongs to, for the sentence saying it is
+    #: missing: ``no OpenAI API key configured``. Needed only where the key
+    #: outlives the product -- an OpenAI key is not Deep-Research-specific --
+    #: so it defaults to :attr:`credential_label`.
+    credential_noun: ClassVar[Optional[str]] = None
 
     #: What the client needs before it will *register* this provider, when
     #: that is more than the provider's own :meth:`is_available` -- an opt-out
@@ -112,10 +119,28 @@ class ResearchProvider(ABC):
         """
         if not self.config.enabled:
             return f"Provider '{self.name}' is disabled"
-        if self.credential_env_var:
-            label = self.credential_label or self.name
-            return f"no {label} API key configured (set {self.credential_env_var})"
+        missing = self.missing_credential_reason(self.name)
+        if missing:
+            return missing
         return f"Provider '{self.name}' is not available"
+
+    @classmethod
+    def missing_credential_reason(cls, name: str) -> Optional[str]:
+        """Say which key is missing, for a provider that declares one.
+
+        A classmethod so the client can say it without an instance, when
+        constructing one is what failed.
+
+        Args:
+            name: The provider's name, used when it declares no noun or label.
+
+        Returns:
+            The sentence, or None for a provider that needs no key
+        """
+        if not cls.credential_env_var:
+            return None
+        noun = cls.credential_noun or cls.credential_label or name
+        return f"no {noun} API key configured (set {cls.credential_env_var})"
 
     async def check_health(self) -> ProviderHealth:
         """Probe whether this provider can actually take work right now.

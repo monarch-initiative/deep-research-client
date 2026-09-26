@@ -347,10 +347,10 @@ class DeepResearchClient:
             return f"'{provider_name}' is not configured"
         if provider_class.registration_requirement:
             return provider_class.registration_requirement
-        if provider_class.credential_env_var:
-            label = provider_class.credential_label or provider_name
-            return f"no {label} API key configured (set {provider_class.credential_env_var})"
-        return f"'{provider_name}' is not configured"
+        return (
+            provider_class.missing_credential_reason(provider_name)
+            or f"'{provider_name}' is not configured"
+        )
 
     def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
         """Resolve a provider class only when it is actually needed."""

@@ -374,6 +374,27 @@ def test_the_cli_offers_exactly_the_keyed_providers_and_names_their_keys(capsys)
     ]
 
 
+@pytest.mark.parametrize(
+    "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else None
+)
+def test_the_missing_key_sentence_is_the_same_with_or_without_an_instance(name, provider_class):
+    """The client's no-instance fallback and the provider must say one thing.
+
+    Both render through `missing_credential_reason`, so `credential_noun`
+    reaches the client's path too rather than only the instance's.
+    """
+    from deep_research_client.providers import ResearchProvider
+
+    instance = provider_class(ProviderConfig(name=name, api_key=None, enabled=True))
+    from_class = provider_class.missing_credential_reason(name)
+
+    assert from_class is not None and provider_class.credential_env_var in from_class
+    # tooluniverse overrides unavailable_reason to name its fallback variable
+    # too; every other keyed provider uses the base sentence as it is.
+    if provider_class.unavailable_reason is ResearchProvider.unavailable_reason:
+        assert instance.unavailable_reason() == from_class
+
+
 def test_the_registry_actually_yields_keyed_providers():
     """A derived parametrize that silently yields nothing would pass vacuously."""
     names = [name for name, _ in _keyed_provider_classes()]

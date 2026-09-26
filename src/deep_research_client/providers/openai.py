@@ -64,6 +64,8 @@ class OpenAIProvider(ResearchProvider):
     """Provider for OpenAI Deep Research API."""
 
     credential_label = "OpenAI Deep Research"
+    #: The key is the OpenAI account's, not Deep Research's own.
+    credential_noun = "OpenAI"
     credential_env_var = "OPENAI_API_KEY"
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):

@@ -257,7 +257,8 @@ class MockParams(BaseProviderParams):
             "Return a response the provider marks as not an answer, the way "
             "falcon does when retrieval finds nothing. Lets the unsuccessful-"
             "answer handling (warning, frontmatter, no caching, exit code) be "
-            "exercised without a real failed run."
+            "exercised without a real failed run. Replaces the whole response, "
+            "so custom_response and answer_policy have no effect while it is set."
         ),
     )
     answer_policy: Literal["none", "first", "last", "echo"] = Field(

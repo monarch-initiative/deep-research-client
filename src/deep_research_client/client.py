@@ -10,7 +10,12 @@ from collections.abc import Sequence
 from typing import Any, Optional, Union
 
 from .cache import CacheManager
-from .exceptions import ProviderError, ProviderNotConfiguredError, is_fallback_worthy
+from .exceptions import (
+    NoProvidersConfiguredError,
+    ProviderError,
+    ProviderNotConfiguredError,
+    is_fallback_worthy,
+)
 from .models import (
     ResearchResult,
     ProviderAttempt,
@@ -522,7 +527,7 @@ class DeepResearchClient:
                 ordered.append(name)
 
         if not ordered:
-            raise ValueError("No research providers available")
+            raise NoProvidersConfiguredError()
 
         # A fallback was asked for and there is nobody to fall back to. The
         # run is about to behave exactly as it would with no flag at all, and
@@ -758,9 +763,10 @@ class DeepResearchClient:
 
         Raises:
             ProviderNotConfiguredError: If a known provider is not set up, or
-                the requested provider has no credential configured
-            ValueError: If no providers are available, or the name is not a
-                provider at all
+                the requested provider has no credential configured. When no
+                provider was named and none is available, the subclass
+                NoProvidersConfiguredError.
+            ValueError: If the name is not a provider at all
         """
         return asyncio.run(
             self.aresearch(
@@ -979,8 +985,10 @@ class DeepResearchClient:
             return result
 
         # Unreachable: _fallback_candidates never returns an empty list, and the
-        # last candidate re-raises rather than falling out of the loop.
-        raise ValueError("No research providers available")
+        # last candidate re-raises rather than falling out of the loop. Same
+        # type as the empty-list case it guards, so the one message in this
+        # client always arrives as the one class.
+        raise NoProvidersConfiguredError()
 
     def knows_provider(self, name: str) -> bool:
         """Report whether a name is a provider at all, configured or not.

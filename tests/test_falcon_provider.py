@@ -121,6 +121,28 @@ def test_a_question_that_does_not_match_the_query_is_kept():
     assert provider._extract_text_content(response) == formatted
 
 
+@pytest.mark.parametrize(
+    "answer,expected",
+    [
+        ({"formatted_answer": "A", "has_successful_answer": True}, True),
+        ({"formatted_answer": "A", "has_successful_answer": False}, False),
+        # The agent never completed: after a finished run, not an answer either.
+        ({"formatted_answer": "A", "has_successful_answer": None}, False),
+        # The key is missing: Edison said nothing, so neither do we.
+        ({"formatted_answer": "A"}, None),
+    ],
+    ids=["sure", "unsure", "never-completed", "not-reported"],
+)
+def test_the_result_records_whether_edison_answered(answer, expected):
+    """has_successful_answer is how a failed run like issue #52's shows up."""
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_verbose_response(_answer_frame(answer))]
+
+    result = provider._result_from_response(None, response, "test query")
+
+    assert result.answer_successful is expected
+
+
 def test_extract_text_from_verbose_response():
     """Verbose Edison responses should read formatted answers from the frame."""
     config = ProviderConfig(name="falcon", api_key="test-key")

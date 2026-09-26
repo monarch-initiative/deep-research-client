@@ -258,7 +258,37 @@ class FalconProvider(ResearchProvider):
             artifacts=artifacts,
             provider=self.name,
             query=query,
+            answer_successful=self._answer_successful(response),
         )
+
+    def _answer_successful(self, response: EdisonResponse) -> Optional[bool]:
+        """Read whether Edison's agent says it answered the question.
+
+        paper-qa's ``has_successful_answer`` is True when the agent was sure of
+        its answer, False when it was not, and None when it never completed.
+        After a finished run, None and False both mean the text is not a
+        report -- the case in issue #52, where retrieval found no papers and
+        the "answer" explains why there is none.
+
+        A verbose frame that lacks the key entirely says nothing either way,
+        so that is None: reading a format change as a failed run would mark
+        every report failed.
+
+        Args:
+            response: The validated Edison response.
+
+        Returns:
+            True or False when Edison says, None when it does not.
+        """
+        from edison_client.models.app import TaskResponseVerbose
+
+        task_response = response[0]
+        if isinstance(task_response, TaskResponseVerbose):
+            answer = self._get_verbose_answer(task_response)
+            if "has_successful_answer" not in answer:
+                return None
+            return answer["has_successful_answer"] is True
+        return task_response.has_successful_answer
 
     def _coerce_response(self, response: Sequence[Any]) -> EdisonResponse:
         """Validate Edison client responses against the shapes this provider supports."""

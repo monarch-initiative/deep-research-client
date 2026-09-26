@@ -281,3 +281,33 @@ def test_format_research_result_handles_mixed_artifacts(formatter_class):
     assert fallback_line in formatted
     assert formatted.index(image_line) < formatted.index(supplement_line)
     assert formatted.index(supplement_line) < formatted.index(fallback_line)
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_an_unsuccessful_answer_is_marked_in_both_formatters(formatter_class):
+    """Issue #52: a failed run must be detectable from the file, by field and by eye."""
+    result = ResearchResult(
+        markdown="No papers were retrieved, so there is no answer.",
+        provider="falcon",
+        query="What does hadA do?",
+        answer_successful=False,
+    )
+
+    rendered = formatter_class().format_full_markdown(result)
+    frontmatter, body = rendered.split("---")[1], rendered.split("---", 2)[2]
+
+    assert "answer_status: unsuccessful" in frontmatter
+    assert "citation_count: 0" in frontmatter
+    output = body.split("## Output", 1)[1].lstrip()
+    assert output.startswith("> **Warning:** falcon reported that it could not answer")
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_a_provider_that_does_not_say_gets_no_status_or_warning(formatter_class):
+    """None means unknown, and unknown must not read as either verdict."""
+    result = ResearchResult(markdown="An answer.", provider="mock", query="q")
+
+    rendered = formatter_class().format_full_markdown(result)
+
+    assert "answer_status" not in rendered
+    assert "**Warning:**" not in rendered

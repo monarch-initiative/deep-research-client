@@ -279,12 +279,10 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     `capsys` run covers the helper called directly, without the command around
     it.
 
-    `result.stdout` is the stream assertion. The pinned click (8.5.0) has no
-    `mix_stderr`: `result.stdout` is stdout alone and `result.output` is the
-    merged stream, so asserting on `.stdout` here does pin the stream, and a
-    message moved to stderr would fail it. Reach for `.output` only when the
-    text under test is a `logger.error`, as the sibling branch of this same
-    command is.
+    The pinned click (8.5.0) has no `mix_stderr`: `result.stdout` and
+    `result.stderr` are separate, so these pin the stream. An unknown name is
+    an error about this run, not part of a health report, so it goes to
+    stderr (issue #68).
     """
     from typer.testing import CliRunner
 
@@ -292,12 +290,40 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
 
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--provider", "flacon"])
     assert result.exit_code == 1
-    assert "Unknown provider" in result.stdout, "the typo must actually be reported"
-    assert "NOT CONFIGURED" not in result.stdout
+    assert "Unknown provider: flacon" in result.stderr, "the typo must actually be reported"
+    assert "Unknown provider" not in result.stdout
+    assert "NOT CONFIGURED" not in result.output
 
     with pytest.raises(typer.Exit):
         _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
-    assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
+    assert "Unknown provider" in capsys.readouterr().err, "and on stderr, not stdout"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["providers", "--provider", "flacon"],
+        ["providers", "--check", "--provider", "flacon"],
+    ],
+    ids=["listing", "check"],
+)
+def test_an_unknown_provider_lands_on_one_stream_from_either_branch(args):
+    """Same command, same message, one destination (issue #68).
+
+    Before, --check echoed it to stdout and the listing logged it to stderr.
+    """
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, args)
+    assert result.exit_code == 1
+    # Library log lines (a provider noting a missing binary) share stderr, so
+    # find the message rather than assuming it comes first.
+    lines = result.stderr.splitlines()
+    at = lines.index("Error: Unknown provider: flacon")
+    assert lines[at + 1] == f"Known providers: {cli_module._registered_providers()}"
+    assert result.stdout == ""
 
 
 def test_an_unconfigured_provider_says_what_would_fix_it(capsys, bare_machine):
@@ -352,7 +378,9 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--show-params"])
 
     assert result.exit_code == 0
-    assert "has no effect" in result.stdout
+    # About the invocation, not the report, so it stays out of a redirect.
+    assert "Warning: --show-params has no effect" in result.stderr
+    assert "has no effect" not in result.stdout
 
 
 def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):

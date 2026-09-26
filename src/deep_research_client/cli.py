@@ -135,6 +135,55 @@ def setup_logging(verbosity: int) -> None:
             f"Logging configured at {logging.getLevelName(level)} level")
 
 
+# Output channels -- one rule for every command (issue #68):
+#
+# - stdout carries what the command produces: whatever a user would redirect
+#   to a file. Research markdown, listings, health reports, JSON. A report
+#   stays whole on stdout, including the lines inside it about failures.
+# - stderr carries messages about this run: an error that ends it, a warning
+#   about an option it ignored, the providers a fallback tried. These go
+#   through `_error` and `_warn`, never the logger, so they show at the default
+#   verbosity, and a test can tell them apart from the product through
+#   `CliRunner`'s separate `result.stderr`.
+# - The logger is for `-v` tracing only: progress, what was chosen, where a
+#   file was written.
+#
+# Before this, the stream a message landed on depended on the code path: the
+# same `Unknown provider` went to stdout from `providers --check` and to stderr
+# from `providers`, and anything logged was invisible to `caplog` once the
+# callback's `basicConfig(force=True)` had replaced its handler.
+
+
+def _stderr(line: str) -> None:
+    """Write one line about this run to stderr, whatever the log level.
+
+    For a continuation of an ``_error`` or ``_warn`` -- a hint, a list of valid
+    names -- which would read wrongly with a second prefix.
+
+    Args:
+        line: The text to write.
+    """
+    typer.echo(line, err=True)
+
+
+def _error(message: str) -> None:
+    """Tell the user why this run is about to stop.
+
+    Args:
+        message: What went wrong, without an ``Error:`` prefix.
+    """
+    _stderr(f"Error: {message}")
+
+
+def _warn(message: str) -> None:
+    """Tell the user something about this run that does not stop it.
+
+    Args:
+        message: What to know, without a ``Warning:`` prefix.
+    """
+    _stderr(f"Warning: {message}")
+
+
 def _collect_noop_research_option_warnings(
     provider: str,
     model: Optional[str] = None,
@@ -369,6 +418,19 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+def _report_unknown_provider(provider: str) -> None:
+    """Tell the user a provider name is not one, and list the names that are.
+
+    Shared by both branches of `providers`, which used to send the same
+    sentence to two different streams depending on whether --check was given.
+
+    Args:
+        provider: The name the user gave.
+    """
+    _error(f"Unknown provider: {provider}")
+    _stderr(f"Known providers: {_registered_providers()}")
+
+
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
     """Probe providers for live reachability and print the results.
 
@@ -399,7 +461,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
-                typer.echo(f"Unknown provider: {provider}")
+                _report_unknown_provider(provider)
             raise typer.Exit(1)
         targets = [target]
     else:
@@ -1720,10 +1782,9 @@ def providers(
 
     if check:
         if show_params:
-            # Echoed, not logged: every other line this path emits goes to
-            # stdout, and the CLI's logger does not propagate to handlers a
-            # caller (or a test) can see.
-            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
+            # About this run, not part of the health report, so it stays out
+            # of a redirected report.
+            _warn("--show-params has no effect with --check; ignoring it.")
         _check_provider_health(client, provider)
         return
 
@@ -1732,9 +1793,7 @@ def providers(
     if provider:
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
-            logger.error(f"Unknown provider: {provider}")
-            logger.error(
-                f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
+            _report_unknown_provider(provider)
             raise typer.Exit(1)
 
         is_available = provider in available

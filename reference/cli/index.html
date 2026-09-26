@@ -1355,6 +1355,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output Streams
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#exit-codes" class="md-nav__link">
     <span class="md-ellipsis">
       Exit Codes
@@ -2254,6 +2263,15 @@
   <a href="#environment-variables" class="md-nav__link">
     <span class="md-ellipsis">
       Environment Variables
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      Output Streams
     </span>
   </a>
   
@@ -3620,6 +3638,46 @@ says so. A local server accepts it; a remote proxy that does check will answer
 </tr>
 </tbody>
 </table>
+<h2 id="output-streams">Output Streams</h2>
+<p>Every command follows one rule for where its output goes:</p>
+<table>
+<thead>
+<tr>
+<th>Stream</th>
+<th>Carries</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>stdout</td>
+<td>What the command produces: whatever you would redirect to a file</td>
+<td>Research markdown, <code>providers</code> listing, <code>providers --check</code> report, <code>models</code> listing, <code>transcript-stats --format json</code>, eval summaries</td>
+</tr>
+<tr>
+<td>stderr</td>
+<td>Messages about this run, prefixed <code>Error:</code> or <code>Warning:</code></td>
+<td>An unknown provider, a missing input file, an option the chosen provider ignores, the providers a fallback tried, unresolved references</td>
+</tr>
+<tr>
+<td>stderr, with <code>-v</code></td>
+<td>Tracing: progress, what was chosen, where a file was written</td>
+<td><code>Using provider: mock</code>, <code>Result saved to: report.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>So <code>deep-research-client research "..." &gt; report.md</code> leaves only the report in
+<code>report.md</code>, and warnings stay on the terminal. A report is kept whole on
+stdout even when it describes failures: the <code>providers --check</code> health report
+lists broken providers on stdout, because that list is the answer you asked
+for.</p>
+<p>The line is drawn at whether there is a report to give. <code>providers --check
+--provider falcon</code> without <code>EDISON_API_KEY</code> still reports on falcon, so its
+<code>falcon: NOT CONFIGURED</code> line goes to stdout. <code>providers --check --provider
+flacon</code> names no provider at all, so there is nothing to report on: the
+<code>Error: Unknown provider</code> goes to stderr and a redirected file stays empty.</p>
+<p>Library code (the client and providers) still logs through Python's <code>logging</code>,
+which the CLI sends to stderr.</p>
 <h2 id="exit-codes">Exit Codes</h2>
 <table>
 <thead>

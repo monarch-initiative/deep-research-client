@@ -395,6 +395,39 @@ def test_the_missing_key_sentence_is_the_same_with_or_without_an_instance(name, 
         assert instance.unavailable_reason() == from_class
 
 
+def _classes_declaring_both() -> list[tuple[str, type]]:
+    """Keyed providers that also declare a registration requirement.
+
+    Returns:
+        (name, class) pairs; tooluniverse today
+    """
+    return [
+        (name, cls) for name, cls in _keyed_provider_classes() if cls.registration_requirement
+    ]
+
+
+def test_some_provider_declares_both_a_key_and_a_registration_requirement():
+    """The precedence test below is derived; this keeps it from passing vacuously."""
+    assert _classes_declaring_both(), "no provider declares both; drop the precedence test"
+
+
+@pytest.mark.parametrize(
+    "name,provider_class", _classes_declaring_both(), ids=lambda v: v if isinstance(v, str) else None
+)
+def test_the_registration_requirement_wins_over_the_key_without_an_instance(name, provider_class):
+    """Without an instance, the fuller sentence is the one to show.
+
+    tooluniverse's registration requirement names the OPENAI_API_KEY fallback
+    and the opt-out variable; its key alone would send a reader who has
+    OPENAI_API_KEY set hunting for a second key.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    client = DeepResearchClient()
+
+    assert client._reason_from_class_attributes(name) == provider_class.registration_requirement
+
+
 def test_the_registry_actually_yields_keyed_providers():
     """A derived parametrize that silently yields nothing would pass vacuously."""
     names = [name for name, _ in _keyed_provider_classes()]

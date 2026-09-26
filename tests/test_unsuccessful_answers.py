@@ -88,12 +88,12 @@ def test_control_an_ordinary_run_still_exits_0():
     assert "could not answer" not in result.output
 
 
-def test_with_validation_requested_the_run_still_exits_4():
-    """The check sits on both of research's exits, including the validation one.
+def test_with_validation_requested_the_run_exits_4_before_validating():
+    """A non-answer is not validated: nothing in it is worth checking.
 
-    The mock's non-answer cites nothing, so validation finds nothing to fail
-    and makes no network call; without the check on this path the run would
-    exit 0 here.
+    Validation of a report printed to stdout appends its own section there,
+    so its absence shows validation never ran -- which is also what keeps a
+    validation failure (exit 3) from masking this one.
     """
     result = _run_research(
         "--param", "unsuccessful_answer=true",
@@ -102,6 +102,7 @@ def test_with_validation_requested_the_run_still_exits_4():
 
     assert result.exit_code == 4, result.output
     assert "Warning: mock could not answer this question" in result.stderr
+    assert "Reference Validation" not in result.stdout
 
 
 def test_an_unsuccessful_answer_does_not_fall_back(tmp_path: Path):

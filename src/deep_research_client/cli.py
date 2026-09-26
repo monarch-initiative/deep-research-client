@@ -1240,8 +1240,13 @@ def research(
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
+    # Before validation, not after it: the provider's explanation of why it
+    # could not answer has nothing worth validating, the lookups would cost
+    # network calls, and a validation failure (exit 3) would otherwise mask
+    # the more fundamental one.
+    _exit_if_unsuccessful(result)
+
     if not validate_references and not validate_terms:
-        _exit_if_unsuccessful(result)
         return
 
     # Validation runs only after the report has been written or printed. It is
@@ -1319,9 +1324,6 @@ def research(
                 typer.echo("\n" + "=" * 60)
                 typer.echo(report.to_markdown())
 
-    # Before the validation verdict: "the provider did not answer" is the more
-    # fundamental failure, and its citations were never going to validate.
-    _exit_if_unsuccessful(result)
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:

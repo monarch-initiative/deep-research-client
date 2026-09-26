@@ -131,7 +131,8 @@ def test_edison_trajectory_requires_api_key():
         )
 
     assert result.exit_code == 1
-    assert "EDISON_API_KEY is required" in result.output
+    assert "Error: EDISON_API_KEY is required" in result.stderr
+    assert result.stdout == ""
 
 
 def test_write_result_artifacts_sets_relative_paths(tmp_path):
@@ -362,6 +363,69 @@ def test_effective_research_options_discards_asta_noops_when_asta_is_auto_select
     assert options.use_cborg is False
     assert options.api_key_env is None
     assert len(options.warnings) == 4
+
+
+def test_research_warnings_stay_out_of_the_report_on_stdout():
+    """A warning printed into stdout would land inside `research > report.md`.
+
+    Before issue #68 these went through `logger.warning`: on stderr, but only
+    through a handler `caplog` could not see. Now they are echoed to stderr,
+    so the stream is asserted directly -- and the report is checked to be the
+    only thing on stdout.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "research", "What is synthetic biology?", "--provider", "mock",
+            "--no-cache", "--validation-email", "me@example.org",
+        ],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "Warning: --validation-email has no effect without --validate-references"
+        in result.stderr
+    )
+    assert "has no effect" not in result.stdout
+    assert "What is synthetic biology?" in result.stdout
+
+
+def test_research_errors_go_to_stderr_with_nothing_on_stdout(tmp_path):
+    """An error that ends the run is about the run, not a report."""
+    query_file = tmp_path / "conflict.md"
+    query_file.write_text("File-based query", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["research", "Inline query", "--input-file", str(query_file), "--provider", "mock"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 1
+    assert (
+        "Error: Provide the query either as an argument or via --input-file, not both"
+        in result.stderr
+    )
+    assert result.stdout == ""
+
+
+def test_research_template_error_and_its_hint_share_stderr(tmp_path):
+    """The `--var` hint explains the error above it, so both go to stderr."""
+    template = tmp_path / "gene.md"
+    template.write_text("Research the {family} gene family.", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["research", "--template", str(template), "--provider", "mock"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 1
+    lines = result.stderr.splitlines()
+    at = lines.index("Error: Template error: Template requires variables: family")
+    assert lines[at + 1] == "Use --var key=value for each variable"
+    assert result.stdout == ""
 
 
 @pytest.mark.integration
@@ -681,6 +745,21 @@ def test_transcript_stats_fails_on_a_missing_path(tmp_path):
     result = runner.invoke(app, ["transcript-stats", str(tmp_path / "absent.json")])
 
     assert result.exit_code == 1
+    assert "Error: Could not read transcripts" in result.stderr
+    assert result.stdout == ""
+
+
+def test_transcript_stats_warns_about_nothing_found_without_breaking_the_json(tmp_path):
+    """The warning is about the run; stdout must still parse as the summary.
+
+    A warning on stdout would put a non-JSON line in front of the payload that
+    `--format json` promises downstream tooling (issue #68).
+    """
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert "Warning: No transcript entries found" in result.stderr
+    assert json.loads(result.stdout)["tool_calls"] == 0
 
 
 def test_transcript_stats_fails_on_a_malformed_transcript(tmp_path):

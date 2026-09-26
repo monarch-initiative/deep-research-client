@@ -279,12 +279,10 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     `capsys` run covers the helper called directly, without the command around
     it.
 
-    `result.stdout` is the stream assertion. The pinned click (8.5.0) has no
-    `mix_stderr`: `result.stdout` is stdout alone and `result.output` is the
-    merged stream, so asserting on `.stdout` here does pin the stream, and a
-    message moved to stderr would fail it. Reach for `.output` only when the
-    text under test is a `logger.error`, as the sibling branch of this same
-    command is.
+    The pinned click (8.5.0) has no `mix_stderr`: `result.stdout` and
+    `result.stderr` are separate, so these pin the stream. An unknown name is
+    an error about this run, not part of a health report, so it goes to
+    stderr (issue #68).
     """
     from typer.testing import CliRunner
 
@@ -292,12 +290,40 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
 
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--provider", "flacon"])
     assert result.exit_code == 1
-    assert "Unknown provider" in result.stdout, "the typo must actually be reported"
-    assert "NOT CONFIGURED" not in result.stdout
+    assert "Unknown provider: flacon" in result.stderr, "the typo must actually be reported"
+    assert "Unknown provider" not in result.stdout
+    assert "NOT CONFIGURED" not in result.output
 
     with pytest.raises(typer.Exit):
         _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
-    assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
+    assert "Unknown provider" in capsys.readouterr().err, "and on stderr, not stdout"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["providers", "--provider", "flacon"],
+        ["providers", "--check", "--provider", "flacon"],
+    ],
+    ids=["listing", "check"],
+)
+def test_an_unknown_provider_lands_on_one_stream_from_either_branch(args):
+    """Same command, same message, one destination (issue #68).
+
+    Before, --check echoed it to stdout and the listing logged it to stderr.
+    """
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, args)
+    assert result.exit_code == 1
+    # Library log lines (a provider noting a missing binary) share stderr, so
+    # find the message rather than assuming it comes first.
+    lines = result.stderr.splitlines()
+    at = lines.index("Error: Unknown provider: flacon")
+    assert lines[at + 1] == f"Known providers: {cli_module._registered_providers()}"
+    assert result.stdout == ""
 
 
 def test_an_unconfigured_provider_says_what_would_fix_it(capsys, bare_machine):
@@ -352,14 +378,18 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--show-params"])
 
     assert result.exit_code == 0
-    assert "has no effect" in result.stdout
+    # About the invocation, not the report, so it stays out of a redirect.
+    assert "Warning: --show-params has no effect" in result.stderr
+    assert "has no effect" not in result.stdout
 
 
-def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
+def test_the_research_hint_list_keeps_its_heading(monkeypatch):
     """A heading on one stream and its list on another is half a message.
 
     The list is indented variable names; without the sentence above it, a
-    redirected file says nothing about what they are for.
+    redirected file says nothing about what they are for. For `research` both
+    go to stderr: they explain why the run stopped, and are not the report a
+    user would redirect (issue #68).
     """
     import deep_research_client.cli as cli_module
 
@@ -368,16 +398,24 @@ def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
     )
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
-    assert "Please set API keys" in result.stdout, "the real command must emit it"
+    assert result.exit_code == 1
+    assert "Please set API keys" in result.stderr, "the real command must emit it"
+    heading_at = result.stderr.index("Please set API keys")
+    assert result.stderr.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+    assert "API_KEY" not in result.stdout, "and none of it may leak into stdout"
 
-    # And on stdout specifically. CliRunner cannot show that -- this click
-    # merges the two streams into one buffer -- so the helper is called direct.
-    cli_module._echo_no_providers_message()
-    captured = capsys.readouterr().out
 
-    assert "Please set API keys" in captured
-    heading_at = captured.index("Please set API keys")
-    assert captured.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+@pytest.mark.parametrize("err", [False, True])
+def test_the_no_providers_heading_and_list_share_a_stream(capsys, err):
+    """Whichever stream the caller picks, the heading and its list both go there."""
+    import deep_research_client.cli as cli_module
+
+    cli_module._echo_no_providers_message(err=err)
+    captured = capsys.readouterr()
+    chosen, other = (captured.err, captured.out) if err else (captured.out, captured.err)
+
+    assert chosen.index("OPENAI_API_KEY") > chosen.index("Please set API keys")
+    assert other == ""
 
 
 def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
@@ -390,9 +428,11 @@ def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
 
-    assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
-    assert "CLI on PATH" not in result.stdout, "not something you set"
-    assert "EDISON_API_KEY" in result.stdout
+    # .output is both streams: this test is about which hints are offered, and
+    # the stream they land on is pinned by the test above.
+    assert "ENABLE_MOCK_PROVIDER" not in result.output, "a mock is not research"
+    assert "CLI on PATH" not in result.output, "not something you set"
+    assert "EDISON_API_KEY" in result.output
 
 
 def test_the_cli_calls_a_method_the_client_actually_has():

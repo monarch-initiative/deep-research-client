@@ -864,6 +864,31 @@ says so. A local server accepts it; a remote proxy that does check will answer
 | `CONSENSUS_API_KEY` | Consensus | Consensus API key |
 | `CBORG_API_KEY` | CBORG | CBORG proxy API key |
 
+## Output Streams
+
+Every command follows one rule for where its output goes:
+
+| Stream | Carries | Examples |
+|--------|---------|----------|
+| stdout | What the command produces: whatever you would redirect to a file | Research markdown, `providers` listing, `providers --check` report, `models` listing, `transcript-stats --format json`, eval summaries |
+| stderr | Messages about this run, prefixed `Error:` or `Warning:` | An unknown provider, a missing input file, an option the chosen provider ignores, the providers a fallback tried, unresolved references |
+| stderr, with `-v` | Tracing: progress, what was chosen, where a file was written | `Using provider: mock`, `Result saved to: report.md` |
+
+So `deep-research-client research "..." > report.md` leaves only the report in
+`report.md`, and warnings stay on the terminal. A report is kept whole on
+stdout even when it describes failures: the `providers --check` health report
+lists broken providers on stdout, because that list is the answer you asked
+for.
+
+The line is drawn at whether there is a report to give. `providers --check
+--provider falcon` without `EDISON_API_KEY` still reports on falcon, so its
+`falcon: NOT CONFIGURED` line goes to stdout. `providers --check --provider
+flacon` names no provider at all, so there is nothing to report on: the
+`Error: Unknown provider` goes to stderr and a redirected file stays empty.
+
+Library code (the client and providers) still logs through Python's `logging`,
+which the CLI sends to stderr.
+
 ## Exit Codes
 
 | Code | Meaning |

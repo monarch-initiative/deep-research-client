@@ -1273,6 +1273,10 @@ def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     # the other, which is what the de-duplication was for.
     assert "not the provider first tried" in result.output
     assert "Providers tried:" in result.output
+    # About the run, not the report: a redirect of stdout must not carry it
+    # (issue #68). Continuation lines carry no prefix of their own.
+    assert "Warning: Providers tried:" in result.stderr
+    assert "Providers tried" not in result.stdout
     assert f"{BACKUP}: produced the report" in result.output
     # The console keeps the provider's own words; the report does not.
     assert "simulated billing failure" in result.output
@@ -1496,6 +1500,9 @@ def test_cli_shows_the_trail_when_every_candidate_fails(tmp_path, monkeypatch):
     assert result.exit_code == 1
     assert "Providers tried:" in result.output
     assert PRIMARY in result.output and BACKUP in result.output
+    # A continuation of the error above it, so unprefixed and on stderr too.
+    assert "\nProviders tried:" in result.stderr
+    assert "Providers tried" not in result.stdout
     assert not output.exists()
 
 

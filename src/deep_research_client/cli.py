@@ -135,6 +135,55 @@ def setup_logging(verbosity: int) -> None:
             f"Logging configured at {logging.getLevelName(level)} level")
 
 
+# Output channels -- one rule for every command (issue #68):
+#
+# - stdout carries what the command produces: whatever a user would redirect
+#   to a file. Research markdown, listings, health reports, JSON. A report
+#   stays whole on stdout, including the lines inside it about failures.
+# - stderr carries messages about this run: an error that ends it, a warning
+#   about an option it ignored, the providers a fallback tried. These go
+#   through `_error` and `_warn`, never the logger, so they show at the default
+#   verbosity, and a test can tell them apart from the product through
+#   `CliRunner`'s separate `result.stderr`.
+# - The logger is for `-v` tracing only: progress, what was chosen, where a
+#   file was written.
+#
+# Before this, the stream a message landed on depended on the code path: the
+# same `Unknown provider` went to stdout from `providers --check` and to stderr
+# from `providers`, and anything logged was invisible to `caplog` once the
+# callback's `basicConfig(force=True)` had replaced its handler.
+
+
+def _stderr(line: str) -> None:
+    """Write one line about this run to stderr, whatever the log level.
+
+    For a continuation of an ``_error`` or ``_warn`` -- a hint, a list of valid
+    names -- which would read wrongly with a second prefix.
+
+    Args:
+        line: The text to write.
+    """
+    typer.echo(line, err=True)
+
+
+def _error(message: str) -> None:
+    """Tell the user why this run is about to stop.
+
+    Args:
+        message: What went wrong, without an ``Error:`` prefix.
+    """
+    _stderr(f"Error: {message}")
+
+
+def _warn(message: str) -> None:
+    """Tell the user something about this run that does not stop it.
+
+    Args:
+        message: What to know, without a ``Warning:`` prefix.
+    """
+    _stderr(f"Warning: {message}")
+
+
 def _collect_noop_research_option_warnings(
     provider: str,
     model: Optional[str] = None,
@@ -280,15 +329,19 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
-def _echo_no_providers_message() -> None:
+def _echo_no_providers_message(err: bool = False) -> None:
     """Tell the user nothing is configured, and what to set.
 
-    A function rather than two inline calls so a test can assert which stream
-    it lands on: driving this through CliRunner cannot show that, because the
-    pinned click merges stdout and stderr into one buffer.
+    The heading and its list always share a stream: split, a redirect keeps
+    the list and loses the sentence saying what it is for. Which stream
+    depends on the caller. For `providers` the list is the answer, so stdout;
+    for `research` it is why the run stopped, so stderr.
+
+    Args:
+        err: Write to stderr rather than stdout.
     """
-    typer.echo("No research providers available. Please set API keys:")
-    _echo_credential_hints(_settable_credential_hints())
+    typer.echo("No research providers available. Please set API keys:", err=err)
+    _echo_credential_hints(_settable_credential_hints(), err=err)
 
 
 def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
@@ -353,11 +406,16 @@ def _settable_credential_hints() -> list[str]:
     ]
 
 
-def _echo_credential_hints(provider_names: list[str]) -> None:
-    """Print credential hints for providers by canonical provider name."""
+def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None:
+    """Print credential hints for providers by canonical provider name.
+
+    Args:
+        provider_names: Providers to print a hint for.
+        err: Write to stderr rather than stdout, to stay with a heading there.
+    """
     for provider_name in provider_names:
         env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        typer.echo(f"  - {env_var} for {label}")
+        typer.echo(f"  - {env_var} for {label}", err=err)
 
 
 def _echo_stub_hints() -> None:
@@ -367,6 +425,24 @@ def _echo_stub_hints() -> None:
     typer.echo("\nStub providers (not yet callable):")
     for provider_name, reason in PROVIDER_STUB_HINTS.items():
         typer.echo(f"  - {provider_name}: {reason}")
+
+
+def _report_unknown_provider(provider: str) -> None:
+    """Tell the user a provider name is not one, and list the names that are.
+
+    Shared by both branches of `providers`, which used to send the same
+    sentence to two different streams depending on whether --check was given.
+
+    The callers reject a name by checking `PROVIDER_PARAMS_REGISTRY`, while
+    this lists `PROVIDER_CLASS_PATHS` -- the list the CLI help already shows.
+    The two only agree because `test_capabilities` asserts their key sets are
+    equal; drift there would reject a name this then lists as known.
+
+    Args:
+        provider: The name the user gave.
+    """
+    _error(f"Unknown provider: {provider}")
+    _stderr(f"Known providers: {_registered_providers()}")
 
 
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
@@ -399,7 +475,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
-                typer.echo(f"Unknown provider: {provider}")
+                _report_unknown_provider(provider)
             raise typer.Exit(1)
         targets = [target]
     else:
@@ -468,7 +544,7 @@ def _build_reference_validator(
     from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
 
     if not validator_is_available():
-        logger.error(INSTALL_HINT)
+        _error(INSTALL_HINT)
         raise typer.Exit(1)
 
     kwargs: dict = {
@@ -497,7 +573,7 @@ def _build_term_validator(
     from .validation import DEFAULT_ADAPTER, TERM_INSTALL_HINT, TermValidator, term_validator_is_available
 
     if not term_validator_is_available():
-        logger.error(TERM_INSTALL_HINT)
+        _error(TERM_INSTALL_HINT)
         raise typer.Exit(1)
 
     return TermValidator(
@@ -512,7 +588,11 @@ def _build_term_validator(
 
 
 def _echo_term_validation_summary(report: "TermValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a term validation report."""
+    """Summarise a term validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_terms:
         logger.info("No ontology term identifiers found to validate")
         return
@@ -526,15 +606,15 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_terms_failed:
-        logger.warning(
+        _warn(
             "Every term failed to resolve, which usually means the ontology service "
             "could not be reached rather than a report full of invented identifiers"
         )
     for check in report.confabulated_terms:
-        logger.warning("Unresolved term: %s (%s)", check.term_id, check.message)
+        _warn(f"Unresolved term: {check.term_id} ({check.message})")
     for check in report.obsolete_terms:
         replacement = f", replaced by {check.replaced_by}" if check.replaced_by else ""
-        logger.warning("Obsolete term: %s%s", check.term_id, replacement)
+        _warn(f"Obsolete term: {check.term_id}{replacement}")
     if report.labels_checked:
         logger.info(
             "Checked %d labels: %d match the term, %d name a different one",
@@ -543,12 +623,8 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
             len(report.mislabelled_terms),
         )
     for check in report.mislabelled_terms:
-        logger.warning(
-            "%s is %r, but the report calls it %s",
-            check.term_id,
-            check.ontology_label,
-            ", ".join(repr(label) for label in check.reported_labels or []),
-        )
+        reported = ", ".join(repr(label) for label in check.reported_labels or [])
+        _warn(f"{check.term_id} is {check.ontology_label!r}, but the report calls it {reported}")
     if report.unresolvable_prefixes:
         logger.info(
             "No resolver covers these prefixes, so their terms were not checked: %s",
@@ -597,7 +673,11 @@ def _refresh_validation_frontmatter(
 
 
 def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a reference validation report."""
+    """Summarise a reference validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_references:
         logger.info("No PMID or DOI references found to validate")
         return
@@ -610,12 +690,12 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_references_failed:
-        logger.warning(
+        _warn(
             "Every reference failed to resolve, which usually means a network or "
             "rate-limit problem rather than a report full of fabrications"
         )
     for check in report.confabulated_references:
-        logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
+        _warn(f"Unresolved reference: {check.reference_id} ({check.message})")
     if report.quote_checks:
         logger.info(
             "Checked %d quoted claims: %d found in the cited source, %d not",
@@ -624,9 +704,7 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             len(report.unsupported_quotes),
         )
     for quote_check in report.unsupported_quotes:
-        logger.warning(
-            "Quote not found in %s: %r", quote_check.reference_id, quote_check.quote[:120]
-        )
+        _warn(f"Quote not found in {quote_check.reference_id}: {quote_check.quote[:120]!r}")
     if report.unchecked_quotes:
         logger.info(
             "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
@@ -638,10 +716,9 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             report.on_topic_count,
         )
     for check in report.off_topic_references:
-        logger.warning(
-            "Reference %s resolves but looks off topic: %s",
-            check.reference_id,
-            check.title or "(no title)",
+        _warn(
+            f"Reference {check.reference_id} resolves but looks off topic: "
+            f"{check.title or '(no title)'}"
         )
 
 
@@ -787,24 +864,23 @@ def research(
     # Load query from file when requested
     if input_file:
         if template:
-            logger.error("Cannot combine --input-file with --template")
+            _error("Cannot combine --input-file with --template")
             raise typer.Exit(1)
         if query:
-            logger.error(
-                "Provide the query either as an argument or via --input-file, not both")
+            _error("Provide the query either as an argument or via --input-file, not both")
             raise typer.Exit(1)
 
         try:
             file_content = input_file.read_text(encoding='utf-8').strip()
         except FileNotFoundError:
-            logger.error(f"Input file not found: {input_file}")
+            _error(f"Input file not found: {input_file}")
             raise typer.Exit(1)
         except OSError as exc:
-            logger.error(f"Unable to read input file {input_file}: {exc}")
+            _error(f"Unable to read input file {input_file}: {exc}")
             raise typer.Exit(1)
 
         if not file_content:
-            logger.error(f"Input file {input_file} is empty")
+            _error(f"Input file {input_file} is empty")
             raise typer.Exit(1)
 
         # Assign stripped content to query so the rest of the pipeline works unchanged
@@ -819,9 +895,9 @@ def research(
             is_valid, error_msg = processor.validate_template_variables(
                 template, var)
             if not is_valid:
-                logger.error(f"Template error: {error_msg}")
+                _error(f"Template error: {error_msg}")
                 if error_msg and "requires variables" in error_msg:
-                    logger.error("Use --var key=value for each variable")
+                    _stderr("Use --var key=value for each variable")
                 raise typer.Exit(1)
 
             # Process the template
@@ -835,11 +911,11 @@ def research(
                 logger.info(f"Variables: {var_str}")
 
         except (FileNotFoundError, ValueError) as e:
-            logger.error(f"Template error: {e}")
+            _error(f"Template error: {e}")
             raise typer.Exit(1)
 
     elif not query:
-        logger.error("Either provide a query or use --template")
+        _error("Either provide a query or use --template")
         raise typer.Exit(1)
 
     # Parse provider parameters if provided
@@ -854,7 +930,7 @@ def research(
                 provider_params[key.strip()] = value.strip()
             logger.debug(f"Parsed provider parameters: {provider_params}")
         except ValueError as e:
-            logger.error(f"Error parsing parameters: {e}")
+            _error(f"Could not parse --param: {e}")
             raise typer.Exit(1)
 
     # Setup cache configuration
@@ -879,7 +955,7 @@ def research(
     # --use-cborg is a shortcut for CBORG configuration
     if effective_options.use_cborg:
         if effective_options.base_url:
-            logger.warning("--use-cborg overrides --base-url")
+            _warn("--use-cborg overrides --base-url")
         proxy_base_url = "https://api.cborg.lbl.gov"
         # Default to CBORG_API_KEY if no specific env var is provided
         if not proxy_api_key_env:
@@ -900,8 +976,7 @@ def research(
         if proxy_api_key_env:
             api_key = os.getenv(proxy_api_key_env)
             if not api_key:
-                logger.error(
-                    f"Environment variable {proxy_api_key_env} not set")
+                _error(f"Environment variable {proxy_api_key_env} not set")
                 raise typer.Exit(1)
             logger.debug(f"Using API key from {proxy_api_key_env}")
         else:
@@ -927,7 +1002,7 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        _echo_no_providers_message()
+        _echo_no_providers_message(err=True)
         raise typer.Exit(1)
 
     # An explicit list is an ordering instruction, so it replaces the
@@ -947,7 +1022,7 @@ def research(
             # direction. The client answers the distinction; asking it here is
             # what keeps the two surfaces from drifting.
             if not fallback_request or not client.knows_provider(provider):
-                logger.error(
+                _error(
                     f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
                 raise typer.Exit(1)
             # "Not configured" is one of the failures a fallback exists to
@@ -956,7 +1031,7 @@ def research(
             # drop the provider from the trail the report is supposed to
             # carry. If nothing else can take the work either, the client
             # raises and the run still fails -- with every attempt recorded.
-            logger.warning(
+            _warn(
                 f"Provider '{provider}' is not configured; continuing because a fallback was requested"
             )
         else:
@@ -966,7 +1041,7 @@ def research(
         logger.info(f"Using: {available_providers[0]}")
 
     for warning in effective_options.warnings:
-        logger.warning(warning)
+        _warn(warning)
 
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
@@ -997,7 +1072,7 @@ def research(
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-references")
+                _warn(f"{flag_name} has no effect without --validate-references")
 
     if not validate_terms:
         unused_term_flags: tuple[tuple[str, object, object], ...] = (
@@ -1011,10 +1086,10 @@ def research(
         )
         for flag_name, flag_value, default in unused_term_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-terms")
+                _warn(f"{flag_name} has no effect without --validate-terms")
 
     if not validate_references and not validate_terms and fail_on_unresolved:
-        logger.warning(
+        _warn(
             "--fail-on-unresolved has no effect without --validate-references "
             "or --validate-terms"
         )
@@ -1025,14 +1100,14 @@ def research(
         from .validation import INSTALL_HINT, validator_is_available
 
         if not validator_is_available():
-            logger.error(INSTALL_HINT)
+            _error(INSTALL_HINT)
             raise typer.Exit(1)
 
     if validate_terms:
         from .validation import TERM_INSTALL_HINT, term_validator_is_available
 
         if not term_validator_is_available():
-            logger.error(TERM_INSTALL_HINT)
+            _error(TERM_INSTALL_HINT)
             raise typer.Exit(1)
 
     logger.info("Researching...")
@@ -1061,9 +1136,12 @@ def research(
         # adds is the trail, so that is all it prints. render_trail owns the
         # console-versus-report split that used to be argued here.
         if result.fell_back:
-            logger.warning(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(result.provider_attempts),
+            # One warning, so only its first line carries the prefix; the
+            # trail beneath reads as its body, as the failure path's does
+            # under its error. Prefixing each line would split it into many.
+            _warn(
+                "Providers tried:\n"
+                + ProviderAttempt.render_trail(result.provider_attempts)
             )
 
         # Determine if we're separating citations
@@ -1114,7 +1192,7 @@ def research(
                 typer.echo(output_content)
 
     except ValueError as exc:
-        logger.error(f"Error: {exc}")
+        _error(str(exc))
         # The trail is on the error whenever the run ended on a failure it
         # could not follow -- which is not only the last candidate, since a
         # 429 or an unclassified error ends the run wherever it lands. Without
@@ -1133,13 +1211,10 @@ def research(
             # failure that ended the run, so the repetition is the lesser
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
-            logger.error(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(attempts),
-            )
+            _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
         raise typer.Exit(1)
     except OSError as exc:
-        logger.error(f"Filesystem error: {exc}")
+        _error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
@@ -1168,7 +1243,7 @@ def research(
             # urllib raises OSError subclasses for network failures. The report is
             # already saved, so report the real cause rather than letting it surface
             # as a filesystem error.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1193,7 +1268,7 @@ def research(
         except (OSError, ValueError) + lookup_error_types() as exc:
             # The report is already saved, so an unreachable ontology service
             # costs the term section, not the research.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1211,7 +1286,7 @@ def research(
         except OSError as exc:
             # The report without its validation sections is already on disk, so
             # this loses the sections, not the research.
-            logger.error(f"Could not add the validation section to {output}: {exc}")
+            _error(f"Could not add the validation section to {output}: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
@@ -1224,10 +1299,10 @@ def research(
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
     if term_report is not None and term_report.has_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 
@@ -1292,17 +1367,17 @@ def validate_references_command(
     from .validation import VALIDATION_SECTION_HEADING, render_with_sections, split_validation_sections
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_reference_validator(
@@ -1338,7 +1413,7 @@ def validate_references_command(
             # OSError covers network failures (urllib raises subclasses of it);
             # ValueError covers a malformed cached record. Neither should reach
             # the user as a traceback when every neighbouring path exits cleanly.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_validation_summary(report)
@@ -1370,7 +1445,7 @@ def validate_references_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1378,7 +1453,7 @@ def validate_references_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
 
 
@@ -1445,17 +1520,17 @@ def validate_terms_command(
     )
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_term_validator(
@@ -1490,7 +1565,7 @@ def validate_terms_command(
             # which it raises rather than reporting the term as absent. None of
             # them should reach the user as a traceback when every neighbouring
             # path exits cleanly.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_term_validation_summary(report)
@@ -1522,7 +1597,7 @@ def validate_terms_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1530,7 +1605,7 @@ def validate_terms_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 
@@ -1548,7 +1623,7 @@ def edison_trajectory(
 
     api_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
     if not api_key:
-        logger.error("EDISON_API_KEY is required to retrieve an Edison trajectory")
+        _error("EDISON_API_KEY is required to retrieve an Edison trajectory")
         raise typer.Exit(1)
 
     processor = ResearchProcessor()
@@ -1594,7 +1669,7 @@ def edison_trajectory(
                 typer.echo(processor.format_citations_only(result))
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        _error(str(e))
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
@@ -1634,11 +1709,11 @@ def transcript_stats_command(
         # OSError covers an unreadable file as well as a missing one, matching
         # the --output path below; FileNotFoundError is one of its subclasses,
         # as json.JSONDecodeError is of ValueError.
-        logger.error(f"Could not read transcripts: {e}")
+        _error(f"Could not read transcripts: {e}")
         raise typer.Exit(1)
 
     if not stats.entries:
-        logger.warning("No transcript entries found in the given paths")
+        _warn("No transcript entries found in the given paths")
 
     if output_format is TranscriptStatsFormat.JSON:
         content = stats.model_dump_json(indent=2)
@@ -1653,7 +1728,7 @@ def transcript_stats_command(
         except OSError as e:
             # Match the command's other failure paths: a missing directory
             # exits 1 rather than raising a traceback at the user.
-            logger.error(f"Could not write {output}: {e}")
+            _error(f"Could not write {output}: {e}")
             raise typer.Exit(1)
         logger.info(f"Transcript summary saved to: {output}")
     else:
@@ -1720,10 +1795,9 @@ def providers(
 
     if check:
         if show_params:
-            # Echoed, not logged: every other line this path emits goes to
-            # stdout, and the CLI's logger does not propagate to handlers a
-            # caller (or a test) can see.
-            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
+            # About this run, not part of the health report, so it stays out
+            # of a redirected report.
+            _warn("--show-params has no effect with --check; ignoring it.")
         _check_provider_health(client, provider)
         return
 
@@ -1732,9 +1806,7 @@ def providers(
     if provider:
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
-            logger.error(f"Unknown provider: {provider}")
-            logger.error(
-                f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
+            _report_unknown_provider(provider)
             raise typer.Exit(1)
 
         is_available = provider in available
@@ -2189,6 +2261,17 @@ def _generate_individual_pages(
     return count
 
 
+def _report_missing_browser_extra(missing: str) -> None:
+    """Tell the user the browser extra is missing, and how to install it.
+
+    Args:
+        missing: The module that failed to import.
+    """
+    _error(f"{missing} not installed. Install with:")
+    _stderr("  pip install deep-research-client[browser]")
+    _stderr("  # or: uv add deep-research-client[browser]")
+
+
 @app.command()
 def browse_cache(
     output_dir: Annotated[Path, typer.Argument(help="Output directory for browser files")],
@@ -2230,7 +2313,7 @@ def browse_cache(
     data = client.export_cache_for_browser(include_content=include_content)
 
     if not data:
-        logger.error("No cached files found to browse")
+        _error("No cached files found to browse")
         raise typer.Exit(1)
 
     logger.info(f"Found {len(data)} cached research entries")
@@ -2276,15 +2359,13 @@ def browse_cache(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser
@@ -2467,7 +2548,7 @@ def models(
             parsed = enum_class(raw_value.lower())
         except ValueError:
             # Names the flag the user typed, not the generated class behind it.
-            logger.error(
+            _error(
                 f"Invalid {flag} value '{raw_value}'. Use one of: "
                 f"{_vocabulary(enum_class)}")
             raise typer.Exit(1)
@@ -2478,7 +2559,7 @@ def models(
     if provider:
         cards = get_provider_model_cards(provider)
         if not cards:
-            logger.error(
+            _error(
                 f"Unknown provider, or no model cards for '{provider}'. "
                 f"Use one of: {_carded_providers()}")
             raise typer.Exit(1)
@@ -2647,17 +2728,17 @@ def browse_files(
                 all_files.append(source)
                 logger.info(f"Added file: {source}")
             else:
-                logger.warning(f"Skipping non-markdown file: {source}")
+                _warn(f"Skipping non-markdown file: {source}")
         elif source.is_dir():
             found = list(source.glob(pattern))
             logger.info(
                 f"Found {len(found)} files in {source} with pattern '{pattern}'")
             all_files.extend(found)
         else:
-            logger.warning(f"Source not found, skipping: {source}")
+            _warn(f"Source not found, skipping: {source}")
 
     if not all_files:
-        logger.error("No markdown files found")
+        _error("No markdown files found")
         raise typer.Exit(1)
 
     logger.info(f"Processing {len(all_files)} markdown files")
@@ -2706,15 +2787,13 @@ def browse_files(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser
@@ -2839,20 +2918,20 @@ def eval_fetch(
     # error, no sign the argument was blank. Refused here for the same reason
     # `LabBenchAdapter.load` refuses it.
     if not names:
-        typer.echo("No subset named.")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error("No subset named.")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     unknown = [n for n in names if n not in SUBSETS]
     if unknown:
-        typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error(f"Unknown subset(s): {', '.join(unknown)}")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     multimodal = [n for n in names if not SUBSETS[n][1]]
     if multimodal:
-        typer.echo(
-            f"NOTE: {', '.join(multimodal)} ask about figures or tables supplied as "
+        _warn(
+            f"{', '.join(multimodal)} ask about figures or tables supplied as "
             f"images. They will be cached, but `eval load` refuses them, so there is "
             f"no path from this download to a run."
         )
@@ -2875,10 +2954,10 @@ def eval_fetch(
     except ValueError as exc:
         # Upstream drift trips the row-count guard, which exists precisely so a
         # user finds out. Its siblings report that; this used to traceback.
-        typer.echo(f"Could not fetch the dataset: {exc}")
+        _error(f"Could not fetch the dataset: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset: {exc}")
+        _error(f"Could not reach the dataset: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -2902,10 +2981,10 @@ def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
     try:
         return load_eval_set(adapter, source)
     except (ValueError, FileNotFoundError) as exc:
-        typer.echo(f"Could not load the eval set {source}: {exc}")
+        _error(f"Could not load the eval set {source}: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset to load {source}: {exc}")
+        _error(f"Could not reach the dataset to load {source}: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -3069,7 +3148,7 @@ def eval_run(
     )
     from .evaluation.models import MCQScore
     if not arm and not arms_file:
-        typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
+        _error("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
         raise typer.Exit(1)
 
     arms: list = []
@@ -3080,7 +3159,7 @@ def eval_run(
 
     duplicate_ids = {arm_id for arm_id, n in Counter(a.id for a in arms).items() if n > 1}
     if duplicate_ids:
-        typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
+        _error(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
     eval_set = _load_eval_set_or_exit(adapter, source)
@@ -3090,12 +3169,12 @@ def eval_run(
         tasks = [t for t in tasks if t.id in wanted]
         missing = wanted - {t.id for t in tasks}
         if missing:
-            typer.echo(f"No task with id(s): {', '.join(sorted(missing))}")
+            _error(f"No task with id(s): {', '.join(sorted(missing))}")
             raise typer.Exit(1)
     if limit is not None:
         tasks = tasks[:limit]
     if not tasks:
-        typer.echo("No tasks selected.")
+        _error("No tasks selected.")
         raise typer.Exit(1)
     eval_set.tasks = tasks
 
@@ -3460,25 +3539,25 @@ def eval_score(
     tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
     if not tasks:
         present = sorted({t.answer_type for t in (eval_set.tasks or [])})
-        typer.echo(
+        _error(
             f"No report-shaped tasks in {eval_set.name}; it holds "
             f"{', '.join(present) or 'nothing'}."
         )
         if AnswerType.MULTIPLE_CHOICE in present:
-            typer.echo("  Multiple-choice sets are graded by `eval run --grade`, not here.")
+            _stderr("  Multiple-choice sets are graded by `eval run --grade`, not here.")
         if AnswerType.SHORT_ANSWER in present:
-            typer.echo("  Short-answer sets are not scored by this client at all yet.")
+            _stderr("  Short-answer sets are not scored by this client at all yet.")
         raise typer.Exit(1)
 
     if task_id:
         tasks = [t for t in tasks if t.id == task_id]
         if not tasks:
-            typer.echo(f"No task with id {task_id!r} in {eval_set.name}.")
+            _error(f"No task with id {task_id!r} in {eval_set.name}.")
             raise typer.Exit(1)
     elif len(tasks) > 1:
-        typer.echo(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
+        _error(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
         for t in tasks[:20]:
-            typer.echo(f"  {t.id}")
+            _stderr(f"  {t.id}")
         raise typer.Exit(1)
 
     task = tasks[0]

@@ -2253,6 +2253,17 @@ def _generate_individual_pages(
     return count
 
 
+def _report_missing_browser_extra(missing: str) -> None:
+    """Tell the user the browser extra is missing, and how to install it.
+
+    Args:
+        missing: The module that failed to import.
+    """
+    _error(f"{missing} not installed. Install with:")
+    _stderr("  pip install deep-research-client[browser]")
+    _stderr("  # or: uv add deep-research-client[browser]")
+
+
 @app.command()
 def browse_cache(
     output_dir: Annotated[Path, typer.Argument(help="Output directory for browser files")],
@@ -2294,7 +2305,7 @@ def browse_cache(
     data = client.export_cache_for_browser(include_content=include_content)
 
     if not data:
-        logger.error("No cached files found to browse")
+        _error("No cached files found to browse")
         raise typer.Exit(1)
 
     logger.info(f"Found {len(data)} cached research entries")
@@ -2340,15 +2351,13 @@ def browse_cache(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser
@@ -2531,7 +2540,7 @@ def models(
             parsed = enum_class(raw_value.lower())
         except ValueError:
             # Names the flag the user typed, not the generated class behind it.
-            logger.error(
+            _error(
                 f"Invalid {flag} value '{raw_value}'. Use one of: "
                 f"{_vocabulary(enum_class)}")
             raise typer.Exit(1)
@@ -2542,7 +2551,7 @@ def models(
     if provider:
         cards = get_provider_model_cards(provider)
         if not cards:
-            logger.error(
+            _error(
                 f"Unknown provider, or no model cards for '{provider}'. "
                 f"Use one of: {_carded_providers()}")
             raise typer.Exit(1)
@@ -2711,17 +2720,17 @@ def browse_files(
                 all_files.append(source)
                 logger.info(f"Added file: {source}")
             else:
-                logger.warning(f"Skipping non-markdown file: {source}")
+                _warn(f"Skipping non-markdown file: {source}")
         elif source.is_dir():
             found = list(source.glob(pattern))
             logger.info(
                 f"Found {len(found)} files in {source} with pattern '{pattern}'")
             all_files.extend(found)
         else:
-            logger.warning(f"Source not found, skipping: {source}")
+            _warn(f"Source not found, skipping: {source}")
 
     if not all_files:
-        logger.error("No markdown files found")
+        _error("No markdown files found")
         raise typer.Exit(1)
 
     logger.info(f"Processing {len(all_files)} markdown files")
@@ -2770,15 +2779,13 @@ def browse_files(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser

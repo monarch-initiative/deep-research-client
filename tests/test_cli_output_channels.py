@@ -76,3 +76,40 @@ def test_validate_commands_report_a_missing_file_on_stderr(command, tmp_path: Pa
     assert result.exit_code == 1
     assert f"Error: File not found: {missing}" in result.stderr
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "args,message",
+    [
+        (["models", "--cost", "priceless"], "Error: Invalid --cost value 'priceless'"),
+        (
+            ["models", "--provider", "flacon"],
+            "Error: Unknown provider, or no model cards for 'flacon'",
+        ),
+    ],
+    ids=["bad-filter", "unknown-provider"],
+)
+def test_models_rejects_bad_input_on_stderr(args, message):
+    """A rejected filter is about the run; the listing on stdout stays empty."""
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert message in result.stderr
+    assert result.stdout == ""
+
+
+def test_browse_files_warns_per_skipped_source_and_errors_when_none_remain(tmp_path: Path):
+    """Each skipped source is a warning; nothing left to browse is an error."""
+    not_markdown = tmp_path / "notes.txt"
+    not_markdown.write_text("plain text", encoding="utf-8")
+    absent = tmp_path / "absent.md"
+
+    result = runner.invoke(
+        app, ["browse-files", str(not_markdown), str(absent), "-o", str(tmp_path / "out")]
+    )
+
+    assert result.exit_code == 1
+    assert f"Warning: Skipping non-markdown file: {not_markdown}" in result.stderr
+    assert f"Warning: Source not found, skipping: {absent}" in result.stderr
+    assert "Error: No markdown files found" in result.stderr
+    assert result.stdout == ""

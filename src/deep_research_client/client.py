@@ -315,7 +315,7 @@ class DeepResearchClient:
             Human-readable explanation of what is missing
         """
         try:
-            provider_class = self._get_provider_class(provider_name)
+            provider_class = load_provider_class(provider_name)
             provider = provider_class(ProviderConfig(name=provider_name))
         except Exception:
             # A diagnostic path must not fail with a second, unrelated error.
@@ -356,10 +356,6 @@ class DeepResearchClient:
             or f"'{provider_name}' is not configured"
         )
 
-    def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
-        """Resolve a provider class only when it is actually needed."""
-        return load_provider_class(provider_name)
-
     def _create_provider(
         self,
         provider_name: str,
@@ -367,7 +363,7 @@ class DeepResearchClient:
         params: str | BaseProviderParams | None = None,
     ) -> ResearchProvider:
         """Instantiate a provider via the lazy class loader."""
-        provider_class = self._get_provider_class(provider_name)
+        provider_class = load_provider_class(provider_name)
         return provider_class(config, params)
 
     def _create_provider_with_params(self, provider_name: str, model: Optional[str] = None, provider_params: Optional[dict] = None) -> 'ResearchProvider':

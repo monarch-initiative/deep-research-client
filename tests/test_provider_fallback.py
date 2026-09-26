@@ -626,17 +626,17 @@ def test_nothing_is_cached_when_every_provider_fails(tmp_path):
 def test_no_providers_at_all_is_a_configuration_error():
     """An empty registry is not configured, with or without a fallback.
 
-    Still a ValueError with the same text, so callers written before it was
-    typed keep matching it.
+    Keeps the old text, so callers written before it was typed keep matching
+    it. That it is still a ValueError is pinned once, for the whole hierarchy,
+    in test_provider_errors.
     """
     client = DeepResearchClient(
         cache_config=CacheConfig(enabled=False),
         provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
     )
     client.registry._providers.clear()
-    with pytest.raises(NoProvidersConfiguredError, match="No research providers available") as excinfo:
+    with pytest.raises(NoProvidersConfiguredError, match="No research providers available"):
         client.research("q", fallback=True)
-    assert isinstance(excinfo.value, ValueError)
 
 
 def test_an_unknown_provider_name_is_still_a_plain_error():

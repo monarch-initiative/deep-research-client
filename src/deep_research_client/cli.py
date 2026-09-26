@@ -329,15 +329,19 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
-def _echo_no_providers_message() -> None:
+def _echo_no_providers_message(err: bool = False) -> None:
     """Tell the user nothing is configured, and what to set.
 
-    A function rather than two inline calls so a test can assert which stream
-    it lands on: driving this through CliRunner cannot show that, because the
-    pinned click merges stdout and stderr into one buffer.
+    The heading and its list always share a stream: split, a redirect keeps
+    the list and loses the sentence saying what it is for. Which stream
+    depends on the caller. For `providers` the list is the answer, so stdout;
+    for `research` it is why the run stopped, so stderr.
+
+    Args:
+        err: Write to stderr rather than stdout.
     """
-    typer.echo("No research providers available. Please set API keys:")
-    _echo_credential_hints(_settable_credential_hints())
+    typer.echo("No research providers available. Please set API keys:", err=err)
+    _echo_credential_hints(_settable_credential_hints(), err=err)
 
 
 def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
@@ -402,11 +406,16 @@ def _settable_credential_hints() -> list[str]:
     ]
 
 
-def _echo_credential_hints(provider_names: list[str]) -> None:
-    """Print credential hints for providers by canonical provider name."""
+def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None:
+    """Print credential hints for providers by canonical provider name.
+
+    Args:
+        provider_names: Providers to print a hint for.
+        err: Write to stderr rather than stdout, to stay with a heading there.
+    """
     for provider_name in provider_names:
         env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        typer.echo(f"  - {env_var} for {label}")
+        typer.echo(f"  - {env_var} for {label}", err=err)
 
 
 def _echo_stub_hints() -> None:
@@ -849,24 +858,23 @@ def research(
     # Load query from file when requested
     if input_file:
         if template:
-            logger.error("Cannot combine --input-file with --template")
+            _error("Cannot combine --input-file with --template")
             raise typer.Exit(1)
         if query:
-            logger.error(
-                "Provide the query either as an argument or via --input-file, not both")
+            _error("Provide the query either as an argument or via --input-file, not both")
             raise typer.Exit(1)
 
         try:
             file_content = input_file.read_text(encoding='utf-8').strip()
         except FileNotFoundError:
-            logger.error(f"Input file not found: {input_file}")
+            _error(f"Input file not found: {input_file}")
             raise typer.Exit(1)
         except OSError as exc:
-            logger.error(f"Unable to read input file {input_file}: {exc}")
+            _error(f"Unable to read input file {input_file}: {exc}")
             raise typer.Exit(1)
 
         if not file_content:
-            logger.error(f"Input file {input_file} is empty")
+            _error(f"Input file {input_file} is empty")
             raise typer.Exit(1)
 
         # Assign stripped content to query so the rest of the pipeline works unchanged
@@ -881,9 +889,9 @@ def research(
             is_valid, error_msg = processor.validate_template_variables(
                 template, var)
             if not is_valid:
-                logger.error(f"Template error: {error_msg}")
+                _error(f"Template error: {error_msg}")
                 if error_msg and "requires variables" in error_msg:
-                    logger.error("Use --var key=value for each variable")
+                    _stderr("Use --var key=value for each variable")
                 raise typer.Exit(1)
 
             # Process the template
@@ -897,11 +905,11 @@ def research(
                 logger.info(f"Variables: {var_str}")
 
         except (FileNotFoundError, ValueError) as e:
-            logger.error(f"Template error: {e}")
+            _error(f"Template error: {e}")
             raise typer.Exit(1)
 
     elif not query:
-        logger.error("Either provide a query or use --template")
+        _error("Either provide a query or use --template")
         raise typer.Exit(1)
 
     # Parse provider parameters if provided
@@ -916,7 +924,7 @@ def research(
                 provider_params[key.strip()] = value.strip()
             logger.debug(f"Parsed provider parameters: {provider_params}")
         except ValueError as e:
-            logger.error(f"Error parsing parameters: {e}")
+            _error(f"Could not parse --param: {e}")
             raise typer.Exit(1)
 
     # Setup cache configuration
@@ -941,7 +949,7 @@ def research(
     # --use-cborg is a shortcut for CBORG configuration
     if effective_options.use_cborg:
         if effective_options.base_url:
-            logger.warning("--use-cborg overrides --base-url")
+            _warn("--use-cborg overrides --base-url")
         proxy_base_url = "https://api.cborg.lbl.gov"
         # Default to CBORG_API_KEY if no specific env var is provided
         if not proxy_api_key_env:
@@ -962,8 +970,7 @@ def research(
         if proxy_api_key_env:
             api_key = os.getenv(proxy_api_key_env)
             if not api_key:
-                logger.error(
-                    f"Environment variable {proxy_api_key_env} not set")
+                _error(f"Environment variable {proxy_api_key_env} not set")
                 raise typer.Exit(1)
             logger.debug(f"Using API key from {proxy_api_key_env}")
         else:
@@ -989,7 +996,7 @@ def research(
     # Check if any providers are available
     available_providers = client.get_available_providers()
     if not available_providers:
-        _echo_no_providers_message()
+        _echo_no_providers_message(err=True)
         raise typer.Exit(1)
 
     # An explicit list is an ordering instruction, so it replaces the
@@ -1009,7 +1016,7 @@ def research(
             # direction. The client answers the distinction; asking it here is
             # what keeps the two surfaces from drifting.
             if not fallback_request or not client.knows_provider(provider):
-                logger.error(
+                _error(
                     f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
                 raise typer.Exit(1)
             # "Not configured" is one of the failures a fallback exists to
@@ -1018,7 +1025,7 @@ def research(
             # drop the provider from the trail the report is supposed to
             # carry. If nothing else can take the work either, the client
             # raises and the run still fails -- with every attempt recorded.
-            logger.warning(
+            _warn(
                 f"Provider '{provider}' is not configured; continuing because a fallback was requested"
             )
         else:
@@ -1028,7 +1035,7 @@ def research(
         logger.info(f"Using: {available_providers[0]}")
 
     for warning in effective_options.warnings:
-        logger.warning(warning)
+        _warn(warning)
 
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
@@ -1059,7 +1066,7 @@ def research(
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-references")
+                _warn(f"{flag_name} has no effect without --validate-references")
 
     if not validate_terms:
         unused_term_flags: tuple[tuple[str, object, object], ...] = (
@@ -1073,10 +1080,10 @@ def research(
         )
         for flag_name, flag_value, default in unused_term_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-terms")
+                _warn(f"{flag_name} has no effect without --validate-terms")
 
     if not validate_references and not validate_terms and fail_on_unresolved:
-        logger.warning(
+        _warn(
             "--fail-on-unresolved has no effect without --validate-references "
             "or --validate-terms"
         )
@@ -1087,14 +1094,14 @@ def research(
         from .validation import INSTALL_HINT, validator_is_available
 
         if not validator_is_available():
-            logger.error(INSTALL_HINT)
+            _error(INSTALL_HINT)
             raise typer.Exit(1)
 
     if validate_terms:
         from .validation import TERM_INSTALL_HINT, term_validator_is_available
 
         if not term_validator_is_available():
-            logger.error(TERM_INSTALL_HINT)
+            _error(TERM_INSTALL_HINT)
             raise typer.Exit(1)
 
     logger.info("Researching...")
@@ -1123,9 +1130,9 @@ def research(
         # adds is the trail, so that is all it prints. render_trail owns the
         # console-versus-report split that used to be argued here.
         if result.fell_back:
-            logger.warning(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(result.provider_attempts),
+            _warn(
+                "Providers tried:\n"
+                + ProviderAttempt.render_trail(result.provider_attempts)
             )
 
         # Determine if we're separating citations
@@ -1176,7 +1183,7 @@ def research(
                 typer.echo(output_content)
 
     except ValueError as exc:
-        logger.error(f"Error: {exc}")
+        _error(str(exc))
         # The trail is on the error whenever the run ended on a failure it
         # could not follow -- which is not only the last candidate, since a
         # 429 or an unclassified error ends the run wherever it lands. Without
@@ -1195,13 +1202,10 @@ def research(
             # failure that ended the run, so the repetition is the lesser
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
-            logger.error(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(attempts),
-            )
+            _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
         raise typer.Exit(1)
     except OSError as exc:
-        logger.error(f"Filesystem error: {exc}")
+        _error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
@@ -1230,7 +1234,7 @@ def research(
             # urllib raises OSError subclasses for network failures. The report is
             # already saved, so report the real cause rather than letting it surface
             # as a filesystem error.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1255,7 +1259,7 @@ def research(
         except (OSError, ValueError) + lookup_error_types() as exc:
             # The report is already saved, so an unreachable ontology service
             # costs the term section, not the research.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1273,7 +1277,7 @@ def research(
         except OSError as exc:
             # The report without its validation sections is already on disk, so
             # this loses the sections, not the research.
-            logger.error(f"Could not add the validation section to {output}: {exc}")
+            _error(f"Could not add the validation section to {output}: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
@@ -1286,10 +1290,10 @@ def research(
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
     if term_report is not None and term_report.has_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 

@@ -364,6 +364,51 @@ def test_effective_research_options_discards_asta_noops_when_asta_is_auto_select
     assert len(options.warnings) == 4
 
 
+def test_research_warnings_stay_out_of_the_report_on_stdout():
+    """A warning printed into stdout would land inside `research > report.md`.
+
+    Before issue #68 these went through `logger.warning`: on stderr, but only
+    through a handler `caplog` could not see. Now they are echoed to stderr,
+    so the stream is asserted directly -- and the report is checked to be the
+    only thing on stdout.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "research", "What is synthetic biology?", "--provider", "mock",
+            "--no-cache", "--validation-email", "me@example.org",
+        ],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "Warning: --validation-email has no effect without --validate-references"
+        in result.stderr
+    )
+    assert "has no effect" not in result.stdout
+    assert "What is synthetic biology?" in result.stdout
+
+
+def test_research_errors_go_to_stderr_with_nothing_on_stdout(tmp_path):
+    """An error that ends the run is about the run, not a report."""
+    query_file = tmp_path / "conflict.md"
+    query_file.write_text("File-based query", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["research", "Inline query", "--input-file", str(query_file), "--provider", "mock"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 1
+    assert (
+        "Error: Provide the query either as an argument or via --input-file, not both"
+        in result.stderr
+    )
+    assert result.stdout == ""
+
+
 @pytest.mark.integration
 def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_path):
     """Asta CLI should warn on --model but still honor output formatting options."""

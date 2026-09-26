@@ -383,11 +383,13 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     assert "has no effect" not in result.stdout
 
 
-def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
+def test_the_research_hint_list_keeps_its_heading(monkeypatch):
     """A heading on one stream and its list on another is half a message.
 
     The list is indented variable names; without the sentence above it, a
-    redirected file says nothing about what they are for.
+    redirected file says nothing about what they are for. For `research` both
+    go to stderr: they explain why the run stopped, and are not the report a
+    user would redirect (issue #68).
     """
     import deep_research_client.cli as cli_module
 
@@ -396,16 +398,24 @@ def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
     )
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
-    assert "Please set API keys" in result.stdout, "the real command must emit it"
+    assert result.exit_code == 1
+    assert "Please set API keys" in result.stderr, "the real command must emit it"
+    heading_at = result.stderr.index("Please set API keys")
+    assert result.stderr.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+    assert "API_KEY" not in result.stdout, "and none of it may leak into stdout"
 
-    # And on stdout specifically. CliRunner cannot show that -- this click
-    # merges the two streams into one buffer -- so the helper is called direct.
-    cli_module._echo_no_providers_message()
-    captured = capsys.readouterr().out
 
-    assert "Please set API keys" in captured
-    heading_at = captured.index("Please set API keys")
-    assert captured.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+@pytest.mark.parametrize("err", [False, True])
+def test_the_no_providers_heading_and_list_share_a_stream(capsys, err):
+    """Whichever stream the caller picks, the heading and its list both go there."""
+    import deep_research_client.cli as cli_module
+
+    cli_module._echo_no_providers_message(err=err)
+    captured = capsys.readouterr()
+    chosen, other = (captured.err, captured.out) if err else (captured.out, captured.err)
+
+    assert chosen.index("OPENAI_API_KEY") > chosen.index("Please set API keys")
+    assert other == ""
 
 
 def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
@@ -418,9 +428,11 @@ def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
 
-    assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
-    assert "CLI on PATH" not in result.stdout, "not something you set"
-    assert "EDISON_API_KEY" in result.stdout
+    # .output is both streams: this test is about which hints are offered, and
+    # the stream they land on is pinned by the test above.
+    assert "ENABLE_MOCK_PROVIDER" not in result.output, "a mock is not research"
+    assert "CLI on PATH" not in result.output, "not something you set"
+    assert "EDISON_API_KEY" in result.output
 
 
 def test_the_cli_calls_a_method_the_client_actually_has():

@@ -1615,7 +1615,7 @@ def edison_trajectory(
 
     api_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
     if not api_key:
-        logger.error("EDISON_API_KEY is required to retrieve an Edison trajectory")
+        _error("EDISON_API_KEY is required to retrieve an Edison trajectory")
         raise typer.Exit(1)
 
     processor = ResearchProcessor()
@@ -1661,7 +1661,7 @@ def edison_trajectory(
                 typer.echo(processor.format_citations_only(result))
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        _error(str(e))
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
@@ -1701,11 +1701,11 @@ def transcript_stats_command(
         # OSError covers an unreadable file as well as a missing one, matching
         # the --output path below; FileNotFoundError is one of its subclasses,
         # as json.JSONDecodeError is of ValueError.
-        logger.error(f"Could not read transcripts: {e}")
+        _error(f"Could not read transcripts: {e}")
         raise typer.Exit(1)
 
     if not stats.entries:
-        logger.warning("No transcript entries found in the given paths")
+        _warn("No transcript entries found in the given paths")
 
     if output_format is TranscriptStatsFormat.JSON:
         content = stats.model_dump_json(indent=2)
@@ -1720,7 +1720,7 @@ def transcript_stats_command(
         except OSError as e:
             # Match the command's other failure paths: a missing directory
             # exits 1 rather than raising a traceback at the user.
-            logger.error(f"Could not write {output}: {e}")
+            _error(f"Could not write {output}: {e}")
             raise typer.Exit(1)
         logger.info(f"Transcript summary saved to: {output}")
     else:

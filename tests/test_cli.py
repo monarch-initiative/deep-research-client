@@ -131,7 +131,8 @@ def test_edison_trajectory_requires_api_key():
         )
 
     assert result.exit_code == 1
-    assert "EDISON_API_KEY is required" in result.output
+    assert "Error: EDISON_API_KEY is required" in result.stderr
+    assert result.stdout == ""
 
 
 def test_write_result_artifacts_sets_relative_paths(tmp_path):
@@ -726,6 +727,21 @@ def test_transcript_stats_fails_on_a_missing_path(tmp_path):
     result = runner.invoke(app, ["transcript-stats", str(tmp_path / "absent.json")])
 
     assert result.exit_code == 1
+    assert "Error: Could not read transcripts" in result.stderr
+    assert result.stdout == ""
+
+
+def test_transcript_stats_warns_about_nothing_found_without_breaking_the_json(tmp_path):
+    """The warning is about the run; stdout must still parse as the summary.
+
+    A warning on stdout would put a non-JSON line in front of the payload that
+    `--format json` promises downstream tooling (issue #68).
+    """
+    result = runner.invoke(app, ["transcript-stats", str(tmp_path), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert "Warning: No transcript entries found" in result.stderr
+    assert json.loads(result.stdout)["tool_calls"] == 0
 
 
 def test_transcript_stats_fails_on_a_malformed_transcript(tmp_path):

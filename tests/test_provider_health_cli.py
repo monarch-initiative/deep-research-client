@@ -15,7 +15,7 @@ from deep_research_client.cli import (
     _check_provider_health,
     _settable_credential_hints,
 )
-from deep_research_client.client import load_provider_class
+from deep_research_client.client import PROVIDER_CLASS_PATHS, load_provider_class
 from deep_research_client.models import ProviderHealth
 
 if TYPE_CHECKING:
@@ -540,3 +540,32 @@ def test_every_provider_lands_in_exactly_one_section(
             f"{name} is explained under {sections[name]} -- twice, and so "
             f"possibly with two different answers"
         )
+
+
+#: What the client and base class say when a provider declares nothing about
+#: what it needs. Each is true, and none tells a reader what to do.
+_GENERIC_ABSENCE = (
+    "is not registered in this environment",
+    "is not configured",
+    "is not available",
+)
+
+
+@pytest.mark.parametrize("name", list(PROVIDER_CLASS_PATHS))
+def test_every_provider_says_what_it_needs_on_a_bare_machine(bare_machine, name):
+    """The class declarations must cover every provider, or #70 is half done.
+
+    A provider gated at registration (an opt-out, an opt-in flag, a probed
+    binary) that forgot `registration_requirement`, or a keyed one that forgot
+    `credential_env_var`, falls through to one of the generic sentences above.
+    Derived from the registry, so a provider added later is covered too.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    client = DeepResearchClient()
+    assert name not in client.get_available_providers(), "the fixture should leave nothing usable"
+
+    reason = client.unregistered_reason(name)
+    assert not any(generic in reason for generic in _GENERIC_ABSENCE), (
+        f"{name} explains its absence only as {reason!r}; declare what it needs on the class"
+    )

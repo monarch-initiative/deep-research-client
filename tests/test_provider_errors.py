@@ -4,11 +4,14 @@ Covers the failure mode from issue #65: a provider that is configured but
 cannot take work, reported as a timeout instead of as a billing failure.
 """
 
+import pickle
+
 import httpx
 import pytest
 
 from deep_research_client.client import DeepResearchClient
 from deep_research_client.exceptions import (
+    NoProvidersConfiguredError,
     ProviderAuthError,
     ProviderNotConfiguredError,
     ProviderBillingError,
@@ -188,8 +191,6 @@ def test_unconfigured_provider_reports_unreachable_without_probing():
 
 def test_provider_errors_survive_pickling():
     """These may cross a process boundary in a task queue; keep them rebuildable."""
-    import pickle
-
     from deep_research_client.exceptions import ProviderQuotaError
 
     billing = pickle.loads(pickle.dumps(ProviderBillingError("falcon", "no credits", 402)))
@@ -198,6 +199,12 @@ def test_provider_errors_survive_pickling():
 
     quota = pickle.loads(pickle.dumps(ProviderQuotaError("claude_code", "spent", resets_at="3pm")))
     assert quota.resets_at == "3pm"
+
+    # Its __init__ takes only the detail, so it needs its own __reduce__.
+    none_configured = NoProvidersConfiguredError()
+    rebuilt = pickle.loads(pickle.dumps(none_configured))
+    assert isinstance(rebuilt, NoProvidersConfiguredError)
+    assert str(rebuilt) == str(none_configured)
 
 
 def test_a_dead_end_in_the_retry_wrapper_does_not_abandon_the_search():
@@ -238,6 +245,7 @@ def test_not_configured_is_one_catchable_class():
     docs tell callers to write, so the export list is part of the contract.
     """
     from deep_research_client import (
+        NoProvidersConfiguredError,
         ProviderNotConfiguredError,
         ProviderNotInstalledError,
         extract_status_code,
@@ -246,6 +254,7 @@ def test_not_configured_is_one_catchable_class():
     assert extract_status_code is not None
 
     assert issubclass(ProviderNotInstalledError, ProviderNotConfiguredError)
+    assert issubclass(NoProvidersConfiguredError, ProviderNotConfiguredError)
     assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)
 
 
@@ -255,22 +264,12 @@ def test_no_providers_configured_reads_without_a_provider_name():
     It must still point at the next step: the listing that says what could be
     configured, and the check that says what works.
     """
-    import pickle
-
-    from deep_research_client import NoProvidersConfiguredError, ProviderNotConfiguredError
-
-    err = NoProvidersConfiguredError()
-    message = str(err)
-    assert isinstance(err, ProviderNotConfiguredError)
+    message = str(NoProvidersConfiguredError())
     assert not message.startswith(":")
     assert message.startswith("No research providers available")
     assert "`deep-research-client providers`" in message
     assert "`deep-research-client providers --check`" in message
     assert "--provider <other>" not in message
-
-    rebuilt = pickle.loads(pickle.dumps(err))
-    assert isinstance(rebuilt, NoProvidersConfiguredError)
-    assert str(rebuilt) == message
 
 
 def test_a_long_body_never_costs_the_remedy():

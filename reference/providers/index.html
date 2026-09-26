@@ -1474,6 +1474,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Adding Custom Providers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#declaring-what-the-provider-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Declaring what the provider needs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2436,6 +2451,21 @@
       Adding Custom Providers
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Adding Custom Providers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#declaring-what-the-provider-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Declaring what the provider needs
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3634,6 +3664,55 @@ class NewProvider(ResearchProvider):
         # Implementation
         return ResearchResult(...)
 </code></pre>
+<h3 id="declaring-what-the-provider-needs">Declaring what the provider needs</h3>
+<p>What a provider needs in order to run is declared once, on its class. The CLI's
+<code>providers</code> listing, <code>providers --check</code>, the "Please set API keys" hint and the
+client's "why is this provider missing" answer all read these attributes
+rather than keeping their own tables:</p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Set it when</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>credential_env_var</code></td>
+<td>The provider needs an API key from an environment variable</td>
+<td><code>"EDISON_API_KEY"</code></td>
+</tr>
+<tr>
+<td><code>credential_label</code></td>
+<td>Always, with <code>credential_env_var</code>: what the key unlocks, as the CLI lists it</td>
+<td><code>"OpenAI Deep Research"</code> → <code>- OPENAI_API_KEY for OpenAI Deep Research</code></td>
+</tr>
+<tr>
+<td><code>credential_noun</code></td>
+<td>The key belongs to a wider account than the label names (defaults to the label)</td>
+<td><code>"OpenAI"</code> → <code>no OpenAI API key configured</code></td>
+</tr>
+<tr>
+<td><code>registration_requirement</code></td>
+<td>The client can hold the provider back while an instance would call itself available: an opt-out variable, an opt-in flag, a binary probed during auto-detection</td>
+<td><code>"set ENABLE_MOCK_PROVIDER=true to enable the mock provider"</code></td>
+</tr>
+<tr>
+<td><code>stub_reason</code></td>
+<td>There is no upstream API yet, so nothing the user sets would help</td>
+<td><code>"DeepER-Med - no public API released yet (arXiv:…)"</code></td>
+</tr>
+</tbody>
+</table>
+<p>Anything subtler (a missing binary, a missing optional package) belongs in an
+<code>unavailable_reason()</code> override, as <code>claude_code</code>, <code>cyberian</code> and <code>biomni</code> do.
+A test fails for any provider that, on a machine with nothing set up, can only
+say it "is not configured".</p>
+<p>Keep the module cheap to import: the CLI imports every provider module to read
+these attributes, so import your SDK inside the methods that use it, not at
+module scope. A test fails if loading the provider classes imports <code>openai</code>,
+<code>edison_client</code>, <code>litellm</code> or <code>aviary</code>.</p>
 
 
 

@@ -1668,6 +1668,9 @@ Otherwise → f-string
 <ol>
 <li>Create <code>src/deep_research_client/providers/newprovider.py</code></li>
 <li>Implement <code>ResearchProvider</code> interface</li>
+<li>Declare what it needs on the class -- <code>credential_env_var</code>,
+   <code>registration_requirement</code> or <code>stub_reason</code>; the CLI and client read these
+   instead of keeping tables of their own (see the providers reference)</li>
 <li>Add model cards in <code>model_cards.py</code></li>
 <li>Register in <code>client.py</code></li>
 </ol>

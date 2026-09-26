@@ -45,6 +45,40 @@ type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
 
 
+def _without_echoed_question(formatted_answer: str, query: str | None) -> str:
+    r"""Drop the question paper-qa restates at the top of its formatted answer.
+
+    paper-qa builds ``formatted_answer`` as ``f"Question: {question}\n\n{answer}"``
+    plus references. The question is the whole prompt we sent, which the
+    report already carries under ``## Question``, so keeping the echo put every
+    templated prompt in the file twice -- and on a failed run, where the answer
+    is one paragraph, the echo was most of the file (issue #52).
+
+    Removed only on an exact match with what was sent. Anything else is left
+    alone, so a change to Edison's format costs a duplicate, never the answer.
+
+    Args:
+        formatted_answer: Edison's formatted answer.
+        query: The query the task was sent with.
+
+    Returns:
+        The answer and its references, without the restated question.
+
+    >>> _without_echoed_question("Question: Why?\n\nBecause.\n\nReferences\n\n1. X", "Why?")
+    'Because.\n\nReferences\n\n1. X'
+    >>> _without_echoed_question("Question: Why not?\n\nBecause.", "Why?")
+    'Question: Why not?\n\nBecause.'
+    >>> _without_echoed_question("Because.", None)
+    'Because.'
+    """
+    if query is None:
+        return formatted_answer
+    echo = f"Question: {query}\n\n"
+    if formatted_answer.startswith(echo):
+        return formatted_answer[len(echo):]
+    return formatted_answer
+
+
 class _ImageMessageGroup(TypedDict):
     """Representative embedded Edison image plus its optional description."""
 
@@ -259,7 +293,7 @@ class FalconProvider(ResearchProvider):
         if isinstance(task_response, TaskResponseVerbose):
             answer = self._get_verbose_answer(task_response)
             if formatted_answer := answer.get("formatted_answer"):
-                return str(formatted_answer)
+                return _without_echoed_question(str(formatted_answer), task_response.query)
             if plain_answer := answer.get("answer"):
                 return str(plain_answer)
             raise ValueError(
@@ -274,7 +308,7 @@ class FalconProvider(ResearchProvider):
 
         # Prefer formatted_answer as it includes references
         if task_response.formatted_answer:
-            return task_response.formatted_answer
+            return _without_echoed_question(task_response.formatted_answer, task_response.query)
         elif task_response.answer:
             return task_response.answer
         else:

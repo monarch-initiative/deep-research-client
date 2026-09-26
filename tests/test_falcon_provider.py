@@ -84,6 +84,43 @@ def test_extract_text_from_pqa_response():
     assert text == "Formatted answer with (smith2020study pages 1-5) citations"
 
 
+def _answer_frame(answer: dict) -> dict:
+    """Wrap an answer dict in the environment frame Edison returns."""
+    return {"state": {"state": {"response": {"answer": answer}}}}
+
+
+def test_the_echoed_prompt_is_not_repeated_in_the_output():
+    """paper-qa restates the question atop formatted_answer; the report has it already.
+
+    Issue #52: on a failed run the echo was ~200 lines of prompt around a
+    one-paragraph answer, easy to skim past as if it were a report.
+    """
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_verbose_response(_answer_frame({
+        "answer": "No contexts were retrieved.",
+        "formatted_answer": (
+            "Question: test query\n\nNo contexts were retrieved.\n\n"
+            "References\n\n1. (smith2020 pages 1-2): Smith. A paper. 2020."
+        ),
+    }))]
+
+    text = provider._extract_text_content(response)
+
+    assert not text.startswith("Question:")
+    assert "test query" not in text
+    assert text.startswith("No contexts were retrieved.")
+    assert "References" in text, "the references stay, for citation extraction"
+
+
+def test_a_question_that_does_not_match_the_query_is_kept():
+    """Only the exact echo goes: an unfamiliar format costs a duplicate, not the answer."""
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    formatted = "Question: something else\n\nThe answer."
+    response = [create_verbose_response(_answer_frame({"formatted_answer": formatted}))]
+
+    assert provider._extract_text_content(response) == formatted
+
+
 def test_extract_text_from_verbose_response():
     """Verbose Edison responses should read formatted answers from the frame."""
     config = ProviderConfig(name="falcon", api_key="test-key")

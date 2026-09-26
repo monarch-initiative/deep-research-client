@@ -341,9 +341,13 @@ class DeepResearchClient:
         Returns:
             Human-readable explanation of what is missing
         """
+        # Narrow on purpose: an unknown name (ValueError) or a module that
+        # cannot import (ImportError) still gets a sentence, but a renamed
+        # class or a broken module body fails loudly, as it does when the CLI
+        # reads the same attributes through load_provider_class.
         try:
             provider_class = load_provider_class(provider_name)
-        except Exception:
+        except (ValueError, ImportError):
             return f"'{provider_name}' is not configured"
         if provider_class.registration_requirement:
             return provider_class.registration_requirement

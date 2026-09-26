@@ -274,6 +274,14 @@ class FalconProvider(ResearchProvider):
         so that is None: reading a format change as a failed run would mark
         every report failed.
 
+        The non-verbose ``PQATaskResponse`` is passed through as it is, None
+        included, because it cannot draw that distinction: its validator
+        assigns ``answer.get("has_successful_answer")`` unconditionally, so a
+        missing key and an explicit None arrive identical. Treating that None
+        as a failure would be the false alarm the verbose path avoids. Falcon
+        requests verbose responses for every run, so this path is reached only
+        by a caller handing in a non-verbose response.
+
         Args:
             response: The validated Edison response.
 

@@ -18,7 +18,7 @@ from deep_research_client.provider_params import FalconParams
 def create_mock_pqa_response(
     answer: str = "Test answer",
     formatted_answer: str = "Test formatted answer with references",
-    has_successful_answer: bool = True
+    has_successful_answer: bool | None = True
 ):
     """Create a mock PQATaskResponse for testing."""
     from edison_client.models.app import PQATaskResponse
@@ -137,6 +137,21 @@ def test_the_result_records_whether_edison_answered(answer, expected):
     """has_successful_answer is how a failed run like issue #52's shows up."""
     provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
     response = [create_verbose_response(_answer_frame(answer))]
+
+    result = provider._result_from_response(None, response, "test query")
+
+    assert result.answer_successful is expected
+
+
+@pytest.mark.parametrize(
+    "flag,expected",
+    [(True, True), (False, False), (None, None)],
+    ids=["sure", "unsure", "unset-is-unknown"],
+)
+def test_a_non_verbose_response_passes_its_flag_through(flag, expected):
+    """PQATaskResponse cannot tell a missing flag from None, so None stays unknown."""
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    response = [create_mock_pqa_response(has_successful_answer=flag)]
 
     result = provider._result_from_response(None, response, "test query")
 

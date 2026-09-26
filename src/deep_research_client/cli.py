@@ -433,6 +433,11 @@ def _report_unknown_provider(provider: str) -> None:
     Shared by both branches of `providers`, which used to send the same
     sentence to two different streams depending on whether --check was given.
 
+    The callers reject a name by checking `PROVIDER_PARAMS_REGISTRY`, while
+    this lists `PROVIDER_CLASS_PATHS` -- the list the CLI help already shows.
+    The two only agree because `test_capabilities` asserts their key sets are
+    equal; drift there would reject a name this then lists as known.
+
     Args:
         provider: The name the user gave.
     """

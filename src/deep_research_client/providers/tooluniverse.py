@@ -52,6 +52,11 @@ class ToolUniverseProvider(ResearchProvider):
 
     credential_env_var = "TOOLUNIVERSE_API_KEY"
     credential_label = "ToolUniverse underlying LLM"
+    #: Auto-detection honours an opt-out an instance cannot see.
+    registration_requirement = (
+        "requires deep-research-client[tooluniverse] and an underlying LLM key "
+        "(TOOLUNIVERSE_API_KEY or OPENAI_API_KEY), with DISABLE_TOOLUNIVERSE_PROVIDER unset"
+    )
 
     def __init__(
         self, config: ProviderConfig, params: ToolUniverseParams | None = None,

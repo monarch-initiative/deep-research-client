@@ -176,6 +176,12 @@ class BiomniProvider(ResearchProvider):
     usual provider environment variables (e.g. ``ANTHROPIC_API_KEY``).
     """
 
+    #: Auto-detection honours an opt-out an instance cannot see.
+    registration_requirement = (
+        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
+        "environment with deep-research-client[biomni]"
+    )
+
     def __init__(self, config: ProviderConfig, params: Optional[BiomniParams] = None):
         """Initialize the Biomni provider.
 

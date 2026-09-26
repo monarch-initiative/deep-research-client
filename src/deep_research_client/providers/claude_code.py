@@ -204,6 +204,12 @@ _URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
 class ClaudeCodeProvider(ResearchProvider):
     """Provider that runs the local Claude Code CLI to perform research."""
 
+    #: Auto-detection probes the default ``claude`` binary and honours an
+    #: opt-out, neither of which an instance's is_available() can see.
+    registration_requirement = (
+        "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
+    )
+
     def __init__(self, config: ProviderConfig, params: Optional[ClaudeCodeParams] = None):
         """Initialize the Claude Code provider.
 

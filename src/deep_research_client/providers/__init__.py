@@ -20,6 +20,16 @@ class ResearchProvider(ABC):
     #: Human-facing name for this provider's credential, e.g. "OpenAI".
     credential_label: ClassVar[Optional[str]] = None
 
+    #: What the client needs before it will *register* this provider, when
+    #: that is more than the provider's own :meth:`is_available` -- an opt-out
+    #: variable, an opt-in flag, a binary probed during auto-detection. Such a
+    #: provider can be absent from the registry while an instance of it would
+    #: report itself available, so it cannot explain the absence itself; this
+    #: sentence does. Phrased as a requirement, not a finding: absence has more
+    #: than one cause (explicit ``provider_configs`` skip auto-detection), so a
+    #: sentence asserting *why* would sometimes be false.
+    registration_requirement: ClassVar[Optional[str]] = None
+
     #: Whether this provider's output is real research. False for a provider
     #: that fabricates its reports, which keeps it out of the *automatic*
     #: fallback ordering: a run that ran out of credits should fail rather

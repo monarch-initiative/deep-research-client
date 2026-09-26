@@ -44,27 +44,6 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
 }
 
 
-#: Providers whose registration is gated on an environment variable rather than
-#: on the provider's own availability, so the provider cannot explain itself.
-REGISTRATION_GATES: dict[str, str] = {
-    # Phrased as requirements, not findings: absence from the registry has
-    # more than one cause (explicit provider_configs skip env detection
-    # entirely), so a sentence asserting *why* would sometimes be false.
-    "claude_code": (
-        "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
-    ),
-    "biomni": (
-        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
-        "environment with deep-research-client[biomni]"
-    ),
-    "tooluniverse": (
-        "requires deep-research-client[tooluniverse] and an underlying LLM key "
-        "(TOOLUNIVERSE_API_KEY or OPENAI_API_KEY), with DISABLE_TOOLUNIVERSE_PROVIDER unset"
-    ),
-    "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
-}
-
-
 class DeepResearchClient:
     """Main client for accessing deep research tools."""
 
@@ -293,11 +272,11 @@ class DeepResearchClient:
 
         Asks the provider class itself where it can answer, so the wording
         matches every other surface. But registration and availability are not
-        the same gate: the providers in REGISTRATION_GATES are held back by an
-        environment variable while considering themselves perfectly available,
-        and asking those why they are unavailable produces a confident wrong
-        answer -- telling a reader to install a CLI they already have, for
-        instance.
+        the same gate: a provider declaring ``registration_requirement`` can be
+        held back by an environment variable while considering itself
+        perfectly available, and asking it why it is unavailable produces a
+        confident wrong answer -- telling a reader to install a CLI they
+        already have, for instance.
 
         Args:
             provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
@@ -316,9 +295,10 @@ class DeepResearchClient:
             return self._reason_from_class_attributes(provider_name)
 
         if provider.is_available():
-            # The class has nothing to explain: the gate is outside it.
-            return REGISTRATION_GATES.get(
-                provider_name, f"'{provider_name}' is not registered in this environment"
+            # The instance has nothing to explain: the gate is outside it.
+            return (
+                provider_class.registration_requirement
+                or f"'{provider_name}' is not registered in this environment"
             )
         return provider.unavailable_reason()
 
@@ -331,9 +311,6 @@ class DeepResearchClient:
         Returns:
             Human-readable explanation of what is missing
         """
-        gate = REGISTRATION_GATES.get(provider_name)
-        if gate:
-            return gate
         paths = PROVIDER_CLASS_PATHS.get(provider_name)
         if paths is None:
             return f"'{provider_name}' is not configured"
@@ -342,6 +319,8 @@ class DeepResearchClient:
             provider_class = getattr(importlib.import_module(module_name), class_name)
         except Exception:
             return f"'{provider_name}' is not configured"
+        if provider_class.registration_requirement:
+            return provider_class.registration_requirement
         if provider_class.credential_env_var:
             label = provider_class.credential_label or provider_name
             return f"no {label} API key configured (set {provider_class.credential_env_var})"

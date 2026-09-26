@@ -115,6 +115,9 @@ class MockProvider(ResearchProvider):
     #: automatically. ``--fallback-provider mock`` still reaches it.
     produces_real_reports = False
 
+    #: Always available once built, so only the opt-in flag keeps it out.
+    registration_requirement = "set ENABLE_MOCK_PROVIDER=true to enable the mock provider"
+
     def __init__(self, config: ProviderConfig, params: Optional[MockParams] = None):
         """Initialize Mock provider.
 

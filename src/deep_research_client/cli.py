@@ -1802,13 +1802,17 @@ def providers(
             _report_unknown_provider(provider)
             raise typer.Exit(1)
 
+        # One provider, so ask its class directly rather than building the
+        # stub and credential lists for all of them.
+        provider_class = load_provider_class(provider)
+        is_stub = provider_class.stub_reason is not None
         is_available = provider in available
         if is_available:
             status = "Available"
-        elif provider in _stub_hints():
+        elif is_stub:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        elif provider in _settable_credential_hints():
+        elif provider_class.credential_env_var:
             status = "Not available (missing API key)"
         else:
             # Not every hint is a credential: claude_code needs a binary and
@@ -1821,7 +1825,7 @@ def providers(
             # One helper for both paths, so the two cannot drift into two
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
-            label = "Status" if provider in _stub_hints() else "Required"
+            label = "Status" if is_stub else "Required"
             typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters

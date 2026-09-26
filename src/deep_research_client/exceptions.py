@@ -290,7 +290,10 @@ class NoProvidersConfiguredError(ProviderNotConfiguredError):
     there is no provider to name, and the inherited message leads with one.
 
     ``provider`` is an empty string rather than ``None``, keeping the base's
-    type; nothing here renders it.
+    type; nothing here renders it. A generic handler that formats
+    ``f"{e.provider}: {e.diagnosis}"`` itself will print a stray leading
+    ``": "`` for this one, so print ``str(e)`` (or ``e.actionable_message()``)
+    instead -- each class renders its own name, or its lack of one.
 
     Args:
         detail: What was found, in place of a provider's own description.

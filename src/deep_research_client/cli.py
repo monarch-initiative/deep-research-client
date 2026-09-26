@@ -420,6 +420,35 @@ def _echo_stub_hints() -> None:
         typer.echo(f"  - {provider_name}: {reason}")
 
 
+#: Exit code for a run that wrote its output, but whose provider says it could
+#: not answer. Distinct from 1 (nothing was produced) and from 2 and 3
+#: (validation), so a script can tell "no report" from "a bad report".
+EXIT_UNSUCCESSFUL_ANSWER = 4
+
+
+def _exit_if_unsuccessful(result: ResearchResult) -> None:
+    """End a run whose provider could not answer, after its output is written.
+
+    The output is still written, since a long paid run's drafts and artifacts
+    are worth keeping, but the exit code is not 0: a pipeline that checks only
+    the exit status must not file this as a report (issue #52).
+
+    Args:
+        result: The result just written or printed.
+
+    Raises:
+        typer.Exit: With EXIT_UNSUCCESSFUL_ANSWER, when the provider says it
+            could not answer.
+    """
+    if result.answer_successful is not False:
+        return
+    _warn(
+        f"{result.provider} could not answer this question. The output is its "
+        f"response, not a finished report (answer_status: unsuccessful)."
+    )
+    raise typer.Exit(EXIT_UNSUCCESSFUL_ANSWER)
+
+
 def _report_unknown_provider(provider: str) -> None:
     """Tell the user a provider name is not one, and list the names that are.
 
@@ -1212,6 +1241,7 @@ def research(
         raise typer.Exit(1)
 
     if not validate_references and not validate_terms:
+        _exit_if_unsuccessful(result)
         return
 
     # Validation runs only after the report has been written or printed. It is
@@ -1289,6 +1319,9 @@ def research(
                 typer.echo("\n" + "=" * 60)
                 typer.echo(report.to_markdown())
 
+    # Before the validation verdict: "the provider did not answer" is the more
+    # fundamental failure, and its citations were never going to validate.
+    _exit_if_unsuccessful(result)
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:
@@ -1665,6 +1698,10 @@ def edison_trajectory(
         _error(str(e))
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    # Outside the try: typer.Exit is a RuntimeError, which the handler above
+    # would report as an error and turn into exit 1.
+    _exit_if_unsuccessful(result)
 
 
 class TranscriptStatsFormat(str, Enum):

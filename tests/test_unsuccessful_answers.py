@@ -39,7 +39,7 @@ def test_an_unsuccessful_answer_is_not_cached(tmp_path: Path, unsuccessful, cach
     assert bool(list(tmp_path.glob("*.json"))) is cached_after
 
 
-def _run_research(tmp_path: Path, *extra: str):
+def _run_research(*extra: str):
     """Invoke `research` with the mock provider and no cache."""
     from typer.testing import CliRunner
 
@@ -59,7 +59,7 @@ def test_the_cli_writes_the_file_marks_it_and_exits_4(tmp_path: Path):
 
     output = tmp_path / "hadA.md"
 
-    result = _run_research(tmp_path, "--param", "unsuccessful_answer=true", "--output", str(output))
+    result = _run_research("--param", "unsuccessful_answer=true", "--output", str(output))
 
     assert result.exit_code == EXIT_UNSUCCESSFUL_ANSWER == 4
     assert "Warning: mock could not answer this question" in result.stderr
@@ -69,9 +69,9 @@ def test_the_cli_writes_the_file_marks_it_and_exits_4(tmp_path: Path):
     assert "> **Warning:** mock reported that it could not answer" in content
 
 
-def test_printed_to_stdout_the_warning_line_travels_with_the_report(tmp_path: Path):
+def test_printed_to_stdout_the_warning_line_travels_with_the_report():
     """Redirected, the report still carries its own warning; the run's goes to stderr."""
-    result = _run_research(tmp_path, "--param", "unsuccessful_answer=true")
+    result = _run_research("--param", "unsuccessful_answer=true")
 
     assert result.exit_code == 4
     assert "> **Warning:** mock reported that it could not answer" in result.stdout
@@ -79,9 +79,9 @@ def test_printed_to_stdout_the_warning_line_travels_with_the_report(tmp_path: Pa
     assert "Warning: mock could not answer this question" not in result.stdout
 
 
-def test_control_an_ordinary_run_still_exits_0(tmp_path: Path):
+def test_control_an_ordinary_run_still_exits_0():
     """The mock says nothing about success by default, so nothing changes for it."""
-    result = _run_research(tmp_path)
+    result = _run_research()
 
     assert result.exit_code == 0, result.output
     assert "answer_status" not in result.stdout

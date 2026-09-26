@@ -180,8 +180,6 @@ class MockProvider(ResearchProvider):
             markdown_content = f"{markdown_content}\n\n{answer}"
 
         # Generate mock citations
-        citations = self._generate_mock_citations(query)
-
         if self.params.unsuccessful_answer:
             # The shape falcon returns when retrieval finds nothing: an
             # explanation instead of a report, and nothing to cite.
@@ -189,6 +187,8 @@ class MockProvider(ResearchProvider):
                 "No sources were retrieved, so this is not an answer to the question."
             )
             citations = []
+        else:
+            citations = self._generate_mock_citations(query)
 
         return ResearchResult(
             markdown=markdown_content,

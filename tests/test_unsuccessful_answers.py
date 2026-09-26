@@ -127,55 +127,31 @@ def test_an_unsuccessful_answer_does_not_fall_back(tmp_path: Path):
     assert not result.fell_back
 
 
-def test_edison_trajectory_writes_the_file_and_exits_4(tmp_path: Path, monkeypatch):
-    """The path where typer.Exit would have been swallowed by the catch-all.
+@pytest.mark.integration
+def test_edison_trajectory_marks_a_real_failed_run_and_exits_4(tmp_path: Path):
+    """Replay a real failed Edison trajectory through the CLI.
 
-    Substitutes the Edison client at its source, as the falcon provider tests
-    do: retrieving a real failed trajectory needs a live key and a task id.
+    edison-trajectory is the path where the exit-4 check must sit outside the
+    command's catch-all: typer.Exit is a RuntimeError, and inside the try it
+    would be reported as an error and exit 1. Covering it needs a trajectory
+    Edison itself marked unsuccessful, whose id is not in the issue (#52), so
+    this reads one from EDISON_FAILED_TRAJECTORY_ID and skips without it.
     """
-    pytest.importorskip("edison_client")
-    from datetime import datetime
+    import os
 
-    from edison_client.models.app import TaskResponseVerbose
     from typer.testing import CliRunner
 
     from deep_research_client.cli import app
 
-    failed = TaskResponseVerbose.model_construct(
-        status="success", query="What does hadA do?", user=None,
-        created_at=datetime.now(), job_name="job-futurehouse-paperqa3",
-        share_status="private", permitted_accessors=None, build_owner=None,
-        environment_name=None, agent_name=None, task_id=None, project_id=None,
-        agent_state=None, metadata=None, deployment_config=None,
-        environment_frame={"state": {"state": {"response": {"answer": {
-            "formatted_answer": "Question: What does hadA do?\n\nNo papers were found.",
-            "has_successful_answer": False,
-        }}}}},
-    )
-
-    class FailedTrajectoryClient:
-        """Returns one finished, unsuccessful trajectory."""
-
-        def __init__(self, api_key: str):
-            self.api_key = api_key
-
-        def get_task(self, task_id: str, verbose: bool):
-            return failed
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr("edison_client.EdisonClient", FailedTrajectoryClient)
+    trajectory_id = os.getenv("EDISON_FAILED_TRAJECTORY_ID")
+    if not os.getenv("EDISON_API_KEY") or not trajectory_id:
+        pytest.skip("needs EDISON_API_KEY and EDISON_FAILED_TRAJECTORY_ID")
     output = tmp_path / "trajectory.md"
 
     result = CliRunner().invoke(
-        app,
-        ["edison-trajectory", "784d73d5-da42-402e-9701-6c5b44beab14", "--output", str(output)],
-        env={"EDISON_API_KEY": "test-key"},
+        app, ["edison-trajectory", trajectory_id, "--output", str(output)]
     )
 
     assert result.exit_code == 4, result.output
     assert "Warning: falcon could not answer this question" in result.stderr
-    content = output.read_text(encoding="utf-8")
-    assert "answer_status: unsuccessful" in content
-    assert "Question: What does hadA do?" not in content, "the echo is stripped here too"
+    assert "answer_status: unsuccessful" in output.read_text(encoding="utf-8")

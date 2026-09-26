@@ -11,6 +11,7 @@ Tests for a single command's channels live beside that command's other tests
 where a file for it exists (`test_cli.py`, `test_provider_health_cli.py`).
 """
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -112,4 +113,40 @@ def test_browse_files_warns_per_skipped_source_and_errors_when_none_remain(tmp_p
     assert f"Warning: Skipping non-markdown file: {not_markdown}" in result.stderr
     assert f"Warning: Source not found, skipping: {absent}" in result.stderr
     assert "Error: No markdown files found" in result.stderr
+    assert result.stdout == ""
+
+
+_HAS_BROWSER_EXTRA = importlib.util.find_spec("linkml_browser") is not None
+
+
+@pytest.mark.skipif(_HAS_BROWSER_EXTRA, reason="needs the browser extra to be absent")
+def test_browse_files_reports_the_missing_extra_and_its_install_lines_on_stderr(tmp_path: Path):
+    """The extra is not on PyPI, so this is the path most installs actually take."""
+    report = tmp_path / "report.md"
+    report.write_text("# A report\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["browse-files", str(report), "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 1
+    lines = result.stderr.splitlines()
+    at = next(i for i, line in enumerate(lines) if line.endswith("not installed. Install with:"))
+    assert lines[at].startswith("Error: ")
+    assert lines[at + 1] == "  pip install deep-research-client[browser]"
+    assert result.stdout == ""
+
+
+@pytest.mark.skipif(not _HAS_BROWSER_EXTRA, reason="the extra check runs first without it")
+def test_browse_files_refuses_an_existing_output_directory_on_stderr(tmp_path: Path):
+    """The --force hint belongs with the error it resolves."""
+    report = tmp_path / "report.md"
+    report.write_text("# A report\n", encoding="utf-8")
+    existing = tmp_path / "out"
+    existing.mkdir()
+
+    result = runner.invoke(app, ["browse-files", str(report), "-o", str(existing)])
+
+    assert result.exit_code == 1
+    lines = result.stderr.splitlines()
+    at = lines.index(f"Error: Output directory exists: {existing}")
+    assert lines[at + 1] == "Use --force to overwrite"
     assert result.stdout == ""

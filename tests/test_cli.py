@@ -410,6 +410,24 @@ def test_research_errors_go_to_stderr_with_nothing_on_stdout(tmp_path):
     assert result.stdout == ""
 
 
+def test_research_template_error_and_its_hint_share_stderr(tmp_path):
+    """The `--var` hint explains the error above it, so both go to stderr."""
+    template = tmp_path / "gene.md"
+    template.write_text("Research the {family} gene family.", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["research", "--template", str(template), "--provider", "mock"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+
+    assert result.exit_code == 1
+    lines = result.stderr.splitlines()
+    at = lines.index("Error: Template error: Template requires variables: family")
+    assert lines[at + 1] == "Use --var key=value for each variable"
+    assert result.stdout == ""
+
+
 @pytest.mark.integration
 def test_research_asta_warns_on_noop_model_and_writes_separate_citations(tmp_path):
     """Asta CLI should warn on --model but still honor output formatting options."""

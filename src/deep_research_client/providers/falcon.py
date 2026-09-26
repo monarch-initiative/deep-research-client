@@ -76,6 +76,14 @@ def _without_echoed_question(formatted_answer: str, query: str | None) -> str:
     echo = f"Question: {query}\n\n"
     if formatted_answer.startswith(echo):
         return formatted_answer[len(echo):]
+    if formatted_answer.startswith("Question: "):
+        # The shape is there but the text differs -- whitespace normalised
+        # upstream, say. Left alone, as documented, but visible under -v so a
+        # returning duplicate can be traced to this rather than rediscovered.
+        logger.debug(
+            "Edison's answer restates a question that does not match the query "
+            "sent, so it was kept; the report will show the prompt twice"
+        )
     return formatted_answer
 
 

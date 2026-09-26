@@ -112,13 +112,19 @@ def test_the_echoed_prompt_is_not_repeated_in_the_output():
     assert "References" in text, "the references stay, for citation extraction"
 
 
-def test_a_question_that_does_not_match_the_query_is_kept():
-    """Only the exact echo goes: an unfamiliar format costs a duplicate, not the answer."""
+def test_a_question_that_does_not_match_the_query_is_kept(caplog):
+    """Only the exact echo goes: an unfamiliar format costs a duplicate, not the answer.
+
+    It is logged, so a returning duplicate can be traced to a mismatch.
+    """
     provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
     formatted = "Question: something else\n\nThe answer."
     response = [create_verbose_response(_answer_frame({"formatted_answer": formatted}))]
 
-    assert provider._extract_text_content(response) == formatted
+    with caplog.at_level("DEBUG", logger="deep_research_client.providers.falcon"):
+        assert provider._extract_text_content(response) == formatted
+
+    assert "does not match the query" in caplog.text
 
 
 @pytest.mark.parametrize(

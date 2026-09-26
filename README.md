@@ -1211,7 +1211,9 @@ uv run deep-research-client --help
 1. Create a new provider class in `src/deep_research_client/providers/`
 2. Inherit from `ResearchProvider`
 3. Implement the `research()` method
-4. Register in `client.py`
+4. Declare what it needs on the class (`credential_env_var` and friends; see
+   [Declaring what the provider needs](docs/reference/providers.md#declaring-what-the-provider-needs))
+5. Register in `client.py`
 
 Example:
 ```python

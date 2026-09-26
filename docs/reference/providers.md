@@ -1081,3 +1081,28 @@ class NewProvider(ResearchProvider):
         # Implementation
         return ResearchResult(...)
 ```
+
+### Declaring what the provider needs
+
+What a provider needs in order to run is declared once, on its class. The CLI's
+`providers` listing, `providers --check`, the "Please set API keys" hint and the
+client's "why is this provider missing" answer all read these attributes
+rather than keeping their own tables:
+
+| Attribute | Set it when | Example |
+|-----------|-------------|---------|
+| `credential_env_var` | The provider needs an API key from an environment variable | `"EDISON_API_KEY"` |
+| `credential_label` | Always, with `credential_env_var`: what the key unlocks, as the CLI lists it | `"OpenAI Deep Research"` → `- OPENAI_API_KEY for OpenAI Deep Research` |
+| `credential_noun` | The key belongs to a wider account than the label names (defaults to the label) | `"OpenAI"` → `no OpenAI API key configured` |
+| `registration_requirement` | The client can hold the provider back while an instance would call itself available: an opt-out variable, an opt-in flag, a binary probed during auto-detection | `"set ENABLE_MOCK_PROVIDER=true to enable the mock provider"` |
+| `stub_reason` | There is no upstream API yet, so nothing the user sets would help | `"DeepER-Med - no public API released yet (arXiv:…)"` |
+
+Anything subtler (a missing binary, a missing optional package) belongs in an
+`unavailable_reason()` override, as `claude_code`, `cyberian` and `biomni` do.
+A test fails for any provider that, on a machine with nothing set up, can only
+say it "is not configured".
+
+Keep the module cheap to import: the CLI imports every provider module to read
+these attributes, so import your SDK inside the methods that use it, not at
+module scope. A test fails if loading the provider classes imports `openai`,
+`edison_client`, `litellm` or `aviary`.

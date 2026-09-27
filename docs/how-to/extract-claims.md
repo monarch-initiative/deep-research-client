@@ -82,6 +82,14 @@ quote was found:
 
 `claims extract` warns on stderr when any claims are `UNANCHORED`.
 
+The source text goes into the prompt as it is, so a source can carry text that
+tries to steer the model, such as instructions or a fake end-of-text marker. This
+matters for third-party sources. Anchoring limits what such text can do: a claim
+it makes the model invent has no quote in the source, so it comes back
+`UNANCHORED` and gets no citations. But a steered model can still skip claims
+the source does make. Treat a claim set from an untrusted source as that
+source's claims only where they are anchored, and don't read it as complete.
+
 Citations are checked the same way. A marker the model reports but the text
 does not contain is dropped. A numbered marker such as `[2]` is resolved
 through the report's own citation list to a PMID or DOI where it names one.

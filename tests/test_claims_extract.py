@@ -57,6 +57,16 @@ def test_a_long_section_is_split_at_paragraph_breaks_keeping_its_heading():
     assert "".join(u.body for u in units).strip() == paragraphs
 
 
+def test_a_comment_in_a_code_block_is_not_a_heading():
+    """A "#" line inside a fence is code, so the section is not split there."""
+    text = "# Setup\n\nInstall it:\n\n```bash\n# install the package\npip install x\n```\n\nThen run it.\n"
+
+    units = markdown_units(text)
+
+    assert [u.section for u in units] == ["Setup"]
+    assert "Then run it." in units[0].body
+
+
 def test_structured_units_are_the_prose_fields_by_path():
     """Identifiers and short labels are not prose, so they are not sent."""
     import yaml

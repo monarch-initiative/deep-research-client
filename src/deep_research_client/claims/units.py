@@ -13,6 +13,7 @@ from .parsing import TextUnit
 __all__ = ["markdown_units", "structured_units", "report_title"]
 
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
+_FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})", re.MULTILINE)
 _NUMBERED_ENTRY = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$", re.MULTILINE)
 
 #: Sections this client writes around a provider's answer. The question is the
@@ -25,6 +26,32 @@ _SKIPPED_TOP_SECTIONS = frozenset({
 #: Largest unit sent in one request. A section longer than this is split at
 #: paragraph breaks, keeping its heading path.
 DEFAULT_MAX_UNIT_CHARS = 6000
+
+
+def _headings(text: str, start: int = 0, end: Optional[int] = None) -> list[re.Match[str]]:
+    r"""The markdown headings in ``text[start:end]``, skipping fenced code blocks.
+
+    A line starting with "#" inside a code fence is code (a shell comment, a
+    Python comment), not a heading, and must not split a unit.
+
+    >>> [m.group(2) for m in _headings("# A\n```\n# not a heading\n```\n## B\n")]
+    ['A', 'B']
+    """
+    stop = len(text) if end is None else end
+    fenced: list[tuple[int, int]] = []
+    opening: Optional[re.Match[str]] = None
+    for fence in _FENCE.finditer(text, 0, stop):
+        if opening is None:
+            opening = fence
+        elif fence.group(1)[0] == opening.group(1)[0] and len(fence.group(1)) >= len(opening.group(1)):
+            fenced.append((opening.start(), fence.end()))
+            opening = None
+    if opening is not None:
+        fenced.append((opening.start(), stop))
+    return [
+        m for m in _HEADING.finditer(text, start, stop)
+        if not any(a <= m.start() < b for a, b in fenced)
+    ]
 
 
 def _body_start(text: str) -> int:
@@ -52,13 +79,13 @@ def _bibliography(text: str, start: int) -> dict[int, str]:
         Entry text by reference number; empty when there is no such section.
     """
     matches = [
-        m for m in _HEADING.finditer(text, start)
+        m for m in _headings(text, start)
         if len(m.group(1)) == 2 and m.group(2).strip().lower() == "citations"
     ]
     if not matches:
         return {}
     section_start = matches[-1].end()
-    following = _HEADING.search(text, section_start)
+    following = next(iter(_headings(text, section_start)), None)
     section = text[section_start:following.start() if following else len(text)]
     return {int(m.group(1)): m.group(2) for m in _NUMBERED_ENTRY.finditer(section)}
 
@@ -79,7 +106,7 @@ def _answer_region(text: str) -> tuple[int, int]:
         ``(start, end)`` offsets of the answer.
     """
     start = _body_start(text)
-    level_two = [m for m in _HEADING.finditer(text, start) if len(m.group(1)) == 2]
+    level_two = [m for m in _headings(text, start) if len(m.group(1)) == 2]
     for heading in level_two:
         if heading.group(2).strip().lower() == "output":
             start = heading.end()
@@ -99,7 +126,7 @@ def report_title(text: str) -> Optional[str]:
     'Marfan syndrome'
     """
     start, end = _answer_region(text)
-    for heading in _HEADING.finditer(text, start, end):
+    for heading in _headings(text, start, end):
         if len(heading.group(1)) == 1:
             return heading.group(2).strip()
     return None
@@ -150,7 +177,7 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     units: list[TextUnit] = []
     stack: list[tuple[int, str]] = []
     cursor = start
-    headings = list(_HEADING.finditer(text, start, end))
+    headings = _headings(text, start, end)
     boundaries = [(h.start(), h.end(), len(h.group(1)), h.group(2).strip()) for h in headings]
     boundaries.append((end, end, 0, ""))
 

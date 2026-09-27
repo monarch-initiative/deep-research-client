@@ -26,7 +26,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 
 #: Bumped whenever the instructions below change, and recorded on every
 #: ClaimSet, so sets made with different prompts are never compared unknowingly.
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 _INSTRUCTIONS = """\
 You extract the claims a text makes. A claim is one atomic assertion: a single
@@ -35,10 +35,15 @@ any claim is true, and do not add knowledge the text does not state.
 
 Rules:
 - One assertion per claim. Split conjunctions and lists: "A causes B and C"
-  is two claims.
+  is two claims. A sentence that states a property and also a cause, or adds
+  an appositive or a relative clause ("X, a kinase inhibitor, ..." / "X,
+  which causes Y"), makes one claim per assertion.
 - Write "claim" as a standalone sentence a reader could understand without
-  the text: replace pronouns with what they refer to, and fold a table's
-  column or row headers into claims made by its cells.
+  the text: replace pronouns with what they refer to.
+- A table cell's claim must say what its value means: name the row's subject,
+  use the column header, and say who or what the value applies to, taken from
+  the section or table ("about 60%" in a Frequency column of a table about a
+  disease is "... occurs in about 60% of people with <the disease>").
 - Keep hedges and conditions ("may", "in adults", "in mouse models") in the
   claim and in "qualifier".
 - "quote" must be copied character for character from TEXT: the shortest
@@ -50,6 +55,12 @@ Rules:
   written (for example "[3]", "PMID:12345", a URL); [] if none.
 - "subject", "predicate", "object": the assertion's parts when it has that
   shape, else null. "entities": the things the claim mentions.
+
+Example. For TEXT
+  Drug Q, an oral kinase inhibitor, reduced tumour size in 40% of patients [4].
+the claims are "Drug Q is an oral kinase inhibitor." (quote "Drug Q, an oral
+kinase inhibitor") and "Drug Q reduced tumour size in 40% of patients."
+(quote "reduced tumour size in 40% of patients", citations ["[4]"]).
 
 Reply with JSON only, in this form:
 {"claims": [{"claim": "...", "quote": "...", "subject": "...", "predicate": "...",

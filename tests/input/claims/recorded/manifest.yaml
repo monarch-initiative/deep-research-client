@@ -1,0 +1,14 @@
+# Model replies recorded for the claim-extraction prompt, replayed through the
+# real parser by tests/test_claims_recorded.py.
+#
+# Recorded by running Claude subagents as the model: each saw only
+# prompts/SYSTEM.txt and one prompts/NN-*.txt file, and wrote the reply the
+# model should give. No other context. Re-record whenever the prompt or the
+# units change; the test fails until you do.
+prompt_version: "2"
+sources:
+  report: marfan_report.md
+  notes: generic_notes.yaml
+recordings:
+  haiku: Claude Haiku (subagent)
+  sonnet: Claude Sonnet (subagent)

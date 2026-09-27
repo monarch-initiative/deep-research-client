@@ -1,0 +1,15 @@
+Section: Marfan syndrome > Clinical features
+
+TEXT:
+<<<
+
+
+| Feature | Frequency |
+|---|---|
+| Aortic root dilation | 60-80% of adults |
+| Ectopia lentis | about 60% |
+
+Aortic dissection is the leading cause of death (see [the 2010 Ghent criteria](https://doi.org/10.1136/jmg.2009.072785)).
+
+
+>>>

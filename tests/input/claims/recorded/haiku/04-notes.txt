@@ -1,0 +1,28 @@
+{"claims": [
+  {
+    "claim": "Marfan syndrome is caused by pathogenic variants in FBN1",
+    "quote": "Marfan syndrome is caused by pathogenic variants in FBN1",
+    "subject": "Marfan syndrome",
+    "predicate": "is caused by pathogenic variants in",
+    "object": "FBN1",
+    "negated": false,
+    "qualifier": null,
+    "subject_qualifier": null,
+    "object_qualifier": null,
+    "entities": ["Marfan syndrome", "FBN1"],
+    "citations": []
+  },
+  {
+    "claim": "Marfan syndrome is inherited in an autosomal dominant pattern",
+    "quote": "is inherited in an autosomal dominant pattern",
+    "subject": "Marfan syndrome",
+    "predicate": "is inherited in",
+    "object": "an autosomal dominant pattern",
+    "negated": false,
+    "qualifier": null,
+    "subject_qualifier": null,
+    "object_qualifier": null,
+    "entities": ["Marfan syndrome"],
+    "citations": []
+  }
+]}

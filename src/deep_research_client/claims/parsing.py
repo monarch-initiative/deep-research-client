@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
 
-from ..evaluation.scorers import _extract_json_object
+from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
 from .anchoring import locate_quote
@@ -221,7 +221,7 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
     >>> claim.subject.label, [c.marker for c in claim.citations]
     ('FBN1 variants', ['[1]'])
     """
-    parsed = _extract_json_object(reply, key="claims")
+    parsed = extract_json_object(reply, key="claims")
     entries = parsed.get("claims") if isinstance(parsed, dict) else None
     if not isinstance(entries, list):
         return []

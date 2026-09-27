@@ -317,6 +317,10 @@ def extract_claims(
 ) -> ClaimSet:
     """Synchronous :func:`aextract_claims`, for callers without an event loop.
 
+    It runs its own loop with :func:`asyncio.run`, which raises
+    ``RuntimeError`` inside one that is already running, as in Jupyter. There,
+    ``await aextract_claims(...)`` instead.
+
     Args:
         source: A markdown report, or a YAML or JSON document.
         source_format: How to read it; ``auto`` decides from the file.

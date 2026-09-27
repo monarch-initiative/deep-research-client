@@ -31,7 +31,9 @@ for claim in claims.claim_list:
     print(claim.id, claim.anchor_status, claim.claim_text)
 ```
 
-`extract_claims` is synchronous; use `aextract_claims` inside an event loop.
+`extract_claims` is synchronous and runs its own event loop, so it raises
+`RuntimeError` where a loop is already running, as in Jupyter. There, use
+`await aextract_claims(...)`.
 The client can be any OpenAI-compatible async client: OpenAI, CBORG, or a local
 server via `AsyncOpenAI(base_url=...)`.
 

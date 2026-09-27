@@ -18,6 +18,7 @@ guessed for a quote that is not there would be worse than none.
 """
 
 import re
+from functools import lru_cache
 from typing import Optional
 
 from .models import AnchorStatus, TextSpan
@@ -61,8 +62,12 @@ _IGNORED = re.compile(
 )
 
 
-def _normalized(text: str) -> tuple[str, list[int]]:
+@lru_cache(maxsize=64)
+def _normalized(text: str) -> tuple[str, tuple[int, ...]]:
     """Normalise text, remembering which original character each output came from.
+
+    Cached: every claim from a unit that misses an exact match searches the
+    same unit text, which would otherwise be normalised again per claim.
 
     Args:
         text: Text to normalise.
@@ -108,7 +113,7 @@ def _normalized(text: str) -> tuple[str, list[int]]:
         for folded in ch.casefold():
             out.append(folded)
             origin.append(i)
-    return "".join(out), origin
+    return "".join(out), tuple(origin)
 
 
 def locate_quote(

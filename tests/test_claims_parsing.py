@@ -58,6 +58,31 @@ def test_a_quote_is_found_and_its_span_reads_as_the_source(quote, expected_statu
     assert REPORT[span.start:span.end] == span.text
 
 
+@pytest.mark.parametrize(
+    "source,quote,expected_text",
+    [
+        (
+            "FBN1 variants [1](https://pubmed.ncbi.nlm.nih.gov/1852208/) occur in most patients.",
+            "FBN1 variants occur in most patients.",
+            "FBN1 variants [1](https://pubmed.ncbi.nlm.nih.gov/1852208/) occur in most patients.",
+        ),
+        (
+            "It is a [fibrillinopathy](https://en.wikipedia.org/wiki/Fibrillin_(protein)) of the aorta.",
+            "It is a fibrillinopathy of the aorta",
+            "It is a [fibrillinopathy](https://en.wikipedia.org/wiki/Fibrillin_(protein)) of the aorta.",
+        ),
+    ],
+    ids=["linked-numeric-marker", "parenthesised-link-target"],
+)
+def test_a_link_target_is_ignored_wherever_it_sits(source, quote, expected_text):
+    """A quote that leaves out a link's target still anchors, over the source's characters."""
+    span, status = locate_quote(quote, source)
+
+    assert status == AnchorStatus.NORMALIZED
+    assert span is not None
+    assert span.text == expected_text == source[span.start:span.end]
+
+
 def test_a_quote_the_source_never_says_is_unanchored():
     """A plausible paraphrase is not evidence of anything."""
     span, status = locate_quote("FBN1 mutations are the sole cause of Marfan syndrome", REPORT)

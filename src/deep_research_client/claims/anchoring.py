@@ -40,12 +40,20 @@ _MARKUP = frozenset("*_`")
 #: between them is gone.
 _CLOSING = frozenset(".,;:!?)")
 
-#: Stretches of markdown that carry no claim text: the target of a link
-#: (keeping its label), and a bracketed numeric citation marker such as [3] or
-#: [2, 5-7]. Dropped from both sides, so a quote that omits them still matches.
+#: A link target, allowing one level of balanced parentheses inside it, as in
+#: Wikipedia's "Marfan_syndrome_(disease)".
+_LINK_TARGET = r"\((?:[^()\s]|\([^()\s]*\))*\)"
+
+#: Stretches of markdown that carry no claim text: a bracketed numeric
+#: citation marker such as [3] or [2, 5-7], with its link target when the
+#: marker is itself a link ("[1](https://...)"), and the target of any other
+#: link (keeping its label). Dropped from both sides, so a quote that omits
+#: them still matches. The marker comes first, so a linked marker's target is
+#: dropped with it rather than left behind.
 _IGNORED = re.compile(
-    r"\]\([^)\s]*\)"                           # "](https://...)" after a link label
-    r"|\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]"  # [3], [2, 5], [4-6]
+    r"\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]"  # [3], [2, 5], [4-6]
+    rf"(?:{_LINK_TARGET})?"                     # ...optionally "(https://...)"
+    rf"|\]{_LINK_TARGET}"                       # "](https://...)" after a link label
 )
 
 
@@ -63,6 +71,10 @@ def _normalized(text: str) -> tuple[str, list[int]]:
     'a bold claim.'
     >>> _normalized("see [the paper](https://x.org/y) here")[0]
     'see the paper here'
+    >>> _normalized("FBN1 variants [1](https://x.org/1) cause it")[0]
+    'fbn1 variants cause it'
+    >>> _normalized("see [Marfan](https://w.org/Marfan_(disease)) here")[0]
+    'see marfan here'
     """
     ignored = [False] * len(text)
     for match in _IGNORED.finditer(text):

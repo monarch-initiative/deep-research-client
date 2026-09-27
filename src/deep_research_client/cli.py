@@ -3914,12 +3914,14 @@ def claims_extract(
         _error(f"File not found: {source}")
         raise typer.Exit(1)
     try:
-        fmt = resolve_format(source, source_format)
+        requested = SourceFormat(source_format)
     except ValueError:
         choices = ", ".join(f.value for f in SourceFormat)
         _error(f"Cannot read {source} as {source_format!r}. Use one of: {choices}")
         raise typer.Exit(1)
-    except yaml.YAMLError as exc:
+    try:
+        fmt = resolve_format(source, requested)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
         _error(f"Could not parse {source}: {exc}")
         raise typer.Exit(1)
 

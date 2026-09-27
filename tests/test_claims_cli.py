@@ -77,3 +77,16 @@ def test_bad_input_is_an_error_on_stderr(args, message):
     assert result.exit_code == 1
     assert message in result.stderr
     assert result.stdout == ""
+
+
+def test_a_malformed_json_source_is_reported_as_unparseable(tmp_path):
+    """A syntax error in the file is not a bad --format."""
+    source = tmp_path / "notes.json"
+    source.write_text('{"name": "x",', encoding="utf-8")
+
+    result = runner.invoke(app, ["claims", "extract", str(source)])
+
+    assert result.exit_code == 1
+    assert f"Error: Could not parse {source}" in result.stderr
+    assert "Use one of" not in result.stderr
+    assert result.stdout == ""

@@ -73,14 +73,37 @@ class TextUnit:
         return self.text[self.start:self.end]
 
 
+def _cites(number: int, body: str) -> bool:
+    """Whether a numeric marker in the text cites a reference number.
+
+    Only brackets that hold nothing but numbers, commas and dashes are
+    markers, so "[Figure 3]" and a link label like "[3 cases](...)" are not.
+    A range cites every number in it.
+
+    >>> [n for n in range(1, 9) if _cites(n, "A [1]. B [2, 4-6]. C [Figure 3]. D [7 cases](https://x).")]
+    [1, 2, 4, 5, 6]
+    """
+    for match in re.finditer(NUMERIC_MARKER, body):
+        inside = match.group(0)[1:match.group(0).index("]")]
+        for part in re.split(r"\s*,\s*", inside.strip()):
+            bounds = [int(n) for n in re.split(r"\s*[–-]\s*", part)]
+            if bounds[0] <= number <= bounds[-1]:
+                return True
+    return False
+
+
 def _marker_present(marker: str, body: str) -> bool:
     """Whether a citation marker the extractor reported appears in the unit.
 
-    Numbered markers are matched inside any bracket group, so "3" is present
-    in "[2, 3]" as well as in "[3]".
+    A numbered marker is present when a numeric marker in the text cites that
+    number, alone, in a list, or within a range.
 
     >>> _marker_present("[3]", "caused by FBN1 [2, 3].")
     True
+    >>> _marker_present("[3]", "caused by FBN1 [2-5].")
+    True
+    >>> _marker_present("[3]", "as in [Figure 3].")
+    False
     >>> _marker_present("PMID:123", "see PMID:123")
     True
     >>> _marker_present("[9]", "caused by FBN1 [2, 3].")
@@ -88,8 +111,7 @@ def _marker_present(marker: str, body: str) -> bool:
     """
     numbered = _NUMBERED_MARKER.match(marker.strip())
     if numbered:
-        number = numbered.group(1)
-        return re.search(rf"\[[^\]]*\b{number}\b[^\]]*\]", body) is not None
+        return _cites(int(numbered.group(1)), body)
     return marker.strip() in body
 
 

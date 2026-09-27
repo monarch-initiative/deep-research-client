@@ -1244,7 +1244,7 @@ def test_eval_score_without_an_api_key_offers_a_remedy_that_works(tmp_path, monk
     refused = runner.invoke(app, [
         "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
     assert refused.exit_code == 1
-    assert "--no-fact --no-recall --no-race" in refused.stdout
+    assert "--no-fact --no-recall --no-race" in refused.stderr, "an error, so on stderr (#68)"
     assert refused.exception is None or isinstance(refused.exception, SystemExit)
 
     # With it: the intrinsic scores the message promised.
@@ -1448,9 +1448,11 @@ def test_the_keyless_refusal_names_every_way_out(tmp_path, monkeypatch):
         "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
 
     assert result.exit_code == 1
-    assert "--llm-api-key-env" in result.stdout
-    assert "--llm-base-url" in result.stdout
-    assert "--no-fact --no-recall --no-race" in result.stdout
+    # The refusal ends the run, so it is on stderr (#68).
+    assert "Error:" in result.stderr
+    assert "--llm-api-key-env" in result.stderr
+    assert "--llm-base-url" in result.stderr
+    assert "--no-fact --no-recall --no-race" in result.stderr
 
 
 def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
@@ -1526,9 +1528,11 @@ def test_a_placeholder_key_is_announced_rather_than_sent_silently(tmp_path, monk
         "--llm-base-url", "https://llm.corp.example/v1",
         "--no-fact", "--no-recall", "--no-intrinsic"])
 
-    assert result.exit_code == 0, result.stdout
-    assert "placeholder key" in result.stdout
-    assert "answer 401" in result.stdout
+    assert result.exit_code == 0, result.output
+    # A warning about the run, so on stderr with the rest (#68).
+    assert "Warning:" in result.stderr and "placeholder key" in result.stderr
+    assert "answer 401" in result.stderr
+    assert "placeholder key" not in result.stdout
 
 
 def test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is(tmp_path):

@@ -2885,6 +2885,44 @@ def browse_files(
 #: place, so the header and both precision branches cannot drift apart.
 _RATE_WIDTH = 7
 
+def _openai_compatible_client(api_key_env: str, base_url: Optional[str]) -> Any:
+    """Build the OpenAI-compatible async client the LLM-backed commands use.
+
+    Shared by `eval score` and `claims extract`, which both call a model
+    through any OpenAI-compatible endpoint (OpenAI, CBORG, a local server).
+
+    A key is the default endpoint's requirement, not the caller's. A local
+    OpenAI-compatible server -- vLLM, Ollama, LM Studio -- accepts any string,
+    so with a custom base URL and no key a placeholder is sent that names
+    itself if it ever reaches a server that does check. Said aloud, because
+    the condition is "a custom base URL" while the thing it stands for is "an
+    endpoint that needs no key": the commonest custom base URL after localhost
+    is a corporate or cloud proxy, which does check, and silently sending a
+    placeholder there trades one warning for a 401 inside every call.
+
+    Args:
+        api_key_env: Environment variable holding the API key.
+        base_url: Custom endpoint, or None for the SDK's default.
+
+    Returns:
+        An ``openai.AsyncOpenAI`` client, or None when there is no key and no
+        custom endpoint -- the caller says what that costs it.
+    """
+    from openai import AsyncOpenAI
+
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key and base_url:
+        api_key = "not-required-by-this-endpoint"
+        _warn(
+            f"{api_key_env} is not set; sending a placeholder key "
+            f"because --llm-base-url was given. A local endpoint will "
+            f"accept it; an endpoint that checks keys will answer 401."
+        )
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+
 eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
 
@@ -3567,7 +3605,6 @@ def eval_score(
     """
     import asyncio
     import json as json_mod
-    from openai import AsyncOpenAI
     from .evaluation.datamodel import AnswerType
     from .evaluation.runner import EvalConfig, parse_dr_output, score_output
 
@@ -3599,38 +3636,18 @@ def eval_score(
     task = tasks[0]
     markdown_text = report.read_text(encoding="utf-8")
 
-    api_key = os.environ.get(llm_api_key_env, "")
     wants_judge = not (no_fact and no_recall and no_race)
 
     # Built only when a judge-backed scorer will actually run. AsyncOpenAI
     # raises OpenAIError on an empty key at *construction*, so building it
     # unconditionally made `--no-fact --no-recall --no-race` -- the remedy this
-    # command's own warning offers -- traceback before any scoring, leaving no
+    # command's own error offers -- traceback before any scoring, leaving no
     # way to get the intrinsic scores without a key at all.
     llm_client = None
     if wants_judge:
-        if not api_key and llm_base_url:
-            # A key is the default endpoint's requirement, not the judge's. A
-            # local OpenAI-compatible server -- vLLM, Ollama, LM Studio --
-            # accepts any string, and refusing here took away a configuration
-            # that worked before the construction was made lazy. The SDK still
-            # needs something non-empty, so it gets a placeholder that names
-            # itself if it ever reaches a server that does check.
-            #
-            # Said aloud, because the condition is "a custom base URL" while
-            # the thing it stands for is "an endpoint that needs no key". The
-            # commonest custom base URL after localhost is a corporate or
-            # cloud proxy, which does check -- and silently sending a
-            # placeholder there trades one pre-flight message for a 401 inside
-            # every judge call, after the report has been read.
-            api_key = "not-required-by-this-endpoint"
-            typer.echo(
-                f"{llm_api_key_env} is not set; sending a placeholder key "
-                f"because --llm-base-url was given. A local endpoint will "
-                f"accept it; an endpoint that checks keys will answer 401."
-            )
-        if not api_key:
-            typer.echo(
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
                 f"{llm_api_key_env} is not set, so the judge-backed scorers "
                 f"cannot run. Either set it (or point --llm-api-key-env at a "
                 f"variable that is set), pass --llm-base-url for a local "
@@ -3639,7 +3656,6 @@ def eval_score(
                 f"no API key."
             )
             raise typer.Exit(1)
-        llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
 
     config = EvalConfig(
         run_fact=not no_fact,

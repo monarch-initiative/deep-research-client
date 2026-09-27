@@ -5,7 +5,14 @@ in the source again. Extraction does not judge whether a claim is true;
 alignment across sources and verification consume these records later.
 """
 
-from .extract import SourceFormat, aextract_claims, detect_format, extract_claims
+from .extract import (
+    SourceFormat,
+    aextract_claims,
+    detect_format,
+    extract_claims,
+    needs_llm,
+    resolve_format,
+)
 from .models import (
     AnchorStatus,
     CitationHandle,
@@ -24,6 +31,8 @@ __all__ = [
     "aextract_claims",
     "detect_format",
     "extract_claims",
+    "needs_llm",
+    "resolve_format",
     "AnchorStatus",
     "CitationHandle",
     "Claim",

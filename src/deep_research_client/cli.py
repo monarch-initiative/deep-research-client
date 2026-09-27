@@ -3867,6 +3867,110 @@ def eval_score(
         typer.echo(f"\nResults written to {output}")
 
 
+claims_app = typer.Typer(help="Extract the claims a source makes, with provenance")
+app.add_typer(claims_app, name="claims")
+
+
+@claims_app.command("extract")
+def claims_extract(
+    source: Annotated[Path, typer.Argument(
+        help="A markdown report, or a YAML/JSON document")],
+    source_format: Annotated[str, typer.Option(
+        "--format",
+        help="How to read the source: auto, markdown, dismech, gene-review, structured")] = "auto",
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the claim set here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
+    llm_model: Annotated[Optional[str], typer.Option(
+        "--llm-model", help="Model that decomposes prose into claims")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Model requests in flight at once")] = 4,
+):
+    """Extract the claims a source makes, without judging whether they are true.
+
+    A markdown report, or the prose fields of a generic YAML/JSON document, is
+    decomposed into atomic claims by a model; each claim keeps the passage that
+    states it, located in the source. Curated dismech and ai-gene-review files
+    map record by record with no model.
+
+    Examples:
+
+      deep-research-client claims extract report.md -o report.claims.json
+
+      deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+    """
+    import json
+
+    import yaml
+
+    from .claims import SourceFormat, aextract_claims, needs_llm, resolve_format
+    from .claims.llm import DEFAULT_MODEL
+
+    if not source.is_file():
+        _error(f"File not found: {source}")
+        raise typer.Exit(1)
+    try:
+        fmt = resolve_format(source, source_format)
+    except ValueError:
+        choices = ", ".join(f.value for f in SourceFormat)
+        _error(f"Cannot read {source} as {source_format!r}. Use one of: {choices}")
+        raise typer.Exit(1)
+    except yaml.YAMLError as exc:
+        _error(f"Could not parse {source}: {exc}")
+        raise typer.Exit(1)
+
+    llm_client = None
+    if needs_llm(fmt):
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
+                f"{llm_api_key_env} is not set, and claims are extracted from "
+                f"{fmt.value} sources by a model. Set it (or point "
+                f"--llm-api-key-env at a variable that is set), or pass "
+                f"--llm-base-url for a local endpoint that needs no key."
+            )
+            raise typer.Exit(1)
+
+    import openai
+
+    try:
+        claims = asyncio.run(aextract_claims(
+            source, source_format=fmt, llm_client=llm_client,
+            model=llm_model or DEFAULT_MODEL, concurrency=concurrency,
+        ))
+    except (ValueError, openai.APIError) as exc:
+        _error(f"Could not extract claims from {source}: {exc}")
+        raise typer.Exit(1)
+
+    unanchored = claims.unanchored_claims
+    if unanchored:
+        _warn(
+            f"{len(unanchored)} of {len(claims.claim_list)} claims could not be "
+            f"found in the source; they are kept with anchor_status UNANCHORED "
+            f"and no span, and should not be taken as coming from it."
+        )
+    logger.info(f"Extracted {len(claims.claim_list)} claims from {source}")
+
+    payload = claims.model_dump(mode="json", exclude_none=True)
+    if output is None:
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    if output.suffix.lower() in (".yaml", ".yml"):
+        rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    else:
+        rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    try:
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        _error(f"Could not write {output}: {exc}")
+        raise typer.Exit(1)
+    logger.info(f"Claims written to {output}")
+
+
 def main():
     """Main entry point for the CLI."""
     app()

@@ -37,7 +37,14 @@ from .models import (
 )
 from .units import markdown_units, report_title, structured_units
 
-__all__ = ["SourceFormat", "aextract_claims", "detect_format", "extract_claims"]
+__all__ = [
+    "SourceFormat",
+    "aextract_claims",
+    "detect_format",
+    "extract_claims",
+    "needs_llm",
+    "resolve_format",
+]
 
 
 class SourceFormat(str, Enum):
@@ -90,6 +97,46 @@ def detect_format(path: Path, data: Any = None) -> SourceFormat:
         if "existing_annotations" in data or "core_functions" in data:
             return SourceFormat.GENE_REVIEW
     return SourceFormat.STRUCTURED
+
+
+def _read(path: Path, source_format: SourceFormat) -> tuple[str, Any]:
+    """Read a source, parsing it too when it is YAML or JSON not forced to markdown."""
+    text = path.read_text(encoding="utf-8")
+    data = None
+    if source_format != SourceFormat.MARKDOWN and path.suffix.lower() in _STRUCTURED_SUFFIXES:
+        data = _parse_structured(text, path)
+    return text, data
+
+
+def resolve_format(source: Path | str, source_format: SourceFormat | str = SourceFormat.AUTO) -> SourceFormat:
+    """The format a source will be read as, reading it if ``auto`` must decide.
+
+    Args:
+        source: The source file.
+        source_format: The requested format.
+
+    Returns:
+        A concrete format, never ``AUTO``.
+
+    >>> resolve_format("report.md")
+    <SourceFormat.MARKDOWN: 'markdown'>
+    """
+    fmt = SourceFormat(source_format)
+    if fmt != SourceFormat.AUTO:
+        return fmt
+    path = Path(source)
+    if path.suffix.lower() not in _STRUCTURED_SUFFIXES:
+        return SourceFormat.MARKDOWN
+    return detect_format(path, _read(path, fmt)[1])
+
+
+def needs_llm(source_format: SourceFormat) -> bool:
+    """Whether reading a source in this format calls a model.
+
+    >>> needs_llm(SourceFormat.DISMECH), needs_llm(SourceFormat.MARKDOWN)
+    (False, True)
+    """
+    return source_format in _NEEDS_LLM
 
 
 def _curated_subject(data: dict[str, Any], source_format: SourceFormat) -> Optional[EntityMention]:
@@ -187,14 +234,10 @@ async def aextract_claims(
         ValueError: If the format needs a model and no client was given.
     """
     path = Path(source)
-    text = path.read_text(encoding="utf-8")
-    fmt = SourceFormat(source_format)
-    data = None
-    if fmt != SourceFormat.MARKDOWN and path.suffix.lower() in _STRUCTURED_SUFFIXES:
-        data = _parse_structured(text, path)
-    if fmt == SourceFormat.AUTO:
-        fmt = detect_format(path, data)
-    if fmt in _NEEDS_LLM and llm_client is None:
+    requested = SourceFormat(source_format)
+    text, data = _read(path, requested)
+    fmt = detect_format(path, data) if requested == SourceFormat.AUTO else requested
+    if needs_llm(fmt) and llm_client is None:
         raise ValueError(
             f"Extracting claims from {fmt.value} sources needs an LLM client"
         )

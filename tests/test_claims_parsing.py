@@ -1,0 +1,191 @@
+"""Anchoring quotes and parsing extractor replies into claims (issue #43).
+
+These are pure functions of text, so they are tested on a report fixture and
+a reply in the shape the extraction prompt asks for, with no model call.
+"""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from deep_research_client.claims.anchoring import locate_quote
+from deep_research_client.claims.models import AnchorStatus
+from deep_research_client.claims.parsing import TextUnit, claims_from_reply
+
+REPORT = (Path(__file__).parent / "input" / "claims" / "marfan_report.md").read_text(
+    encoding="utf-8"
+)
+
+
+@pytest.mark.parametrize(
+    "quote,expected_status,expected_text",
+    [
+        (
+            "Marfan syndrome is an autosomal dominant disorder",
+            AnchorStatus.EXACT,
+            "Marfan syndrome is an autosomal dominant disorder",
+        ),
+        (
+            # Emphasis and the citation marker dropped, as models often do.
+            "caused by pathogenic variants in FBN1.",
+            AnchorStatus.NORMALIZED,
+            "caused by pathogenic variants in **FBN1** [1].",
+        ),
+        (
+            # Link target dropped, label kept.
+            "see the 2010 Ghent criteria",
+            AnchorStatus.NORMALIZED,
+            "see [the 2010 Ghent criteria](https://doi.org/10.1136/jmg.2009.072785)",
+        ),
+        (
+            # Case and reflowed whitespace. The span runs on over the citation
+            # marker and full stop that follow, keeping the claim's citation in it.
+            "beta-blockers   may slow\naortic root growth",
+            AnchorStatus.NORMALIZED,
+            "Beta-blockers may slow aortic root growth [3].",
+        ),
+    ],
+    ids=["verbatim", "markup-and-marker", "link", "case-and-whitespace"],
+)
+def test_a_quote_is_found_and_its_span_reads_as_the_source(quote, expected_status, expected_text):
+    """Whatever matched, the span covers the source's own characters."""
+    span, status = locate_quote(quote, REPORT)
+
+    assert status == expected_status
+    assert span is not None
+    assert span.text == expected_text
+    assert REPORT[span.start:span.end] == span.text
+
+
+def test_a_quote_the_source_never_says_is_unanchored():
+    """A plausible paraphrase is not evidence of anything."""
+    span, status = locate_quote("FBN1 mutations are the sole cause of Marfan syndrome", REPORT)
+
+    assert span is None
+    assert status == AnchorStatus.UNANCHORED
+
+
+def test_a_quote_outside_the_unit_is_not_found_inside_it():
+    """Search is confined to the unit, so a claim cannot borrow another section's text."""
+    management = REPORT.index("## Management")
+    span, status = locate_quote("Marfan syndrome is an autosomal dominant disorder", REPORT, management)
+
+    assert span is None
+    assert status == AnchorStatus.UNANCHORED
+
+
+def _genetics_unit() -> TextUnit:
+    """The Genetics section of the fixture report, with its bibliography."""
+    start = REPORT.index("Marfan syndrome is an autosomal")
+    end = REPORT.index("## Clinical features")
+    return TextUnit(
+        text=REPORT, start=start, end=end, section="Marfan syndrome > Genetics",
+        bibliography={
+            1: "Dietz HC et al. Nature. 1991. https://doi.org/10.1038/352337a0",
+            2: "Loeys BL et al. Nat Genet. 2005. PMID:15731757",
+        },
+    )
+
+
+def _reply(*claims: dict) -> str:
+    """A reply in the shape the prompt asks for, wrapped as models often wrap it."""
+    return "Here are the claims:\n```json\n" + json.dumps({"claims": list(claims)}) + "\n```"
+
+
+def test_a_reply_becomes_anchored_structured_claims():
+    """Structure, provenance, negation and citations all survive parsing."""
+    reply = _reply(
+        {
+            "claim": "Pathogenic variants in FBN1 cause Marfan syndrome.",
+            "quote": "caused by pathogenic variants in FBN1",
+            "subject": "pathogenic variants in FBN1", "predicate": "causes",
+            "object": "Marfan syndrome", "negated": False,
+            "entities": ["FBN1", "Marfan syndrome"], "citations": ["[1]"],
+        },
+        {
+            "claim": "Variants in TGFBR2 do not cause Marfan syndrome.",
+            "quote": "It is not caused by variants in TGFBR2",
+            "subject": "variants in TGFBR2", "predicate": "causes",
+            "object": "Marfan syndrome", "negated": True, "citations": [],
+        },
+    )
+
+    first, second = claims_from_reply(reply, _genetics_unit())
+
+    assert first.anchor_status == AnchorStatus.NORMALIZED
+    assert REPORT[first.source_span.start:first.source_span.end] == first.source_span.text
+    assert first.section == "Marfan syndrome > Genetics"
+    assert (first.subject.label, first.predicate.label, first.object.label) == (
+        "pathogenic variants in FBN1", "causes", "Marfan syndrome",
+    )
+    assert first.negated is False
+    assert [(c.marker, c.reference_id) for c in first.citations] == [
+        ("[1]", "DOI:10.1038/352337a0"),
+    ]
+    assert second.negated is True
+    assert second.anchor_status == AnchorStatus.NORMALIZED
+    assert second.citations is None
+
+
+def test_a_citation_the_source_does_not_carry_is_dropped():
+    """A marker is a fact about the text; the model's word for it is not enough."""
+    reply = _reply({
+        "claim": "FBN1 variants cause Marfan syndrome.",
+        "quote": "caused by pathogenic variants in FBN1",
+        "citations": ["[1]", "[5]", "PMID:99999999"],
+    })
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert [c.marker for c in claim.citations] == ["[1]"]
+
+
+def test_an_unfound_quote_keeps_the_claim_without_a_span():
+    """The gap stays visible rather than the claim disappearing."""
+    reply = _reply({"claim": "FBN1 is the only cause.", "quote": "FBN1 is the only cause"})
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.anchor_status == AnchorStatus.UNANCHORED
+    assert claim.source_span is None
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["not json at all", '{"answer": []}', '{"claims": "none"}'],
+    ids=["prose", "wrong-key", "wrong-type"],
+)
+def test_an_unreadable_reply_yields_no_claims(reply):
+    """The caller decides whether an empty result is an error."""
+    assert claims_from_reply(reply, _genetics_unit()) == []
+
+
+def test_malformed_entries_are_skipped_and_the_rest_kept():
+    """One bad entry does not cost the unit its other claims."""
+    reply = _reply(
+        "a bare string",
+        {"quote": "no claim text"},
+        {"claim": "FBN1 variants cause Marfan syndrome.", "quote": "caused by pathogenic variants",
+         "negated": "no"},
+    )
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.claim_text == "FBN1 variants cause Marfan syndrome."
+    assert claim.negated is None, "only a boolean is taken as a negation flag"
+
+
+def test_a_curie_entity_is_taken_as_grounded():
+    """An identifier in the text is grounding the source already did."""
+    reply = _reply({
+        "claim": "Marfan syndrome is autosomal dominant.",
+        "quote": "Marfan syndrome is an autosomal dominant disorder",
+        "entities": ["MONDO:0007947", {"label": "FBN1", "id": "HGNC:3603"}, "Marfan syndrome"],
+    })
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert [(e.label, e.id) for e in claim.entities] == [
+        ("MONDO:0007947", "MONDO:0007947"), ("FBN1", "HGNC:3603"), ("Marfan syndrome", None),
+    ]

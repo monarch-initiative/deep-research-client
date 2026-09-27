@@ -851,6 +851,42 @@ tell a keyless endpoint from one that checks keys, so it sends a placeholder and
 says so. A local server accepts it; a remote proxy that does check will answer
 401 on every judge call.
 
+### claims
+
+Extract the claims a source makes, with provenance, without judging whether
+they are true. See [Extract Claims](../how-to/extract-claims.md).
+
+#### claims extract
+
+```bash
+deep-research-client claims extract SOURCE [OPTIONS]
+```
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | A markdown report, or a YAML/JSON document |
+| `--format TEXT` | `auto` (default), `markdown`, `dismech`, `gene-review` or `structured` |
+| `--output`, `-o PATH` | Write the claim set here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
+| `--llm-model TEXT` | Model that decomposes prose into claims (default: `gpt-4o-mini`) |
+| `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API, e.g. CBORG or a local server |
+| `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`) |
+| `--concurrency INT` | Model requests in flight at once (default: 4) |
+
+Markdown and generic YAML/JSON prose need a model; curated dismech and
+ai-gene-review files do not, and run with no key. `--llm-base-url` without a
+key sends a placeholder, as for `eval score`: a local server accepts it, and
+an endpoint that checks keys answers 401.
+
+```bash
+# A deep research report, via CBORG
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-base-url https://api.cborg.lbl.gov --llm-api-key-env CBORG_API_KEY \
+  --llm-model <a model your endpoint serves>
+
+# A curated dismech disease file: no model involved
+deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+```
+
 ---
 
 ## Environment Variables

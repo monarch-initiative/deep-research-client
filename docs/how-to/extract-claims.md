@@ -55,8 +55,11 @@ from the keys: a `disease_term` or `pathophysiology` key means dismech, and
 A report written by `deep-research-client research` is read from its
 `## Output` section. The question, the numbered `## Citations` list and any
 generated validation sections are not claims the report makes, so they are
-skipped. Plain markdown with no `## Output` is read whole. Each heading starts a
-new unit, and long sections are split at paragraph breaks.
+skipped. So is a reference list the provider wrote inside its answer (a
+`References`, `Sources` or `Bibliography` heading, and anything under it). Plain
+markdown with no `## Output` is read whole. Each heading starts a new unit, and
+long sections are split at paragraph breaks. A `#` line inside a code fence is
+code, not a heading.
 
 For each unit the model returns, per claim:
 
@@ -90,9 +93,23 @@ it makes the model invent has no quote in the source, so it comes back
 the source does make. Treat a claim set from an untrusted source as that
 source's claims only where they are anchored, and don't read it as complete.
 
-Citations are checked the same way. A marker the model reports but the text
-does not contain is dropped. A numbered marker such as `[2]` is resolved
-through the report's own citation list to a PMID or DOI where it names one.
+Citations are checked the same way. A marker the model reports is kept only if
+it is in the claim's own sentence, so a marker from elsewhere in the section is
+not attached on the model's say-so:
+
+- The sentence runs from the previous sentence end to the next one after the
+  claim's span. A marker written after the full stop (`.[1]` or `. [1]`)
+  belongs to the sentence it closes.
+- The full stop of `et al.`, `e.g.`, `vs.`, `Fig.` and similar doesn't end a
+  sentence.
+- A table row, a list item, or a paragraph ends it too. A line break inside a
+  hard-wrapped paragraph doesn't.
+- `[3]` is found in `[2, 3]`, `[2-5]` and the linked `[3](https://...)`, but not
+  in `[Figure 3]`.
+- A claim with no span (`UNANCHORED`) gets no citations.
+
+A numbered marker such as `[2]` is resolved through the report's own citation
+list to a PMID or DOI where it names one.
 
 ### Curated files
 

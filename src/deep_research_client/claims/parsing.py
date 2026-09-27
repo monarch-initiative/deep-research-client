@@ -15,12 +15,27 @@ from ..validation.term_extraction import is_ontology_curie
 from .anchoring import locate_quote
 from .models import AnchorStatus, CitationHandle, Claim, EntityMention, TextSpan
 
-__all__ = ["TextUnit", "citation_window", "claims_from_reply", "resolve_citations"]
+__all__ = [
+    "TextUnit",
+    "UnreadableReplyError",
+    "citation_window",
+    "claims_from_reply",
+    "resolve_citations",
+]
 
 _URL = re.compile(r"https?://[^\s<>\]]+")
 
 #: A citation marker that is only a reference number, bracketed or not.
 _NUMBERED_MARKER = re.compile(r"^\[?\s*(\d+)\s*\]?$")
+
+
+class UnreadableReplyError(ValueError):
+    """An extractor reply that holds no readable claims list.
+
+    Raised rather than read as "no claims": a unit whose reply was cut off or
+    garbled would otherwise look like a unit that makes no claims, and the
+    claim set would look complete when it is not.
+    """
 
 
 @dataclass(frozen=True)
@@ -206,8 +221,11 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         unit: The unit the reply is about.
 
     Returns:
-        The claims, in reply order. An unreadable reply yields none; the
-        caller decides whether that is an error.
+        The claims, in reply order. ``{"claims": []}`` yields none.
+
+    Raises:
+        UnreadableReplyError: If the reply holds no ``claims`` list, for
+            example because it was cut off mid-object.
 
     >>> text = "## Genetics\\nMarfan syndrome is caused by FBN1 variants [1].\\n"
     >>> unit = TextUnit(text=text, start=12, end=len(text), section="Genetics")
@@ -224,7 +242,11 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
     parsed = extract_json_object(reply, key="claims")
     entries = parsed.get("claims") if isinstance(parsed, dict) else None
     if not isinstance(entries, list):
-        return []
+        where = unit.section or unit.source_path or "the source"
+        raise UnreadableReplyError(
+            f"The claim-extraction reply for {where} holds no readable claims list: "
+            f"{reply[:200]!r}"
+        )
 
     claims: list[Claim] = []
     for entry in entries:

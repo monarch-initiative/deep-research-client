@@ -11,15 +11,12 @@ evaluation judges use, so CBORG and other compatible endpoints work.
 """
 
 import asyncio
-import logging
 from typing import Any, Sequence
 
 from .models import Claim
-from .parsing import TextUnit, claims_from_reply
+from .parsing import TextUnit, UnreadableReplyError, claims_from_reply
 
 __all__ = ["DEFAULT_MODEL", "PROMPT_VERSION", "build_prompt", "decompose_units"]
-
-logger = logging.getLogger(__name__)
 
 #: Model used when the caller names none, matching the evaluation judges.
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -106,12 +103,14 @@ async def _extract_unit(
             temperature=0.0,
             max_tokens=max_tokens,
         )
-    reply = response.choices[0].message.content or ""
-    claims = claims_from_reply(reply, unit)
-    if not claims and reply.strip() and '"claims"' not in reply:
+    choice = response.choices[0]
+    if choice.finish_reason == "length":
         where = unit.section or unit.source_path or "the source"
-        logger.warning("Unreadable claim-extraction reply for %s; no claims recorded", where)
-    return claims
+        raise UnreadableReplyError(
+            f"The claim-extraction reply for {where} was cut off at max_tokens={max_tokens}; "
+            f"raise max_tokens or split the source into smaller units"
+        )
+    return claims_from_reply(choice.message.content or "", unit)
 
 
 async def decompose_units(
@@ -124,9 +123,10 @@ async def decompose_units(
 ) -> list[Claim]:
     """Extract atomic claims from every unit, keeping document order.
 
-    Claims are numbered ``c1``, ``c2``... across all units. A failed request
-    raises: a claim set missing a section it silently skipped would look
-    complete when it is not.
+    Claims are numbered ``c1``, ``c2``... across all units. A failed request,
+    a reply cut off at ``max_tokens`` and an unreadable reply all raise: a
+    claim set missing a section it silently skipped would look complete when
+    it is not.
 
     Args:
         units: The units to extract from, in document order.
@@ -137,6 +137,9 @@ async def decompose_units(
 
     Returns:
         All claims, in unit order and reply order within a unit.
+
+    Raises:
+        UnreadableReplyError: If a reply was truncated or holds no claims list.
     """
     limit = asyncio.Semaphore(concurrency)
     per_unit = await asyncio.gather(

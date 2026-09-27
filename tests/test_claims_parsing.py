@@ -11,7 +11,7 @@ import pytest
 
 from deep_research_client.claims.anchoring import locate_quote
 from deep_research_client.claims.models import AnchorStatus
-from deep_research_client.claims.parsing import TextUnit, claims_from_reply
+from deep_research_client.claims.parsing import TextUnit, UnreadableReplyError, claims_from_reply
 
 REPORT = (Path(__file__).parent / "input" / "claims" / "marfan_report.md").read_text(
     encoding="utf-8"
@@ -153,12 +153,24 @@ def test_an_unfound_quote_keeps_the_claim_without_a_span():
 
 @pytest.mark.parametrize(
     "reply",
-    ["not json at all", '{"answer": []}', '{"claims": "none"}'],
-    ids=["prose", "wrong-key", "wrong-type"],
+    [
+        "not json at all",
+        '{"answer": []}',
+        '{"claims": "none"}',
+        '{"claims": [{"claim": "FBN1 variants cause Marfan syndrome.", '
+        '"quote": "caused by pathogenic variants"}, {"claim": "Marfan syn',
+    ],
+    ids=["prose", "wrong-key", "wrong-type", "cut-off"],
 )
-def test_an_unreadable_reply_yields_no_claims(reply):
-    """The caller decides whether an empty result is an error."""
-    assert claims_from_reply(reply, _genetics_unit()) == []
+def test_an_unreadable_reply_raises_rather_than_reading_as_no_claims(reply):
+    """A reply cut off mid-list must not look like a section with no claims."""
+    with pytest.raises(UnreadableReplyError, match="Genetics"):
+        claims_from_reply(reply, _genetics_unit())
+
+
+def test_an_empty_claims_list_is_a_unit_with_no_claims():
+    """Only an explicit empty list means "no claims"."""
+    assert claims_from_reply('{"claims": []}', _genetics_unit()) == []
 
 
 def test_malformed_entries_are_skipped_and_the_rest_kept():

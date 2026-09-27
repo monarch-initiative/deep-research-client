@@ -266,11 +266,22 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
             "Risk is higher vs. controls in Smith et al. cohorts [4].",
         ),
         ("See Fig. 2 for dilation [5]. Next.", "See Fig", "See Fig. 2 for dilation [5]."),
+        (
+            "A is B and wraps\nonto a second line [1]. Next.",
+            "A is B",
+            "A is B and wraps\nonto a second line [1].",
+        ),
+        ("- A is B\n- C is D [2]\n", "A is B", "- A is B\n"),
+        # The item number's own "." reads as a sentence end; harmless, as it
+        # carries no marker.
+        ("1. A is B\n2. C is D [2]\n", "A is B", " A is B\n"),
+        ("A is B\n\nC is D [2].", "A is B", "A is B\n"),
     ],
     ids=[
         "marker-before-stop", "marker-after-stop", "next-after-stop",
         "spaced-marker-after-stop", "next-after-spaced-marker", "linked-marker-after-stop",
         "e.g.", "vs.-and-et-al.", "Fig.",
+        "hard-wrapped-line", "bulleted-item", "numbered-item", "paragraph-break",
     ],
 )
 def test_the_citation_window_is_the_claims_own_sentence(text, quote, window):

@@ -142,8 +142,9 @@ def resolve_citations(
     return handles
 
 
-#: Where a sentence or table row ends: terminal punctuation followed by
-#: whitespace or the end of the text, or a line break. Numbered markers written
+#: Where a sentence, table row or list item ends: terminal punctuation
+#: followed by whitespace or the end of the text, or a line break that starts
+#: a new block. Numbered markers written
 #: after the full stop (".[1]" or ". [1]", as several providers write them)
 #: belong to the sentence before them, so the end runs on over them. The full
 #: stop of "et al.", "e.g." and the like is not a sentence end.
@@ -154,8 +155,13 @@ _NOT_ABBREVIATION = "".join(
     rf"(?<!\b{re.escape(a)})(?<!\b{re.escape(a.capitalize())})" for a in _ABBREVIATIONS
 )
 
+#: A line break that starts a new block: a blank line, a table row, a heading,
+#: a block quote, or a list item. Any other line break is a hard wrap inside a
+#: paragraph, and a sentence runs on across it.
+_BLOCK_BREAK = r"\n(?=[ \t]*(?:$|\n|[|#>]|[*+-][ \t]|\d+[.)][ \t]))"
+
 _SENTENCE_END = re.compile(
-    rf"(?:[!?]|{_NOT_ABBREVIATION}\.)(?:\s*{NUMERIC_MARKER})*(?=\s|$)|\n"
+    rf"(?:[!?]|{_NOT_ABBREVIATION}\.)(?:\s*{NUMERIC_MARKER})*(?=\s|$)|{_BLOCK_BREAK}"
 )
 
 

@@ -189,3 +189,45 @@ def test_a_curie_entity_is_taken_as_grounded():
     assert [(e.label, e.id) for e in claim.entities] == [
         ("MONDO:0007947", "MONDO:0007947"), ("FBN1", "HGNC:3603"), ("Marfan syndrome", None),
     ]
+
+
+def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
+    """[2] belongs to the TGFBR2 sentence, not to the FBN1 one before it."""
+    reply = _reply({
+        "claim": "Pathogenic variants in FBN1 cause Marfan syndrome.",
+        "quote": "caused by pathogenic variants in FBN1",
+        "citations": ["[1]", "[2]"],
+    })
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert [c.marker for c in claim.citations] == ["[1]"]
+
+
+def test_an_unanchored_claim_carries_no_citations():
+    """With no sentence to check a marker against, none is taken on trust."""
+    reply = _reply({
+        "claim": "FBN1 is the only cause.", "quote": "FBN1 is the only cause", "citations": ["[1]"],
+    })
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.anchor_status == AnchorStatus.UNANCHORED
+    assert claim.citations is None
+
+
+def test_a_table_row_is_its_own_citation_window():
+    """A marker on one row does not attach to a claim from the next."""
+    text = "| Feature | Source |\n|---|---|\n| Aortic dilation | [1] |\n| Ectopia lentis | [2] |\n"
+    unit = TextUnit(
+        text=text, start=0, end=len(text),
+        bibliography={1: "PMID:20591885", 2: "PMID:8166794"},
+    )
+    reply = _reply({
+        "claim": "Ectopia lentis is a feature.", "quote": "| Ectopia lentis |",
+        "citations": ["[1]", "[2]"],
+    })
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.reference_id) for c in claim.citations] == [("[2]", "PMID:8166794")]

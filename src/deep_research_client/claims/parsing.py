@@ -13,9 +13,9 @@ from ..evaluation.scorers import _extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
 from .anchoring import locate_quote
-from .models import AnchorStatus, CitationHandle, Claim, EntityMention
+from .models import AnchorStatus, CitationHandle, Claim, EntityMention, TextSpan
 
-__all__ = ["TextUnit", "claims_from_reply", "resolve_citations"]
+__all__ = ["TextUnit", "citation_window", "claims_from_reply", "resolve_citations"]
 
 _URL = re.compile(r"https?://[^\s<>\]]+")
 
@@ -127,6 +127,43 @@ def resolve_citations(
     return handles
 
 
+#: Where a sentence or table row ends: terminal punctuation followed by
+#: whitespace or the end of the text, or a line break.
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)|\n")
+
+
+def citation_window(unit: TextUnit, span: TextSpan) -> str:
+    r"""The text a citation must appear in to count as attached to a claim.
+
+    That is the sentence (or table row) containing the claim's span, from the
+    previous sentence end to the next one after the span. A marker elsewhere in
+    the section may belong to a different claim, so the model's say-so is not
+    enough to attach it. A claim with no span gets no citations, since there is
+    no sentence to check against.
+
+    Args:
+        unit: The unit the claim came from.
+        span: The claim's located span.
+
+    Returns:
+        The window's text.
+
+    >>> text = "A is B [1]. C causes D, which causes E [2].\nF [3]."
+    >>> unit = TextUnit(text=text, start=0, end=len(text))
+    >>> citation_window(unit, TextSpan(start=12, end=23, text="C causes D,"))
+    ' C causes D, which causes E [2].'
+    """
+    before = unit.text[unit.start:span.start]
+    starts = [m.end() for m in _SENTENCE_END.finditer(before)]
+    window_start = unit.start + (starts[-1] if starts else 0)
+    # From the span's last character: a span that already ends its sentence
+    # (a normalised match runs on over the full stop) must not reach into the
+    # next one.
+    after = _SENTENCE_END.search(unit.text, max(span.start, span.end - 1), unit.end)
+    window_end = after.end() if after else unit.end
+    return unit.text[window_start:window_end]
+
+
 def _mention(value: Any) -> Optional[EntityMention]:
     """An entity mention from a reply value: a string, or ``{label, id}``.
 
@@ -220,7 +257,9 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             object_qualifier=_text(entry.get("object_qualifier")),
             entities=entities or None,
             citations=resolve_citations(
-                entry.get("citations") or [], unit.body, unit.bibliography,
+                entry.get("citations") or [],
+                citation_window(unit, span) if span is not None else "",
+                unit.bibliography,
             ) or None,
         ))
     return claims

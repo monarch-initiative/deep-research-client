@@ -139,6 +139,20 @@ def needs_llm(source_format: SourceFormat) -> bool:
     return source_format in _NEEDS_LLM
 
 
+def _structured_title(data: Any) -> Optional[str]:
+    """A generic document's title: its top-level ``name``, when that is text.
+
+    >>> _structured_title({"name": " Marfan notes "}), _structured_title({"name": 7})
+    ('Marfan notes', '7')
+    >>> _structured_title({"name": {"en": "x"}}), _structured_title([1, 2])
+    (None, None)
+    """
+    name = data.get("name") if isinstance(data, dict) else None
+    if isinstance(name, bool) or not isinstance(name, (str, int, float)):
+        return None
+    return str(name).strip() or None
+
+
 def _curated_subject(data: dict[str, Any], source_format: SourceFormat) -> Optional[EntityMention]:
     """The disease or gene a curated file is about, which every record concerns."""
     if source_format == SourceFormat.DISMECH:
@@ -254,7 +268,7 @@ async def aextract_claims(
         claims = await decompose_units(markdown_units(text), llm_client, model, concurrency=concurrency)
         extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
     elif fmt == SourceFormat.STRUCTURED:
-        title = data.get("name") if isinstance(data, dict) else None
+        title = _structured_title(data)
         claims = await decompose_units(structured_units(data), llm_client, model, concurrency=concurrency)
         extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
     else:

@@ -98,6 +98,11 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
         (
             "report", "[the 2010 Ghent criteria](https://doi.org/10.1136/jmg.2009.072785)",
         ): "DOI:10.1136/jmg.2009.072785",
+        ("provider", "[1]"): "PMID:15731757",
+        ("provider", "[2]"): "PMID:16928994",
+        ("provider", "[2](https://pubmed.ncbi.nlm.nih.gov/16928994/)"): "PMID:16928994",
+        ("provider", "https://pubmed.ncbi.nlm.nih.gov/16928994/"): "PMID:16928994",
+        ("provider", "[3]"): "PMID:24922459",
     }
     seen: dict[tuple[str, str], str | None] = {}
     for name, unit in _units():
@@ -113,8 +118,8 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize(
     "prompt_file,words",
-    [("01-report.txt", ("TGFBR2", "Marfan"))],
-    ids=["not-caused-by-TGFBR2"],
+    [("01-report.txt", ("TGFBR2", "Marfan")), ("08-provider.txt", ("ectopia lentis",))],
+    ids=["not-caused-by-TGFBR2", "ectopia-lentis-not-a-feature"],
 )
 def test_the_recorded_negation_is_kept(model, prompt_file, words):
     """A sentence saying a relationship does not hold gives a negated claim, not a positive one."""

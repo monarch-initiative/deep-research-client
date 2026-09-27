@@ -1,0 +1,241 @@
+id: https://w3id.org/monarch-initiative/deep-research-client/claims
+name: claims
+title: Deep Research Client Claims
+description: >-
+  Data model for the claims a source makes: a deep research report, a curated
+  knowledge artifact, a review. Each claim is one atomic assertion with enough
+  provenance for a person to find it in the source again. Nothing here judges
+  whether a claim is true; that is left to alignment and verification, which
+  consume these records (issue #43).
+
+  Slot names for the assertion's structure mirror OntoGPT's core Triple and
+  its ScientificClaim (subject, predicate, object, qualifier, negated), so the
+  two can be converted without a mapping table. Unlike OntoGPT, a claim carries
+  its own span: character offsets into the source, checked by locating the
+  quote the extractor gave, rather than a label searched for afterwards.
+
+  This schema is the source of truth for
+  deep_research_client/claims/datamodel.py, which is generated from it with
+  `just gen-datamodel`. Derived views are added in
+  deep_research_client/claims/models.py; they are computed from these slots
+  rather than stored.
+
+license: BSD-3-Clause
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  claims: https://w3id.org/monarch-initiative/deep-research-client/claims/
+
+default_prefix: claims
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+
+  SourceType:
+    description: What kind of document the claims were extracted from.
+    permissible_values:
+      MARKDOWN_REPORT:
+        description: >-
+          A deep research report or other markdown prose. Claims are located
+          by character offsets into the file's text.
+      STRUCTURED_DOCUMENT:
+        description: >-
+          A YAML or JSON knowledge artifact. Claims are located by a path into
+          the parsed structure; prose inside it is additionally located by
+          offsets into that field's text.
+
+  AnchorStatus:
+    description: >-
+      How a claim was tied back to its source. Offsets are only as good as
+      this: an extractor's quote that cannot be found in the source is not
+      evidence of anything.
+    permissible_values:
+      EXACT:
+        description: The extractor's quote occurs verbatim in the source.
+      NORMALIZED:
+        description: >-
+          The quote occurs once whitespace, markdown emphasis and quotation
+          mark styles are ignored. The span still points at the original text.
+      UNANCHORED:
+        description: >-
+          The quote could not be found. The claim is kept so the gap is
+          visible, but it has no span and should not be trusted as coming
+          from the source.
+      NOT_APPLICABLE:
+        description: >-
+          The claim is a structured record rather than prose, so it is located
+          by source_path and there is no quote to anchor.
+
+classes:
+
+  ClaimSet:
+    description: The claims extracted from one source document.
+    tree_root: true
+    attributes:
+      source:
+        range: SourceDocument
+        required: true
+        inlined: true
+      extractor:
+        range: ExtractorInfo
+        required: true
+        inlined: true
+      claims:
+        range: Claim
+        multivalued: true
+        inlined_as_list: true
+
+  SourceDocument:
+    description: The document claims were extracted from.
+    attributes:
+      id:
+        description: >-
+          Where the source came from: a file path or URI, as given to the
+          extractor.
+        required: true
+      source_type:
+        range: SourceType
+        required: true
+      title:
+        description: The document's own title, when it has one.
+      content_sha256:
+        description: >-
+          SHA-256 of the exact text that offsets refer to. With it, anyone can
+          confirm that a span still points at what it claims to, using only
+          the source file.
+
+  ExtractorInfo:
+    description: What produced the claims, so a set can be reproduced or compared.
+    attributes:
+      name:
+        description: Extractor identifier, for example llm-atomic or dismech.
+        required: true
+      model:
+        description: Model used, for extractors that call one.
+      prompt_version:
+        description: Version of the extraction prompt, for extractors that use one.
+
+  Claim:
+    description: >-
+      One atomic assertion made by the source: a single statement that could
+      in principle be found true or false on its own.
+    attributes:
+      id:
+        description: Identifier, unique within its ClaimSet.
+        required: true
+        identifier: true
+      claim_text:
+        description: >-
+          The assertion as a standalone sentence. May be decontextualised from
+          the source (a pronoun replaced by what it refers to, a table row's
+          header folded in) so that claims can be compared across sources; the
+          words the source actually used are in source_span.
+        required: true
+      source_span:
+        range: TextSpan
+        inlined: true
+        description: >-
+          Where the claim is stated, for prose. Offsets are into the whole
+          source text for a report, or into the field's text for prose inside
+          a structured document.
+      source_path:
+        description: >-
+          Where the claim sits in a structured document, as a path such as
+          pathophysiology[2].description. Absent for markdown reports.
+      anchor_status:
+        range: AnchorStatus
+        required: true
+      section:
+        description: >-
+          Heading path of the section the claim appears in, for example
+          "Mechanism > Fibrillin". Absent when the source has no headings.
+      subject:
+        range: EntityMention
+        inlined: true
+        description: What the claim is about, as in OntoGPT's Triple.subject.
+      predicate:
+        range: EntityMention
+        inlined: true
+        description: >-
+          The relationship asserted, as in OntoGPT's Triple.predicate. May be
+          grounded to a relation ontology such as RO or biolink.
+      object:
+        range: EntityMention
+        inlined: true
+        description: What the subject is related to, as in OntoGPT's Triple.object.
+      negated:
+        range: boolean
+        description: >-
+          True when the source asserts that the relationship does not hold, as
+          in OntoGPT's ScientificClaim.negated.
+      qualifier:
+        description: >-
+          A qualifier on the whole statement, as in OntoGPT's Triple.qualifier:
+          for example a hedge ("may"), a population, or a condition.
+      subject_qualifier:
+        description: A modifier of the subject, for example "high dose".
+      object_qualifier:
+        description: A modifier of the object, for example "severe".
+      entities:
+        range: EntityMention
+        multivalued: true
+        inlined_as_list: true
+        description: >-
+          The things the claim mentions, whether or not they fill subject or
+          object. Anchors for aligning claims across sources.
+      citations:
+        range: CitationHandle
+        multivalued: true
+        inlined_as_list: true
+        description: The references the source attaches to this claim.
+
+  TextSpan:
+    description: >-
+      A contiguous stretch of source text. Offsets count Unicode code points,
+      as Python string indexing does, with end exclusive, so
+      text == source[start:end].
+    attributes:
+      start:
+        range: integer
+        required: true
+      end:
+        range: integer
+        required: true
+      text:
+        description: The source text between start and end, verbatim.
+        required: true
+
+  EntityMention:
+    description: >-
+      Something a claim refers to. Mirrors OntoGPT's NamedEntity: a label as
+      written, and an identifier when it has been grounded.
+    attributes:
+      label:
+        description: The entity as written or as named by the extractor.
+        required: true
+      id:
+        description: >-
+          A CURIE, when the entity is grounded to an ontology or database,
+          for example MONDO:0007947.
+
+  CitationHandle:
+    description: >-
+      A reference attached to a claim, kept both as written and, where it can
+      be resolved, as a normalised identifier. Normalisation is deliberately
+      shallow here; it is the job of publication identifier normalisation
+      (issue #41).
+    attributes:
+      marker:
+        description: >-
+          The citation as it appears in the source, for example "[3]",
+          "PMID:7913883" or a URL.
+        required: true
+      reference_id:
+        description: >-
+          Normalised identifier when one could be read from the marker or the
+          source's bibliography, for example PMID:7913883 or DOI:10.1038/x.
+      url:
+        description: URL of the reference, when the marker or bibliography gives one.

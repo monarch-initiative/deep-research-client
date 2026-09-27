@@ -1,0 +1,258 @@
+"""The claim extraction entry point: one source in, one ClaimSet out.
+
+How claims are found depends on what the source is:
+
+- **markdown** (a deep research report, or any prose): an LLM decomposes each
+  section into atomic claims, each tied back to the passage that states it.
+- **dismech** and **gene-review** curated YAML: every curated record already
+  is one claim, so records map directly, located by their path in the file,
+  with their curated ontology terms as grounded entities and their evidence
+  as citations. No model is involved.
+- **structured** (any other YAML or JSON): the document's prose fields are
+  decomposed by the LLM like a report's sections, each located by path.
+"""
+
+import asyncio
+import json
+from enum import Enum
+from pathlib import Path
+from typing import Any, Optional
+
+import yaml
+
+from ..evaluation.adapters.monarch import dismech_claims, gene_review_claims
+from ..evaluation.datamodel import ReferenceClaim
+from ..validation.extraction import find_reference_ids
+from .llm import DEFAULT_MODEL, PROMPT_VERSION, decompose_units
+from .models import (
+    AnchorStatus,
+    CitationHandle,
+    Claim,
+    ClaimSet,
+    EntityMention,
+    ExtractorInfo,
+    SourceDocument,
+    SourceType,
+    content_sha256,
+)
+from .units import markdown_units, report_title, structured_units
+
+__all__ = ["SourceFormat", "aextract_claims", "detect_format", "extract_claims"]
+
+
+class SourceFormat(str, Enum):
+    """How a source is read. ``AUTO`` decides from its extension and content."""
+
+    AUTO = "auto"
+    MARKDOWN = "markdown"
+    DISMECH = "dismech"
+    GENE_REVIEW = "gene-review"
+    STRUCTURED = "structured"
+
+
+#: Formats read by decomposing prose with a model.
+_NEEDS_LLM = frozenset({SourceFormat.MARKDOWN, SourceFormat.STRUCTURED})
+
+_STRUCTURED_SUFFIXES = frozenset({".yaml", ".yml", ".json"})
+
+
+def _parse_structured(text: str, path: Path) -> Any:
+    """Parse a YAML or JSON document."""
+    if path.suffix.lower() == ".json":
+        return json.loads(text)
+    return yaml.safe_load(text)
+
+
+def detect_format(path: Path, data: Any = None) -> SourceFormat:
+    """Decide how to read a source from its extension and, if parsed, its keys.
+
+    Args:
+        path: The source file.
+        data: The parsed document, for YAML or JSON sources.
+
+    Returns:
+        The format to read it as.
+
+    >>> detect_format(Path("report.md"))
+    <SourceFormat.MARKDOWN: 'markdown'>
+    >>> detect_format(Path("x.yaml"), {"disease_term": {}, "phenotypes": []})
+    <SourceFormat.DISMECH: 'dismech'>
+    >>> detect_format(Path("x.yaml"), {"gene_symbol": "FBN1", "core_functions": []})
+    <SourceFormat.GENE_REVIEW: 'gene-review'>
+    >>> detect_format(Path("x.json"), {"notes": "..."})
+    <SourceFormat.STRUCTURED: 'structured'>
+    """
+    if path.suffix.lower() not in _STRUCTURED_SUFFIXES:
+        return SourceFormat.MARKDOWN
+    if isinstance(data, dict):
+        if "disease_term" in data or "pathophysiology" in data:
+            return SourceFormat.DISMECH
+        if "existing_annotations" in data or "core_functions" in data:
+            return SourceFormat.GENE_REVIEW
+    return SourceFormat.STRUCTURED
+
+
+def _curated_subject(data: dict[str, Any], source_format: SourceFormat) -> Optional[EntityMention]:
+    """The disease or gene a curated file is about, which every record concerns."""
+    if source_format == SourceFormat.DISMECH:
+        term = (data.get("disease_term") or {}).get("term") or {}
+        label = term.get("label") or data.get("name")
+        return EntityMention(label=str(label), id=term.get("id")) if label else None
+    label = data.get("gene_symbol")
+    return EntityMention(label=str(label), id=data.get("id") or None) if label else None
+
+
+#: What a curated record in each section asserts about the file's subject.
+#: The section is the assertion; a record that also has a description keeps
+#: it as the claim text, but the structure is the same either way.
+_CURATED_PREDICATES = {
+    "phenotype": "has phenotype",
+    "treatment": "is treated by",
+    "genetic_factor": "has mode of inheritance",
+}
+
+
+def _from_reference_claim(
+    path: str, record: ReferenceClaim, subject: Optional[EntityMention],
+) -> Claim:
+    """One curated record as a claim, located by its path in the file.
+
+    >>> from deep_research_client.evaluation.datamodel import OntologyTerm
+    >>> record = ReferenceClaim(
+    ...     category="phenotype", name="Ectopia lentis", description="",
+    ...     ontology_terms=[OntologyTerm(id="HP:0001083", label="Ectopia lentis")],
+    ... )
+    >>> claim = _from_reference_claim("phenotypes[2]", record, EntityMention(label="Marfan syndrome"))
+    >>> claim.claim_text, claim.predicate.label, claim.object.id
+    ('Marfan syndrome has phenotype Ectopia lentis.', 'has phenotype', 'HP:0001083')
+    """
+    citations = []
+    for evidence in record.evidence or []:
+        found = find_reference_ids(evidence.reference)
+        citations.append(CitationHandle(
+            marker=evidence.reference,
+            reference_id=found[0].normalized_id if found else None,
+        ))
+    entities = [
+        EntityMention(label=term.label or term.id, id=term.id)
+        for term in record.ontology_terms or []
+    ]
+    predicate_label = _CURATED_PREDICATES.get(record.category)
+    predicate = EntityMention(label=predicate_label) if predicate_label else None
+    related = None
+    if predicate is not None:
+        related = entities[0] if entities else EntityMention(label=record.name)
+
+    claim_text = (record.description or "").strip()
+    if not claim_text:
+        claim_text = (
+            f"{subject.label} {predicate_label} {record.name}."
+            if subject is not None and predicate_label else record.name
+        )
+    return Claim(
+        id=path,
+        claim_text=claim_text,
+        source_path=path,
+        anchor_status=AnchorStatus.NOT_APPLICABLE,
+        subject=subject,
+        predicate=predicate,
+        object=related,
+        entities=entities or None,
+        citations=citations or None,
+    )
+
+
+async def aextract_claims(
+    source: Path | str,
+    *,
+    source_format: SourceFormat | str = SourceFormat.AUTO,
+    llm_client: Any = None,
+    model: str = DEFAULT_MODEL,
+    concurrency: int = 4,
+) -> ClaimSet:
+    """Extract the claims a source makes.
+
+    Args:
+        source: A markdown report, or a YAML or JSON document.
+        source_format: How to read it; ``auto`` decides from the file.
+        llm_client: An ``openai.AsyncOpenAI``-compatible client. Required for
+            markdown and generic structured sources, unused for curated ones.
+        model: Model for LLM decomposition.
+        concurrency: LLM requests in flight at once.
+
+    Returns:
+        The claims, with the source's SHA-256 and the extractor recorded.
+
+    Raises:
+        ValueError: If the format needs a model and no client was given.
+    """
+    path = Path(source)
+    text = path.read_text(encoding="utf-8")
+    fmt = SourceFormat(source_format)
+    data = None
+    if fmt != SourceFormat.MARKDOWN and path.suffix.lower() in _STRUCTURED_SUFFIXES:
+        data = _parse_structured(text, path)
+    if fmt == SourceFormat.AUTO:
+        fmt = detect_format(path, data)
+    if fmt in _NEEDS_LLM and llm_client is None:
+        raise ValueError(
+            f"Extracting claims from {fmt.value} sources needs an LLM client"
+        )
+
+    title: Optional[str]
+    if fmt == SourceFormat.MARKDOWN:
+        title = report_title(text)
+        claims = await decompose_units(markdown_units(text), llm_client, model, concurrency=concurrency)
+        extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
+    elif fmt == SourceFormat.STRUCTURED:
+        title = data.get("name") if isinstance(data, dict) else None
+        claims = await decompose_units(structured_units(data), llm_client, model, concurrency=concurrency)
+        extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
+    else:
+        if not isinstance(data, dict):
+            raise ValueError(f"{path} is not a {fmt.value} document")
+        records = dismech_claims(data) if fmt == SourceFormat.DISMECH else gene_review_claims(data)
+        subject = _curated_subject(data, fmt)
+        title = subject.label if subject else None
+        claims = [_from_reference_claim(p, record, subject) for p, record in records]
+        extractor = ExtractorInfo(name=fmt.value)
+
+    return ClaimSet(
+        source=SourceDocument(
+            id=str(source),
+            source_type=(
+                SourceType.MARKDOWN_REPORT if fmt == SourceFormat.MARKDOWN
+                else SourceType.STRUCTURED_DOCUMENT
+            ),
+            title=title,
+            content_sha256=content_sha256(text),
+        ),
+        extractor=extractor,
+        claims=claims,
+    )
+
+
+def extract_claims(
+    source: Path | str,
+    *,
+    source_format: SourceFormat | str = SourceFormat.AUTO,
+    llm_client: Any = None,
+    model: str = DEFAULT_MODEL,
+    concurrency: int = 4,
+) -> ClaimSet:
+    """Synchronous :func:`aextract_claims`, for callers without an event loop.
+
+    Args:
+        source: A markdown report, or a YAML or JSON document.
+        source_format: How to read it; ``auto`` decides from the file.
+        llm_client: An ``openai.AsyncOpenAI``-compatible client, for prose.
+        model: Model for LLM decomposition.
+        concurrency: LLM requests in flight at once.
+
+    Returns:
+        The claims the source makes.
+    """
+    return asyncio.run(aextract_claims(
+        source, source_format=source_format, llm_client=llm_client,
+        model=model, concurrency=concurrency,
+    ))

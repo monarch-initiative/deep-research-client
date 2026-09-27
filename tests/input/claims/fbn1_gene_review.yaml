@@ -1,0 +1,28 @@
+# Shaped like an ai-gene-review *-ai-review.yaml file (the fields the gene
+# review loader reads); the content is written for these tests.
+id: P35555
+gene_symbol: FBN1
+description: Fibrillin-1, the main structural component of microfibrils.
+existing_annotations:
+  - term:
+      id: GO:0005201
+      label: extracellular matrix structural constituent
+    review:
+      action: ACCEPT
+      summary: Fibrillin-1 is a structural component of the extracellular matrix.
+      reason: Supported by direct biochemical characterisation.
+      supported_by:
+        - reference_id: PMID:1852208
+          supporting_text: fibrillin is a component of microfibrils
+        - reference_id: file:notes.md
+  - term:
+      id: GO:0005515
+      label: protein binding
+    review:
+      action: REMOVE
+      summary: Uninformative.
+core_functions:
+  - molecular_function:
+      id: GO:0005201
+      label: extracellular matrix structural constituent
+    description: Assembles into microfibrils that scaffold elastic fibers.

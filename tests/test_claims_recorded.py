@@ -41,11 +41,18 @@ MODEL_DEPENDENT = "MODEL_DEPENDENT (re-check after re-recording): "
 @cache
 def _units() -> tuple[tuple[str, TextUnit], ...]:
     """The units the recording was made from, named as their prompt files are."""
-    report = (INPUT / MANIFEST["sources"]["report"]).read_text(encoding="utf-8")
-    notes = yaml.safe_load((INPUT / MANIFEST["sources"]["notes"]).read_text(encoding="utf-8"))
-    units = [("report", u) for u in markdown_units(report)]
-    units += [("notes", u) for u in structured_units(notes)]
-    return tuple((f"{i:02d}-{kind}.txt", unit) for i, (kind, unit) in enumerate(units, 1))
+    units = []
+    for source in MANIFEST["sources"]:
+        path = INPUT / source["file"]
+        text = path.read_text(encoding="utf-8")
+        built = markdown_units(text) if path.suffix == ".md" else structured_units(yaml.safe_load(text))
+        units += [(source["name"], unit) for unit in built]
+    return tuple((f"{i:02d}-{name}.txt", unit) for i, (name, unit) in enumerate(units, 1))
+
+
+def _source(name: str) -> str:
+    """The manifest name of the source a prompt file's unit came from: "06-provider.txt" is "provider"."""
+    return name.split("-", 1)[1].removesuffix(".txt")
 
 
 def test_the_recording_answers_the_prompts_this_code_sends():
@@ -84,31 +91,40 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
     those kept resolve correctly, not that every one was cited.
     """
     expected = {
-        "[1]": "DOI:10.1038/352337a0",
-        "[2]": "PMID:15731757",
-        "[3]": "PMID:8166794",
-        "https://doi.org/10.1136/jmg.2009.072785": "DOI:10.1136/jmg.2009.072785",
+        ("report", "[1]"): "DOI:10.1038/352337a0",
+        ("report", "[2]"): "PMID:15731757",
+        ("report", "[3]"): "PMID:8166794",
+        ("report", "https://doi.org/10.1136/jmg.2009.072785"): "DOI:10.1136/jmg.2009.072785",
+        (
+            "report", "[the 2010 Ghent criteria](https://doi.org/10.1136/jmg.2009.072785)",
+        ): "DOI:10.1136/jmg.2009.072785",
     }
-    seen = {}
+    seen: dict[tuple[str, str], str | None] = {}
     for name, unit in _units():
         for claim in claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit):
             for citation in claim.citations or []:
                 assert citation.marker in citation_window(unit, claim.source_span), claim.claim_text
                 # One marker must resolve the same way in every claim citing it.
-                assert seen.setdefault(citation.marker, citation.reference_id) == citation.reference_id
+                key = (_source(name), citation.marker)
+                assert seen.setdefault(key, citation.reference_id) == citation.reference_id
     assert seen.items() <= expected.items()
 
 
 @pytest.mark.parametrize("model", MODELS)
-def test_the_recorded_negation_is_kept(model):
-    """"It is not caused by variants in TGFBR2" is a negated claim, not a positive one."""
-    name, unit = _units()[0]
-    claims = claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit)
+@pytest.mark.parametrize(
+    "prompt_file,words",
+    [("01-report.txt", ("TGFBR2", "Marfan"))],
+    ids=["not-caused-by-TGFBR2"],
+)
+def test_the_recorded_negation_is_kept(model, prompt_file, words):
+    """A sentence saying a relationship does not hold gives a negated claim, not a positive one."""
+    unit = dict(_units())[prompt_file]
+    claims = claims_from_reply((RECORDED / model / prompt_file).read_text(encoding="utf-8"), unit)
 
-    tgfbr2 = [c for c in claims if "TGFBR2" in c.claim_text and "Marfan" in c.claim_text]
+    matching = [c for c in claims if all(w.lower() in c.claim_text.lower() for w in words)]
 
-    assert [c.negated for c in tgfbr2] == [True], (
-        f"{MODEL_DEPENDENT}{model} did not report one negated TGFBR2 claim"
+    assert [c.negated for c in matching] == [True], (
+        f"{MODEL_DEPENDENT}{model} did not report one negated claim about {' and '.join(words)}"
     )
 
 

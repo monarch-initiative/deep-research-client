@@ -21,15 +21,18 @@ Rules:
   statements about the text itself ("this report reviews...").
 - "negated" is true only when the text asserts the relationship does not hold.
 - "citations": the citation markers attached to the passage, exactly as
-  written (for example "[3]", "PMID:12345", a URL); [] if none.
+  written (for example "[3]", "PMID:12345", a URL); [] if none. A marker
+  belongs only to the claims it supports: when a sentence makes several
+  claims, give its marker only to those the cited source is for.
 - "subject", "predicate", "object": the assertion's parts when it has that
   shape, else null. "entities": the things the claim mentions.
 
 Example. For TEXT
   Drug Q, an oral kinase inhibitor, reduced tumour size in 40% of patients [4].
 the claims are "Drug Q is an oral kinase inhibitor." (quote "Drug Q, an oral
-kinase inhibitor") and "Drug Q reduced tumour size in 40% of patients."
-(quote "reduced tumour size in 40% of patients", citations ["[4]"]).
+kinase inhibitor", citations [], since [4] reports the result) and "Drug Q
+reduced tumour size in 40% of patients." (quote "reduced tumour size in 40% of
+patients", citations ["[4]"]).
 
 Reply with JSON only, in this form:
 {"claims": [{"claim": "...", "quote": "...", "subject": "...", "predicate": "...",

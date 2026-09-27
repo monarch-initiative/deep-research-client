@@ -1,15 +1,1 @@
-{"claims": [
-  {
-    "claim": "About 60 percent of affected people develop ectopia lentis",
-    "quote": "About 60 percent of affected people develop ectopia lentis",
-    "subject": "affected people",
-    "predicate": "develop",
-    "object": "ectopia lentis",
-    "negated": false,
-    "qualifier": "about 60 percent",
-    "subject_qualifier": null,
-    "object_qualifier": null,
-    "entities": ["affected people", "ectopia lentis"],
-    "citations": []
-  }
-]}
+{"claims": [{"claim": "About 60% of people with Marfan syndrome develop ectopia lentis", "quote": "About 60 percent of affected people develop ectopia lentis", "subject": "people with Marfan syndrome", "predicate": "develop", "object": "ectopia lentis", "negated": false, "qualifier": null, "subject_qualifier": "about 60% of", "object_qualifier": null, "entities": ["Marfan syndrome", "ectopia lentis"], "citations": []}]}

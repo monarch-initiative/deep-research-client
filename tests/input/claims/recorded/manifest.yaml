@@ -5,10 +5,15 @@
 # prompts/SYSTEM.txt and one prompts/NN-*.txt file, and wrote the reply the
 # model should give. No other context. Re-record whenever the prompt or the
 # units change; the test fails until you do.
-prompt_version: "2"
+#
+# Prompt files are numbered across the sources in this order and named after
+# the source ("03-report.txt" is the third unit, from marfan_report.md).
+prompt_version: "3"
 sources:
-  report: marfan_report.md
-  notes: generic_notes.yaml
+  - name: report
+    file: marfan_report.md
+  - name: notes
+    file: generic_notes.yaml
 recordings:
   haiku: Claude Haiku (subagent)
   sonnet: Claude Sonnet (subagent)

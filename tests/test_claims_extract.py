@@ -173,7 +173,7 @@ def test_a_gene_review_file_skips_removed_annotations_and_file_references():
         "existing_annotations[0]", "core_functions[0]",
     ]
     accepted = claims.claim_list[0]
-    assert accepted.subject.label == "FBN1"
+    assert (accepted.subject.label, accepted.subject.id) == ("FBN1", "UniProtKB:P35555")
     assert [c.marker for c in accepted.citations] == ["PMID:1852208"]
 
 

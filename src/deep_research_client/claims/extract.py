@@ -160,7 +160,19 @@ def _curated_subject(data: dict[str, Any], source_format: SourceFormat) -> Optio
         label = term.get("label") or data.get("name")
         return EntityMention(label=str(label), id=term.get("id")) if label else None
     label = data.get("gene_symbol")
-    return EntityMention(label=str(label), id=data.get("id") or None) if label else None
+    return EntityMention(label=str(label), id=_uniprot_curie(data.get("id"))) if label else None
+
+
+def _uniprot_curie(accession: Any) -> Optional[str]:
+    """An ai-gene-review file's ``id`` as a CURIE. Its ids are UniProt accessions.
+
+    >>> _uniprot_curie("P35555"), _uniprot_curie("UniProtKB:P35555"), _uniprot_curie(None)
+    ('UniProtKB:P35555', 'UniProtKB:P35555', None)
+    """
+    if not isinstance(accession, str) or not accession.strip():
+        return None
+    accession = accession.strip()
+    return accession if ":" in accession else f"UniProtKB:{accession}"
 
 
 #: What a curated record in each section asserts about the file's subject.

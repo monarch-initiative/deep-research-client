@@ -91,7 +91,7 @@ A curated record already is one claim, so no model is needed. Each claim has:
 - a `source_path` such as `phenotypes[1]`. The index counts every entry in the
   list, so it points at the record even when others were skipped.
 - the file's disease or gene as its **subject**, grounded (for example
-  `MONDO:0007947`)
+  `MONDO:0007947`, or `UniProtKB:P35555` for a gene review's accession)
 - the curated ontology terms as grounded **entities**
 - the evidence references as **citations**
 

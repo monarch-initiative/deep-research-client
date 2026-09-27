@@ -145,8 +145,18 @@ def resolve_citations(
 #: Where a sentence or table row ends: terminal punctuation followed by
 #: whitespace or the end of the text, or a line break. Numbered markers written
 #: after the full stop (".[1]" or ". [1]", as several providers write them)
-#: belong to the sentence before them, so the end runs on over them.
-_SENTENCE_END = re.compile(rf"[.!?](?:\s*{NUMERIC_MARKER})*(?=\s|$)|\n")
+#: belong to the sentence before them, so the end runs on over them. The full
+#: stop of "et al.", "e.g." and the like is not a sentence end.
+#: Abbreviations whose full stop does not end a sentence. Checked case
+#: insensitively, each a separate fixed-width lookbehind.
+_ABBREVIATIONS = ("al", "e.g", "i.e", "vs", "fig", "figs", "approx", "cf", "ca", "resp")
+_NOT_ABBREVIATION = "".join(
+    rf"(?<!\b{re.escape(a)})(?<!\b{re.escape(a.capitalize())})" for a in _ABBREVIATIONS
+)
+
+_SENTENCE_END = re.compile(
+    rf"(?:[!?]|{_NOT_ABBREVIATION}\.)(?:\s*{NUMERIC_MARKER})*(?=\s|$)|\n"
+)
 
 
 def citation_window(unit: TextUnit, span: TextSpan) -> str:

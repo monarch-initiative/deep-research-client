@@ -44,6 +44,11 @@ _CLOSING = frozenset(".,;:!?)")
 #: Wikipedia's "Marfan_syndrome_(disease)".
 _LINK_TARGET = r"\((?:[^()\s]|\([^()\s]*\))*\)"
 
+#: A bracketed numeric citation marker, such as [3] or [2, 5-7], with its link
+#: target when the marker is itself a link ("[1](https://...)"). Shared with
+#: the citation window, which lets a sentence end run on over these.
+NUMERIC_MARKER = rf"\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\](?:{_LINK_TARGET})?"
+
 #: Stretches of markdown that carry no claim text: a bracketed numeric
 #: citation marker such as [3] or [2, 5-7], with its link target when the
 #: marker is itself a link ("[1](https://...)"), and the target of any other
@@ -51,8 +56,7 @@ _LINK_TARGET = r"\((?:[^()\s]|\([^()\s]*\))*\)"
 #: them still matches. The marker comes first, so a linked marker's target is
 #: dropped with it rather than left behind.
 _IGNORED = re.compile(
-    r"\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]"  # [3], [2, 5], [4-6]
-    rf"(?:{_LINK_TARGET})?"                     # ...optionally "(https://...)"
+    rf"{NUMERIC_MARKER}"                         # [3], [2, 5], [4-6], [1](https://...)
     rf"|\]{_LINK_TARGET}"                       # "](https://...)" after a link label
 )
 

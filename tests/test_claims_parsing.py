@@ -11,7 +11,12 @@ import pytest
 
 from deep_research_client.claims.anchoring import locate_quote
 from deep_research_client.claims.models import AnchorStatus
-from deep_research_client.claims.parsing import TextUnit, UnreadableReplyError, claims_from_reply
+from deep_research_client.claims.parsing import (
+    TextUnit,
+    UnreadableReplyError,
+    citation_window,
+    claims_from_reply,
+)
 
 REPORT = (Path(__file__).parent / "input" / "claims" / "marfan_report.md").read_text(
     encoding="utf-8"
@@ -239,6 +244,30 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
     (claim,) = claims_from_reply(reply, _genetics_unit())
 
     assert [c.marker for c in claim.citations] == ["[1]"]
+
+
+@pytest.mark.parametrize(
+    "text,quote,window",
+    [
+        ("A is B [1]. C is D [2].", "C is D", " C is D [2]."),
+        ("A is B.[1] C is D.[2]", "A is B", "A is B.[1]"),
+        ("A is B.[1] C is D.[2]", "C is D", " C is D.[2]"),
+        ("E is F. [3] G is H.", "E is F", "E is F. [3]"),
+        ("E is F. [3] G is H.", "G is H", " G is H."),
+        ("E is F.[3](https://x.org/3) G is H.", "E is F", "E is F.[3](https://x.org/3)"),
+    ],
+    ids=[
+        "marker-before-stop", "marker-after-stop", "next-after-stop",
+        "spaced-marker-after-stop", "next-after-spaced-marker", "linked-marker-after-stop",
+    ],
+)
+def test_the_citation_window_is_the_claims_own_sentence(text, quote, window):
+    """A marker belongs to the sentence it closes, wherever the full stop sits."""
+    unit = TextUnit(text=text, start=0, end=len(text))
+    span, _ = locate_quote(quote, text)
+    assert span is not None
+
+    assert citation_window(unit, span) == window
 
 
 def test_an_unanchored_claim_carries_no_citations():

@@ -12,7 +12,7 @@ from typing import Any, Mapping, Optional
 from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
-from .anchoring import locate_quote
+from .anchoring import NUMERIC_MARKER, locate_quote
 from .models import AnchorStatus, CitationHandle, Claim, EntityMention, TextSpan
 
 __all__ = [
@@ -143,8 +143,10 @@ def resolve_citations(
 
 
 #: Where a sentence or table row ends: terminal punctuation followed by
-#: whitespace or the end of the text, or a line break.
-_SENTENCE_END = re.compile(r"[.!?](?=\s|$)|\n")
+#: whitespace or the end of the text, or a line break. Numbered markers written
+#: after the full stop (".[1]" or ". [1]", as several providers write them)
+#: belong to the sentence before them, so the end runs on over them.
+_SENTENCE_END = re.compile(rf"[.!?](?:\s*{NUMERIC_MARKER})*(?=\s|$)|\n")
 
 
 def citation_window(unit: TextUnit, span: TextSpan) -> str:

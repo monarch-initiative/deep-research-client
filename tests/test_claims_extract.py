@@ -131,6 +131,12 @@ def test_prose_sources_refuse_to_run_without_a_model(name):
         extract_claims(INPUT / name)
 
 
+def test_a_markdown_file_read_as_structured_is_refused_not_read_as_empty():
+    """Forcing a format the file is not must fail, not return a claim set with no claims."""
+    with pytest.raises(ValueError, match="not a YAML or JSON document"):
+        extract_claims(REPORT, source_format=SourceFormat.STRUCTURED)
+
+
 def test_a_dismech_file_maps_record_by_record_with_paths():
     """Curated records are already claims; each keeps its place in the file."""
     path = INPUT / "marfan_dismech.yaml"

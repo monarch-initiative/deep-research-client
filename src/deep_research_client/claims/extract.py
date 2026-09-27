@@ -231,12 +231,18 @@ async def aextract_claims(
         The claims, with the source's SHA-256 and the extractor recorded.
 
     Raises:
-        ValueError: If the format needs a model and no client was given.
+        ValueError: If the format needs a model and no client was given, or
+            the source is not a document of the requested format.
     """
     path = Path(source)
     requested = SourceFormat(source_format)
     text, data = _read(path, requested)
     fmt = detect_format(path, data) if requested == SourceFormat.AUTO else requested
+    if fmt == SourceFormat.STRUCTURED and not isinstance(data, (dict, list)):
+        raise ValueError(
+            f"{path} is not a YAML or JSON document with fields to read; "
+            f"read prose as {SourceFormat.MARKDOWN.value}"
+        )
     if needs_llm(fmt) and llm_client is None:
         raise ValueError(
             f"Extracting claims from {fmt.value} sources needs an LLM client"

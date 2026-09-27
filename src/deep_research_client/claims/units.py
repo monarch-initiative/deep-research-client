@@ -23,6 +23,14 @@ _SKIPPED_TOP_SECTIONS = frozenset({
     "question", "citations", "artifacts", "reference validation", "term validation",
 })
 
+#: Headings of reference lists a provider writes inside its own answer. A
+#: reference list names sources rather than making claims, so it and its
+#: subsections are not sent to the extractor.
+_REFERENCE_SECTIONS = frozenset({
+    "references", "sources", "bibliography", "citations", "works cited",
+    "literature cited", "further reading",
+})
+
 #: Largest unit sent in one request. A section longer than this is split at
 #: paragraph breaks, keeping its heading path.
 DEFAULT_MAX_UNIT_CHARS = 6000
@@ -157,6 +165,8 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
 
     Heading lines are not part of any unit; they become its section path.
     Every unit shares the report's bibliography, so ``[n]`` markers resolve.
+    A reference list the provider wrote inside its answer ("## References",
+    "### Sources"...) is not a unit, nor is anything under it.
 
     Args:
         text: The report, as read from disk; offsets index into it.
@@ -170,6 +180,9 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     [('Title', 'Intro.'), ('Title > Genetics', 'FBN1 [1].')]
     >>> markdown_units(report)[1].bibliography
     {1: 'Ref'}
+    >>> own = "# Title\\n\\nFBN1 [1].\\n\\n## References\\n\\n1. Dietz HC. Nature. 1991.\\n"
+    >>> [u.section for u in markdown_units(own)]
+    ['Title']
     """
     start, end = _answer_region(text)
     bibliography = _bibliography(text, start)
@@ -183,7 +196,10 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
 
     for heading_start, heading_end, level, title in boundaries:
         section = " > ".join(name for _, name in stack) or None
-        if text[cursor:heading_start].strip():
+        in_references = any(
+            name.rstrip(":").strip().lower() in _REFERENCE_SECTIONS for _, name in stack
+        )
+        if not in_references and text[cursor:heading_start].strip():
             for piece_start, piece_end in _split_long(cursor, heading_start, text, max_chars):
                 if text[piece_start:piece_end].strip():
                     units.append(TextUnit(

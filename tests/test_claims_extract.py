@@ -67,6 +67,21 @@ def test_a_comment_in_a_code_block_is_not_a_heading():
     assert "Then run it." in units[0].body
 
 
+@pytest.mark.parametrize("heading", ["## References", "### Sources", "## Bibliography:"])
+def test_a_reference_list_the_provider_wrote_is_not_decomposed(heading):
+    """A provider's own reference list, and anything under it, names sources rather than claims."""
+    level = heading.split()[0]
+    text = (
+        f"# Marfan syndrome\n\nFBN1 variants cause it [1].\n\n{heading}\n\n"
+        f"1. Dietz HC. Nature. 1991.\n\n{level}# Reviews\n\n2. Judge DP. Lancet. 2005.\n\n"
+        f"# Outlook\n\nLosartan is under study.\n"
+    )
+
+    units = markdown_units(text)
+
+    assert [u.section for u in units] == ["Marfan syndrome", "Outlook"]
+
+
 def test_structured_units_are_the_prose_fields_by_path():
     """Identifiers and short labels are not prose, so they are not sent."""
     import yaml

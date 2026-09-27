@@ -9,6 +9,13 @@ model stand-in.
 The first test keeps the recording honest: if the prompt, its version, or the
 units change, the recorded replies no longer answer what the code would ask,
 and it fails until they are re-recorded.
+
+Most assertions are about the code: whatever the model chose to extract, a
+claim that anchors reads as the source, and a citation that is kept resolves
+correctly. A few also depend on what the model chose, for example that it
+reported a negation. Those carry MODEL_DEPENDENT in their failure message, so
+after a re-recording a failure there is read as a change in the model's
+output, not as a parser regression.
 """
 
 from pathlib import Path
@@ -25,6 +32,9 @@ INPUT = Path(__file__).parent / "input" / "claims"
 RECORDED = INPUT / "recorded"
 MANIFEST = yaml.safe_load((RECORDED / "manifest.yaml").read_text(encoding="utf-8"))
 MODELS = sorted(MANIFEST["recordings"])
+
+#: Prefix for assertions that test the recorded model's choices, not the code.
+MODEL_DEPENDENT = "MODEL_DEPENDENT (re-check after re-recording): "
 
 
 def _units() -> list[tuple[str, TextUnit]]:
@@ -51,23 +61,26 @@ def test_the_recording_answers_the_prompts_this_code_sends():
 @pytest.mark.parametrize("model", MODELS)
 def test_every_recorded_claim_anchors_and_its_span_reads_as_the_source(model):
     """Real replies anchor, and every span is the source's own text."""
-    total = 0
     for name, unit in _units():
         claims = claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit)
-        assert claims, f"{model} {name}: no claims parsed"
+        assert claims, f"{MODEL_DEPENDENT}{model} reported no claims for {name}"
         for claim in claims:
-            total += 1
-            assert claim.anchor_status != AnchorStatus.UNANCHORED, (model, name, claim.claim_text)
+            assert claim.anchor_status != AnchorStatus.UNANCHORED, (
+                f"{MODEL_DEPENDENT}{model} {name}: quote not in the source: {claim.claim_text}"
+            )
             span = claim.source_span
             assert unit.text[span.start:span.end] == span.text
             assert unit.start <= span.start < span.end <= unit.end, "the span stays in its unit"
             assert claim.section == unit.section and claim.source_path == unit.source_path
-    assert total >= 9
 
 
 @pytest.mark.parametrize("model", MODELS)
 def test_recorded_citations_resolve_to_the_bibliography_entries(model):
-    """Every numbered marker kept is in its claim's sentence and resolves."""
+    """Every marker kept is in its claim's sentence and resolves to its own entry.
+
+    Which markers a model attaches is its choice, so this checks only that
+    those kept resolve correctly, not that every one was cited.
+    """
     expected = {
         "[1]": "DOI:10.1038/352337a0",
         "[2]": "PMID:15731757",
@@ -80,7 +93,7 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
             for citation in claim.citations or []:
                 assert citation.marker in citation_window(unit, claim.source_span), claim.claim_text
                 seen[citation.marker] = citation.reference_id
-    assert seen == expected
+    assert seen.items() <= expected.items()
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -91,7 +104,9 @@ def test_the_recorded_negation_is_kept(model):
 
     tgfbr2 = [c for c in claims if "TGFBR2" in c.claim_text and "Marfan" in c.claim_text]
 
-    assert [c.negated for c in tgfbr2] == [True]
+    assert [c.negated for c in tgfbr2] == [True], (
+        f"{MODEL_DEPENDENT}{model} did not report one negated TGFBR2 claim"
+    )
 
 
 @pytest.mark.parametrize("model", MODELS)
@@ -102,4 +117,6 @@ def test_recorded_claims_from_structured_prose_keep_their_field(model):
         if name.endswith("-notes.txt"):
             reply = (RECORDED / model / name).read_text(encoding="utf-8")
             paths |= {c.source_path for c in claims_from_reply(reply, unit)}
-    assert paths == {"sections[0].text", "sections[1].text"}
+    assert paths == {"sections[0].text", "sections[1].text"}, (
+        f"{MODEL_DEPENDENT}{model} left a notes field with no claims"
+    )

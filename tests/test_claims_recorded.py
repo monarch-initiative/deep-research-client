@@ -18,6 +18,7 @@ after a re-recording a failure there is read as a change in the model's
 output, not as a parser regression.
 """
 
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -37,13 +38,14 @@ MODELS = sorted(MANIFEST["recordings"])
 MODEL_DEPENDENT = "MODEL_DEPENDENT (re-check after re-recording): "
 
 
-def _units() -> list[tuple[str, TextUnit]]:
+@cache
+def _units() -> tuple[tuple[str, TextUnit], ...]:
     """The units the recording was made from, named as their prompt files are."""
     report = (INPUT / MANIFEST["sources"]["report"]).read_text(encoding="utf-8")
     notes = yaml.safe_load((INPUT / MANIFEST["sources"]["notes"]).read_text(encoding="utf-8"))
     units = [("report", u) for u in markdown_units(report)]
     units += [("notes", u) for u in structured_units(notes)]
-    return [(f"{i:02d}-{kind}.txt", unit) for i, (kind, unit) in enumerate(units, 1)]
+    return tuple((f"{i:02d}-{kind}.txt", unit) for i, (kind, unit) in enumerate(units, 1))
 
 
 def test_the_recording_answers_the_prompts_this_code_sends():
@@ -92,7 +94,8 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
         for claim in claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit):
             for citation in claim.citations or []:
                 assert citation.marker in citation_window(unit, claim.source_span), claim.claim_text
-                seen[citation.marker] = citation.reference_id
+                # One marker must resolve the same way in every claim citing it.
+                assert seen.setdefault(citation.marker, citation.reference_id) == citation.reference_id
     assert seen.items() <= expected.items()
 
 

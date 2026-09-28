@@ -15,7 +15,10 @@ __all__ = ["markdown_units", "structured_units", "report_title"]
 
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
 _FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})", re.MULTILINE)
-_NUMBERED_ENTRY = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$", re.MULTILINE)
+#: A numbered reference entry: "1. ...", "[1] ...", or either as a list item.
+_NUMBERED_ENTRY = re.compile(
+    r"^\s*(?:[-*+]\s+)?(?:\[(\d+)\]|(\d+)\.)\s+(.+?)\s*$", re.MULTILINE,
+)
 
 #: Sections this client writes around a provider's answer. The question is the
 #: user's, not the source's; the bibliography and generated validation
@@ -31,6 +34,10 @@ _REFERENCE_SECTIONS = frozenset({
     "references", "sources", "bibliography", "citations", "works cited",
     "literature cited", "further reading",
 })
+
+#: Reference lists that are not what an answer's "[n]" markers point at.
+#: They are still skipped as units.
+_NOT_THE_BIBLIOGRAPHY = frozenset({"further reading"})
 
 #: Largest unit sent in one request. A section longer than this is split at
 #: paragraph breaks, keeping its heading path.
@@ -78,10 +85,17 @@ def _body_start(text: str) -> int:
 
 
 def _numbered_entries(text: str, heading: re.Match[str]) -> dict[int, str]:
-    """The numbered list under a heading, up to the next heading, by number."""
+    r"""The numbered list under a heading, up to the next heading, by number.
+
+    >>> text = "## Refs\n\n1. Plain\n[2] Bracketed\n- [3] Bulleted\n* 4. Starred\n"
+    >>> _numbered_entries(text, _headings(text)[0])
+    {1: 'Plain', 2: 'Bracketed', 3: 'Bulleted', 4: 'Starred'}
+    """
     following = next(iter(_headings(text, heading.end())), None)
     section = text[heading.end():following.start() if following else len(text)]
-    return {int(m.group(1)): m.group(2) for m in _NUMBERED_ENTRY.finditer(section)}
+    return {
+        int(m.group(1) or m.group(2)): m.group(3) for m in _NUMBERED_ENTRY.finditer(section)
+    }
 
 
 def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int, str]:
@@ -90,7 +104,9 @@ def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int,
     This client's own ``## Citations`` list, which follows the answer, comes
     first. When it is missing or empty, the provider's own reference list
     inside the answer (``References``, ``Sources``... at any level) is used,
-    so a provider that numbers its own sources still has them resolved.
+    so a provider that numbers its own sources still has them resolved. If
+    the answer has several, the longest is taken (the first, on a tie), and
+    a "Further reading" list never is: it numbers other works.
 
     Args:
         text: The report.
@@ -106,6 +122,9 @@ def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int,
     >>> both = "## Output\\n\\nA [1].\\n\\n## Sources\\n\\n1. Theirs\\n\\n## Citations\\n\\n1. Ours\\n"
     >>> _bibliography(both, 0, both.index("## Citations"))
     {1: 'Ours'}
+    >>> extra = "# T\\n\\nA [2].\\n\\n### References\\n\\n1. R1\\n2. R2\\n\\n### Further reading\\n\\n1. F1\\n2. F2\\n"
+    >>> _bibliography(extra, 0)
+    {1: 'R1', 2: 'R2'}
     """
     stop = len(text) if end is None else end
     ours = [
@@ -115,10 +134,11 @@ def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int,
     if ours and (entries := _numbered_entries(text, ours[-1])):
         return entries
     theirs = [
-        m for m in _headings(text, start, stop)
-        if m.group(2).rstrip(":").strip().lower() in _REFERENCE_SECTIONS
+        _numbered_entries(text, m) for m in _headings(text, start, stop)
+        if (name := m.group(2).rstrip(":").strip().lower()) in _REFERENCE_SECTIONS
+        and name not in _NOT_THE_BIBLIOGRAPHY
     ]
-    return _numbered_entries(text, theirs[-1]) if theirs else {}
+    return max(theirs, key=len, default={})
 
 
 def _answer_region(text: str) -> tuple[int, int]:

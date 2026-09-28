@@ -167,7 +167,9 @@ not attached on the model's say-so:
 A numbered marker such as `[2]` is resolved through the report's own citation
 list to a PMID or DOI where it names one. When the report has no `## Citations`
 list, or an empty one, the provider's own numbered reference list inside its
-answer (`References`, `Sources`...) is used instead.
+answer (`References`, `Sources`...) is used instead: the longest, if there are
+several, and never a `Further reading` list. Entries may be written `1. ...`,
+`[1] ...`, or either as a bulleted item.
 
 Some reports list papers, one section each, headed `### [n] Title`, with the
 paper's metadata and abstract under it. Asta's reports do. There the source of

@@ -207,6 +207,12 @@ def _bibliography(
     >>> extra = "# T\\n\\nA [2].\\n\\n### References\\n\\n1. R1\\n2. R2\\n\\n### Further reading\\n\\n1. F1\\n2. F2\\n"
     >>> _bibliography(extra, 0)
     {1: 'R1', 2: 'R2'}
+
+    A heading the unit splitter treats as a reference list is one here too:
+
+    >>> keyed = "# T\\n\\nA [1].\\n\\n## Key references (URLs in evidence)\\n\\n1. Dietz 1991. https://doi.org/10.1038/352337a0\\n"
+    >>> _bibliography(keyed, 0)
+    {1: 'Dietz 1991. https://doi.org/10.1038/352337a0'}
     """
     stop = len(text) if end is None else end
     ours = [
@@ -217,10 +223,13 @@ def _bibliography(
         return entries
     if citations_file:
         return dict(citations_file)
+    headings = _headings(text, start, stop)
     theirs = [
-        _numbered_entries(text, m) for m in _headings(text, start, stop)
-        if (name := m.group(2).rstrip(":").strip().lower()) in _REFERENCE_SECTIONS
-        and name not in _NOT_THE_BIBLIOGRAPHY
+        _numbered_entries(text, m) for i, m in enumerate(headings)
+        if m.group(2).rstrip(":").strip().lower() not in _NOT_THE_BIBLIOGRAPHY
+        and _is_reference_list(
+            m.group(2), text[m.end():headings[i + 1].start() if i + 1 < len(headings) else stop],
+        )
     ]
     return max(theirs, key=len, default={})
 

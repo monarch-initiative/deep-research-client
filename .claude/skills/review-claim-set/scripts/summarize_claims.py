@@ -74,6 +74,9 @@ def summarize(claims: ClaimSet, source_text: Optional[str] = None) -> str:
         elif claims.source.source_type == SourceType.MARKDOWN_REPORT:
             moved = claims.mismatched_spans(source_text)
             lines += [f"- SHA-256 matches. {len(moved)} spans differ from the source text.", ""]
+            if moved:
+                lines += ["  With the hash unchanged this is a bug in extraction. Report these:",
+                          f"  {ids_by_section(moved)}", ""]
         else:
             lines += ["- SHA-256 matches. Structured claims are located by `source_path`, "
                       "so there are no spans to check.", ""]

@@ -90,3 +90,18 @@ def test_a_changed_source_is_reported_before_any_span_is_trusted(summarizer):
 
     assert "The source has changed since extraction" in summary
     assert "spans differ" not in summary
+
+
+def test_a_span_that_no_longer_reads_as_the_source_is_named(summarizer):
+    """A matching hash with a moved span is a bug, so the reader gets the ids to report."""
+    text = "Marfan syndrome is an autosomal dominant disorder caused by pathogenic variants in FBN1."
+    claims = _report_set(text)
+    first = claims.claim_list[0]
+    moved = first.model_copy(update={"source_span": first.source_span.model_copy(
+        update={"start": first.source_span.start + 1, "end": first.source_span.end + 1})})
+    claims = claims.model_copy(update={"claims": [moved, *claims.claim_list[1:]]})
+
+    summary = summarizer.summarize(claims, text)
+
+    assert "1 spans differ from the source text" in summary
+    assert "Report these:\n  u1 in Genetics" in summary

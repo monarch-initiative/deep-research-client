@@ -867,21 +867,29 @@ deep-research-client claims extract SOURCE [OPTIONS]
 | `SOURCE` | A markdown report, or a YAML/JSON document |
 | `--format TEXT` | `auto` (default), `markdown`, `dismech`, `gene-review` or `structured` |
 | `--output`, `-o PATH` | Write the claim set here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
-| `--llm-model TEXT` | Model that decomposes prose into claims (default: `gpt-4o-mini`) |
-| `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API, e.g. CBORG or a local server |
-| `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`) |
+| `--llm-backend TEXT` | `openai` (default): any OpenAI-compatible API. `claude-code`: the local `claude` CLI, with no API key |
+| `--llm-model TEXT` | Model that decomposes prose into claims (default: `gpt-4o-mini`, or `sonnet` with `--llm-backend claude-code`) |
+| `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API, e.g. CBORG or a local server. `openai` backend only |
+| `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`). `openai` backend only |
 | `--concurrency INT` | Model requests in flight at once (default: 4) |
+| `--llm-max-tokens INT` | Reply budget per section (default: 4096). A reply cut off at it is an error |
 
 Markdown and generic YAML/JSON prose need a model; curated dismech and
 ai-gene-review files do not, and run with no key. `--llm-base-url` without a
 key sends a placeholder, as for `eval score`: a local server accepts it, and
-an endpoint that checks keys answers 401.
+an endpoint that checks keys answers 401. `--llm-backend claude-code` needs
+`claude` on PATH and logged in; it cannot set temperature. See
+[Extract claims](../how-to/extract-claims.md#through-claude-code-with-no-api-key).
 
 ```bash
 # A deep research report, via CBORG
 deep-research-client claims extract report.md -o report.claims.json \
   --llm-base-url https://api.cborg.lbl.gov --llm-api-key-env CBORG_API_KEY \
   --llm-model <a model your endpoint serves>
+
+# A deep research report, via a logged-in Claude Code
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-backend claude-code --llm-model opus
 
 # A curated dismech disease file: no model involved
 deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml

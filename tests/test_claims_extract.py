@@ -7,7 +7,9 @@ marker.
 """
 
 import os
+import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -186,22 +188,40 @@ def test_a_claim_set_serialises_for_the_next_step():
     assert ClaimSet.model_validate_json(claims.model_dump_json()) == claims
 
 
-@pytest.mark.llm
-async def test_a_real_model_decomposes_the_report_into_anchored_claims():
-    """End to end against a real OpenAI-compatible model.
+def _real_client(backend: str) -> tuple[Any, str]:
+    """A client and model for one backend, or a skip when it cannot run here."""
+    if backend == "claude-code":
+        if shutil.which("claude") is None:
+            pytest.skip("needs the `claude` CLI on PATH")
+        from deep_research_client.claude_code_chat import (
+            DEFAULT_CLAUDE_CODE_MODEL,
+            ClaudeCodeChatClient,
+        )
 
-    Needs OPENAI_API_KEY (and optionally OPENAI_BASE_URL, CLAIMS_MODEL).
-    Asserts structure, not wording: most claims anchor, every span reads as
-    the source does, and the negated TGFBR2 statement is marked negated.
-    """
+        return ClaudeCodeChatClient(), os.getenv("CLAIMS_CLAUDE_MODEL", DEFAULT_CLAUDE_CODE_MODEL)
     if not os.getenv("OPENAI_API_KEY"):
         pytest.skip("needs OPENAI_API_KEY")
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(base_url=os.getenv("OPENAI_BASE_URL") or None)
+    return client, os.getenv("CLAIMS_MODEL", "gpt-4o-mini")
+
+
+@pytest.mark.llm
+@pytest.mark.parametrize("backend", ["openai", "claude-code"])
+async def test_a_real_model_decomposes_the_report_into_anchored_claims(backend):
+    """End to end against a real model.
+
+    The openai backend needs OPENAI_API_KEY (and optionally OPENAI_BASE_URL,
+    CLAIMS_MODEL). The claude-code backend needs a logged-in `claude` CLI
+    (and optionally CLAIMS_CLAUDE_MODEL). Asserts structure, not wording:
+    most claims anchor, every span reads as the source does, and the negated
+    TGFBR2 statement is marked negated.
+    """
+    client, model = _real_client(backend)
     text = REPORT.read_text(encoding="utf-8")
 
-    claims = await aextract_claims(REPORT, llm_client=client, model=os.getenv("CLAIMS_MODEL", "gpt-4o-mini"))
+    claims = await aextract_claims(REPORT, llm_client=client, model=model)
 
     assert len(claims.claim_list) >= 5
     anchored = [c for c in claims.claim_list if c.source_span is not None]

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import asyncio
 import logging
 import os
+import shutil
 import typer
 from pathlib import Path
 from enum import Enum
@@ -3881,14 +3882,23 @@ def claims_extract(
     output: Annotated[Optional[Path], typer.Option(
         "--output", "-o",
         help="Write the claim set here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
+    llm_backend: Annotated[str, typer.Option(
+        "--llm-backend",
+        help="How the model is called: openai (any OpenAI-compatible API) or "
+             "claude-code (the local Claude Code CLI, no API key)")] = "openai",
     llm_model: Annotated[Optional[str], typer.Option(
-        "--llm-model", help="Model that decomposes prose into claims")] = None,
+        "--llm-model",
+        help="Model that decomposes prose into claims (default gpt-4o-mini, "
+             "or sonnet with --llm-backend claude-code)")] = None,
     llm_base_url: Annotated[Optional[str], typer.Option(
         "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
     llm_api_key_env: Annotated[str, typer.Option(
         "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
     concurrency: Annotated[int, typer.Option(
         "--concurrency", min=1, help="Model requests in flight at once")] = 4,
+    llm_max_tokens: Annotated[int, typer.Option(
+        "--llm-max-tokens", min=1,
+        help="Reply budget per section; a reply cut off at it is an error")] = 4096,
 ):
     """Extract the claims a source makes, without judging whether they are true.
 
@@ -3900,6 +3910,8 @@ def claims_extract(
     Examples:
 
       deep-research-client claims extract report.md -o report.claims.json
+
+      deep-research-client claims extract report.md --llm-backend claude-code --llm-model opus
 
       deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
     """
@@ -3925,15 +3937,33 @@ def claims_extract(
         _error(f"Could not parse {source}: {exc}")
         raise typer.Exit(1)
 
-    llm_client = None
-    if needs_llm(fmt):
+    backends = ("openai", "claude-code")
+    if llm_backend not in backends:
+        _error(f"Unknown --llm-backend {llm_backend!r}. Use one of: {', '.join(backends)}")
+        raise typer.Exit(1)
+    if llm_backend == "claude-code" and llm_base_url:
+        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
+        raise typer.Exit(1)
+
+    llm_client: Any = None
+    model = llm_model or DEFAULT_MODEL
+    if needs_llm(fmt) and llm_backend == "claude-code":
+        from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
+
+        if shutil.which("claude") is None:
+            _error("--llm-backend claude-code needs the `claude` CLI on PATH, and it is not there.")
+            raise typer.Exit(1)
+        llm_client = ClaudeCodeChatClient()
+        model = llm_model or DEFAULT_CLAUDE_CODE_MODEL
+    elif needs_llm(fmt):
         llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
         if llm_client is None:
             _error(
                 f"{llm_api_key_env} is not set, and claims are extracted from "
                 f"{fmt.value} sources by a model. Set it (or point "
                 f"--llm-api-key-env at a variable that is set), or pass "
-                f"--llm-base-url for a local endpoint that needs no key."
+                f"--llm-base-url for a local endpoint that needs no key, or "
+                f"--llm-backend claude-code to use a logged-in Claude Code."
             )
             raise typer.Exit(1)
 
@@ -3942,7 +3972,7 @@ def claims_extract(
     try:
         claims = asyncio.run(aextract_claims(
             source, source_format=fmt, llm_client=llm_client,
-            model=llm_model or DEFAULT_MODEL, concurrency=concurrency,
+            model=model, concurrency=concurrency, max_tokens=llm_max_tokens,
         ))
     except (ValueError, openai.APIError) as exc:
         _error(f"Could not extract claims from {source}: {exc}")

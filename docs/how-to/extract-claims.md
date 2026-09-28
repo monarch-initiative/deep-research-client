@@ -16,6 +16,9 @@ claims from two sources are what alignment and verification will work on.
 export OPENAI_API_KEY=...
 deep-research-client claims extract report.md -o report.claims.json
 
+# The same, through a logged-in Claude Code instead of an API key
+deep-research-client claims extract report.md -o report.claims.json --llm-backend claude-code
+
 # A curated dismech disease file (no model)
 deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
 ```
@@ -36,6 +39,40 @@ for claim in claims.claim_list:
 `await aextract_claims(...)`.
 The client can be any OpenAI-compatible async client: OpenAI, CBORG, or a local
 server via `AsyncOpenAI(base_url=...)`.
+
+### Through Claude Code, with no API key
+
+`ClaudeCodeChatClient` answers the same calls through the local `claude` CLI,
+so a machine where Claude Code is logged in can extract with Claude models and
+no key. Each call is one `claude --print` run with no tools, no settings files
+and no MCP servers, so your hooks, output style and CLAUDE.md files do not
+reach the prompt. Billing is the Claude Code login's.
+
+```python
+from deep_research_client.claims import extract_claims
+from deep_research_client.claude_code_chat import ClaudeCodeChatClient
+
+claims = extract_claims("report.md", llm_client=ClaudeCodeChatClient(), model="sonnet")
+```
+
+Three things differ from an API model:
+
+- **Temperature cannot be set.** Replies are not deterministic.
+- **Thinking is off**, so `max_tokens` counts only the reply, as it does for an
+  OpenAI chat model.
+- **The model is recorded as you named it.** An alias such as `sonnet` goes
+  into `extractor.model` as `sonnet`, not as the full model id it resolved to.
+
+The default is `sonnet`. Pass `--llm-model opus`, `haiku`, or a full model id.
+Each call starts a process, so small sections cost a few seconds each; a
+64 KB report of 64 sections took about four minutes at the default
+concurrency of 4.
+
+### Long sections
+
+A reply cut off at `max_tokens` (default 4096) is an error, never a shorter
+claim list. A section that makes many claims can need more:
+`--llm-max-tokens 16000`.
 
 ## How each kind of source is read
 

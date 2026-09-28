@@ -1,7 +1,7 @@
 """The `claims extract` command (issue #43).
 
 Curated sources run end to end with no model. For prose sources, only the
-refusal without a key is tested here; the model path is covered under the
+refusals without a key or backend are tested here; the model path is covered under the
 ``llm`` marker in test_claims_extract.py.
 """
 
@@ -90,3 +90,32 @@ def test_a_malformed_json_source_is_reported_as_unparseable(tmp_path):
     assert f"Error: Could not parse {source}" in result.stderr
     assert "Use one of" not in result.stderr
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--llm-backend", "gemini"], "Unknown --llm-backend 'gemini'"),
+        (["--llm-backend", "claude-code", "--llm-base-url", "http://localhost:8000"],
+         "--llm-base-url is for the openai backend"),
+    ],
+)
+def test_a_backend_that_cannot_run_is_refused_before_any_call(args, message):
+    """A wrong backend choice is named on stderr, not discovered mid-extraction."""
+    result = runner.invoke(app, ["claims", "extract", str(INPUT / "marfan_report.md"), *args])
+
+    assert result.exit_code == 1
+    assert message in result.stderr
+    assert result.stdout == ""
+
+
+def test_the_claude_code_backend_needs_the_cli_on_path(monkeypatch):
+    """Without `claude` on PATH, the claude-code backend says so."""
+    monkeypatch.setenv("PATH", "")
+
+    result = runner.invoke(
+        app, ["claims", "extract", str(INPUT / "marfan_report.md"), "--llm-backend", "claude-code"]
+    )
+
+    assert result.exit_code == 1
+    assert "needs the `claude` CLI on PATH" in result.stderr

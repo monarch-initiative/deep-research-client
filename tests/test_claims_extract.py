@@ -360,3 +360,17 @@ def test_falcon_s_keyed_citations_resolve_through_its_reference_list():
     (claim,) = claims_from_reply(reply, unit)
 
     assert [c.reference_id for c in claim.citations] == ["DOI:10.1007/s10875-022-01418-y"]
+
+
+def test_prose_after_a_table_is_not_sent_with_the_table_s_header():
+    """A piece that starts after a blank line following a table was not cut from it."""
+    rows = "".join(f"| Phenotype {i} | {i}% |\n" for i in range(60))
+    prose = "Congenital heart disease is the leading cause of death in infancy. " * 10
+    report = f"## Output\n\n# Report\n\n## Phenotypes\n\n| Phenotype | Frequency |\n|---|---|\n{rows}\n{prose}\n"
+
+    units = markdown_units(report, max_chars=800)
+
+    prose_units = [u for u in units if "Congenital heart disease" in u.body]
+    assert prose_units and all(u.context is None for u in prose_units)
+    table_pieces = [u for u in units if u.body.lstrip().startswith("| Phenotype")]
+    assert len(table_pieces) > 1 and all(u.context for u in table_pieces[1:]), "rows cut from the table keep it"

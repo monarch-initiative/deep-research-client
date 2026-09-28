@@ -375,22 +375,37 @@ def _table_header(text: str, position: int) -> Optional[str]:
     r"""The header of the table a piece starting at ``position`` is cut from.
 
     Returns the table's first two lines (column names and the ``|---|``
-    rule) when the line before ``position`` is a table row, else None.
+    rule) when the line directly before ``position`` is a table row, else
+    None. Only that line is read: prose after a blank line that follows a
+    table was not cut from it. Lines are found with ``rfind``, so the report
+    is never split whole for each unit.
 
     >>> table = "Intro.\n\n| Gene | Role |\n|---|---|\n| A | x |\n| B | y |\n"
     >>> _table_header(table, table.index("| B"))
     '| Gene | Role |\n|---|---|'
     >>> _table_header(table, table.index("| Gene")) is None
     True
+    >>> after = table + "\nThe prose that follows."
+    >>> _table_header(after, after.index("The prose")) is None
+    True
     """
-    before = text[:position].rstrip("\n").split("\n")
-    if not before or not before[-1].lstrip().startswith("|"):
+    if position == 0 or text[position - 1] != "\n":
         return None
-    first = len(before) - 1
-    while first > 0 and before[first - 1].lstrip().startswith("|"):
-        first -= 1
-    header = before[first:first + 2]
-    return "\n".join(header) if len(header) == 2 else None
+
+    def line_start(line_end: int) -> int:
+        return text.rfind("\n", 0, line_end) + 1
+
+    def is_row(start: int, end: int) -> bool:
+        return text[start:end].lstrip().startswith("|")
+
+    end = position - 1
+    start = line_start(end)
+    if not is_row(start, end):
+        return None
+    while start > 0 and is_row(line_start(start - 1), start - 1):
+        start = line_start(start - 1)
+    header = text[start:].split("\n", 2)[:2]
+    return "\n".join(header) if len(header) == 2 and all(line.lstrip().startswith("|") for line in header) else None
 
 
 def markdown_units(

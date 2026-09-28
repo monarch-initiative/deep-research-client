@@ -151,7 +151,9 @@ not attached on the model's say-so:
   claim's span. A marker written after the full stop (`.[1]` or `. [1]`)
   belongs to the sentence it closes.
 - The full stop of `et al.`, `e.g.`, `vs.`, `Fig.` and similar doesn't end a
-  sentence.
+  sentence. A decimal point doesn't either.
+- A sentence that ends inside a bracket or quotation (`in adults.)`, `"A is
+  B."`) ends where it closes.
 - A table row, a list item, or a paragraph ends it too. A line break inside a
   hard-wrapped paragraph doesn't.
 - `[3]` is found in `[2, 3]`, `[2-5]` and the linked `[3](https://...)`, but not

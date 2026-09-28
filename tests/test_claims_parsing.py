@@ -288,6 +288,9 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
             "Variants [2] were reported in\nmost patients.",
         ),
         ("Next. The root grew 3.5 mm per year [4].", "5 mm per year", " The root grew 3.5 mm per year [4]."),
+        ("A is B (in adults.) C is D [4].", "A is B", "A is B (in adults.)"),
+        ('Smith wrote "A is B." C is D [4].', "Smith wrote", 'Smith wrote "A is B."'),
+        ("Smith wrote “A is B.” C is D [4].", "C is D", " C is D [4]."),
     ],
     ids=[
         "marker-before-stop", "marker-after-stop", "next-after-stop",
@@ -295,6 +298,7 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
         "e.g.", "vs.-and-et-al.", "Fig.",
         "hard-wrapped-line", "bulleted-item", "numbered-item", "paragraph-break",
         "span-starts-a-wrapped-line", "span-starts-after-a-decimal-point",
+        "stop-inside-parenthesis", "stop-inside-straight-quote", "after-stop-inside-curly-quote",
     ],
 )
 def test_the_citation_window_is_the_claims_own_sentence(text, quote, window):

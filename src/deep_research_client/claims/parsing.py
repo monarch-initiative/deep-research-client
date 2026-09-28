@@ -265,8 +265,12 @@ _NOT_ABBREVIATION = "".join(
 #: paragraph, and a sentence runs on across it.
 _BLOCK_BREAK = r"\n(?=[ \t]*(?:$|\n|[|#>]|[*+-][ \t]|\d+[.)][ \t]))"
 
+#: Closing brackets and quotation marks a sentence can end inside: "(in
+#: adults.)" and "“A is B.”" end where they close.
+_CLOSERS = "[)\"'”’]*"
+
 _SENTENCE_END = re.compile(
-    rf"(?:[!?]|{_NOT_ABBREVIATION}\.)(?:\s*{NUMERIC_MARKER})*(?=\s|$)|{_BLOCK_BREAK}"
+    rf"(?:[!?]|{_NOT_ABBREVIATION}\.){_CLOSERS}(?:\s*{NUMERIC_MARKER})*(?=\s|$)|{_BLOCK_BREAK}"
 )
 
 

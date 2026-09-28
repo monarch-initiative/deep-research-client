@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
+from .exceptions import ProviderError
 from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
 from .processing import ResearchProcessor
 from .model_cards import (
@@ -3868,6 +3869,28 @@ def eval_score(
         typer.echo(f"\nResults written to {output}")
 
 
+def _claims_backend_failure(error: ProviderError) -> str:
+    """What to tell the reader when the Claude Code backend fails, and what to try.
+
+    ``ProviderError.actionable_message`` suggests another ``--provider``,
+    which ``claims extract`` has no option for, so the advice here is its own.
+
+    Args:
+        error: A classified failure of the ``claude`` CLI.
+
+    Returns:
+        The diagnosis and the next steps that apply to ``claims extract``.
+
+    >>> from deep_research_client.exceptions import ProviderAuthError
+    >>> print(_claims_backend_failure(ProviderAuthError("claude_code", "Invalid API key. Please run /login")))
+    claude_code: Invalid API key. Please run /login -- the API key is missing, invalid, or lacks access to this endpoint. Try: `deep-research-client providers --check --provider claude_code`, or --llm-backend openai
+    """
+    return (
+        f"{error.provider}: {error.diagnosis}. Try: `deep-research-client providers "
+        f"--check --provider {error.provider}`, or --llm-backend openai"
+    )
+
+
 claims_app = typer.Typer(help="Extract the claims a source makes, with provenance")
 app.add_typer(claims_app, name="claims")
 
@@ -3975,6 +3998,9 @@ def claims_extract(
             source, source_format=fmt, llm_client=llm_client,
             model=model, concurrency=concurrency, max_tokens=llm_max_tokens,
         ))
+    except ProviderError as exc:
+        _error(f"Could not extract claims from {source}: {_claims_backend_failure(exc)}")
+        raise typer.Exit(1)
     except (ValueError, openai.APIError) as exc:
         _error(f"Could not extract claims from {source}: {exc}")
         raise typer.Exit(1)

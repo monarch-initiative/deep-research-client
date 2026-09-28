@@ -53,7 +53,7 @@ doctest:
   uv run pytest  --doctest-modules src
 
 mypy:
-  uv run mypy src tests
+  uv run mypy src tests .claude/skills
 
 format:
 	uv run ruff check .

@@ -169,8 +169,10 @@ list to a PMID or DOI where it names one. When the report has no `## Citations`
 list, or an empty one, the provider's own numbered reference list inside its
 answer (`References`, `Sources`...) is used instead: the longest, if there are
 several, and never a `Further reading` list. Entries may be written `1. ...`,
-`[1] ...`, `[1]: ...`, or any of them as a bulleted item. Footnotes (`[^1]: ...`)
-are not read. Nor is numbering that restarts in each section's own `Sources`
+`[1] ...`, `[1]: ...`, or any of them as a bulleted item, and are read only
+under such a heading: Markdown reference definitions (`[1]: https://...`) left
+at the end of a document with no heading above them are not read. Footnotes
+(`[^1]: ...`) are not read either. Nor is numbering that restarts in each section's own `Sources`
 list: no single list serves such an answer.
 
 Some reports list papers, one section each, headed `### [n] Title`, with the

@@ -409,9 +409,14 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         ):
             citations.append(unit.section_citation)
         about = _member(entry.get("about"), ClaimTopic)
-        # A basis is what a domain claim rests on; on a work claim it means
-        # nothing, so the model's value is not kept there.
-        basis = _member(entry.get("basis"), ClaimBasis) if about == ClaimTopic.DOMAIN else None
+        basis = _member(entry.get("basis"), ClaimBasis)
+        # Only a domain claim has a basis. So a basis with no readable "about"
+        # says the claim is about the domain, while one on a claim the model
+        # called a work claim means nothing and is not kept.
+        if about is None and basis is not None:
+            about = ClaimTopic.DOMAIN
+        if about != ClaimTopic.DOMAIN:
+            basis = None
         # In a section headed by a cited work, the source presents every claim
         # as that work's. That is structure, not judgement, so it is not left
         # to the model, which does not always apply it.

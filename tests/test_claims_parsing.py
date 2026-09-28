@@ -355,8 +355,11 @@ def test_an_unfound_quote_leaves_whether_it_is_cited_unknown():
         ("domain", None, (ClaimTopic.DOMAIN, None)),
         ("domain", "hearsay", (ClaimTopic.DOMAIN, None)),
         ("work", "secondary_source", (ClaimTopic.WORK, None)),
-        (None, "observation", (None, None)),
+        # Only a domain claim has a basis, so a basis says what "about" left out.
+        (None, "observation", (ClaimTopic.DOMAIN, ClaimBasis.OBSERVATION)),
+        ("the paper", "secondary_source", (ClaimTopic.DOMAIN, ClaimBasis.SECONDARY_SOURCE)),
         ("the paper", None, (None, None)),
+        (None, "hearsay", (None, None)),
     ],
 )
 def test_about_and_basis_are_read_and_a_basis_is_kept_only_for_domain_claims(about, basis, expected):
@@ -446,3 +449,13 @@ def test_an_invented_quote_has_no_nearest_passage():
 
     assert claim.anchor_status == AnchorStatus.UNANCHORED
     assert claim.nearest_passage is None
+
+
+def test_a_reply_with_no_about_still_rests_on_the_paper_whose_section_it_is_in():
+    """The section rule reaches a claim whose "about" the model left out but whose basis it gave."""
+    unit = _paper_unit("- Summary: Mice lacking X live longer.\n")
+    reply = _reply({"claim": "A claim.", "quote": "Mice lacking X live longer", "basis": "observation"})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert (claim.about, claim.basis) == (ClaimTopic.DOMAIN, ClaimBasis.SECONDARY_SOURCE)

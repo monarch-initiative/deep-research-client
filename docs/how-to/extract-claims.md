@@ -225,6 +225,10 @@ about the subject matter. Reports that list papers, as Asta's do, make many
 | `SECONDARY_SOURCE` | Attributed to another work, by a citation marker or by naming it or its authors |
 | `BACKGROUND_KNOWLEDGE` | Stated with no citation or attribution, as known in the field |
 
+Only a `DOMAIN` claim has a basis, so when the model gives a basis and no
+readable `about`, the claim is read as `DOMAIN`; a basis on a claim it called
+`WORK` is dropped.
+
 A deep research report observes little itself, so most of its domain claims
 rest on a secondary source or on background knowledge. In a section headed by a
 cited work (`### [n] Title`), a located domain claim's basis is set to

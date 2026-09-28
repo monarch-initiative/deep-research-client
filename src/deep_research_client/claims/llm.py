@@ -16,10 +16,13 @@ from typing import Any, Sequence
 from .models import Claim
 from .parsing import TextUnit, UnreadableReplyError, claims_from_reply
 
-__all__ = ["DEFAULT_MODEL", "PROMPT_VERSION", "build_prompt", "decompose_units"]
+__all__ = ["DEFAULT_MAX_TOKENS", "DEFAULT_MODEL", "PROMPT_VERSION", "build_prompt", "decompose_units"]
 
 #: Model used when the caller names none, matching the evaluation judges.
 DEFAULT_MODEL = "gpt-4o-mini"
+
+#: Reply budget per unit when the caller names none.
+DEFAULT_MAX_TOKENS = 4096
 
 #: Bumped whenever the instructions below change, and recorded on every
 #: ClaimSet, so sets made with different prompts are never compared unknowingly.
@@ -111,7 +114,7 @@ async def _extract_unit(
         where = unit.section or unit.source_path or "the source"
         raise UnreadableReplyError(
             f"The claim-extraction reply for {where} was cut off at max_tokens={max_tokens}; "
-            f"raise max_tokens or split the source into smaller units"
+            f"raise max_tokens (--llm-max-tokens) or split the source into smaller units"
         )
     return claims_from_reply(choice.message.content or "", unit)
 
@@ -122,7 +125,7 @@ async def decompose_units(
     model: str = DEFAULT_MODEL,
     *,
     concurrency: int = 4,
-    max_tokens: int = 4096,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> list[Claim]:
     """Extract atomic claims from every unit, keeping document order.
 
@@ -145,9 +148,23 @@ async def decompose_units(
         UnreadableReplyError: If a reply was truncated or holds no claims list.
     """
     limit = asyncio.Semaphore(concurrency)
-    per_unit = await asyncio.gather(
-        *(_extract_unit(unit, llm_client, model, max_tokens, limit) for unit in units)
-    )
+    tasks = [
+        asyncio.ensure_future(_extract_unit(unit, llm_client, model, max_tokens, limit))
+        for unit in units
+    ]
+    # When one unit fails, gather raises at once and leaves the others
+    # running. asyncio.run would then cancel every task in the loop, its own
+    # included, and cancelling the task that connects a new subprocess's pipes
+    # leaves the process creation waiting forever: the Claude Code client hung
+    # there, and the failure was never shown. Cancelling and draining only our
+    # own tasks first leaves asyncio.run nothing to cancel.
+    try:
+        per_unit = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
     claims = [claim for unit_claims in per_unit for claim in unit_claims]
     return [
         claim.model_copy(update={"id": f"c{number}"})

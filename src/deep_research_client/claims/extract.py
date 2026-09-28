@@ -23,7 +23,7 @@ import yaml
 from ..evaluation.adapters.monarch import dismech_claims, gene_review_claims
 from ..evaluation.datamodel import ReferenceClaim
 from ..validation.extraction import find_reference_ids
-from .llm import DEFAULT_MODEL, PROMPT_VERSION, decompose_units
+from .llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, PROMPT_VERSION, decompose_units
 from .models import (
     AnchorStatus,
     CitationHandle,
@@ -242,6 +242,7 @@ async def aextract_claims(
     llm_client: Any = None,
     model: str = DEFAULT_MODEL,
     concurrency: int = 4,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> ClaimSet:
     """Extract the claims a source makes.
 
@@ -252,6 +253,7 @@ async def aextract_claims(
             markdown and generic structured sources, unused for curated ones.
         model: Model for LLM decomposition.
         concurrency: LLM requests in flight at once.
+        max_tokens: Reply budget per unit; a reply cut off at it raises.
 
     Returns:
         The claims, with the source's SHA-256 and the extractor recorded.
@@ -277,11 +279,17 @@ async def aextract_claims(
     title: Optional[str]
     if fmt == SourceFormat.MARKDOWN:
         title = report_title(text)
-        claims = await decompose_units(markdown_units(text), llm_client, model, concurrency=concurrency)
+        claims = await decompose_units(
+            markdown_units(text), llm_client, model,
+            concurrency=concurrency, max_tokens=max_tokens,
+        )
         extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
     elif fmt == SourceFormat.STRUCTURED:
         title = _structured_title(data)
-        claims = await decompose_units(structured_units(data), llm_client, model, concurrency=concurrency)
+        claims = await decompose_units(
+            structured_units(data), llm_client, model,
+            concurrency=concurrency, max_tokens=max_tokens,
+        )
         extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
     else:
         if not isinstance(data, dict):
@@ -314,6 +322,7 @@ def extract_claims(
     llm_client: Any = None,
     model: str = DEFAULT_MODEL,
     concurrency: int = 4,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> ClaimSet:
     """Synchronous :func:`aextract_claims`, for callers without an event loop.
 
@@ -327,11 +336,12 @@ def extract_claims(
         llm_client: An ``openai.AsyncOpenAI``-compatible client, for prose.
         model: Model for LLM decomposition.
         concurrency: LLM requests in flight at once.
+        max_tokens: Reply budget per unit; a reply cut off at it raises.
 
     Returns:
         The claims the source makes.
     """
     return asyncio.run(aextract_claims(
         source, source_format=source_format, llm_client=llm_client,
-        model=model, concurrency=concurrency,
+        model=model, concurrency=concurrency, max_tokens=max_tokens,
     ))

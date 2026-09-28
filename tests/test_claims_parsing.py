@@ -280,12 +280,21 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
         # carries no marker.
         ("1. A is B\n2. C is D [2]\n", "A is B", " A is B\n"),
         ("A is B\n\nC is D [2].", "A is B", "A is B\n"),
+        # A span that starts a wrapped line, or just after a decimal point,
+        # still belongs to the sentence it is in.
+        (
+            "Variants [2] were reported in\nmost patients. Next.",
+            "most patients",
+            "Variants [2] were reported in\nmost patients.",
+        ),
+        ("Next. The root grew 3.5 mm per year [4].", "5 mm per year", " The root grew 3.5 mm per year [4]."),
     ],
     ids=[
         "marker-before-stop", "marker-after-stop", "next-after-stop",
         "spaced-marker-after-stop", "next-after-spaced-marker", "linked-marker-after-stop",
         "e.g.", "vs.-and-et-al.", "Fig.",
         "hard-wrapped-line", "bulleted-item", "numbered-item", "paragraph-break",
+        "span-starts-a-wrapped-line", "span-starts-after-a-decimal-point",
     ],
 )
 def test_the_citation_window_is_the_claims_own_sentence(text, quote, window):

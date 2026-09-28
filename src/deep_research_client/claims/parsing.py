@@ -279,9 +279,14 @@ def citation_window(unit: TextUnit, span: TextSpan) -> str:
     >>> citation_window(unit, TextSpan(start=12, end=23, text="C causes D,"))
     ' C causes D, which causes E [2].'
     """
-    before = unit.text[unit.start:span.start]
-    starts = [m.end() for m in _SENTENCE_END.finditer(before)]
-    window_start = unit.start + (starts[-1] if starts else 0)
+    # Searched over the whole unit, not the slice before the span: in a slice,
+    # "$" matches at the span's start, so a hard wrap or a decimal point just
+    # before it would read as a sentence end.
+    starts = [
+        m.end() for m in _SENTENCE_END.finditer(unit.text, unit.start, unit.end)
+        if m.end() <= span.start
+    ]
+    window_start = starts[-1] if starts else unit.start
     # From the span's last character: a span that already ends its sentence
     # (a normalised match runs on over the full stop) must not reach into the
     # next one.

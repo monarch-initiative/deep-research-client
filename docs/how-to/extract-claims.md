@@ -168,6 +168,9 @@ not attached on the model's say-so:
   sentence. A decimal point doesn't either.
 - A sentence that ends inside a bracket or quotation (`in adults.)`, `"A is
   B."`) ends where it closes.
+- A claim inside a quotation of several sentences, cited once after the
+  quotation closes (`*"A is B. C is D."* ([PMID: 1](...))`), reads to the end of
+  the sentence that closes it, so the citation after it counts.
 - A table row, a list item, or a paragraph ends it too. A line break inside a
   hard-wrapped paragraph doesn't.
 - `[3]` is found in `[2, 3]`, `[2-5]` and the linked `[3](https://...)`, but not

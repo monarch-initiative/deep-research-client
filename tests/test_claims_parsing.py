@@ -298,6 +298,14 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
         ("A is B (in adults.) C is D [4].", "A is B", "A is B (in adults.)"),
         ('Smith wrote "A is B." C is D [4].', "Smith wrote", 'Smith wrote "A is B."'),
         ("Smith wrote “A is B.” C is D [4].", "C is D", " C is D [4]."),
+        # A quotation of several sentences cited once, after it closes.
+        ('Smith found: "A is B. C is D." [4] Next.', "A is B", 'Smith found: "A is B. C is D." [4]'),
+        (
+            'Onset: *"A is B. Median onset was 45 years"* ([PMID: 39918054](https://x.org/39918054/)). Next.',
+            "A is B",
+            'Onset: *"A is B. Median onset was 45 years"* ([PMID: 39918054](https://x.org/39918054/)).',
+        ),
+        ("\u201cA is B. C is D.\u201d [4] Next.", "A is B", "\u201cA is B. C is D.\u201d [4]"),
     ],
     ids=[
         "marker-before-stop", "marker-after-stop", "next-after-stop",
@@ -306,6 +314,7 @@ def test_a_marker_from_another_sentence_in_the_section_is_not_attached():
         "hard-wrapped-line", "bulleted-item", "numbered-item", "paragraph-break",
         "span-starts-a-wrapped-line", "span-starts-after-a-decimal-point",
         "stop-inside-parenthesis", "stop-inside-straight-quote", "after-stop-inside-curly-quote",
+        "straight-quotation-cited-after", "emphasised-quotation-cited-after", "curly-quotation-cited-after",
     ],
 )
 def test_the_citation_window_is_the_claims_own_sentence(text, quote, window):

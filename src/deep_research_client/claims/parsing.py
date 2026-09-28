@@ -379,7 +379,42 @@ def citation_window(unit: TextUnit, span: TextSpan) -> str:
     # next one.
     after = _SENTENCE_END.search(unit.text, max(span.start, span.end - 1), unit.end)
     window_end = after.end() if after else unit.end
+    # Inside a quotation, the citation comes after the quotation closes,
+    # however many sentences it runs to: run on to that sentence's end.
+    closing = _quotation_close(unit, span)
+    if closing is not None and closing > window_end - 1:
+        # From just before the closing mark, so a full stop inside it counts.
+        after = _SENTENCE_END.search(unit.text, closing - 1, unit.end)
+        window_end = after.end() if after else unit.end
     return unit.text[window_start:window_end]
+
+
+def _quotation_close(unit: TextUnit, span: TextSpan) -> Optional[int]:
+    """Where the quotation a span sits inside closes, if it is inside one.
+
+    Only the span's paragraph is read. Curly quotation marks are paired;
+    straight ones are counted, an odd number before the span meaning one is
+    open.
+
+    >>> text = 'He said: "A is B. C is D." [4]'
+    >>> unit = TextUnit(text=text, start=0, end=len(text))
+    >>> _quotation_close(unit, TextSpan(start=10, end=16, text="A is B")) == text.index('D."') + 2
+    True
+    >>> _quotation_close(unit, TextSpan(start=0, end=7, text="He said")) is None
+    True
+    """
+    paragraph_start = unit.text.rfind("\n\n", unit.start, span.start)
+    paragraph_start = unit.start if paragraph_start < 0 else paragraph_start
+    paragraph_end = unit.text.find("\n\n", span.end, unit.end)
+    paragraph_end = unit.end if paragraph_end < 0 else paragraph_end
+    before = unit.text[paragraph_start:span.start]
+    if before.count("\u201c") > before.count("\u201d"):
+        close = unit.text.find("\u201d", span.end, paragraph_end)
+    elif before.count('"') % 2 == 1:
+        close = unit.text.find('"', span.end, paragraph_end)
+    else:
+        return None
+    return close if close >= 0 else None
 
 
 def _mention(value: Any) -> Optional[EntityMention]:

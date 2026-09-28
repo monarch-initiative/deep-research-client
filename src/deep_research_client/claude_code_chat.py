@@ -160,6 +160,29 @@ def build_command(executable: str, model: str, system_prompt: str) -> list[str]:
     ]
 
 
+def _main_model(usage: Any, requested_model: str) -> str:
+    """The model that wrote the reply, from a run's ``modelUsage``.
+
+    Claude Code can also call a smaller model for its own housekeeping, and
+    that model is listed too, so the first entry need not be the one that
+    answered. The one that wrote the most output tokens did.
+
+    >>> _main_model({"claude-haiku-4-5": {"outputTokens": 12},
+    ...              "claude-sonnet-5": {"outputTokens": 900}}, "sonnet")
+    'claude-sonnet-5'
+    >>> _main_model({}, "sonnet"), _main_model(None, "sonnet")
+    ('sonnet', 'sonnet')
+    """
+    if not isinstance(usage, dict) or not usage:
+        return requested_model
+
+    def output_tokens(name: str) -> int:
+        entry = usage[name]
+        return (entry.get("outputTokens") or 0) if isinstance(entry, dict) else 0
+
+    return max(usage, key=output_tokens)
+
+
 def completion_from_output(
     stdout: str, stderr: str, returncode: int, requested_model: str,
 ) -> ChatCompletion:
@@ -209,7 +232,7 @@ def completion_from_output(
         )
 
     result = data.get("result") or ""
-    model = next(iter(data.get("modelUsage") or {}), requested_model)
+    model = _main_model(data.get("modelUsage"), requested_model)
     cut_off = ChatCompletion(
         choices=[ChatChoice(message=ChatMessage(content=""), finish_reason="length")],
         model=model,

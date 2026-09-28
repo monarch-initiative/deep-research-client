@@ -45,6 +45,16 @@ def test_the_reply_names_the_model_that_ran_not_the_alias():
     assert completion_from_output(_result(result="x"), "", 0, "haiku").model == "haiku"
 
 
+def test_a_helper_model_in_the_usage_is_not_taken_for_the_one_that_answered():
+    """modelUsage lists every model the run called; the answer came from the one that wrote most."""
+    stdout = _result(result="x", modelUsage={
+        "claude-haiku-4-5-20251001": {"outputTokens": 14},
+        "claude-sonnet-5": {"outputTokens": 1200},
+    })
+
+    assert completion_from_output(stdout, "", 0, "sonnet").model == "claude-sonnet-5"
+
+
 def test_a_reply_past_the_output_limit_is_empty_and_cut_off():
     """The CLI reports the limit as an error; callers need it as a truncation."""
     stdout = json.dumps({

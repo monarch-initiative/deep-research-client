@@ -465,3 +465,24 @@ def test_a_reply_with_no_about_still_rests_on_the_paper_whose_section_it_is_in()
     (claim,) = claims_from_reply(reply, unit)
 
     assert (claim.about, claim.basis) == (ClaimTopic.DOMAIN, ClaimBasis.SECONDARY_SOURCE)
+
+
+@pytest.mark.parametrize(
+    "reported", [["[1]"], ["[1]", "PMID:41258631"]], ids=["marker", "marker-and-identifier"],
+)
+def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifier(reported):
+    """Asta's citation entries hold only a URL; the PMID is on the section's own lines."""
+    bibliography = {1: "Zankar R (2025). https://www.semanticscholar.org/paper/70595d"}
+    body = "- PMID: 41258631\n- Summary: Mice lacking X live longer [1] (PMID:41258631).\n"
+    text = f"### [1] A study\n{body}"
+    unit = TextUnit(
+        text=text, start=len("### [1] A study\n"), end=len(text), section="[1] A study",
+        bibliography=bibliography, section_citation=section_citation("[1] A study", body, bibliography),
+    )
+    reply = _reply({"claim": "A claim.", "quote": "Mice lacking X live longer", "citations": reported})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.scope, c.reference_id) for c in claim.citations] == [
+        ("[1]", "SENTENCE", "PMID:41258631"),
+    ], "one handle, with the section's identifier"

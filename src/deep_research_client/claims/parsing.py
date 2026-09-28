@@ -421,6 +421,23 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         # Not for an unlocated claim, which may not come from the section, and
         # not again when the sentence already cites the same work.
         section = unit.section_citation
+        if section is not None and section.reference_id is not None:
+            # A sentence that repeats the section's own marker cites the same
+            # work. Its bibliography entry may give no identifier (Asta's
+            # hold only a URL) while the section's own lines do.
+            filled = [
+                c.model_copy(update={"reference_id": section.reference_id, "url": c.url or section.url})
+                if c.marker == section.marker and c.reference_id is None else c
+                for c in citations
+            ]
+            # Filling one in may repeat an identifier the sentence also wrote.
+            seen: set[str] = set()
+            citations = []
+            for c in filled:
+                if c.reference_id is None or c.reference_id not in seen:
+                    citations.append(c)
+                if c.reference_id is not None:
+                    seen.add(c.reference_id)
         if span is not None and section is not None and not any(
             c.marker == section.marker
             or (section.reference_id is not None and c.reference_id == section.reference_id)

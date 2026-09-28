@@ -55,13 +55,15 @@ from deep_research_client.claude_code_chat import ClaudeCodeChatClient
 claims = extract_claims("report.md", llm_client=ClaudeCodeChatClient(), model="sonnet")
 ```
 
-Three things differ from an API model:
+What to know about this backend:
 
 - **Temperature cannot be set.** Replies are not deterministic.
 - **Thinking is off**, so `max_tokens` counts only the reply, as it does for an
   OpenAI chat model.
-- **The model is recorded as you named it.** An alias such as `sonnet` goes
-  into `extractor.model` as `sonnet`, not as the full model id it resolved to.
+- **An alias is recorded as the model it resolved to.** `sonnet` goes into
+  `extractor.model` as the full id the replies report, such as
+  `claude-sonnet-5`. (This holds for any backend: an OpenAI endpoint reports
+  a dated id such as `gpt-4o-mini-2024-07-18`.)
 
 The default is `sonnet`. Pass `--llm-model opus`, `haiku`, or a full model id.
 Each call starts a process, so small sections cost a few seconds each; a

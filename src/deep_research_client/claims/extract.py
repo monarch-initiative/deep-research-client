@@ -291,18 +291,24 @@ async def aextract_claims(
     title: Optional[str]
     if fmt == SourceFormat.MARKDOWN:
         title = report_title(text)
-        claims = await decompose_units(
+        decomposed = await decompose_units(
             markdown_units(text), llm_client, model,
             concurrency=concurrency, max_tokens=max_tokens,
         )
-        extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
+        claims = decomposed.claims
+        extractor = ExtractorInfo(
+            name="llm-atomic", model=decomposed.model_label(model), prompt_version=PROMPT_VERSION,
+        )
     elif fmt == SourceFormat.STRUCTURED:
         title = _structured_title(data)
-        claims = await decompose_units(
+        decomposed = await decompose_units(
             structured_units(data), llm_client, model,
             concurrency=concurrency, max_tokens=max_tokens,
         )
-        extractor = ExtractorInfo(name="llm-atomic", model=model, prompt_version=PROMPT_VERSION)
+        claims = decomposed.claims
+        extractor = ExtractorInfo(
+            name="llm-atomic", model=decomposed.model_label(model), prompt_version=PROMPT_VERSION,
+        )
     else:
         if not isinstance(data, dict):
             raise ValueError(f"{path} is not a {fmt.value} document")

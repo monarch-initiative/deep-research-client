@@ -11,12 +11,20 @@ evaluation judges use, so CBORG and other compatible endpoints work.
 """
 
 import asyncio
-from typing import Any, Sequence
+from dataclasses import dataclass
+from typing import Any, Optional, Sequence
 
 from .models import Claim
 from .parsing import TextUnit, UnreadableReplyError, claims_from_reply
 
-__all__ = ["DEFAULT_MAX_TOKENS", "DEFAULT_MODEL", "PROMPT_VERSION", "build_prompt", "decompose_units"]
+__all__ = [
+    "DEFAULT_MAX_TOKENS",
+    "DEFAULT_MODEL",
+    "PROMPT_VERSION",
+    "Decomposition",
+    "build_prompt",
+    "decompose_units",
+]
 
 #: Model used when the caller names none, matching the evaluation judges.
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -114,10 +122,35 @@ def build_prompt(unit: TextUnit) -> list[dict[str, str]]:
     ]
 
 
+@dataclass(frozen=True)
+class Decomposition:
+    """What decomposing a source's units produced.
+
+    Attributes:
+        claims: Every claim, numbered across the source.
+        models: The model ids the replies said answered them, distinct, in
+            order of first appearance. An alias such as ``sonnet`` resolves
+            to a full id here; an endpoint that names no model adds none.
+    """
+
+    claims: list[Claim]
+    models: list[str]
+
+    def model_label(self, requested: str) -> str:
+        """The model to record: the ids that answered, else the name requested.
+
+        >>> Decomposition(claims=[], models=["claude-sonnet-5"]).model_label("sonnet")
+        'claude-sonnet-5'
+        >>> Decomposition(claims=[], models=[]).model_label("gpt-4o-mini")
+        'gpt-4o-mini'
+        """
+        return ", ".join(self.models) or requested
+
+
 async def _extract_unit(
     unit: TextUnit, llm_client: Any, model: str, max_tokens: int, limit: asyncio.Semaphore,
-) -> list[Claim]:
-    """Send one unit and parse the reply."""
+) -> tuple[list[Claim], Optional[str]]:
+    """Send one unit and parse the reply; also return the model the reply names."""
     async with limit:
         response = await llm_client.chat.completions.create(
             model=model,
@@ -132,7 +165,7 @@ async def _extract_unit(
             f"The claim-extraction reply for {where} was cut off at max_tokens={max_tokens}; "
             f"raise max_tokens (--llm-max-tokens) or split the source into smaller units"
         )
-    return claims_from_reply(choice.message.content or "", unit)
+    return claims_from_reply(choice.message.content or "", unit), getattr(response, "model", None)
 
 
 async def decompose_units(
@@ -142,7 +175,7 @@ async def decompose_units(
     *,
     concurrency: int = 4,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-) -> list[Claim]:
+) -> Decomposition:
     """Extract atomic claims from every unit, keeping document order.
 
     Claims are numbered ``c1``, ``c2``... across all units. A failed request,
@@ -158,7 +191,8 @@ async def decompose_units(
         max_tokens: Reply budget per unit.
 
     Returns:
-        All claims, in unit order and reply order within a unit.
+        All claims, in unit order and reply order within a unit, and the
+        models that answered.
 
     Raises:
         UnreadableReplyError: If a reply was truncated or holds no claims list.
@@ -181,8 +215,11 @@ async def decompose_units(
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
-    claims = [claim for unit_claims in per_unit for claim in unit_claims]
-    return [
-        claim.model_copy(update={"id": f"c{number}"})
-        for number, claim in enumerate(claims, 1)
-    ]
+    claims = [claim for unit_claims, _ in per_unit for claim in unit_claims]
+    return Decomposition(
+        claims=[
+            claim.model_copy(update={"id": f"c{number}"})
+            for number, claim in enumerate(claims, 1)
+        ],
+        models=list(dict.fromkeys(answered for _, answered in per_unit if answered)),
+    )

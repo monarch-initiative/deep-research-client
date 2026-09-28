@@ -248,7 +248,7 @@ class ExtractorInfo(ConfiguredBaseModel):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
 
     name: str = Field(default=..., description="""Extractor identifier, for example llm-atomic or dismech.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
-    model: Optional[str] = Field(default=None, description="""Model used, for extractors that call one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
+    model: Optional[str] = Field(default=None, description="""Model used, for extractors that call one: the id the model's replies report, so an alias such as sonnet is recorded as the model it resolved to. Several ids, comma separated, if replies differed; the name requested, if no reply named one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
     prompt_version: Optional[str] = Field(default=None, description="""Version of the extraction prompt, for extractors that use one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
 
 

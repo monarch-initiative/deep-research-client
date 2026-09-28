@@ -201,7 +201,11 @@ classes:
         description: Extractor identifier, for example llm-atomic or dismech.
         required: true
       model:
-        description: Model used, for extractors that call one.
+        description: >-
+          Model used, for extractors that call one: the id the model's replies
+          report, so an alias such as sonnet is recorded as the model it
+          resolved to. Several ids, comma separated, if replies differed; the
+          name requested, if no reply named one.
       prompt_version:
         description: Version of the extraction prompt, for extractors that use one.
 

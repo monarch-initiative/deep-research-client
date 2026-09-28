@@ -236,6 +236,9 @@ async def test_a_real_model_decomposes_the_report_into_anchored_claims(backend):
 
     claims = await aextract_claims(REPORT, llm_client=client, model=model)
 
+    # The model that answered, not the name asked for: "sonnet" is an alias.
+    assert claims.extractor.model and claims.extractor.model != "sonnet"
+
     assert len(claims.claim_list) >= 5
     anchored = [c for c in claims.claim_list if c.source_span is not None]
     assert len(anchored) >= 0.8 * len(claims.claim_list)

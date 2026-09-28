@@ -239,6 +239,10 @@ Only a `DOMAIN` claim has a basis, so when the model gives a basis and no
 readable `about`, the claim is read as `DOMAIN`; a basis on a claim it called
 `WORK` is dropped.
 
+When the model gives neither, the claim has no `about` and no `basis`, even in
+a section headed by a cited work, where it is still `CITED`: the code cannot
+tell a claim about the paper from a claim about its subject.
+
 A deep research report observes little itself, so most of its domain claims
 rest on a secondary source or on background knowledge. In a section headed by a
 cited work (`### [n] Title`), a located domain claim's basis is set to

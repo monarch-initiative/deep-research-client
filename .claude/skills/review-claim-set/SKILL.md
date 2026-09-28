@@ -64,6 +64,7 @@ any spans differ while the hash matches, that is a bug; report it.
 | Cited background claims | The model called it uncited knowledge but a citation is attached. One of the two is wrong |
 | Uncited domain claims | Located, and nothing cites them. In a report this is the report's own unsupported statement, or a marker the model did not attach |
 | `WORK` claims | About a publication (authors, venue, identifiers, scope). Asta-style paper listings produce hundreds; usually filter them out |
+| `- / -` in the about / basis table | The model classified neither. Such claims are left unclassified, even when a paper's section cites them, because the code cannot tell a claim about the paper from one about its subject |
 
 Citation `scope` says how each citation was attached: `SENTENCE` (a marker in
 the claim's sentence), `SECTION` (the section is headed by that paper), or

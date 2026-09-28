@@ -409,3 +409,31 @@ def test_a_domain_claim_in_a_paper_s_section_rests_on_that_paper(quote, model_ba
     (claim,) = claims_from_reply(reply, unit)
 
     assert claim.basis == expected
+
+
+def test_a_misquote_shows_the_passage_it_misquoted():
+    """The near miss shows what the source says; it never becomes the claim's span."""
+    reply = _reply({
+        "claim": "Marfan syndrome is an autosomal recessive disorder.",
+        "quote": "Marfan syndrome is an autosomal recessive disorder caused by pathogenic variants in FBN1",
+    })
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.anchor_status == AnchorStatus.UNANCHORED
+    assert claim.source_span is None
+    near = claim.nearest_passage
+    assert near is not None and near.score >= 70
+    assert "autosomal dominant disorder" in near.text
+    assert REPORT[near.span.start:near.span.end] == near.span.text
+
+
+def test_an_invented_quote_has_no_nearest_passage():
+    """A quote with nothing like it in the unit gets no near miss to mislead with."""
+    reply = _reply({"claim": "Aspirin prevents dissection.",
+                    "quote": "Aspirin lowers the risk of aortic dissection in adults"})
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.anchor_status == AnchorStatus.UNANCHORED
+    assert claim.nearest_passage is None

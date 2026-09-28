@@ -8,6 +8,16 @@ description: >-
   whether a claim is true; that is left to alignment and verification, which
   consume these records (issue #43).
 
+  Where a slot means what a W3C Web Annotation or Dublin Core term means, it
+  declares that term as its slot_uri: a span's text is oa:exact and its
+  offsets oa:start and oa:end, a citation's identifier is dcterms:references,
+  a source's title dcterms:title. These are the URIs linkml-reference-validator
+  finds excerpt, reference and title fields by. It pairs an excerpt with a
+  reference only within one class, and a span (the source's own words) and a
+  citation (the work cited for them) are different classes, so it reads these
+  fields without validating a report's sentence as if it were a quote from
+  the cited paper.
+
   Slot names for the assertion's structure mirror OntoGPT's core Triple and
   its ScientificClaim (subject, predicate, object, qualifier, negated), so the
   two can be converted without a mapping table. Unlike OntoGPT, a claim carries
@@ -25,6 +35,8 @@ license: BSD-3-Clause
 prefixes:
   linkml: https://w3id.org/linkml/
   claims: https://w3id.org/monarch-initiative/deep-research-client/claims/
+  dcterms: http://purl.org/dc/terms/
+  oa: http://www.w3.org/ns/oa#
 
 default_prefix: claims
 default_range: string
@@ -174,6 +186,7 @@ classes:
         range: SourceType
         required: true
       title:
+        slot_uri: dcterms:title
         description: The document's own title, when it has one.
       content_sha256:
         description: >-
@@ -265,6 +278,15 @@ classes:
         multivalued: true
         inlined_as_list: true
         description: The references the source attaches to this claim.
+      nearest_passage:
+        range: NearestPassage
+        inlined: true
+        description: >-
+          For an UNANCHORED claim only: the passage of its unit closest to the
+          quote the extractor gave, to show why the quote was not found (a
+          paraphrase, a quote joined from two places, a wrong section). It is
+          a diagnostic, not a location: nothing about the claim should be
+          taken as coming from it.
       citation_status:
         range: CitationStatus
         required: true
@@ -288,17 +310,41 @@ classes:
     description: >-
       A contiguous stretch of source text. Offsets count Unicode code points,
       as Python string indexing does, with end exclusive, so
-      text == source[start:end].
+      text == source[start:end]. Together these are a Web Annotation text
+      position selector (start, end) and text quote selector (exact).
     attributes:
       start:
         range: integer
         required: true
+        slot_uri: oa:start
       end:
         range: integer
         required: true
+        slot_uri: oa:end
       text:
         description: The source text between start and end, verbatim.
         required: true
+        slot_uri: oa:exact
+
+  NearestPassage:
+    description: >-
+      The passage closest to a quote that could not be anchored, found by
+      linkml-reference-validator's fuzzy matcher: the unit's sentences are
+      scored against the quote, and one with a high enough score and enough
+      of the quote's content words is kept.
+    attributes:
+      text:
+        description: The passage, as the matcher returned it (whitespace collapsed).
+        required: true
+      score:
+        range: float
+        required: true
+        description: Similarity to the quote, 0 to 100.
+      span:
+        range: TextSpan
+        inlined: true
+        description: >-
+          Where the passage is in the source, when it can be located there.
 
   EntityMention:
     description: >-
@@ -326,6 +372,7 @@ classes:
           "PMID:7913883" or a URL.
         required: true
       reference_id:
+        slot_uri: dcterms:references
         description: >-
           Normalised identifier when one could be read from the marker or the
           source's bibliography, for example PMID:7913883 or DOI:10.1038/x.

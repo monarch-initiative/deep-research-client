@@ -14,6 +14,7 @@ from deep_research_client.claims import (
     ClaimSet,
     ClaimTopic,
     ExtractorInfo,
+    NearestPassage,
     SourceDocument,
     SourceType,
     TextSpan,
@@ -97,6 +98,9 @@ def test_a_moved_span_is_reported() -> None:
         ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNCITED,
           "basis": ClaimBasis.BACKGROUND_KNOWLEDGE},
          "c1 has a basis, which only a DOMAIN claim has"),
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNCITED,
+          "nearest_passage": NearestPassage(text="A causes B", score=90.0)},
+         "c1 has a nearest passage, which only an UNANCHORED claim has"),
     ],
 )
 def test_a_claim_whose_slots_contradict_each_other_is_refused(fields, problem) -> None:
@@ -139,3 +143,50 @@ def test_a_cited_claim_called_background_knowledge_is_listed_not_refused() -> No
     )
 
     assert [c.id for c in claims.cited_background_claims] == ["c1"]
+
+
+def _claims_schema_view():
+    """The claims schema, as linkml-reference-validator's plugin reads it."""
+    from linkml_runtime.utils.schemaview import SchemaView
+
+    return SchemaView(str(Path(__file__).resolve().parent.parent
+                          / "src/deep_research_client/claims/claims.yaml"))
+
+
+@pytest.mark.parametrize(
+    ("class_name", "slot_name", "kind"),
+    [
+        ("TextSpan", "text", "excerpt"),
+        ("CitationHandle", "reference_id", "reference"),
+        ("SourceDocument", "title", "title"),
+    ],
+)
+def test_linkml_reference_validator_finds_the_fields_it_knows(class_name, slot_name, kind) -> None:
+    """The slot URIs are the ones its field detection looks for."""
+    from linkml_reference_validator.field_detection import (
+        is_excerpt_slot,
+        is_reference_slot,
+        is_title_slot,
+    )
+
+    view = _claims_schema_view()
+    detect = {"excerpt": is_excerpt_slot, "reference": is_reference_slot, "title": is_title_slot}
+
+    assert detect[kind](view.induced_slot(slot_name, class_name))
+    others = [k for k in detect if k != kind]
+    assert not any(detect[k](view.induced_slot(slot_name, class_name)) for k in others)
+
+
+def test_no_class_pairs_a_source_quote_with_a_cited_reference() -> None:
+    """The validator checks an excerpt against a reference only within one class.
+
+    A span is the source's own words and a citation is the work cited for
+    them, so no class may hold both: that would ask the validator whether a
+    report's sentence is a quote from the paper it cites.
+    """
+    from linkml_reference_validator.field_detection import is_excerpt_slot, is_reference_slot
+
+    view = _claims_schema_view()
+    for class_name in view.all_classes():
+        slots = [view.induced_slot(s, class_name) for s in view.class_slots(class_name)]
+        assert not (any(is_excerpt_slot(s) for s in slots) and any(is_reference_slot(s) for s in slots)), class_name

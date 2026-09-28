@@ -14,16 +14,23 @@ recorded:
    source actually says.
 
 Anything else is ``UNANCHORED``: the claim keeps no span, because offsets
-guessed for a quote that is not there would be worse than none.
+guessed for a quote that is not there would be worse than none. For those,
+:func:`nearest_passage` finds the closest passage, to show why the quote was
+not found. It is a diagnostic and never becomes the claim's span.
 """
 
 import re
 from functools import lru_cache
 from typing import Optional
 
-from .models import AnchorStatus, TextSpan
+from .models import AnchorStatus, NearestPassage, TextSpan
 
-__all__ = ["locate_quote"]
+__all__ = ["NEAR_MISS_THRESHOLD", "locate_quote", "nearest_passage"]
+
+#: Lowest similarity (0 to 100) at which a passage is reported as a near miss.
+#: Below linkml-reference-validator's default of 85, which is for accepting a
+#: match: a diagnostic should also show a paraphrase that scores 75.
+NEAR_MISS_THRESHOLD = 70.0
 
 #: Characters folded to a common form before comparing.
 _FOLD = str.maketrans({
@@ -206,3 +213,48 @@ def _extend_over_ignored(text: str, position: int, limit: int) -> int:
             position += 1
         break
     return position
+
+
+def nearest_passage(
+    quote: str, text: str, start: int = 0, end: Optional[int] = None,
+) -> Optional[NearestPassage]:
+    """The passage of ``text[start:end]`` closest to a quote that did not anchor.
+
+    Uses linkml-reference-validator's fuzzy matcher, which scores each
+    sentence against the quote and keeps one only if it also shares at least
+    half of the quote's content words. A quote under five words gets no near
+    miss: the matcher needs more to go on. The passage is then located with
+    :func:`locate_quote`, so it has a span when it can be found in the source.
+
+    Args:
+        quote: The extractor's quote, which :func:`locate_quote` did not find.
+        text: The whole source text.
+        start: Where the search region begins.
+        end: Where it ends (exclusive); the end of ``text`` if None.
+
+    Returns:
+        The nearest passage with its score, or None if nothing is close.
+
+    >>> text = "Marfan syndrome is caused by pathogenic variants in the FBN1 gene. It is dominant."
+    >>> near = nearest_passage("Marfan syndrome results from harmful variants in the FBN1 gene", text)
+    >>> near.score >= NEAR_MISS_THRESHOLD, near.span.start, near.span.text
+    (True, 0, 'Marfan syndrome is caused by pathogenic variants in the FBN1 gene')
+    >>> nearest_passage("Aspirin lowers the risk of dissection in adults", text) is None
+    True
+    """
+    # Imported here: it loads the validator's reference fetcher too, which
+    # only a claim that failed to anchor should pay for.
+    from linkml_reference_validator.validation.fuzzy_text_utils import find_fuzzy_match_in_text
+
+    end = len(text) if end is None else end
+    found, score, passage = find_fuzzy_match_in_text(
+        quote, text[start:end], threshold=NEAR_MISS_THRESHOLD,
+    )
+    if not found or passage is None:
+        return None
+    span, status = locate_quote(passage, text, start, end)
+    return NearestPassage(
+        text=passage,
+        score=round(score, 1),
+        span=span if status != AnchorStatus.UNANCHORED else None,
+    )

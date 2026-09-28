@@ -12,7 +12,7 @@ from typing import Any, Mapping, Optional
 from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
-from .anchoring import NUMERIC_MARKER, locate_quote
+from .anchoring import NUMERIC_MARKER, locate_quote, nearest_passage
 from .models import (
     AnchorStatus,
     CitationHandle,
@@ -428,6 +428,10 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             object_qualifier=_text(entry.get("object_qualifier")),
             entities=entities or None,
             citations=citations or None,
+            nearest_passage=(
+                nearest_passage(quote, unit.text, unit.start, unit.end)
+                if quote and status == AnchorStatus.UNANCHORED else None
+            ),
             citation_status=citation_status_for(citations, status),
             about=about,
             basis=basis,

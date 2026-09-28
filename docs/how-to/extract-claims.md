@@ -124,6 +124,15 @@ quote was found:
 
 `claims extract` warns on stderr when any claims are `UNANCHORED`.
 
+An `UNANCHORED` claim can carry a `nearest_passage`: the sentence of its
+section closest to the quote the model gave, with a similarity score from 0 to
+100 and, when it can be located, a span. It is found by
+linkml-reference-validator's fuzzy matcher, and kept only at a score of 70 or
+more and when it shares at least half the quote's content words. It shows why
+the quote failed: a misquote ("autosomal recessive" where the report says
+"dominant"), a quote joined from two sentences, a loose paraphrase. It is a
+diagnostic and never the claim's location. A quote under five words gets none.
+
 The source text goes into the prompt as it is, so a source can carry text that
 tries to steer the model, such as instructions or a fake end-of-text marker. This
 matters for third-party sources. Anchoring limits what such text can do: a claim
@@ -277,6 +286,16 @@ assert claims.mismatched_spans(Path("report.md").read_text(encoding="utf-8")) ==
 `extractor` records the extractor, and for model-based extraction the model and
 prompt version, so two sets made differently are never compared unknowingly.
 
+### Relation to linkml-reference-validator
+
+Slots that mean a standard term declare it: a span's `text`, `start` and `end`
+are the Web Annotation `oa:exact`, `oa:start` and `oa:end`, a citation's
+`reference_id` is `dcterms:references`, and a source's `title` is
+`dcterms:title`. These are the URIs linkml-reference-validator finds excerpt,
+reference and title fields by. It checks an excerpt against a reference only
+when one class holds both, and no class here does: a span is the source's own
+words, not a quote from the work it cites, so it must not be validated as one.
+
 ### Relation to OntoGPT
 
 `subject`, `predicate`, `object`, `qualifier`, `subject_qualifier`,
@@ -294,6 +313,10 @@ convert between the two directly. Two differences are deliberate:
 - **Alignment and relation labels** across two claim sets (`IDENTICAL`,
   `SUBSUMING`, `CONTRADICTORY`...), rubric aggregation and verification. These
   are the later parts of issue #43, and they consume these sets.
+- **Checking a claim against the work it cites.**
+  `deep_research_client.claims.verification.verify_claims` is a stub that
+  raises `NotImplementedError`; its module docstring has the plan, which reuses
+  linkml-reference-validator's reference fetching and caching.
 - **Ontology grounding** of entities in reports beyond CURIEs written in the
   text. An entity is grounded when the report or the model gives an identifier;
   a pluggable annotator is future work.

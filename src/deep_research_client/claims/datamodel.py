@@ -74,6 +74,17 @@ linkml_meta = LinkMLMeta({'default_prefix': 'claims',
                     'find it in the source again. Nothing here judges whether a '
                     'claim is true; that is left to alignment and verification, '
                     'which consume these records (issue #43).\n'
+                    'Where a slot means what a W3C Web Annotation or Dublin Core '
+                    "term means, it declares that term as its slot_uri: a span's "
+                    'text is oa:exact and its offsets oa:start and oa:end, a '
+                    "citation's identifier is dcterms:references, a source's title "
+                    'dcterms:title. These are the URIs linkml-reference-validator '
+                    'finds excerpt, reference and title fields by. It pairs an '
+                    'excerpt with a reference only within one class, and a span '
+                    "(the source's own words) and a citation (the work cited for "
+                    'them) are different classes, so it reads these fields without '
+                    "validating a report's sentence as if it were a quote from the "
+                    'cited paper.\n'
                     "Slot names for the assertion's structure mirror OntoGPT's "
                     'core Triple and its ScientificClaim (subject, predicate, '
                     'object, qualifier, negated), so the two can be converted '
@@ -92,8 +103,12 @@ linkml_meta = LinkMLMeta({'default_prefix': 'claims',
      'name': 'claims',
      'prefixes': {'claims': {'prefix_prefix': 'claims',
                              'prefix_reference': 'https://w3id.org/monarch-initiative/deep-research-client/claims/'},
+                  'dcterms': {'prefix_prefix': 'dcterms',
+                              'prefix_reference': 'http://purl.org/dc/terms/'},
                   'linkml': {'prefix_prefix': 'linkml',
-                             'prefix_reference': 'https://w3id.org/linkml/'}},
+                             'prefix_reference': 'https://w3id.org/linkml/'},
+                  'oa': {'prefix_prefix': 'oa',
+                         'prefix_reference': 'http://www.w3.org/ns/oa#'}},
      'source_file': 'src/deep_research_client/claims/claims.yaml',
      'title': 'Deep Research Client Claims'} )
 
@@ -222,7 +237,7 @@ class SourceDocument(ConfiguredBaseModel):
 
     id: str = Field(default=..., description="""Where the source came from: a file path or URI, as given to the extractor.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SourceDocument', 'Claim', 'EntityMention']} })
     source_type: SourceType = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['SourceDocument']} })
-    title: Optional[str] = Field(default=None, description="""The document's own title, when it has one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SourceDocument']} })
+    title: Optional[str] = Field(default=None, description="""The document's own title, when it has one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SourceDocument'], 'slot_uri': 'dcterms:title'} })
     content_sha256: Optional[str] = Field(default=None, description="""SHA-256 of the exact text that offsets refer to. With it, anyone can confirm that a span still points at what it claims to, using only the source file.""", json_schema_extra = { "linkml_meta": {'domain_of': ['SourceDocument']} })
 
 
@@ -258,6 +273,7 @@ class Claim(ConfiguredBaseModel):
     object_qualifier: Optional[str] = Field(default=None, description="""A modifier of the object, for example \"severe\".""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     entities: Optional[list[EntityMention]] = Field(default=None, description="""The things the claim mentions, whether or not they fill subject or object. Anchors for aligning claims across sources.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     citations: Optional[list[CitationHandle]] = Field(default=None, description="""The references the source attaches to this claim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
+    nearest_passage: Optional[NearestPassage] = Field(default=None, description="""For an UNANCHORED claim only: the passage of its unit closest to the quote the extractor gave, to show why the quote was not found (a paraphrase, a quote joined from two places, a wrong section). It is a diagnostic, not a location: nothing about the claim should be taken as coming from it.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     citation_status: CitationStatus = Field(default=..., description="""Whether the source cites this claim: CITED exactly when citations is non-empty, UNKNOWN exactly when the claim is UNANCHORED.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     about: Optional[ClaimTopic] = Field(default=None, description="""Whether the claim is about a work or about the domain. Absent when the extractor did not say.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     basis: Optional[ClaimBasis] = Field(default=None, description="""What a claim about the domain rests on, as the source presents it. Set only when about is DOMAIN. The extractor's judgement, except in a section headed by a cited work, where it is SECONDARY_SOURCE by the section's structure.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
@@ -265,13 +281,24 @@ class Claim(ConfiguredBaseModel):
 
 class TextSpan(ConfiguredBaseModel):
     """
-    A contiguous stretch of source text. Offsets count Unicode code points, as Python string indexing does, with end exclusive, so text == source[start:end].
+    A contiguous stretch of source text. Offsets count Unicode code points, as Python string indexing does, with end exclusive, so text == source[start:end]. Together these are a Web Annotation text position selector (start, end) and text quote selector (exact).
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
 
-    start: int = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan']} })
-    end: int = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan']} })
-    text: str = Field(default=..., description="""The source text between start and end, verbatim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan']} })
+    start: int = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan'], 'slot_uri': 'oa:start'} })
+    end: int = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan'], 'slot_uri': 'oa:end'} })
+    text: str = Field(default=..., description="""The source text between start and end, verbatim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan', 'NearestPassage'], 'slot_uri': 'oa:exact'} })
+
+
+class NearestPassage(ConfiguredBaseModel):
+    """
+    The passage closest to a quote that could not be anchored, found by linkml-reference-validator's fuzzy matcher: the unit's sentences are scored against the quote, and one with a high enough score and enough of the quote's content words is kept.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
+
+    text: str = Field(default=..., description="""The passage, as the matcher returned it (whitespace collapsed).""", json_schema_extra = { "linkml_meta": {'domain_of': ['TextSpan', 'NearestPassage']} })
+    score: float = Field(default=..., description="""Similarity to the quote, 0 to 100.""", json_schema_extra = { "linkml_meta": {'domain_of': ['NearestPassage']} })
+    span: Optional[TextSpan] = Field(default=None, description="""Where the passage is in the source, when it can be located there.""", json_schema_extra = { "linkml_meta": {'domain_of': ['NearestPassage']} })
 
 
 class EntityMention(ConfiguredBaseModel):
@@ -291,7 +318,7 @@ class CitationHandle(ConfiguredBaseModel):
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
 
     marker: str = Field(default=..., description="""The citation as it appears in the source, for example \"[3]\", \"PMID:7913883\" or a URL.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
-    reference_id: Optional[str] = Field(default=None, description="""Normalised identifier when one could be read from the marker or the source's bibliography, for example PMID:7913883 or DOI:10.1038/x.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
+    reference_id: Optional[str] = Field(default=None, description="""Normalised identifier when one could be read from the marker or the source's bibliography, for example PMID:7913883 or DOI:10.1038/x.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle'], 'slot_uri': 'dcterms:references'} })
     url: Optional[str] = Field(default=None, description="""URL of the reference, when the marker or bibliography gives one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
     scope: CitationScope = Field(default=..., description="""How the citation was attached to the claim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
 
@@ -303,5 +330,6 @@ SourceDocument.model_rebuild()
 ExtractorInfo.model_rebuild()
 Claim.model_rebuild()
 TextSpan.model_rebuild()
+NearestPassage.model_rebuild()
 EntityMention.model_rebuild()
 CitationHandle.model_rebuild()

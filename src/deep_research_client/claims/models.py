@@ -27,6 +27,7 @@ from .datamodel import (
     ClaimTopic,
     EntityMention,
     ExtractorInfo,
+    NearestPassage,
     SourceDocument,
     SourceType,
     TextSpan,
@@ -44,6 +45,7 @@ __all__ = [
     "ClaimTopic",
     "EntityMention",
     "ExtractorInfo",
+    "NearestPassage",
     "SourceDocument",
     "SourceType",
     "TextSpan",
@@ -122,6 +124,8 @@ def inconsistencies(claim: Claim) -> list[str]:
         problems.append(f"{claim.id} is {claim.citation_status} but {reason}")
     if claim.basis is not None and claim.about != ClaimTopic.DOMAIN:
         problems.append(f"{claim.id} has a basis, which only a DOMAIN claim has")
+    if claim.nearest_passage is not None and claim.anchor_status != AnchorStatus.UNANCHORED:
+        problems.append(f"{claim.id} has a nearest passage, which only an UNANCHORED claim has")
     return problems
 
 

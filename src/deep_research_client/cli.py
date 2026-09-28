@@ -3980,10 +3980,12 @@ def claims_extract(
 
     unanchored = claims.unanchored_claims
     if unanchored:
+        near = sum(1 for c in unanchored if c.nearest_passage is not None)
         _warn(
             f"{len(unanchored)} of {len(claims.claim_list)} claims could not be "
             f"found in the source; they are kept with anchor_status UNANCHORED "
-            f"and no span, and should not be taken as coming from it."
+            f"and no span, and should not be taken as coming from it. "
+            f"{near} have a nearest_passage showing the closest text found."
         )
     conflicting = claims.cited_background_claims
     if conflicting:

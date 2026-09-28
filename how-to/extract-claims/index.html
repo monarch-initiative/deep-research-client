@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/browse-cache/">
+        <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/extract-claims/">
       
       
-        <link rel="prev" href="../cache/">
+        <link rel="prev" href="../evaluate-providers/">
       
       
-        <link rel="next" href="../browse-files/">
+        <link rel="next" href="../cache/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -22,7 +22,7 @@
     
     
       
-        <title>Browse Cache - deep-research-client</title>
+        <title>Extract Claims - deep-research-client</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#how-to-browse-cached-research" class="md-skip">
+        <a href="#extract-claims" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Browse Cache
+              Extract Claims
             
           </span>
         </div>
@@ -526,10 +526,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../extract-claims/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Extract Claims
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -540,6 +562,143 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      Quick start
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#through-claude-code-with-no-api-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      Through Claude Code, with no API key
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#long-sections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Long sections
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-each-kind-of-source-is-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      How each kind of source is read
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How each kind of source is read">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reports" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reports
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#curated-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Curated files
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-claim-is-about-and-what-it-rests-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a claim is about, and what it rests on
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-claim-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      The claim set
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The claim set">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#relation-to-linkml-reference-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relation to linkml-reference-validator
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relation-to-ontogpt" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relation to OntoGPT
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-here-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is not here yet
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -572,32 +731,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Browse Cache
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../browse-cache/" class="md-nav__link">
         
   
   
@@ -608,338 +745,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      Quick Start
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-you-get" class="md-nav__link">
-    <span class="md-ellipsis">
-      What You Get
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="What You Get">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#faceted-browser-indexhtml" class="md-nav__link">
-    <span class="md-ellipsis">
-      Faceted Browser (index.html)
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#individual-pages-pages" class="md-nav__link">
-    <span class="md-ellipsis">
-      Individual Pages (pages/)
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
-    <span class="md-ellipsis">
-      Basic Usage
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Basic Usage">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#generate-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      Generate Browser
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#overwrite-existing" class="md-nav__link">
-    <span class="md-ellipsis">
-      Overwrite Existing
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-title-and-description" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Title and Description
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#advanced-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      Advanced Options
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Advanced Options">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#skip-individual-pages" class="md-nav__link">
-    <span class="md-ellipsis">
-      Skip Individual Pages
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#export-data-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      Export Data Only
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-page-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Page Template
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#creating-custom-templates" class="md-nav__link">
-    <span class="md-ellipsis">
-      Creating Custom Templates
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Creating Custom Templates">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#available-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      Available Variables
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Example Template
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-your-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using Your Template
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hosting-the-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      Hosting the Browser
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hosting the Browser">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#local-viewing" class="md-nav__link">
-    <span class="md-ellipsis">
-      Local Viewing
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#github-pages" class="md-nav__link">
-    <span class="md-ellipsis">
-      GitHub Pages
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#any-web-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      Any Web Server
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#workflow-examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      Workflow Examples
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Workflow Examples">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#research-archive" class="md-nav__link">
-    <span class="md-ellipsis">
-      Research Archive
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#provider-comparison" class="md-nav__link">
-    <span class="md-ellipsis">
-      Provider Comparison
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sharing-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      Sharing Results
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#linkml-browser-not-installed" class="md-nav__link">
-    <span class="md-ellipsis">
-      "linkml-browser not installed"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output-directory-exists" class="md-nav__link">
-    <span class="md-ellipsis">
-      "Output directory exists"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#links-not-clickable" class="md-nav__link">
-    <span class="md-ellipsis">
-      Links Not Clickable
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#large-cache-takes-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      Large Cache Takes Long
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      See Also
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1361,35 +1166,26 @@
         <li class="md-nav__item">
   <a href="#quick-start" class="md-nav__link">
     <span class="md-ellipsis">
-      Quick Start
+      Quick start
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-you-get" class="md-nav__link">
-    <span class="md-ellipsis">
-      What You Get
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="What You Get">
+    <nav class="md-nav" aria-label="Quick start">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#faceted-browser-indexhtml" class="md-nav__link">
+  <a href="#through-claude-code-with-no-api-key" class="md-nav__link">
     <span class="md-ellipsis">
-      Faceted Browser (index.html)
+      Through Claude Code, with no API key
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#individual-pages-pages" class="md-nav__link">
+  <a href="#long-sections" class="md-nav__link">
     <span class="md-ellipsis">
-      Individual Pages (pages/)
+      Long sections
     </span>
   </a>
   
@@ -1401,37 +1197,28 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#basic-usage" class="md-nav__link">
+  <a href="#how-each-kind-of-source-is-read" class="md-nav__link">
     <span class="md-ellipsis">
-      Basic Usage
+      How each kind of source is read
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Basic Usage">
+    <nav class="md-nav" aria-label="How each kind of source is read">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#generate-browser" class="md-nav__link">
+  <a href="#reports" class="md-nav__link">
     <span class="md-ellipsis">
-      Generate Browser
+      Reports
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#overwrite-existing" class="md-nav__link">
+  <a href="#curated-files" class="md-nav__link">
     <span class="md-ellipsis">
-      Overwrite Existing
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-title-and-description" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Title and Description
+      Curated files
     </span>
   </a>
   
@@ -1443,37 +1230,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#advanced-options" class="md-nav__link">
+  <a href="#what-a-claim-is-about-and-what-it-rests-on" class="md-nav__link">
     <span class="md-ellipsis">
-      Advanced Options
+      What a claim is about, and what it rests on
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Advanced Options">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-claim-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      The claim set
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The claim set">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#skip-individual-pages" class="md-nav__link">
+  <a href="#relation-to-linkml-reference-validator" class="md-nav__link">
     <span class="md-ellipsis">
-      Skip Individual Pages
+      Relation to linkml-reference-validator
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#export-data-only" class="md-nav__link">
+  <a href="#relation-to-ontogpt" class="md-nav__link">
     <span class="md-ellipsis">
-      Export Data Only
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-page-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Custom Page Template
+      Relation to OntoGPT
     </span>
   </a>
   
@@ -1485,186 +1272,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#creating-custom-templates" class="md-nav__link">
+  <a href="#what-is-not-here-yet" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating Custom Templates
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Creating Custom Templates">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#available-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      Available Variables
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Example Template
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#using-your-template" class="md-nav__link">
-    <span class="md-ellipsis">
-      Using Your Template
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hosting-the-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      Hosting the Browser
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Hosting the Browser">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#local-viewing" class="md-nav__link">
-    <span class="md-ellipsis">
-      Local Viewing
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#github-pages" class="md-nav__link">
-    <span class="md-ellipsis">
-      GitHub Pages
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#any-web-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      Any Web Server
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#workflow-examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      Workflow Examples
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Workflow Examples">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#research-archive" class="md-nav__link">
-    <span class="md-ellipsis">
-      Research Archive
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#provider-comparison" class="md-nav__link">
-    <span class="md-ellipsis">
-      Provider Comparison
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sharing-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      Sharing Results
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Troubleshooting">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#linkml-browser-not-installed" class="md-nav__link">
-    <span class="md-ellipsis">
-      "linkml-browser not installed"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output-directory-exists" class="md-nav__link">
-    <span class="md-ellipsis">
-      "Output directory exists"
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#links-not-clickable" class="md-nav__link">
-    <span class="md-ellipsis">
-      Links Not Clickable
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#large-cache-takes-long" class="md-nav__link">
-    <span class="md-ellipsis">
-      Large Cache Takes Long
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      See Also
+      What is not here yet
     </span>
   </a>
   
@@ -1689,260 +1299,425 @@
   
 
 
-<h1 id="how-to-browse-cached-research">How to Browse Cached Research</h1>
-<p>Generate a standalone HTML browser to explore and navigate your cached research results.</p>
-<h2 id="quick-start">Quick Start</h2>
-<pre><code class="language-bash"># Install browser dependency
-pip install deep-research-client[browser]
+<h1 id="extract-claims">Extract Claims</h1>
+<p>Turn a source into a structured list of the specific claims it makes: a deep
+research report, a curated knowledge file, or any YAML/JSON document with
+prose in it. Each claim is one atomic assertion, with enough provenance for a
+person to find it in the source again.</p>
+<p>Extraction does <strong>not</strong> judge whether a claim is true. It is the first step of
+comparing sources (<a href="https://github.com/monarch-initiative/deep-research-client/issues/43">issue #43</a>):
+claims from two sources are what alignment and verification will work on.</p>
+<p>Two Claude Code skills, in <code>.claude/skills/</code>, follow this page:
+<code>extract-claims</code> runs an extraction, and <code>review-claim-set</code> audits and filters
+the result.</p>
+<h2 id="quick-start">Quick start</h2>
+<pre><code class="language-bash"># A deep research report (needs a model)
+export OPENAI_API_KEY=...
+deep-research-client claims extract report.md -o report.claims.json
 
-# Generate browser
-deep-research-client browse-cache ./my-browser
+# The same, through a logged-in Claude Code instead of an API key
+deep-research-client claims extract report.md -o report.claims.json --llm-backend claude-code
 
-# Open in browser
-open ./my-browser/index.html
+# A curated dismech disease file (no model)
+deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
 </code></pre>
-<h2 id="what-you-get">What You Get</h2>
-<p>The browser generates:</p>
-<pre><code>my-browser/
-├── index.html      # Faceted browser interface
-├── data.js         # Research data
-├── schema.js       # Browser configuration
-└── pages/          # Individual result pages
-    ├── openai-gene-research-xxx.html
-    ├── perplexity-gene-research-yyy.html
-    └── ...
+<p>From Python:</p>
+<pre><code class="language-python">from openai import AsyncOpenAI
+from deep_research_client.claims import extract_claims
+
+claims = extract_claims(&quot;report.md&quot;, llm_client=AsyncOpenAI())
+for claim in claims.claim_list:
+    print(claim.id, claim.anchor_status, claim.claim_text)
 </code></pre>
-<h3 id="faceted-browser-indexhtml">Faceted Browser (<code>index.html</code>)</h3>
-<p>An interactive interface with:</p>
+<p><code>extract_claims</code> is synchronous and runs its own event loop, so it raises
+<code>RuntimeError</code> where a loop is already running, as in Jupyter. There, use
+<code>await aextract_claims(...)</code>.
+The client can be any OpenAI-compatible async client: OpenAI, CBORG, or a local
+server via <code>AsyncOpenAI(base_url=...)</code>.</p>
+<h3 id="through-claude-code-with-no-api-key">Through Claude Code, with no API key</h3>
+<p><code>ClaudeCodeChatClient</code> answers the same calls through the local <code>claude</code> CLI,
+so a machine where Claude Code is logged in can extract with Claude models and
+no key. Each call is one <code>claude --print</code> run with no tools, no settings files
+and no MCP servers, so your hooks, output style and CLAUDE.md files do not
+reach the prompt. Billing is the Claude Code login's.</p>
+<pre><code class="language-python">from deep_research_client.claims import extract_claims
+from deep_research_client.claude_code_chat import ClaudeCodeChatClient
+
+claims = extract_claims(&quot;report.md&quot;, llm_client=ClaudeCodeChatClient(), model=&quot;sonnet&quot;)
+</code></pre>
+<p>What to know about this backend:</p>
 <ul>
-<li><strong>Provider filter</strong> - Filter by OpenAI, Perplexity, Falcon, etc.</li>
-<li><strong>Model filter</strong> - Filter by specific model used</li>
-<li><strong>Date filter</strong> - Filter by research date</li>
-<li><strong>Keywords filter</strong> - Filter by assigned keywords (if any)</li>
-<li><strong>Full-text search</strong> - Search across queries and titles</li>
-<li><strong>Clickable results</strong> - Each entry links to its full page</li>
+<li><strong>Temperature cannot be set.</strong> Replies are not deterministic.</li>
+<li><strong>Thinking is off</strong>, so <code>max_tokens</code> counts only the reply, as it does for an
+  OpenAI chat model.</li>
+<li><strong>An alias is recorded as the model it resolved to.</strong> <code>sonnet</code> goes into
+  <code>extractor.model</code> as the full id the replies report, such as
+  <code>claude-sonnet-5</code>. (This holds for any backend: an OpenAI endpoint reports
+  a dated id such as <code>gpt-4o-mini-2024-07-18</code>.)</li>
 </ul>
-<h3 id="individual-pages-pages">Individual Pages (<code>pages/</code>)</h3>
-<p>Each cached result gets its own HTML page with:</p>
-<ul>
-<li><strong>Metadata header</strong> - Provider, model, date, duration, citation count</li>
-<li><strong>Full content</strong> - Complete research report with formatting</li>
-<li><strong>Citations section</strong> - All citations listed at the bottom</li>
-<li><strong>Navigation</strong> - Link back to the browser</li>
-</ul>
-<h2 id="basic-usage">Basic Usage</h2>
-<h3 id="generate-browser">Generate Browser</h3>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser
-</code></pre>
-<h3 id="overwrite-existing">Overwrite Existing</h3>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --force
-</code></pre>
-<h3 id="custom-title-and-description">Custom Title and Description</h3>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser \
-  --title &quot;Gene Research Archive&quot; \
-  --description &quot;Cached research results from 2024-2025&quot;
-</code></pre>
-<h2 id="advanced-options">Advanced Options</h2>
-<h3 id="skip-individual-pages">Skip Individual Pages</h3>
-<p>Generate only the browser interface (faster, smaller output):</p>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --no-pages
-</code></pre>
-<h3 id="export-data-only">Export Data Only</h3>
-<p>Export JSON files without generating the browser (useful for customization):</p>
-<pre><code class="language-bash">deep-research-client browse-cache ./data --export-only
-</code></pre>
-<p>This creates:
-- <code>cache_data.json</code> - All research entries
-- <code>schema.json</code> - Browser schema configuration</p>
-<p>You can then customize these and use <code>linkml-browser deploy</code> directly.</p>
-<h3 id="custom-page-template">Custom Page Template</h3>
-<p>Use your own Jinja2 template for individual pages:</p>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --template my-template.j2
-</code></pre>
-<h2 id="creating-custom-templates">Creating Custom Templates</h2>
-<p>Individual pages are rendered using Jinja2 templates. Create your own to customize the appearance.</p>
-<h3 id="available-variables">Available Variables</h3>
+<p>The default is <code>sonnet</code>. Pass <code>--llm-model opus</code>, <code>haiku</code>, or a full model id.
+Each call starts a process, so small sections cost a few seconds each; a
+64 KB report of 64 sections took about four minutes at the default
+concurrency of 4.</p>
+<h3 id="long-sections">Long sections</h3>
+<p>A reply cut off at <code>max_tokens</code> (default 4096) is an error, never a shorter
+claim list. A section that makes many claims can need more:
+<code>--llm-max-tokens 16000</code>.</p>
+<h2 id="how-each-kind-of-source-is-read">How each kind of source is read</h2>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Type</th>
-<th>Description</th>
+<th>Source</th>
+<th>Format</th>
+<th>How claims are found</th>
+<th>Needs a model</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>title</code></td>
-<td>str</td>
-<td>Research title (may be empty)</td>
+<td>Markdown report</td>
+<td><code>markdown</code></td>
+<td>Each section is decomposed into atomic claims by a model</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td><code>query_preview</code></td>
-<td>str</td>
-<td>First 200 chars of query</td>
+<td>dismech disease file</td>
+<td><code>dismech</code></td>
+<td>Each curated pathophysiology, phenotype, treatment and inheritance record is one claim</td>
+<td>No</td>
 </tr>
 <tr>
-<td><code>provider</code></td>
-<td>str</td>
-<td>Provider name (openai, perplexity, etc.)</td>
+<td>ai-gene-review file</td>
+<td><code>gene-review</code></td>
+<td>Each kept annotation and core function is one claim</td>
+<td>No</td>
 </tr>
 <tr>
-<td><code>model</code></td>
-<td>str</td>
-<td>Model used</td>
-</tr>
-<tr>
-<td><code>date</code></td>
-<td>str</td>
-<td>Date string (YYYY-MM-DD)</td>
-</tr>
-<tr>
-<td><code>duration_seconds</code></td>
-<td>float</td>
-<td>How long research took</td>
-</tr>
-<tr>
-<td><code>citation_count</code></td>
-<td>int</td>
-<td>Number of citations</td>
-</tr>
-<tr>
-<td><code>keywords</code></td>
-<td>list</td>
-<td>List of keyword strings</td>
-</tr>
-<tr>
-<td><code>author</code></td>
-<td>str</td>
-<td>Author name (if set)</td>
-</tr>
-<tr>
-<td><code>filename</code></td>
-<td>str</td>
-<td>Original cache filename</td>
-</tr>
-<tr>
-<td><code>content_html</code></td>
-<td>str</td>
-<td>Markdown converted to HTML (use <code>| safe</code>)</td>
-</tr>
-<tr>
-<td><code>citations</code></td>
-<td>list</td>
-<td>List of citation strings</td>
+<td>Any other YAML/JSON</td>
+<td><code>structured</code></td>
+<td>Each prose field is decomposed like a report section</td>
+<td>Yes</td>
 </tr>
 </tbody>
 </table>
-<h3 id="example-template">Example Template</h3>
-<pre><code class="language-html">&lt;!DOCTYPE html&gt;
-&lt;html&gt;
-&lt;head&gt;
-    &lt;title&gt;{{ title or &quot;Research Result&quot; }}&lt;/title&gt;
-    &lt;style&gt;
-        body { font-family: sans-serif; max-width: 800px; margin: auto; padding: 20px; }
-        .meta { background: #f5f5f5; padding: 15px; margin-bottom: 20px; }
-        .content { line-height: 1.6; }
-        .citations { border-top: 1px solid #ccc; margin-top: 30px; padding-top: 20px; }
-    &lt;/style&gt;
-&lt;/head&gt;
-&lt;body&gt;
-    &lt;a href=&quot;index.html&quot;&gt;&amp;larr; Back&lt;/a&gt;
-
-    &lt;div class=&quot;meta&quot;&gt;
-        &lt;strong&gt;Provider:&lt;/strong&gt; {{ provider }}&lt;br&gt;
-        &lt;strong&gt;Model:&lt;/strong&gt; {{ model }}&lt;br&gt;
-        &lt;strong&gt;Date:&lt;/strong&gt; {{ date }}&lt;br&gt;
-        &lt;strong&gt;Duration:&lt;/strong&gt; {{ &quot;%.1f&quot;|format(duration_seconds or 0) }}s
-    &lt;/div&gt;
-
-    &lt;div class=&quot;content&quot;&gt;
-        {{ content_html | safe }}
-    &lt;/div&gt;
-
-    {% if citations %}
-    &lt;div class=&quot;citations&quot;&gt;
-        &lt;h2&gt;Citations ({{ citations|length }})&lt;/h2&gt;
-        &lt;ol&gt;
-        {% for cite in citations %}
-            &lt;li&gt;{{ cite }}&lt;/li&gt;
-        {% endfor %}
-        &lt;/ol&gt;
-    &lt;/div&gt;
-    {% endif %}
-&lt;/body&gt;
-&lt;/html&gt;
-</code></pre>
-<h3 id="using-your-template">Using Your Template</h3>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --template my-template.j2
-</code></pre>
-<h2 id="hosting-the-browser">Hosting the Browser</h2>
-<p>The generated browser is completely standalone - no server required.</p>
-<h3 id="local-viewing">Local Viewing</h3>
-<pre><code class="language-bash">open ./browser/index.html
-</code></pre>
-<h3 id="github-pages">GitHub Pages</h3>
-<ol>
-<li>Generate browser to <code>docs/browser/</code> or a <code>gh-pages</code> branch</li>
-<li>Enable GitHub Pages in repository settings</li>
-<li>Browser is available at <code>https://username.github.io/repo/browser/</code></li>
-</ol>
-<h3 id="any-web-server">Any Web Server</h3>
-<p>Upload the entire output directory to any static hosting:
-- Netlify
-- Vercel
-- AWS S3
-- Any web server</p>
-<h2 id="workflow-examples">Workflow Examples</h2>
-<h3 id="research-archive">Research Archive</h3>
-<p>Build a browsable archive of all your research:</p>
-<pre><code class="language-bash"># Generate comprehensive browser
-deep-research-client browse-cache ./research-archive \
-  --title &quot;Research Archive&quot; \
-  --description &quot;All cached deep research results&quot; \
-  --force
-</code></pre>
-<h3 id="provider-comparison">Provider Comparison</h3>
-<p>After running queries across multiple providers, browse and compare results:</p>
-<pre><code class="language-bash"># Run same query on different providers
-deep-research-client research &quot;CFAP300 gene function&quot; --provider openai
-deep-research-client research &quot;CFAP300 gene function&quot; --provider perplexity
-deep-research-client research &quot;CFAP300 gene function&quot; --provider falcon
-
-# Generate browser to compare
-deep-research-client browse-cache ./comparison -f
-</code></pre>
-<h3 id="sharing-results">Sharing Results</h3>
-<p>Generate a browser to share with colleagues:</p>
-<pre><code class="language-bash"># Generate with descriptive title
-deep-research-client browse-cache ./share \
-  --title &quot;Gene Function Research - Q4 2024&quot; \
-  --description &quot;Research results for annotation review&quot;
-
-# Zip for sharing
-zip -r research-browser.zip ./share/
-</code></pre>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3 id="linkml-browser-not-installed">"linkml-browser not installed"</h3>
-<p>Install the browser optional dependency:</p>
-<pre><code class="language-bash">pip install deep-research-client[browser]
-# or
-uv add deep-research-client[browser]
-</code></pre>
-<h3 id="output-directory-exists">"Output directory exists"</h3>
-<p>Use <code>--force</code> to overwrite:</p>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --force
-</code></pre>
-<h3 id="links-not-clickable">Links Not Clickable</h3>
-<p>If "View" shows as text instead of a link, ensure you have the latest version. The browser post-processes <code>index.html</code> to enable URL handling.</p>
-<h3 id="large-cache-takes-long">Large Cache Takes Long</h3>
-<p>For very large caches, skip individual page generation:</p>
-<pre><code class="language-bash">deep-research-client browse-cache ./browser --no-pages
-</code></pre>
-<h2 id="see-also">See Also</h2>
+<p><code>--format auto</code> (the default) decides from the extension and, for YAML/JSON,
+from the keys: a <code>disease_term</code> or <code>pathophysiology</code> key means dismech, and
+<code>existing_annotations</code> or <code>core_functions</code> means gene-review.</p>
+<h3 id="reports">Reports</h3>
+<p>A report written by <code>deep-research-client research</code> is read from its
+<code>## Output</code> section. The question, the numbered <code>## Citations</code> list and any
+generated validation sections are not claims the report makes, so they are
+skipped. So is a reference list the provider wrote inside its answer (a
+<code>References</code>, <code>Sources</code> or <code>Bibliography</code> heading, and anything under it), and
+any heading that contains such a word when the text under it is mostly list
+entries naming a URL, DOI or PMID, such as Falcon's <code>Key references (URLs in
+evidence)</code>. A heading like <code>Evidence sources</code> over prose is kept. The same
+test also skips a section such as <code>Data sources</code> whose lines list databases
+with their URLs (<code>- ClinVar https://...</code>): it reads as a reference list, so
+claims it makes about those databases are not extracted. Some providers
+(Falcon) open their answer by repeating the whole question; when the answer
+holds the question's first line and then its closing lines, everything up to
+there is the question and is skipped too. Plain markdown with no <code>## Output</code> is
+read whole. The claim set's title is the answer's first heading at its highest
+level. Each heading starts a new unit, and
+long sections are split at paragraph breaks. A <code>#</code> line inside a code fence is
+code, not a heading. A table has no paragraph breaks, so a long one is split
+between its rows, and each later piece is sent with the table's header as
+context: the model reads the columns from it, but it is not part of the text,
+and a quote taken from it does not anchor.</p>
+<p>For each unit the model returns, per claim:</p>
 <ul>
-<li><a href="../browse-files/">Browse Files</a> - Browse markdown files instead of cache</li>
-<li><a href="../cache/">Manage Cache</a> - List, search, and manage cached results</li>
-<li><a href="../../reference/cli/#browse-cache">CLI Reference</a> - Complete command reference</li>
+<li><strong><code>claim</code></strong>: the assertion as a standalone sentence. Pronouns are resolved,
+  and a table's headers are folded into claims made by its cells.</li>
+<li><strong><code>quote</code></strong>: the passage of the text that states the claim, copied verbatim.</li>
+<li>the parts of the claim, when it has them: <strong>subject, predicate, object</strong>, a
+  <strong>negation</strong> flag and <strong>qualifiers</strong> such as "may" or "in adults"</li>
+<li>the <strong>entities</strong> mentioned, and the <strong>citation markers</strong> attached to the
+  passage</li>
+<li>what the claim is <strong>about</strong>, and for a claim about the domain, what its
+  <strong>basis</strong> is (see <a href="#what-a-claim-is-about-and-what-it-rests-on">What a claim is about, and what it rests on</a>)</li>
+</ul>
+<p>The quote is what makes a claim auditable. It is located in the report and
+becomes the claim's <code>source_span</code>: character offsets into the file, end
+exclusive, so <code>text[start:end] == span.text</code>. <code>anchor_status</code> records how the
+quote was found:</p>
+<table>
+<thead>
+<tr>
+<th><code>anchor_status</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EXACT</code></td>
+<td>The quote occurs verbatim</td>
+</tr>
+<tr>
+<td><code>NORMALIZED</code></td>
+<td>It occurs once whitespace, markdown emphasis, link targets, citation markers like <code>[3]</code>, quote and dash styles, and case are ignored. The span still covers the report's own characters</td>
+</tr>
+<tr>
+<td><code>UNANCHORED</code></td>
+<td>The quote is not in the report. The claim is kept, with no span, so the gap is visible; don't treat it as coming from the report</td>
+</tr>
+<tr>
+<td><code>NOT_APPLICABLE</code></td>
+<td>A structured record, located by <code>source_path</code> instead</td>
+</tr>
+</tbody>
+</table>
+<p><code>claims extract</code> warns on stderr when any claims are <code>UNANCHORED</code>.</p>
+<p>An <code>UNANCHORED</code> claim can carry a <code>nearest_passage</code>: the sentence of its
+section closest to the quote the model gave, with a similarity score from 0 to
+100 and, when it can be located, a span. It is found by
+linkml-reference-validator's fuzzy matcher, and kept only at a score of 70 or
+more and when it shares at least half the quote's content words. It shows why
+the quote failed: a misquote ("autosomal recessive" where the report says
+"dominant"), a quote joined from two sentences, a loose paraphrase. It is a
+diagnostic and never the claim's location. A quote under five words gets none.</p>
+<p>The source text goes into the prompt as it is, so a source can carry text that
+tries to steer the model, such as instructions or a fake end-of-text marker. This
+matters for third-party sources. Anchoring limits what such text can do: a claim
+it makes the model invent has no quote in the source, so it comes back
+<code>UNANCHORED</code> and gets no citations. But a steered model can still skip claims
+the source does make. Treat a claim set from an untrusted source as that
+source's claims only where they are anchored, and don't read it as complete.</p>
+<p>Citations are checked the same way. A marker the model reports is kept only if
+it is in the claim's own sentence, so a marker from elsewhere in the section is
+not attached on the model's say-so:</p>
+<ul>
+<li>The sentence runs from the previous sentence end to the next one after the
+  claim's span. A marker written after the full stop (<code>.[1]</code> or <code>. [1]</code>)
+  belongs to the sentence it closes.</li>
+<li>The full stop of <code>et al.</code>, <code>e.g.</code>, <code>vs.</code>, <code>Fig.</code> and similar doesn't end a
+  sentence. A decimal point doesn't either.</li>
+<li>A sentence that ends inside a bracket or quotation (<code>in adults.)</code>, <code>"A is
+  B."</code>) ends where it closes.</li>
+<li>A claim inside a quotation of several sentences, cited once after the
+  quotation closes (<code>*"A is B. C is D."* ([PMID: 1](...))</code>), reads to the end of
+  the sentence that closes it, so the citation after it counts.</li>
+<li>A table row, a list item, or a paragraph ends it too. A line break inside a
+  hard-wrapped paragraph doesn't.</li>
+<li><code>[3]</code> is found in <code>[2, 3]</code>, <code>[2-5]</code> and the linked <code>[3](https://...)</code>, but not
+  in <code>[Figure 3]</code>.</li>
+<li>A claim with no span (<code>UNANCHORED</code>) gets no citations.</li>
+</ul>
+<p>A marker that names no identifier itself, such as Falcon's key
+(<code>mustillo2023clinicalpracticeguidelines pages 16-17</code>) or an author and year
+(<code>Soster 2023</code>), is looked up in the report's reference entries, numbered or
+not: by the key, or by the first author's surname and the year. The
+identifier is taken only when every matching entry that names one names the
+same one, so an ambiguous surname resolves to nothing.</p>
+<p>A numbered marker such as <code>[2]</code> is resolved through the report's own citation
+list to a PMID or DOI where it names one. A report written with
+<code>research --separate-citations</code> keeps that list in a file of its own: pass it
+with <code>--citations</code>, or leave it beside the report as <code>&lt;report&gt;.citations.md</code> or
+<code>&lt;report&gt;.md.citations.md</code> (as dismech's are) to have it found. When the report
+has neither, or both are empty, the provider's own numbered reference list
+inside its answer (<code>References</code>, <code>Sources</code>...) is used instead: the longest, if there are
+several, and never a <code>Further reading</code> list. Entries may be written <code>1. ...</code>,
+<code>[1] ...</code>, <code>[1]: ...</code>, or any of them as a bulleted item, and are read only
+under such a heading: Markdown reference definitions (<code>[1]: https://...</code>) left
+at the end of a document with no heading above them are not read. Footnotes
+(<code>[^1]: ...</code>) are not read either. Nor is numbering that restarts in each section's own <code>Sources</code>
+list: no single list serves such an answer.</p>
+<p>Some reports list papers, one section each, headed <code>### [n] Title</code>, with the
+paper's metadata and abstract under it. Asta's reports do. There the source of
+every claim in the section is paper <code>n</code>, though no sentence carries a marker.
+So a section headed by <code>[n]</code> gives each located claim in it, subsections
+included, a citation of paper <code>n</code>. Its identifier comes from the citation list,
+or else from the section's own <code>PMID:</code> or <code>DOI:</code> lines. Every citation records
+how it was attached, in <code>scope</code>:</p>
+<table>
+<thead>
+<tr>
+<th><code>scope</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SENTENCE</code></td>
+<td>A marker in the claim's own sentence</td>
+</tr>
+<tr>
+<td><code>SECTION</code></td>
+<td>The claim's section is headed by the cited work</td>
+</tr>
+<tr>
+<td><code>RECORD</code></td>
+<td>A curated record's own evidence</td>
+</tr>
+</tbody>
+</table>
+<h3 id="curated-files">Curated files</h3>
+<p>A curated record already is one claim, so no model is needed. Each claim has:</p>
+<ul>
+<li>a <code>source_path</code> such as <code>phenotypes[1]</code>. The index counts every entry in the
+  list, so it points at the record even when others were skipped.</li>
+<li>the file's disease or gene as its <strong>subject</strong>, grounded (for example
+  <code>MONDO:0007947</code>, or <code>UniProtKB:P35555</code> for a gene review's accession)</li>
+<li>the curated ontology terms as grounded <strong>entities</strong></li>
+<li>the evidence references as <strong>citations</strong></li>
+<li><code>about</code> <code>DOMAIN</code>. A record with evidence is <code>CITED</code> with basis
+  <code>SECONDARY_SOURCE</code>; one with none is <code>UNCITED</code> with no basis, since a bare
+  curated record does not say what it rests on.</li>
+</ul>
+<p>Phenotype, treatment and inheritance records also get a <strong>predicate</strong> and
+<strong>object</strong> from their section ("has phenotype" <code>HP:0001083</code>). A record with no
+description is given one built from them: "Marfan syndrome has phenotype
+Ectopia lentis."</p>
+<p>Only the sections the evaluation loaders already read are covered. Other dismech
+sections, such as diagnosis, prevalence and genetics, are not yet claims.</p>
+<h2 id="what-a-claim-is-about-and-what-it-rests-on">What a claim is about, and what it rests on</h2>
+<p>Three slots classify a claim. The first is checked by the code; the other two
+are the model's judgement.</p>
+<p><strong><code>citation_status</code></strong> says whether the source cites the claim. It makes the
+lack of a citation explicit, since an empty <code>citations</code> list alone cannot tell
+"cites nothing" from "not checked":</p>
+<table>
+<thead>
+<tr>
+<th><code>citation_status</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CITED</code></td>
+<td>At least one citation is attached, by sentence or by section, and all are in <code>citations</code></td>
+</tr>
+<tr>
+<td><code>UNCITED</code></td>
+<td>The claim was located and nothing is attached to it. Its sentence may still cite a source for another claim. For a curated record: no evidence</td>
+</tr>
+<tr>
+<td><code>UNKNOWN</code></td>
+<td>The claim is <code>UNANCHORED</code>, so there was no sentence to check</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>about</code></strong> is <code>WORK</code> for a claim about a publication as an object (its
+authors, venue, date, identifiers, what it covers) and <code>DOMAIN</code> for a claim
+about the subject matter. Reports that list papers, as Asta's do, make many
+<code>WORK</code> claims: "The paper X was published in 2021."</p>
+<p><strong><code>basis</code></strong>, for <code>DOMAIN</code> claims only, is how the source presents the claim:</p>
+<table>
+<thead>
+<tr>
+<th><code>basis</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OBSERVATION</code></td>
+<td>The source document's own finding: an experiment, analysis, dataset or case it made or ran. A finding it reports from another work, such as an abstract under a <code>[n]</code> heading, is <code>SECONDARY_SOURCE</code></td>
+</tr>
+<tr>
+<td><code>SECONDARY_SOURCE</code></td>
+<td>Attributed to another work, by a citation marker or by naming it or its authors</td>
+</tr>
+<tr>
+<td><code>BACKGROUND_KNOWLEDGE</code></td>
+<td>Stated with no citation or attribution, as known in the field</td>
+</tr>
+</tbody>
+</table>
+<p>Only a <code>DOMAIN</code> claim has a basis, so when the model gives a basis and no
+readable <code>about</code>, the claim is read as <code>DOMAIN</code>; a basis on a claim it called
+<code>WORK</code> is dropped.</p>
+<p>When the model gives neither, the claim has no <code>about</code> and no <code>basis</code>, even in
+a section headed by a cited work, where it is still <code>CITED</code>: the code cannot
+tell a claim about the paper from a claim about its subject.</p>
+<p>A deep research report observes little itself, so most of its domain claims
+rest on a secondary source or on background knowledge. In a section headed by a
+cited work (<code>### [n] Title</code>), a located domain claim's basis is set to
+<code>SECONDARY_SOURCE</code> by the code, whatever the model said: the section's
+structure already says where the claim comes from.</p>
+<p>A claim set is refused, when built or loaded, if these contradict what the
+code knows: a <code>CITED</code> claim with no citations, an <code>UNCITED</code> one with some, an
+<code>UNKNOWN</code> one that was anchored, or a <code>basis</code> on a claim that is not <code>DOMAIN</code>.
+One contradiction is only reported: a claim the model calls
+<code>BACKGROUND_KNOWLEDGE</code> that carries a citation. Either the basis or the marker
+it attached is wrong, and the code cannot tell which.
+<code>ClaimSet.cited_background_claims</code> lists these, and <code>claims extract</code> warns.</p>
+<h2 id="the-claim-set">The claim set</h2>
+<p>Output is one <code>ClaimSet</code> per source, defined in LinkML
+(<code>src/deep_research_client/claims/claims.yaml</code>). A curated example, from the
+test fixtures:</p>
+<pre><code class="language-yaml">source:
+  id: tests/input/claims/marfan_dismech.yaml
+  source_type: STRUCTURED_DOCUMENT
+  title: Marfan syndrome
+  content_sha256: c6a9101b0de51804e12f3bce88372c72ecb66e97084601d1472a01cca6336fb7
+extractor:
+  name: dismech
+claims:
+- id: phenotypes[2]
+  claim_text: Marfan syndrome has phenotype Ectopia lentis.
+  source_path: phenotypes[2]
+  anchor_status: NOT_APPLICABLE
+  subject:
+    label: Marfan syndrome
+    id: MONDO:0007947
+  predicate:
+    label: has phenotype
+  object:
+    label: Ectopia lentis
+    id: HP:0001083
+  entities:
+  - label: Ectopia lentis
+    id: HP:0001083
+  citation_status: UNCITED
+  about: DOMAIN
+</code></pre>
+<p>A claim from a report has the same fields, plus a span. <code>source.content_sha256</code>
+is the hash of the exact text the offsets index into. To check a saved set
+against its source, compare the hash, then:</p>
+<pre><code class="language-python">from pathlib import Path
+from deep_research_client.claims import ClaimSet
+
+claims = ClaimSet.model_validate_json(Path(&quot;report.claims.json&quot;).read_text())
+assert claims.mismatched_spans(Path(&quot;report.md&quot;).read_text(encoding=&quot;utf-8&quot;)) == []
+</code></pre>
+<p><code>extractor</code> records the extractor, and for model-based extraction the model and
+prompt version, so two sets made differently are never compared unknowingly.</p>
+<h3 id="relation-to-linkml-reference-validator">Relation to linkml-reference-validator</h3>
+<p>Slots that mean a standard term declare it: a span's <code>text</code>, <code>start</code> and <code>end</code>
+are the Web Annotation <code>oa:exact</code>, <code>oa:start</code> and <code>oa:end</code>, a citation's
+<code>reference_id</code> is <code>dcterms:references</code>, and a source's <code>title</code> is
+<code>dcterms:title</code>. These are the URIs linkml-reference-validator finds excerpt,
+reference and title fields by. It checks an excerpt against a reference only
+when one class holds both, and no class here does: a span is the source's own
+words, not a quote from the work it cites, so it must not be validated as one.</p>
+<h3 id="relation-to-ontogpt">Relation to OntoGPT</h3>
+<p><code>subject</code>, <code>predicate</code>, <code>object</code>, <code>qualifier</code>, <code>subject_qualifier</code>,
+<code>object_qualifier</code> and <code>negated</code> are named as in OntoGPT's <code>Triple</code> and
+<code>ScientificClaim</code>, and <code>EntityMention</code> mirrors its <code>NamedEntity</code>, so claims
+convert between the two directly. Two differences are deliberate:</p>
+<ul>
+<li><strong>Every claim has its own span.</strong> It is established by locating the quote,
+  not by searching for an entity label after the fact.</li>
+<li><strong>Offsets are end-exclusive integers.</strong> OntoGPT uses inclusive <code>"start:end"</code>
+  strings.</li>
+</ul>
+<h2 id="what-is-not-here-yet">What is not here yet</h2>
+<ul>
+<li><strong>Alignment and relation labels</strong> across two claim sets (<code>IDENTICAL</code>,
+  <code>SUBSUMING</code>, <code>CONTRADICTORY</code>...), rubric aggregation and verification. These
+  are the later parts of issue #43, and they consume these sets.</li>
+<li><strong>Checking a claim against the work it cites.</strong>
+  <code>deep_research_client.claims.verification.verify_claims</code> is a stub that
+  raises <code>NotImplementedError</code>; its module docstring has the plan, which reuses
+  linkml-reference-validator's reference fetching and caching.</li>
+<li><strong>Ontology grounding</strong> of entities in reports beyond CURIEs written in the
+  text. An entity is grounded when the report or the model gives an identifier;
+  a pluggable annotator is future work.</li>
+<li><strong>Publication identifier normalisation.</strong> Citations carry the marker as
+  written, plus a PMID or DOI where one is readable; fuller normalisation is
+  issue #41.</li>
 </ul>
 
 

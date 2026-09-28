@@ -529,6 +529,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/extract-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Extract Claims
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../how-to/cache/" class="md-nav__link">
         
   
@@ -1330,6 +1353,30 @@
   <a href="#examples_11" class="md-nav__link">
     <span class="md-ellipsis">
       Examples
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="claims">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#claims-extract" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims extract
     </span>
   </a>
   
@@ -2244,6 +2291,30 @@
   <a href="#examples_11" class="md-nav__link">
     <span class="md-ellipsis">
       Examples
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="claims">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#claims-extract" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims extract
     </span>
   </a>
   
@@ -3595,6 +3666,80 @@ flags above.</p>
 tell a keyless endpoint from one that checks keys, so it sends a placeholder and
 says so. A local server accepts it; a remote proxy that does check will answer
 401 on every judge call.</p>
+<h3 id="claims">claims</h3>
+<p>Extract the claims a source makes, with provenance, without judging whether
+they are true. See <a href="../../how-to/extract-claims/">Extract Claims</a>.</p>
+<h4 id="claims-extract">claims extract</h4>
+<pre><code class="language-bash">deep-research-client claims extract SOURCE [OPTIONS]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SOURCE</code></td>
+<td>A markdown report, or a YAML/JSON document</td>
+</tr>
+<tr>
+<td><code>--format TEXT</code></td>
+<td><code>auto</code> (default), <code>markdown</code>, <code>dismech</code>, <code>gene-review</code> or <code>structured</code></td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Write the claim set here; <code>.yaml</code>/<code>.yml</code> writes YAML, anything else JSON. Without it, JSON goes to stdout</td>
+</tr>
+<tr>
+<td><code>--llm-backend TEXT</code></td>
+<td><code>openai</code> (default): any OpenAI-compatible API. <code>claude-code</code>: the local <code>claude</code> CLI, with no API key</td>
+</tr>
+<tr>
+<td><code>--llm-model TEXT</code></td>
+<td>Model that decomposes prose into claims (default: <code>gpt-4o-mini</code>, or <code>sonnet</code> with <code>--llm-backend claude-code</code>)</td>
+</tr>
+<tr>
+<td><code>--llm-base-url TEXT</code></td>
+<td>Base URL of an OpenAI-compatible API, e.g. CBORG or a local server. <code>openai</code> backend only</td>
+</tr>
+<tr>
+<td><code>--llm-api-key-env TEXT</code></td>
+<td>Env var holding the API key (default: <code>OPENAI_API_KEY</code>). <code>openai</code> backend only</td>
+</tr>
+<tr>
+<td><code>--concurrency INT</code></td>
+<td>Model requests in flight at once (default: 4)</td>
+</tr>
+<tr>
+<td><code>--llm-max-tokens INT</code></td>
+<td>Reply budget per section (default: 4096). A reply cut off at it is an error</td>
+</tr>
+<tr>
+<td><code>--citations PATH</code></td>
+<td>A report's separate citations file, from <code>research --separate-citations</code>. Default: <code>&lt;report&gt;.citations.md</code> or <code>&lt;report&gt;.md.citations.md</code> beside the report, if present</td>
+</tr>
+</tbody>
+</table>
+<p>Markdown and generic YAML/JSON prose need a model; curated dismech and
+ai-gene-review files do not, and run with no key. <code>--llm-base-url</code> without a
+key sends a placeholder, as for <code>eval score</code>: a local server accepts it, and
+an endpoint that checks keys answers 401. <code>--llm-backend claude-code</code> needs
+<code>claude</code> on PATH and logged in; it cannot set temperature. See
+<a href="../../how-to/extract-claims/#through-claude-code-with-no-api-key">Extract claims</a>.</p>
+<pre><code class="language-bash"># A deep research report, via CBORG
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-base-url https://api.cborg.lbl.gov --llm-api-key-env CBORG_API_KEY \
+  --llm-model &lt;a model your endpoint serves&gt;
+
+# A deep research report, via a logged-in Claude Code
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-backend claude-code --llm-model opus
+
+# A curated dismech disease file: no model involved
+deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+</code></pre>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>
 <table>

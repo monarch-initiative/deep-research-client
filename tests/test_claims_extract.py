@@ -340,3 +340,23 @@ def test_a_citations_file_is_found_under_either_name(tmp_path, name):
 
     assert find_citations_file(report) == tmp_path / name
     assert find_citations_file(tmp_path / "other.md") is None
+
+
+def test_falcon_s_keyed_citations_resolve_through_its_reference_list():
+    """Falcon cites by key or author-year; the DOI is in its Key references list at the end."""
+    report = (
+        "## Output\n\n## Report\n\n### Immunology\n\n"
+        "Thymic hypoplasia causes T cell deficiency (mustillo2023clinicalpracticeguidelines pages 16-17).\n\n"
+        "## Key references (URLs in evidence)\n"
+        "- Mustillo et al., 2023. J Clin Immunol. https://doi.org/10.1007/s10875-022-01418-y "
+        "(mustillo2023clinicalpracticeguidelines pages 1-2)\n"
+        "- Biggs et al., 2023. Curr Allergy Asthma Rep. https://doi.org/10.1007/s11882-023-01071-4\n"
+    )
+    (unit,) = markdown_units(report)
+    reply = ('{"claims": [{"claim": "Thymic hypoplasia causes T cell deficiency.",'
+             ' "quote": "Thymic hypoplasia causes T cell deficiency",'
+             ' "citations": ["mustillo2023clinicalpracticeguidelines pages 16-17"]}]}')
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [c.reference_id for c in claim.citations] == ["DOI:10.1007/s10875-022-01418-y"]

@@ -174,6 +174,13 @@ not attached on the model's say-so:
   in `[Figure 3]`.
 - A claim with no span (`UNANCHORED`) gets no citations.
 
+A marker that names no identifier itself, such as Falcon's key
+(`mustillo2023clinicalpracticeguidelines pages 16-17`) or an author and year
+(`Soster 2023`), is looked up in the report's reference entries, numbered or
+not: by the key, or by the first author's surname and the year. The
+identifier is taken only when every matching entry that names one names the
+same one, so an ambiguous surname resolves to nothing.
+
 A numbered marker such as `[2]` is resolved through the report's own citation
 list to a PMID or DOI where it names one. A report written with
 `research --separate-citations` keeps that list in a file of its own: pass it

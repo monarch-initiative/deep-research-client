@@ -7,7 +7,7 @@ pure function of text and can be tested on a recorded reply without a model.
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
@@ -68,6 +68,8 @@ class TextUnit:
         context: Text shown to the extractor before the unit to make it
             readable, but not part of it: the header of a table the unit was
             cut from. Nothing is quoted or anchored in it.
+        references: Every entry of the report's reference lists, numbered or
+            not, for resolving a marker by key or by author and year.
 
     >>> TextUnit(text="abc", start=0, end=3).body
     'abc'
@@ -81,6 +83,7 @@ class TextUnit:
     bibliography: Mapping[int, str] = field(default_factory=dict)
     section_citation: Optional[CitationHandle] = None
     context: Optional[str] = None
+    references: tuple[str, ...] = ()
 
     @property
     def body(self) -> str:
@@ -152,8 +155,49 @@ def _marker_present(marker: str, body: str) -> bool:
     return marker.strip() in body
 
 
+#: A citation key as Falcon writes them: surname, year, title words run
+#: together, as in "mustillo2023clinicalpracticeguidelines".
+_CITATION_KEY = re.compile(r"(?<![\w.])([^\W\d_]{2,}\d{4}[^\s(),;:]*)")
+
+#: An author-year citation: a surname, then a year, as in "Soster 2023" or
+#: "Mustillo et al., 2023".
+_AUTHOR_YEAR = re.compile(r"^\(?\s*([^\W\d_][^\W\d_'’-]+)\b.*?\b((?:19|20)\d{2})\b")
+
+
+def _identifier_from_references(marker: str, references: Sequence[str]) -> Optional[str]:
+    """The identifier a marker names through the report's reference entries.
+
+    A marker is matched by the citation key in it, or else by its first
+    author's surname and year. The identifier is taken only when every
+    matching entry that names one names the same one: an ambiguous surname
+    resolves to nothing rather than to a guess.
+
+    >>> refs = ["- Mustillo et al., 2023. J Clin Immunol. https://doi.org/10.1007/s10875-022-01418-y "
+    ...         "(mustillo2023clinicalpracticeguidelines pages 1-2)",
+    ...         "- Soster et al., 2023. Front Genet. https://doi.org/10.3389/fgene.2023.1146669"]
+    >>> _identifier_from_references("mustillo2023clinicalpracticeguidelines pages 16-17", refs)
+    'DOI:10.1007/s10875-022-01418-y'
+    >>> _identifier_from_references("Soster 2023", refs)
+    'DOI:10.3389/fgene.2023.1146669'
+    >>> _identifier_from_references("Biggs 2023", refs) is None
+    True
+    """
+    key = _CITATION_KEY.search(marker)
+    if key is not None:
+        matching = [entry for entry in references if key.group(1).lower() in entry.lower()]
+    else:
+        author_year = _AUTHOR_YEAR.match(marker.strip())
+        if author_year is None:
+            return None
+        surname, year = author_year.group(1).lower(), author_year.group(2)
+        matching = [entry for entry in references if surname in entry.lower() and year in entry]
+    found = {ids[0].normalized_id for entry in matching if (ids := find_reference_ids(entry))}
+    return found.pop() if len(found) == 1 else None
+
+
 def resolve_citations(
     markers: list[Any], body: str, bibliography: Mapping[int, str],
+    references: Sequence[str] = (),
 ) -> list[CitationHandle]:
     """Keep the citation markers that are really there, and resolve them.
 
@@ -161,6 +205,8 @@ def resolve_citations(
 
     A marker the extractor reports but the text does not contain is dropped:
     a citation is a fact about the source, not something to take on trust.
+    A marker that names no identifier itself, or through its numbered entry,
+    is looked up in the report's reference entries by key or author and year.
     One reference gives one handle: a later marker that resolves to an
     identifier already kept (``[2]``, then its URL) is skipped.
 
@@ -168,6 +214,7 @@ def resolve_citations(
         markers: Markers as the extractor reported them.
         body: The unit text the claim came from.
         bibliography: Numbered reference entries, for resolving ``[n]``.
+        references: All reference entries, for resolving keys and author-year.
 
     Returns:
         One handle per distinct marker present, with a normalised identifier
@@ -203,7 +250,9 @@ def resolve_citations(
         if numbered and int(numbered.group(1)) in bibliography:
             resolvable = bibliography[int(numbered.group(1))]
         found = find_reference_ids(resolvable)
-        reference_id = found[0].normalized_id if found else None
+        reference_id = (
+            found[0].normalized_id if found else _identifier_from_references(marker, references)
+        )
         if reference_id is not None and reference_id in {h.reference_id for h in handles}:
             continue
         url = _URL.search(resolvable)
@@ -438,6 +487,7 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             entry.get("citations") or [],
             citation_window(unit, span) if span is not None else "",
             unit.bibliography,
+            unit.references,
         )
         # A section headed by a cited work attributes all of it to that work.
         # Not for an unlocated claim, which may not come from the section, and

@@ -6,6 +6,7 @@ for prose inside a structured document, the path of the field.
 """
 
 import re
+from dataclasses import replace
 from typing import Any, Iterator, Mapping, NamedTuple, Optional
 
 from .models import CitationHandle
@@ -433,6 +434,10 @@ def markdown_units(
     bibliography = _bibliography(text, start, end, citations_file)
 
     units: list[TextUnit] = []
+    # Entries of the reference lists the loop skips, for resolving markers
+    # by key or author-year. The lists usually close the report, after the
+    # units that cite them, so they are given to the units at the end.
+    reference_entries: list[str] = list(bibliography.values())
     stack: list[_OpenHeading] = []
     cursor = start
     headings = _headings(text, start, end)
@@ -443,6 +448,11 @@ def markdown_units(
         section = " > ".join(open_heading.title for open_heading in stack) or None
         in_references = any(open_heading.references for open_heading in stack)
         cited = next((h.citation for h in reversed(stack) if h.citation is not None), None)
+        if in_references:
+            reference_entries += [
+                line.strip() for line in text[cursor:heading_start].splitlines()
+                if _ENTRY_LINE.match(line)
+            ]
         if not in_references and text[cursor:heading_start].strip():
             for piece_start, piece_end in _split_long(cursor, heading_start, text, max_chars):
                 if text[piece_start:piece_end].strip():
@@ -465,7 +475,8 @@ def markdown_units(
                 _is_reference_list(title, own_text),
             ))
         cursor = heading_end
-    return units
+    references = tuple(dict.fromkeys(reference_entries))
+    return [replace(unit, references=references) for unit in units]
 
 
 def structured_units(data: Any, min_words: int = 6) -> list[TextUnit]:

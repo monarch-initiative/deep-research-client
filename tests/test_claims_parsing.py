@@ -531,3 +531,17 @@ def test_a_section_citation_with_no_number_does_not_match_every_identifier():
         ("PMID:12345678", "PMID:12345678", "SENTENCE"),
         ("Smith 2020", "PMID:41258631", "SECTION"),
     ]
+
+
+def test_a_linked_number_with_no_list_entry_resolves_through_its_link():
+    """OpenScientist's evidence table leads each row with [PMID](pubmed URL); no list numbers them."""
+    text = "| [23799583](https://pubmed.ncbi.nlm.nih.gov/23799583/) | TBX1 as principal driver | Review |\n"
+    unit = TextUnit(text=text, start=0, end=len(text), section="Evidence Base")
+    reply = _reply({"claim": "TBX1 is the principal driver.", "quote": "TBX1 as principal driver",
+                    "citations": ["23799583"]})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.reference_id, c.url) for c in claim.citations] == [
+        ("23799583", "PMID:23799583", "https://pubmed.ncbi.nlm.nih.gov/23799583/"),
+    ]

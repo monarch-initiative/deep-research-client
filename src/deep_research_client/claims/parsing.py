@@ -249,6 +249,12 @@ def resolve_citations(
         resolvable = marker
         if numbered and int(numbered.group(1)) in bibliography:
             resolvable = bibliography[int(numbered.group(1))]
+        elif numbered:
+            # No list entry, but the text may write it as a link, as in
+            # "[23799583](https://pubmed.ncbi.nlm.nih.gov/23799583/)".
+            linked = re.search(rf"\[\s*{numbered.group(1)}\s*\]({LINK_TARGET})", body)
+            if linked is not None:
+                resolvable = linked.group(1)[1:-1]
         found = find_reference_ids(resolvable)
         reference_id = (
             found[0].normalized_id if found else _identifier_from_references(marker, references)

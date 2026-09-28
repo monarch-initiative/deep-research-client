@@ -77,26 +77,48 @@ def _body_start(text: str) -> int:
     return 0 if closing < 0 else closing + len("\n---\n")
 
 
-def _bibliography(text: str, start: int) -> dict[int, str]:
-    """Numbered entries of the last ``## Citations`` section, by number.
+def _numbered_entries(text: str, heading: re.Match[str]) -> dict[int, str]:
+    """The numbered list under a heading, up to the next heading, by number."""
+    following = next(iter(_headings(text, heading.end())), None)
+    section = text[heading.end():following.start() if following else len(text)]
+    return {int(m.group(1)): m.group(2) for m in _NUMBERED_ENTRY.finditer(section)}
+
+
+def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int, str]:
+    """The numbered references ``[n]`` markers resolve through, by number.
+
+    This client's own ``## Citations`` list, which follows the answer, comes
+    first. When it is missing or empty, the provider's own reference list
+    inside the answer (``References``, ``Sources``... at any level) is used,
+    so a provider that numbers its own sources still has them resolved.
 
     Args:
         text: The report.
-        start: Offset to search from.
+        start: Where the answer begins.
+        end: Where it ends (exclusive); the end of ``text`` if None.
 
     Returns:
-        Entry text by reference number; empty when there is no such section.
+        Entry text by reference number; empty when neither list exists.
+
+    >>> own = "# Title\\n\\nFBN1 [1].\\n\\n### References\\n\\n1. Dietz HC. PMID: 1852208\\n"
+    >>> _bibliography(own, 0)
+    {1: 'Dietz HC. PMID: 1852208'}
+    >>> both = "## Output\\n\\nA [1].\\n\\n## Sources\\n\\n1. Theirs\\n\\n## Citations\\n\\n1. Ours\\n"
+    >>> _bibliography(both, 0, both.index("## Citations"))
+    {1: 'Ours'}
     """
-    matches = [
+    stop = len(text) if end is None else end
+    ours = [
         m for m in _headings(text, start)
         if len(m.group(1)) == 2 and m.group(2).strip().lower() == "citations"
     ]
-    if not matches:
-        return {}
-    section_start = matches[-1].end()
-    following = next(iter(_headings(text, section_start)), None)
-    section = text[section_start:following.start() if following else len(text)]
-    return {int(m.group(1)): m.group(2) for m in _NUMBERED_ENTRY.finditer(section)}
+    if ours and (entries := _numbered_entries(text, ours[-1])):
+        return entries
+    theirs = [
+        m for m in _headings(text, start, stop)
+        if m.group(2).rstrip(":").strip().lower() in _REFERENCE_SECTIONS
+    ]
+    return _numbered_entries(text, theirs[-1]) if theirs else {}
 
 
 def _answer_region(text: str) -> tuple[int, int]:
@@ -193,7 +215,7 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     [('Papers > [1] A study', 'PMID:41258631'), ('Papers > [1] A study > Methods', 'PMID:41258631'), ('Papers > Notes', None)]
     """
     start, end = _answer_region(text)
-    bibliography = _bibliography(text, start)
+    bibliography = _bibliography(text, start, end)
 
     units: list[TextUnit] = []
     # Each open heading: its level, its title, and the cited work it names.

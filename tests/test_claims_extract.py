@@ -28,6 +28,7 @@ from deep_research_client.claims.extract import (
 )
 from deep_research_client.claims.llm import build_prompt
 from deep_research_client.claims.models import content_sha256
+from deep_research_client.claims.parsing import claims_from_reply
 from deep_research_client.claims.units import markdown_units, structured_units
 
 INPUT = Path(__file__).parent / "input" / "claims"
@@ -258,3 +259,18 @@ def test_a_paper_s_identifier_comes_from_its_own_lines_not_a_subsection_s():
     assert [u.section for u in units] == ["Papers > [1] A study", "Papers > [1] A study > Related work"]
     assert all(u.section_citation.marker == "[1]" for u in units), "the subsection is still paper 1's"
     assert all(u.section_citation.reference_id is None for u in units)
+
+
+def test_a_provider_s_own_reference_list_resolves_its_markers():
+    """With no client Citations section, [n] resolves through the provider's References."""
+    report = (
+        "## Output\n\n# Marfan\n\nMarfan syndrome is caused by FBN1 variants [1].\n\n"
+        "### References\n\n1. Dietz HC et al. Nature. 1991. PMID: 1852208\n"
+    )
+    (unit,) = markdown_units(report)
+    reply = ('{"claims": [{"claim": "FBN1 variants cause Marfan syndrome.",'
+             ' "quote": "Marfan syndrome is caused by FBN1 variants", "citations": ["[1]"]}]}')
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.reference_id) for c in claim.citations] == [("[1]", "PMID:1852208")]

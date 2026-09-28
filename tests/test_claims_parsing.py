@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 from deep_research_client.claims.anchoring import locate_quote
-from deep_research_client.claims.models import AnchorStatus, CitationStatus, ClaimBasis, ClaimTopic
+from deep_research_client.claims.models import (
+    AnchorStatus,
+    CitationHandle,
+    CitationScope,
+    CitationStatus,
+    ClaimBasis,
+    ClaimTopic,
+)
 from deep_research_client.claims.parsing import (
     TextUnit,
     UnreadableReplyError,
@@ -496,3 +503,20 @@ def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifie
     assert [(c.marker, c.scope, c.reference_id) for c in claim.citations] == [
         (marker, "SENTENCE", "PMID:41258631"),
     ], "one handle, with the section's identifier"
+
+
+def test_a_section_citation_with_no_number_does_not_match_every_identifier():
+    """A hand-built section citation need not be numbered; a PMID in the sentence is not it."""
+    body = "- Summary: Mice lacking X live longer (PMID:12345678).\n"
+    text = f"### Smith 2020\n{body}"
+    section = CitationHandle(marker="Smith 2020", reference_id="PMID:41258631", scope=CitationScope.SECTION)
+    unit = TextUnit(text=text, start=len("### Smith 2020\n"), end=len(text), section="Smith 2020",
+                    section_citation=section)
+    reply = _reply({"claim": "A claim.", "quote": "Mice lacking X live longer", "citations": ["PMID:12345678"]})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.reference_id, c.scope) for c in claim.citations] == [
+        ("PMID:12345678", "PMID:12345678", "SENTENCE"),
+        ("Smith 2020", "PMID:41258631", "SECTION"),
+    ]

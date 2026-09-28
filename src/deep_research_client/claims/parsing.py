@@ -437,15 +437,21 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         # not again when the sentence already cites the same work.
         section = unit.section_citation
         # Markers are compared by the number they cite, since a model writes
-        # the section's own "[1]" as "[1]", "[ 1 ]" or "[1](url)" alike.
+        # the section's own "[1]" as "[1]", "[ 1 ]" or "[1](url)" alike. A
+        # section citation with no number (built by hand) matches none: None
+        # would otherwise equal every PMID or DOI marker's None.
         section_number = _cited_number(section.marker) if section is not None else None
+
+        def repeats_section_marker(handle: CitationHandle) -> bool:
+            return section_number is not None and _cited_number(handle.marker) == section_number
+
         if section is not None and section.reference_id is not None:
             # A sentence that repeats the section's own marker cites the same
             # work. Its bibliography entry may give no identifier (Asta's
             # hold only a URL) while the section's own lines do.
             filled = [
                 c.model_copy(update={"reference_id": section.reference_id, "url": c.url or section.url})
-                if _cited_number(c.marker) == section_number and c.reference_id is None else c
+                if repeats_section_marker(c) and c.reference_id is None else c
                 for c in citations
             ]
             # Filling one in may repeat an identifier the sentence also wrote.
@@ -457,7 +463,7 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
                 if c.reference_id is not None:
                     seen.add(c.reference_id)
         if span is not None and section is not None and not any(
-            _cited_number(c.marker) == section_number
+            repeats_section_marker(c)
             or (section.reference_id is not None and c.reference_id == section.reference_id)
             for c in citations
         ):

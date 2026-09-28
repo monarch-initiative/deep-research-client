@@ -99,7 +99,10 @@ A report written by `deep-research-client research` is read from its
 `## Output` section. The question, the numbered `## Citations` list and any
 generated validation sections are not claims the report makes, so they are
 skipped. So is a reference list the provider wrote inside its answer (a
-`References`, `Sources` or `Bibliography` heading, and anything under it). Some providers
+`References`, `Sources` or `Bibliography` heading, and anything under it), and
+any heading that contains such a word when the text under it is mostly list
+entries naming a URL, DOI or PMID, such as Falcon's `Key references (URLs in
+evidence)`. A heading like `Evidence sources` over prose is kept. Some providers
 (Falcon) open their answer by repeating the whole question; when the answer
 holds the question's first line and then its closing lines, everything up to
 there is the question and is skipped too. Plain markdown with no `## Output` is

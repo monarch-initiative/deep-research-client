@@ -6,7 +6,7 @@ for prose inside a structured document, the path of the field.
 """
 
 import re
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, NamedTuple, Optional
 
 from .models import CitationHandle
 from .parsing import TextUnit, section_citation
@@ -36,6 +36,52 @@ _REFERENCE_SECTIONS = frozenset({
     "references", "sources", "bibliography", "citations", "works cited",
     "literature cited", "further reading",
 })
+
+#: Words that make a heading a reference list when the list under it is one,
+#: as in "Key references (URLs in evidence)". The content check matters:
+#: "Evidence sources (patient-level vs aggregated)" is prose, not a list.
+_REFERENCE_WORDS = re.compile(r"\b(?:references|sources|bibliography|citations|works cited)\b", re.IGNORECASE)
+
+#: A line that names a reference by identifier or link.
+_IDENTIFIED = re.compile(r"https?://|\bdoi\b|\bPMID\b|\bPMC\d", re.IGNORECASE)
+
+#: A list item or numbered entry.
+_ENTRY_LINE = re.compile(r"^\s*(?:[-*+]\s+|\d+\.\s+|\[\d+\]:?\s+)")
+
+
+def _is_reference_list(title: str, own_text: str) -> bool:
+    """Whether a heading and the text under it are a reference list.
+
+    A heading named as one ("References", "Sources"...) always is. A heading
+    that only contains such a word is one when at least half its lines are
+    entries and at least half of those name a URL, DOI or PMID.
+
+    >>> _is_reference_list("Sources", "Anything.")
+    True
+    >>> refs = "- Mustillo 2023. https://doi.org/10.1/x\\n- Biggs 2023. https://doi.org/10.1/y\\n"
+    >>> _is_reference_list("Key references (URLs in evidence)", refs)
+    True
+    >>> _is_reference_list("1.4 Evidence sources (patient-level vs aggregated)", "Most evidence is aggregated.")
+    False
+    """
+    if title.rstrip(":").strip().lower() in _REFERENCE_SECTIONS:
+        return True
+    if not _REFERENCE_WORDS.search(title):
+        return False
+    lines = [line for line in own_text.splitlines() if line.strip()]
+    entries = [line for line in lines if _ENTRY_LINE.match(line)]
+    identified = [line for line in entries if _IDENTIFIED.search(line)]
+    return bool(lines) and 2 * len(entries) >= len(lines) and 2 * len(identified) >= len(entries)
+
+
+class _OpenHeading(NamedTuple):
+    """A heading whose section the loop is inside."""
+
+    level: int
+    title: str
+    citation: Optional[CitationHandle]
+    references: bool
+
 
 #: Reference lists that are not what an answer's "[n]" markers point at.
 #: They are still skipped as units.
@@ -346,19 +392,16 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     bibliography = _bibliography(text, start, end)
 
     units: list[TextUnit] = []
-    # Each open heading: its level, its title, and the cited work it names.
-    stack: list[tuple[int, str, Optional[CitationHandle]]] = []
+    stack: list[_OpenHeading] = []
     cursor = start
     headings = _headings(text, start, end)
     boundaries = [(h.start(), h.end(), len(h.group(1)), h.group(2).strip()) for h in headings]
     boundaries.append((end, end, 0, ""))
 
     for index, (heading_start, heading_end, level, title) in enumerate(boundaries):
-        section = " > ".join(name for _, name, _ in stack) or None
-        in_references = any(
-            name.rstrip(":").strip().lower() in _REFERENCE_SECTIONS for _, name, _ in stack
-        )
-        cited = next((c for _, _, c in reversed(stack) if c is not None), None)
+        section = " > ".join(open_heading.title for open_heading in stack) or None
+        in_references = any(open_heading.references for open_heading in stack)
+        cited = next((h.citation for h in reversed(stack) if h.citation is not None), None)
         if not in_references and text[cursor:heading_start].strip():
             for piece_start, piece_end in _split_long(cursor, heading_start, text, max_chars):
                 if text[piece_start:piece_end].strip():
@@ -374,10 +417,12 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
             # other papers' identifiers. The citation still covers the
             # subsections, through the stack.
             own_end = boundaries[index + 1][0]
-            stack = [entry for entry in stack if entry[0] < level]
-            stack.append((level, title, section_citation(
-                title, text[heading_end:own_end], bibliography,
-            )))
+            own_text = text[heading_end:own_end]
+            stack = [entry for entry in stack if entry.level < level]
+            stack.append(_OpenHeading(
+                level, title, section_citation(title, own_text, bibliography),
+                _is_reference_list(title, own_text),
+            ))
         cursor = heading_end
     return units
 

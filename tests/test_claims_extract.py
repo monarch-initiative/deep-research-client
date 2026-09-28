@@ -294,3 +294,18 @@ def test_a_long_table_is_split_between_rows_and_each_piece_keeps_its_header():
              ' "quote": "| Phenotype | Frequency | Source |"}]}')
     (claim,) = claims_from_reply(reply, units[1])
     assert claim.anchor_status == AnchorStatus.UNANCHORED, "the header is context, not the unit's text"
+
+
+def test_a_reference_list_is_known_by_its_entries_not_only_its_name():
+    """Falcon's "Key references" list is skipped; its "Evidence sources" prose is not."""
+    report = (
+        "## Output\n\n# Report\n\n### 1.4 Evidence sources (patient-level vs aggregated)\n\n"
+        "Most evidence comes from aggregated cohort studies.\n\n"
+        "## Key references (URLs in evidence)\n"
+        "- Mustillo et al., 2023. https://doi.org/10.1007/s10875-022-01418-y\n"
+        "- Biggs et al., 2023. https://doi.org/10.1007/s11882-023-01071-4\n"
+    )
+
+    assert [u.section for u in markdown_units(report)] == [
+        "Report > 1.4 Evidence sources (patient-level vs aggregated)",
+    ]

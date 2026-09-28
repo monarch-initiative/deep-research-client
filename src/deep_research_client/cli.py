@@ -3920,6 +3920,7 @@ def claims_extract(
     import yaml
 
     from .claims import SourceFormat, aextract_claims, needs_llm, resolve_format
+    from .claims.models import ids_by_section
     from .claims.llm import DEFAULT_MODEL
 
     if not source.is_file():
@@ -3991,8 +3992,7 @@ def claims_extract(
     if conflicting:
         _warn(
             f"{len(conflicting)} claims are marked as background knowledge but carry "
-            f"a citation ({', '.join(c.id for c in conflicting[:10])}"
-            f"{', ...' if len(conflicting) > 10 else ''}); either the basis or the "
+            f"a citation ({ids_by_section(conflicting)}); either the basis or the "
             f"citation the model attached to them is wrong."
         )
     logger.info(f"Extracted {len(claims.claim_list)} claims from {source}")

@@ -244,3 +244,17 @@ async def test_a_real_model_decomposes_the_report_into_anchored_claims(backend):
     assert len(anchored) >= 0.8 * len(claims.claim_list)
     assert claims.mismatched_spans(text) == []
     assert any(c.negated for c in claims.claim_list if "TGFBR2" in c.claim_text)
+
+
+def test_a_paper_s_identifier_comes_from_its_own_lines_not_a_subsection_s():
+    """A "Related work" list under a paper names other papers; it does not identify this one."""
+    listing = (
+        "# Papers\n\n### [1] A study\n\n- Year: 2025\n\n"
+        "#### Related work\n\n- PMID: 12345678\n\nMice live longer.\n"
+    )
+
+    units = markdown_units(listing)
+
+    assert [u.section for u in units] == ["Papers > [1] A study", "Papers > [1] A study > Related work"]
+    assert all(u.section_citation.marker == "[1]" for u in units), "the subsection is still paper 1's"
+    assert all(u.section_citation.reference_id is None for u in units)

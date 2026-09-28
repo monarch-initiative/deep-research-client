@@ -218,13 +218,14 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
                         section_citation=cited,
                     ))
         if level:
-            # The heading's section runs to the next heading at its level or above.
-            extent_end = next(
-                (b[0] for b in boundaries[index + 1:] if 0 < b[2] <= level), end,
-            )
+            # The work's own identifier lines sit under its heading, before
+            # any subheading: a subsection such as "Related work" may list
+            # other papers' identifiers. The citation still covers the
+            # subsections, through the stack.
+            own_end = boundaries[index + 1][0]
             stack = [entry for entry in stack if entry[0] < level]
             stack.append((level, title, section_citation(
-                title, text[heading_end:extent_end], bibliography,
+                title, text[heading_end:own_end], bibliography,
             )))
         cursor = heading_end
     return units

@@ -217,7 +217,7 @@ def section_citation(
 
     Args:
         heading: The heading's text, without the leading ``#``.
-        section_text: The whole section under the heading.
+        section_text: The section's own text, up to its first subheading.
         bibliography: Numbered reference entries, for resolving ``[n]``.
 
     Returns:

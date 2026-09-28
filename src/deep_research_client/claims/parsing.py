@@ -65,6 +65,9 @@ class TextUnit:
         section_citation: The cited work the unit's section is headed by, if
             any (see :func:`section_citation`). Every located claim in the
             unit is attributed to it.
+        context: Text shown to the extractor before the unit to make it
+            readable, but not part of it: the header of a table the unit was
+            cut from. Nothing is quoted or anchored in it.
 
     >>> TextUnit(text="abc", start=0, end=3).body
     'abc'
@@ -77,6 +80,7 @@ class TextUnit:
     source_path: Optional[str] = None
     bibliography: Mapping[int, str] = field(default_factory=dict)
     section_citation: Optional[CitationHandle] = None
+    context: Optional[str] = None
 
     @property
     def body(self) -> str:

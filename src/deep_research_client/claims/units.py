@@ -245,16 +245,41 @@ def report_title(text: str) -> Optional[str]:
 
 
 def _split_long(start: int, end: int, text: str, max_chars: int) -> Iterator[tuple[int, int]]:
-    """Split ``text[start:end]`` at paragraph breaks into pieces of at most max_chars.
+    r"""Split ``text[start:end]`` into pieces of at most max_chars.
 
-    A single paragraph longer than max_chars is kept whole rather than cut
-    mid-sentence.
+    Pieces break at paragraph breaks. A piece still too long is broken
+    between the rows of a table, which has no paragraph breaks: a 12 KB table
+    sent whole can need a reply longer than any budget. A single paragraph
+    longer than max_chars is kept whole rather than cut mid-sentence.
+
+    >>> table = "| Gene | Role |\n|---|---|\n" + "".join(f"| G{i} | role {i} |\n" for i in range(40))
+    >>> pieces = list(_split_long(0, len(table), table, 200))
+    >>> len(pieces) > 1, all(b - a <= 200 for a, b in pieces), pieces[-1][1] == len(table)
+    (True, True, True)
+    >>> [a for a, _ in pieces[1:]] == [b for _, b in pieces[:-1]], table[pieces[1][0]:].startswith("| G")
+    (True, True)
+    >>> text = "One long paragraph " * 20
+    >>> list(_split_long(0, len(text), text, 100))
+    [(0, 380)]
     """
+    for piece_start, piece_end in _pack(start, end, text, max_chars, r"\n[ \t]*\n"):
+        if piece_end - piece_start <= max_chars:
+            yield piece_start, piece_end
+        else:
+            yield from _pack(piece_start, piece_end, text, max_chars, _ROW_BREAK)
+
+
+#: A line break between two table rows.
+_ROW_BREAK = r"(?<=\|)[ \t]*\n(?=[ \t]*\|)"
+
+
+def _pack(start: int, end: int, text: str, max_chars: int, breaks: str) -> Iterator[tuple[int, int]]:
+    """Group ``text[start:end]`` into pieces of at most max_chars, cut only at ``breaks``."""
     piece_start = start
     last_break = None
-    for match in re.finditer(r"\n[ \t]*\n", text[start:end]):
+    for match in re.finditer(breaks, text[start:end]):
         boundary = start + match.end()
-        if boundary - piece_start > max_chars and last_break is not None:
+        if boundary - piece_start > max_chars and last_break is not None and last_break > piece_start:
             yield piece_start, last_break
             piece_start = last_break
         last_break = boundary
@@ -262,6 +287,28 @@ def _split_long(start: int, end: int, text: str, max_chars: int) -> Iterator[tup
         yield piece_start, last_break
         piece_start = last_break
     yield piece_start, end
+
+
+def _table_header(text: str, position: int) -> Optional[str]:
+    r"""The header of the table a piece starting at ``position`` is cut from.
+
+    Returns the table's first two lines (column names and the ``|---|``
+    rule) when the line before ``position`` is a table row, else None.
+
+    >>> table = "Intro.\n\n| Gene | Role |\n|---|---|\n| A | x |\n| B | y |\n"
+    >>> _table_header(table, table.index("| B"))
+    '| Gene | Role |\n|---|---|'
+    >>> _table_header(table, table.index("| Gene")) is None
+    True
+    """
+    before = text[:position].rstrip("\n").split("\n")
+    if not before or not before[-1].lstrip().startswith("|"):
+        return None
+    first = len(before) - 1
+    while first > 0 and before[first - 1].lstrip().startswith("|"):
+        first -= 1
+    header = before[first:first + 2]
+    return "\n".join(header) if len(header) == 2 else None
 
 
 def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[TextUnit]:
@@ -319,6 +366,7 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
                         text=text, start=piece_start, end=piece_end,
                         section=section, bibliography=bibliography,
                         section_citation=cited,
+                        context=_table_header(text, piece_start),
                     ))
         if level:
             # The work's own identifier lines sit under its heading, before

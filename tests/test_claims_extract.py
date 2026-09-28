@@ -274,3 +274,23 @@ def test_a_provider_s_own_reference_list_resolves_its_markers():
     (claim,) = claims_from_reply(reply, unit)
 
     assert [(c.marker, c.reference_id) for c in claim.citations] == [("[1]", "PMID:1852208")]
+
+
+def test_a_long_table_is_split_between_rows_and_each_piece_keeps_its_header():
+    """A table has no paragraph breaks; sent whole, a 12 KB one outran every reply budget."""
+    rows = "".join(f"| Phenotype {i} | {i}% | Review {i} |\n" for i in range(300))
+    report = "## Output\n\n# Report\n\n## Phenotypes\n\n| Phenotype | Frequency | Source |\n|---|---|---|\n" + rows
+
+    units = markdown_units(report, max_chars=2000)
+
+    assert len(units) > 1 and all(len(u.body) <= 2000 for u in units)
+    assert units[0].context is None, "the first piece holds its own header"
+    assert {u.context for u in units[1:]} == {"| Phenotype | Frequency | Source |\n|---|---|---|"}
+    user = build_prompt(units[1])[1]["content"]
+    header_at, text_at = user.index("| Phenotype | Frequency"), user.index("TEXT:")
+    assert header_at < text_at and "| Phenotype | Frequency" not in user[text_at:]
+
+    reply = ('{"claims": [{"claim": "The table has a Frequency column.",'
+             ' "quote": "| Phenotype | Frequency | Source |"}]}')
+    (claim,) = claims_from_reply(reply, units[1])
+    assert claim.anchor_status == AnchorStatus.UNANCHORED, "the header is context, not the unit's text"

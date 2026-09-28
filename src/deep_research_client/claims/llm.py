@@ -114,6 +114,11 @@ def build_prompt(unit: TextUnit) -> list[dict[str, str]]:
         context.append(f"Section: {unit.section}")
     if unit.source_path:
         context.append(f"Field: {unit.source_path}")
+    if unit.context:
+        context.append(
+            "The table TEXT is cut from has this header. It is for reading the "
+            "rows only: it is not part of TEXT, so never quote it.\n" + unit.context
+        )
     header = "\n".join(context)
     body = f"TEXT:\n<<<\n{unit.body}\n>>>"
     return [

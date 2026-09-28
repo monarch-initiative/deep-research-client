@@ -106,7 +106,10 @@ there is the question and is skipped too. Plain markdown with no `## Output` is
 read whole. The claim set's title is the answer's first heading at its highest
 level. Each heading starts a new unit, and
 long sections are split at paragraph breaks. A `#` line inside a code fence is
-code, not a heading.
+code, not a heading. A table has no paragraph breaks, so a long one is split
+between its rows, and each later piece is sent with the table's header as
+context: the model reads the columns from it, but it is not part of the text,
+and a quote taken from it does not anchor.
 
 For each unit the model returns, per claim:
 

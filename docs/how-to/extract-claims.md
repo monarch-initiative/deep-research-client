@@ -102,7 +102,10 @@ skipped. So is a reference list the provider wrote inside its answer (a
 `References`, `Sources` or `Bibliography` heading, and anything under it), and
 any heading that contains such a word when the text under it is mostly list
 entries naming a URL, DOI or PMID, such as Falcon's `Key references (URLs in
-evidence)`. A heading like `Evidence sources` over prose is kept. Some providers
+evidence)`. A heading like `Evidence sources` over prose is kept. The same
+test also skips a section such as `Data sources` whose lines list databases
+with their URLs (`- ClinVar https://...`): it reads as a reference list, so
+claims it makes about those databases are not extracted. Some providers
 (Falcon) open their answer by repeating the whole question; when the answer
 holds the question's first line and then its closing lines, everything up to
 there is the question and is skipped too. Plain markdown with no `## Output` is

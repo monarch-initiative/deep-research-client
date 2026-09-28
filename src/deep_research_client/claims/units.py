@@ -252,20 +252,16 @@ def _answer_region(text: str) -> tuple[int, int]:
     start = _body_start(text)
     level_two = [m for m in _headings(text, start) if len(m.group(1)) == 2]
     question = next((h for h in level_two if h.group(2).strip().lower() == "question"), None)
-    for heading in level_two:
-        if heading.group(2).strip().lower() == "output":
-            if question is not None and question.start() < heading.start():
-                start = _past_echoed_question(
-                    text[question.end():heading.start()], text, heading.end(),
-                )
-            else:
-                start = heading.end()
-            break
+    output = next((h for h in level_two if h.group(2).strip().lower() == "output"), None)
+    if output is not None:
+        start = output.end()
     end = len(text)
     for heading in reversed([h for h in level_two if h.start() >= start]):
         if heading.group(2).strip().lower() not in _SKIPPED_TOP_SECTIONS:
             break
         end = heading.start()
+    if output is not None and question is not None and question.start() < output.start():
+        start = _past_echoed_question(text[question.end():output.start()], text, start, end)
     return start, end
 
 
@@ -274,7 +270,7 @@ def _answer_region(text: str) -> tuple[int, int]:
 _ECHO_TAIL_LINES = 3
 
 
-def _past_echoed_question(question: str, text: str, answer_start: int) -> int:
+def _past_echoed_question(question: str, text: str, answer_start: int, answer_end: int) -> int:
     r"""Where the answer begins, past any repetition of the question.
 
     Some providers (Falcon) open their answer by repeating the whole prompt:
@@ -288,6 +284,7 @@ def _past_echoed_question(question: str, text: str, answer_start: int) -> int:
         question: The text of this client's ``## Question`` section.
         text: The report.
         answer_start: Where the ``## Output`` section's text begins.
+        answer_end: Where the answer ends; the search never passes it.
 
     Returns:
         The offset just past the repeated question, or ``answer_start``.
@@ -300,16 +297,19 @@ def _past_echoed_question(question: str, text: str, answer_start: int) -> int:
     >>> quoting = f"## Question\n{q}## Output\n\n# Template\n\nTBX1 matters.\n"
     >>> _answer_region(quoting)[0] == quoting.index("## Output") + len("## Output")
     True
+    >>> trailing = f"## Question\n{q}## Output\n\n# Template\n\nTBX1 matters.\n\n## Citations\n{q}"
+    >>> _answer_region(trailing)[0] == trailing.index("## Output") + len("## Output")
+    True
     """
     lines = [line.strip() for line in question.splitlines() if line.strip()]
     if len(lines) <= _ECHO_TAIL_LINES:
         return answer_start
-    first = text.find(lines[0], answer_start)
+    first = text.find(lines[0], answer_start, answer_end)
     if first < 0:
         return answer_start
     position = first + len(lines[0])
     for line in lines[-_ECHO_TAIL_LINES:]:
-        found = text.find(line, position)
+        found = text.find(line, position, answer_end)
         if found < 0:
             return answer_start
         position = found + len(line)

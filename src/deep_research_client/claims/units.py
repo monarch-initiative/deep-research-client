@@ -15,9 +15,11 @@ __all__ = ["markdown_units", "structured_units", "report_title"]
 
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
 _FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})", re.MULTILINE)
-#: A numbered reference entry: "1. ...", "[1] ...", or either as a list item.
+#: A numbered reference entry: "1. ...", "[1] ...", a Markdown reference
+#: definition "[1]: ...", or any of them as a list item. Footnotes ("[^1]: ...")
+#: are not read: their markers ("[^1]") are not numeric markers either.
 _NUMBERED_ENTRY = re.compile(
-    r"^\s*(?:[-*+]\s+)?(?:\[(\d+)\]|(\d+)\.)\s+(.+?)\s*$", re.MULTILINE,
+    r"^\s*(?:[-*+]\s+)?(?:\[(\d+)\]:?|(\d+)\.)\s+(.+?)\s*$", re.MULTILINE,
 )
 
 #: Sections this client writes around a provider's answer. The question is the
@@ -87,9 +89,9 @@ def _body_start(text: str) -> int:
 def _numbered_entries(text: str, heading: re.Match[str]) -> dict[int, str]:
     r"""The numbered list under a heading, up to the next heading, by number.
 
-    >>> text = "## Refs\n\n1. Plain\n[2] Bracketed\n- [3] Bulleted\n* 4. Starred\n"
+    >>> text = "## Refs\n\n1. Plain\n[2] Bracketed\n- [3] Bulleted\n* 4. Starred\n[5]: https://x.org/5\n"
     >>> _numbered_entries(text, _headings(text)[0])
-    {1: 'Plain', 2: 'Bracketed', 3: 'Bulleted', 4: 'Starred'}
+    {1: 'Plain', 2: 'Bracketed', 3: 'Bulleted', 4: 'Starred', 5: 'https://x.org/5'}
     """
     following = next(iter(_headings(text, heading.end())), None)
     section = text[heading.end():following.start() if following else len(text)]

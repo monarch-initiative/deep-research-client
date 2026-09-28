@@ -468,12 +468,22 @@ def test_a_reply_with_no_about_still_rests_on_the_paper_whose_section_it_is_in()
 
 
 @pytest.mark.parametrize(
-    "reported", [["[1]"], ["[1]", "PMID:41258631"]], ids=["marker", "marker-and-identifier"],
+    ("reported", "marker"),
+    [
+        (["[1]"], "[1]"),
+        (["[1]", "PMID:41258631"], "[1]"),
+        (["[1](https://www.semanticscholar.org/paper/70595d)"], "[1](https://www.semanticscholar.org/paper/70595d)"),
+        (["[ 1 ]"], "[ 1 ]"),
+    ],
+    ids=["marker", "marker-and-identifier", "linked-marker", "spaced-marker"],
 )
-def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifier(reported):
+def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifier(reported, marker):
     """Asta's citation entries hold only a URL; the PMID is on the section's own lines."""
     bibliography = {1: "Zankar R (2025). https://www.semanticscholar.org/paper/70595d"}
-    body = "- PMID: 41258631\n- Summary: Mice lacking X live longer [1] (PMID:41258631).\n"
+    body = (
+        "- PMID: 41258631\n- Summary: Mice lacking X live longer [1] (PMID:41258631)"
+        " [1](https://www.semanticscholar.org/paper/70595d) [ 1 ].\n"
+    )
     text = f"### [1] A study\n{body}"
     unit = TextUnit(
         text=text, start=len("### [1] A study\n"), end=len(text), section="[1] A study",
@@ -484,5 +494,5 @@ def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifie
     (claim,) = claims_from_reply(reply, unit)
 
     assert [(c.marker, c.scope, c.reference_id) for c in claim.citations] == [
-        ("[1]", "SENTENCE", "PMID:41258631"),
+        (marker, "SENTENCE", "PMID:41258631"),
     ], "one handle, with the section's identifier"

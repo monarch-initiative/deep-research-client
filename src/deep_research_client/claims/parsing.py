@@ -88,6 +88,21 @@ class TextUnit:
         return self.text[self.start:self.end]
 
 
+#: A reported marker that cites one reference by number, in any form a model
+#: writes it: "[1]", "[ 1 ]", "1", or linked, "[1](https://...)".
+_ONE_NUMBER = re.compile(r"^\[?\s*(\d+)\s*\]?(?:\([^()\s]*\))?$")
+
+
+def _cited_number(marker: str) -> Optional[int]:
+    """The reference number a marker cites, if it cites exactly one by number.
+
+    >>> [_cited_number(m) for m in ["[1]", "[ 1 ]", "1", "[1](https://x.org/p)", "[1, 2]", "PMID:123"]]
+    [1, 1, 1, 1, None, None]
+    """
+    numbered = _ONE_NUMBER.match(marker.strip())
+    return int(numbered.group(1)) if numbered else None
+
+
 def _cites(number: int, body: str) -> bool:
     """Whether a numeric marker in the text cites a reference number.
 
@@ -421,13 +436,16 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         # Not for an unlocated claim, which may not come from the section, and
         # not again when the sentence already cites the same work.
         section = unit.section_citation
+        # Markers are compared by the number they cite, since a model writes
+        # the section's own "[1]" as "[1]", "[ 1 ]" or "[1](url)" alike.
+        section_number = _cited_number(section.marker) if section is not None else None
         if section is not None and section.reference_id is not None:
             # A sentence that repeats the section's own marker cites the same
             # work. Its bibliography entry may give no identifier (Asta's
             # hold only a URL) while the section's own lines do.
             filled = [
                 c.model_copy(update={"reference_id": section.reference_id, "url": c.url or section.url})
-                if c.marker == section.marker and c.reference_id is None else c
+                if _cited_number(c.marker) == section_number and c.reference_id is None else c
                 for c in citations
             ]
             # Filling one in may repeat an identifier the sentence also wrote.
@@ -439,7 +457,7 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
                 if c.reference_id is not None:
                     seen.add(c.reference_id)
         if span is not None and section is not None and not any(
-            c.marker == section.marker
+            _cited_number(c.marker) == section_number
             or (section.reference_id is not None and c.reference_id == section.reference_id)
             for c in citations
         ):

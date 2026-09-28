@@ -66,6 +66,10 @@ any spans differ while the hash matches, that is a bug; report it.
 | `WORK` claims | About a publication (authors, venue, identifiers, scope). Asta-style paper listings produce hundreds; usually filter them out |
 | `- / -` in the about / basis table | The model classified neither. Such claims are left unclassified, even when a paper's section cites them, because the code cannot tell a claim about the paper from one about its subject |
 
+In the script's lists, ids are grouped by section. An id with no section
+after it is a curated record (its id is its path, such as `phenotypes[2]`) or
+a claim from a report's text before its first heading.
+
 Citation `scope` says how each citation was attached: `SENTENCE` (a marker in
 the claim's sentence), `SECTION` (the section is headed by that paper), or
 `RECORD` (a curated record's evidence).

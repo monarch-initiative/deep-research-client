@@ -134,8 +134,10 @@ def inconsistencies(claim: Claim) -> list[str]:
 def ids_by_section(claims: list[Claim], max_sections: int = 5) -> str:
     """Claim ids grouped by section, for a message a person will act on.
 
-    A claim with no section (a curated record, whose id is already its path
-    in the file) is listed by its id alone.
+    A claim with no section is listed by its id alone: a curated record,
+    whose id is already its path in the file, or a claim from a report's text
+    before its first heading. All such claims form one group, placed where the
+    first of them appears.
 
     Args:
         claims: The claims to list, in extraction order.

@@ -481,15 +481,17 @@ def test_a_reply_with_no_about_still_rests_on_the_paper_whose_section_it_is_in()
         (["[1]", "PMID:41258631"], "[1]"),
         (["[1](https://www.semanticscholar.org/paper/70595d)"], "[1](https://www.semanticscholar.org/paper/70595d)"),
         (["[ 1 ]"], "[ 1 ]"),
+        (["[1](https://en.wikipedia.org/wiki/Foo_(bar))"], "[1](https://en.wikipedia.org/wiki/Foo_(bar))"),
     ],
-    ids=["marker", "marker-and-identifier", "linked-marker", "spaced-marker"],
+    ids=["marker", "marker-and-identifier", "linked-marker", "spaced-marker", "linked-marker-with-parentheses"],
 )
 def test_a_sentence_repeating_the_section_s_marker_keeps_the_section_s_identifier(reported, marker):
     """Asta's citation entries hold only a URL; the PMID is on the section's own lines."""
     bibliography = {1: "Zankar R (2025). https://www.semanticscholar.org/paper/70595d"}
     body = (
         "- PMID: 41258631\n- Summary: Mice lacking X live longer [1] (PMID:41258631)"
-        " [1](https://www.semanticscholar.org/paper/70595d) [ 1 ].\n"
+        " [1](https://www.semanticscholar.org/paper/70595d) [ 1 ]"
+        " [1](https://en.wikipedia.org/wiki/Foo_(bar)).\n"
     )
     text = f"### [1] A study\n{body}"
     unit = TextUnit(

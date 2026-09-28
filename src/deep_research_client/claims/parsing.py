@@ -12,7 +12,7 @@ from typing import Any, Mapping, Optional
 from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
-from .anchoring import NUMERIC_MARKER, locate_quote, nearest_passage
+from .anchoring import LINK_TARGET, NUMERIC_MARKER, locate_quote, nearest_passage
 from .models import (
     AnchorStatus,
     CitationHandle,
@@ -89,8 +89,9 @@ class TextUnit:
 
 
 #: A reported marker that cites one reference by number, in any form a model
-#: writes it: "[1]", "[ 1 ]", "1", or linked, "[1](https://...)".
-_ONE_NUMBER = re.compile(r"^\[?\s*(\d+)\s*\]?(?:\([^()\s]*\))?$")
+#: writes it: "[1]", "[ 1 ]", "1", or linked, "[1](https://...)", with the same
+#: link targets anchoring allows, one level of parentheses included.
+_ONE_NUMBER = re.compile(rf"^(?:\[\s*(\d+)\s*\]|(\d+))(?:{LINK_TARGET})?$")
 
 
 def _cited_number(marker: str) -> Optional[int]:
@@ -98,9 +99,11 @@ def _cited_number(marker: str) -> Optional[int]:
 
     >>> [_cited_number(m) for m in ["[1]", "[ 1 ]", "1", "[1](https://x.org/p)", "[1, 2]", "PMID:123"]]
     [1, 1, 1, 1, None, None]
+    >>> _cited_number("[1](https://en.wikipedia.org/wiki/Foo_(bar))"), _cited_number("[1")
+    (1, None)
     """
     numbered = _ONE_NUMBER.match(marker.strip())
-    return int(numbered.group(1)) if numbered else None
+    return int(numbered.group(1) or numbered.group(2)) if numbered else None
 
 
 def _cites(number: int, body: str) -> bool:

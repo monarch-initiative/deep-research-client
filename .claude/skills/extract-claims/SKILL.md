@@ -76,6 +76,11 @@ uv run deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims
 - Warnings and errors go to stderr. Read them; they are part of the result.
 - Name the output after the source (`<source>.claims.json`) unless told
   otherwise.
+- A report written with `research --separate-citations` keeps its citation
+  list in a file of its own. `claims extract` finds `<report>.citations.md` or
+  `<report>.md.citations.md` (dismech's name) beside the report; for any other
+  name pass `--citations PATH`. Without it, that report's `[n]` markers resolve
+  to nothing.
 
 **Time.** With Claude Code each section is one `claude` process: a 14 KB report
 took about 1.5 minutes, a 64 KB report of 64 sections about 4 to 5 minutes, at

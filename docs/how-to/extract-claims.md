@@ -9,6 +9,10 @@ Extraction does **not** judge whether a claim is true. It is the first step of
 comparing sources ([issue #43](https://github.com/monarch-initiative/deep-research-client/issues/43)):
 claims from two sources are what alignment and verification will work on.
 
+Two Claude Code skills, in `.claude/skills/`, follow this page:
+`extract-claims` runs an extraction, and `review-claim-set` audits and filters
+the result.
+
 ## Quick start
 
 ```bash

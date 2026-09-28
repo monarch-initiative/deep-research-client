@@ -143,8 +143,15 @@ class Decomposition:
         'claude-sonnet-5'
         >>> Decomposition(claims=[], models=[]).model_label("gpt-4o-mini")
         'gpt-4o-mini'
+
+        A client may echo the requested name for a reply that names no model;
+        beside the ids that did answer, it is not another model:
+
+        >>> Decomposition(claims=[], models=["claude-sonnet-5", "sonnet"]).model_label("sonnet")
+        'claude-sonnet-5'
         """
-        return ", ".join(self.models) or requested
+        answered = [m for m in self.models if m != requested]
+        return ", ".join(answered) or requested
 
 
 async def _extract_unit(

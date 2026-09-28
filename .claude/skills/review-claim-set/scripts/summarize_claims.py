@@ -17,7 +17,7 @@ from typing import Optional
 
 import yaml
 
-from deep_research_client.claims import AnchorStatus, ClaimSet, SourceType
+from deep_research_client.claims import ClaimSet, SourceType
 from deep_research_client.claims.models import content_sha256, ids_by_section
 
 
@@ -98,8 +98,8 @@ def summarize(claims: ClaimSet, source_text: Optional[str] = None) -> str:
                   "Either the model's basis or the citation it attached is wrong.", "",
                   ids_by_section(conflicting), ""]
 
-    uncited_domain = [c for c in cl if c.about == "DOMAIN" and c.citation_status == "UNCITED"
-                      and c.anchor_status != AnchorStatus.NOT_APPLICABLE]
+    # For a curated record, UNCITED means the record lists no evidence.
+    uncited_domain = [c for c in cl if c.about == "DOMAIN" and c.citation_status == "UNCITED"]
     if uncited_domain:
         lines += [f"## Uncited domain claims ({len(uncited_domain)})", "",
                   ids_by_section(uncited_domain), ""]

@@ -67,6 +67,9 @@ def test_a_curated_set_is_summarised_with_its_record_citations(summarizer, tmp_p
     assert "| CITED | 3 |" in summary and "| UNCITED | 2 |" in summary
     assert "| RECORD | 3 |" in summary
     assert "no spans to check" in summary
+    assert "## Uncited domain claims (2)\n\nphenotypes[2], inheritance[0]" in summary, (
+        "the records with no evidence are listed, by their path"
+    )
 
 
 def test_a_report_set_shows_its_gaps_and_where_to_look(summarizer):

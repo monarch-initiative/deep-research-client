@@ -14,6 +14,7 @@ its string value; compare with ``==`` against the enum member, which is a
 """
 
 import hashlib
+from typing import Optional
 
 from pydantic import model_validator
 
@@ -133,26 +134,31 @@ def inconsistencies(claim: Claim) -> list[str]:
 def ids_by_section(claims: list[Claim], max_sections: int = 5) -> str:
     """Claim ids grouped by section, for a message a person will act on.
 
+    A claim with no section (a curated record, whose id is already its path
+    in the file) is listed by its id alone.
+
     Args:
         claims: The claims to list, in extraction order.
-        max_sections: Sections to name before the rest are only counted.
+        max_sections: Groups to name before the rest are only counted.
 
     Returns:
-        "c1, c2 in <section>; c9 in <section>", with sections in order of
-        first appearance.
+        "c1, c2 in <section>; c9", in order of first appearance.
 
     >>> claims = [Claim(id=i, claim_text="A.", anchor_status=AnchorStatus.EXACT,
     ...                 citation_status=CitationStatus.UNCITED, section=section)
-    ...           for i, section in [("c1", "Papers > [3] X"), ("c2", "Papers > [3] X"), ("c9", None)]]
+    ...           for i, section in [("c1", "Papers > [3] X"), ("c2", "Papers > [3] X"), ("phenotypes[2]", None)]]
     >>> ids_by_section(claims)
-    'c1, c2 in Papers > [3] X; c9 in (no section)'
+    'c1, c2 in Papers > [3] X; phenotypes[2]'
     >>> ids_by_section(claims, max_sections=1)
     'c1, c2 in Papers > [3] X; and 1 more section'
     """
-    grouped: dict[str, list[str]] = {}
+    grouped: dict[Optional[str], list[str]] = {}
     for claim in claims:
-        grouped.setdefault(claim.section or claim.source_path or "(no section)", []).append(claim.id)
-    shown = [f"{', '.join(ids)} in {section}" for section, ids in list(grouped.items())[:max_sections]]
+        grouped.setdefault(claim.section, []).append(claim.id)
+    shown = [
+        f"{', '.join(ids)} in {section}" if section else ", ".join(ids)
+        for section, ids in list(grouped.items())[:max_sections]
+    ]
     hidden = len(grouped) - max_sections
     if hidden > 0:
         shown.append(f"and {hidden} more section{'s' if hidden > 1 else ''}")

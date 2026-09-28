@@ -1,0 +1,66 @@
+```json
+{
+  "claims": [
+    {
+      "claim": "Hypertelorism is common in Loeys-Dietz syndrome.",
+      "quote": "Hypertelorism and bifid uvula or cleft palate are common.",
+      "subject": "Hypertelorism",
+      "predicate": "is common",
+      "object": null,
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": "in Loeys-Dietz syndrome",
+      "object_qualifier": null,
+      "entities": ["Hypertelorism", "Loeys-Dietz syndrome"],
+      "citations": ["[1]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    },
+    {
+      "claim": "Bifid uvula is common in Loeys-Dietz syndrome.",
+      "quote": "Hypertelorism and bifid uvula or cleft palate are common.",
+      "subject": "Bifid uvula",
+      "predicate": "is common",
+      "object": null,
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": "in Loeys-Dietz syndrome",
+      "object_qualifier": null,
+      "entities": ["Bifid uvula", "Loeys-Dietz syndrome"],
+      "citations": ["[1]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    },
+    {
+      "claim": "Cleft palate is common in Loeys-Dietz syndrome.",
+      "quote": "Hypertelorism and bifid uvula or cleft palate are common.",
+      "subject": "Cleft palate",
+      "predicate": "is common",
+      "object": null,
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": "in Loeys-Dietz syndrome",
+      "object_qualifier": null,
+      "entities": ["Cleft palate", "Loeys-Dietz syndrome"],
+      "citations": ["[1]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    },
+    {
+      "claim": "Ectopia lentis is not a feature of Loeys-Dietz syndrome.",
+      "quote": "Unlike in Marfan syndrome, ectopia lentis is not a feature.",
+      "subject": "Ectopia lentis",
+      "predicate": "is a feature",
+      "object": null,
+      "negated": true,
+      "qualifier": null,
+      "subject_qualifier": "in Loeys-Dietz syndrome",
+      "object_qualifier": null,
+      "entities": ["Ectopia lentis", "Loeys-Dietz syndrome", "Marfan syndrome"],
+      "citations": ["[2]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    }
+  ]
+}
+```

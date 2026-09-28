@@ -1,0 +1,13 @@
+Section: Asta Literature Retrieval: antiphospholipid syndrome pathophysiology
+
+TEXT:
+<<<
+
+
+This report is retrieval-only and is generated directly from Asta results.
+
+- Papers retrieved: 62
+- Snippets retrieved: 20
+
+
+>>>

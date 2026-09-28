@@ -1,0 +1,6 @@
+Field: sections[1].text
+
+TEXT:
+<<<
+About 60 percent of affected people develop ectopia lentis.
+>>>

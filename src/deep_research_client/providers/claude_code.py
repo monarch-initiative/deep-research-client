@@ -96,7 +96,7 @@ _NO_SUCH_SUBCOMMAND = re.compile(
 )
 
 
-def _terminal_result_text(stdout: str) -> str:
+def terminal_result_text(stdout: str) -> str:
     r"""Pull the terminal ``result`` event's own words out of a stream.
 
     The stream also carries the model's report, which is prose we must never
@@ -111,11 +111,11 @@ def _terminal_result_text(stdout: str) -> str:
     Returns:
         The failing event's subtype and result text, or "" if there is none.
 
-    >>> _terminal_result_text('{"type": "result", "is_error": true, "subtype": "e", "result": "boom"}')
+    >>> terminal_result_text('{"type": "result", "is_error": true, "subtype": "e", "result": "boom"}')
     'e boom'
-    >>> _terminal_result_text('{"type": "result", "subtype": "success", "result": "the report"}')
+    >>> terminal_result_text('{"type": "result", "subtype": "success", "result": "the report"}')
     ''
-    >>> _terminal_result_text('not json at all')
+    >>> terminal_result_text('not json at all')
     ''
     """
     for line in reversed(stdout.splitlines()):
@@ -136,7 +136,7 @@ def _terminal_result_text(stdout: str) -> str:
     return ""
 
 
-def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
+def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     """Classify a Claude Code failure from the text the CLI produced.
 
     Args:
@@ -146,12 +146,12 @@ def _classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     Returns:
         A typed error, or None when the text matches nothing we recognise.
 
-    >>> err = _classify_cli_failure("claude_code", "Claude usage limit reached. Your limit will reset at 3pm.")
+    >>> err = classify_cli_failure("claude_code", "Claude usage limit reached. Your limit will reset at 3pm.")
     >>> type(err).__name__, err.resets_at
     ('ProviderQuotaError', '3pm')
-    >>> type(_classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
+    >>> type(classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
     'ProviderAuthError'
-    >>> _classify_cli_failure("claude_code", "tool returned no results") is None
+    >>> classify_cli_failure("claude_code", "tool returned no results") is None
     True
     """
     if not text or not text.strip():
@@ -344,7 +344,7 @@ class ClaudeCodeProvider(ResearchProvider):
             # version check win would report a logged-out CLI as UNKNOWN, and
             # UNKNOWN does not set reachable=False, so `--check` would exit 0
             # on a provider that cannot work.
-            classified = _classify_cli_failure(self.name, output)
+            classified = classify_cli_failure(self.name, output)
             if classified is None and _NO_SUCH_SUBCOMMAND.search(output):
                 return ProviderHealth(
                     provider=self.name,
@@ -361,7 +361,7 @@ class ClaudeCodeProvider(ResearchProvider):
         except json.JSONDecodeError:
             status = None
         # Valid JSON of the wrong shape (null, a list, a bare string) parses
-        # fine and then has no .get -- the same guard _terminal_result_text
+        # fine and then has no .get -- the same guard terminal_result_text
         # already applies to stream events.
         if not isinstance(status, dict):
             return ProviderHealth(
@@ -488,8 +488,8 @@ class ClaudeCodeProvider(ResearchProvider):
             # stderr is the CLI's own voice; from stdout take only the terminal
             # event. The rest of the stream is the model's report, and a report
             # that merely discusses usage limits is not a usage limit.
-            classified = _classify_cli_failure(
-                self.name, f"{stderr}\n{_terminal_result_text(stdout)}"
+            classified = classify_cli_failure(
+                self.name, f"{stderr}\n{terminal_result_text(stdout)}"
             )
             if classified is not None:
                 logger.error(classified.actionable_message())
@@ -663,7 +663,7 @@ class ClaudeCodeProvider(ResearchProvider):
         if result_event.get("is_error"):
             subtype = result_event.get("subtype", "unknown error")
             detail = result_event.get("result") or subtype
-            classified = _classify_cli_failure(provider, f"{subtype} {detail}")
+            classified = classify_cli_failure(provider, f"{subtype} {detail}")
             if classified is not None:
                 raise classified
             raise ValueError(f"Claude Code reported an error ({subtype}): {detail}")

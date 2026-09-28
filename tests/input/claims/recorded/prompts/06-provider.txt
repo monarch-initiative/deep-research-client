@@ -1,0 +1,13 @@
+Section: Loeys-Dietz syndrome > Genetics
+
+TEXT:
+<<<
+
+
+Loeys-Dietz syndrome is caused by heterozygous variants in genes of the TGF-beta
+signalling pathway, most often TGFBR1 or TGFBR2.[1] Loeys et al. described it
+in 2005 in families with arterial tortuosity and aortic aneurysms.[1] Variants in
+SMAD3 and TGFB2 were later found to cause the same phenotype. [3]
+
+
+>>>

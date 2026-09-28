@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import asyncio
 import logging
 import os
+import shutil
 import typer
 from pathlib import Path
 from enum import Enum
@@ -22,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
+from .exceptions import ProviderError
 from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
 from .processing import ResearchProcessor
 from .model_cards import (
@@ -2885,6 +2887,44 @@ def browse_files(
 #: place, so the header and both precision branches cannot drift apart.
 _RATE_WIDTH = 7
 
+def _openai_compatible_client(api_key_env: str, base_url: Optional[str]) -> Any:
+    """Build the OpenAI-compatible async client the LLM-backed commands use.
+
+    Shared by `eval score` and `claims extract`, which both call a model
+    through any OpenAI-compatible endpoint (OpenAI, CBORG, a local server).
+
+    A key is the default endpoint's requirement, not the caller's. A local
+    OpenAI-compatible server -- vLLM, Ollama, LM Studio -- accepts any string,
+    so with a custom base URL and no key a placeholder is sent that names
+    itself if it ever reaches a server that does check. Said aloud, because
+    the condition is "a custom base URL" while the thing it stands for is "an
+    endpoint that needs no key": the commonest custom base URL after localhost
+    is a corporate or cloud proxy, which does check, and silently sending a
+    placeholder there trades one warning for a 401 inside every call.
+
+    Args:
+        api_key_env: Environment variable holding the API key.
+        base_url: Custom endpoint, or None for the SDK's default.
+
+    Returns:
+        An ``openai.AsyncOpenAI`` client, or None when there is no key and no
+        custom endpoint -- the caller says what that costs it.
+    """
+    from openai import AsyncOpenAI
+
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key and base_url:
+        api_key = "not-required-by-this-endpoint"
+        _warn(
+            f"{api_key_env} is not set; sending a placeholder key "
+            f"because --llm-base-url was given. A local endpoint will "
+            f"accept it; an endpoint that checks keys will answer 401."
+        )
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+
 eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
 
@@ -3567,7 +3607,6 @@ def eval_score(
     """
     import asyncio
     import json as json_mod
-    from openai import AsyncOpenAI
     from .evaluation.datamodel import AnswerType
     from .evaluation.runner import EvalConfig, parse_dr_output, score_output
 
@@ -3599,38 +3638,18 @@ def eval_score(
     task = tasks[0]
     markdown_text = report.read_text(encoding="utf-8")
 
-    api_key = os.environ.get(llm_api_key_env, "")
     wants_judge = not (no_fact and no_recall and no_race)
 
     # Built only when a judge-backed scorer will actually run. AsyncOpenAI
     # raises OpenAIError on an empty key at *construction*, so building it
     # unconditionally made `--no-fact --no-recall --no-race` -- the remedy this
-    # command's own warning offers -- traceback before any scoring, leaving no
+    # command's own error offers -- traceback before any scoring, leaving no
     # way to get the intrinsic scores without a key at all.
     llm_client = None
     if wants_judge:
-        if not api_key and llm_base_url:
-            # A key is the default endpoint's requirement, not the judge's. A
-            # local OpenAI-compatible server -- vLLM, Ollama, LM Studio --
-            # accepts any string, and refusing here took away a configuration
-            # that worked before the construction was made lazy. The SDK still
-            # needs something non-empty, so it gets a placeholder that names
-            # itself if it ever reaches a server that does check.
-            #
-            # Said aloud, because the condition is "a custom base URL" while
-            # the thing it stands for is "an endpoint that needs no key". The
-            # commonest custom base URL after localhost is a corporate or
-            # cloud proxy, which does check -- and silently sending a
-            # placeholder there trades one pre-flight message for a 401 inside
-            # every judge call, after the report has been read.
-            api_key = "not-required-by-this-endpoint"
-            typer.echo(
-                f"{llm_api_key_env} is not set; sending a placeholder key "
-                f"because --llm-base-url was given. A local endpoint will "
-                f"accept it; an endpoint that checks keys will answer 401."
-            )
-        if not api_key:
-            typer.echo(
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
                 f"{llm_api_key_env} is not set, so the judge-backed scorers "
                 f"cannot run. Either set it (or point --llm-api-key-env at a "
                 f"variable that is set), pass --llm-base-url for a local "
@@ -3639,7 +3658,6 @@ def eval_score(
                 f"no API key."
             )
             raise typer.Exit(1)
-        llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
 
     config = EvalConfig(
         run_fact=not no_fact,
@@ -3849,6 +3867,190 @@ def eval_score(
             encoding="utf-8",
         )
         typer.echo(f"\nResults written to {output}")
+
+
+def _claims_backend_failure(error: ProviderError) -> str:
+    """What to tell the reader when the Claude Code backend fails, and what to try.
+
+    ``ProviderError.actionable_message`` suggests another ``--provider``,
+    which ``claims extract`` has no option for, so the advice here is its own.
+
+    Args:
+        error: A classified failure of the ``claude`` CLI.
+
+    Returns:
+        The diagnosis and the next steps that apply to ``claims extract``.
+
+    >>> from deep_research_client.exceptions import ProviderAuthError
+    >>> print(_claims_backend_failure(ProviderAuthError("claude_code", "Invalid API key. Please run /login")))
+    claude_code: Invalid API key. Please run /login -- the API key is missing, invalid, or lacks access to this endpoint. Try: `deep-research-client providers --check --provider claude_code`, or --llm-backend openai
+    """
+    return (
+        f"{error.provider}: {error.diagnosis}. Try: `deep-research-client providers "
+        f"--check --provider {error.provider}`, or --llm-backend openai"
+    )
+
+
+claims_app = typer.Typer(help="Extract the claims a source makes, with provenance")
+app.add_typer(claims_app, name="claims")
+
+
+@claims_app.command("extract")
+def claims_extract(
+    source: Annotated[Path, typer.Argument(
+        help="A markdown report, or a YAML/JSON document")],
+    source_format: Annotated[str, typer.Option(
+        "--format",
+        help="How to read the source: auto, markdown, dismech, gene-review, structured")] = "auto",
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the claim set here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
+    llm_backend: Annotated[str, typer.Option(
+        "--llm-backend",
+        help="How the model is called: openai (any OpenAI-compatible API) or "
+             "claude-code (the local Claude Code CLI, no API key)")] = "openai",
+    llm_model: Annotated[Optional[str], typer.Option(
+        "--llm-model",
+        help="Model that decomposes prose into claims (default gpt-4o-mini, "
+             "or sonnet with --llm-backend claude-code)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Model requests in flight at once")] = 4,
+    llm_max_tokens: Annotated[int, typer.Option(
+        "--llm-max-tokens", min=1,
+        help="Reply budget per section; a reply cut off at it is an error")] = 4096,
+    citations: Annotated[Optional[Path], typer.Option(
+        "--citations",
+        help="A report's separate citations file (research --separate-citations). "
+             "By default <report>.citations.md or <report>.md.citations.md, if present")] = None,
+):
+    """Extract the claims a source makes, without judging whether they are true.
+
+    A markdown report, or the prose fields of a generic YAML/JSON document, is
+    decomposed into atomic claims by a model; each claim keeps the passage that
+    states it, located in the source. Curated dismech and ai-gene-review files
+    map record by record with no model.
+
+    Examples:
+
+      deep-research-client claims extract report.md -o report.claims.json
+
+      deep-research-client claims extract report.md --llm-backend claude-code --llm-model opus
+
+      deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+    """
+    import json
+
+    import yaml
+
+    from .claims import SourceFormat, aextract_claims, needs_llm, resolve_format
+    from .claims.extract import find_citations_file
+    from .claims.models import ids_by_section
+    from .claims.llm import DEFAULT_MODEL
+
+    if not source.is_file():
+        _error(f"File not found: {source}")
+        raise typer.Exit(1)
+    try:
+        requested = SourceFormat(source_format)
+    except ValueError:
+        choices = ", ".join(f.value for f in SourceFormat)
+        _error(f"Cannot read {source} as {source_format!r}. Use one of: {choices}")
+        raise typer.Exit(1)
+    try:
+        fmt = resolve_format(source, requested)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        _error(f"Could not parse {source}: {exc}")
+        raise typer.Exit(1)
+
+    if citations is not None and not citations.is_file():
+        _error(f"Citations file not found: {citations}")
+        raise typer.Exit(1)
+    if citations is None and fmt == SourceFormat.MARKDOWN:
+        citations = find_citations_file(source)
+        if citations is not None:
+            logger.info(f"Resolving [n] markers through {citations}")
+
+    backends = ("openai", "claude-code")
+    if llm_backend not in backends:
+        _error(f"Unknown --llm-backend {llm_backend!r}. Use one of: {', '.join(backends)}")
+        raise typer.Exit(1)
+    if llm_backend == "claude-code" and llm_base_url:
+        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
+        raise typer.Exit(1)
+
+    llm_client: Any = None
+    model = llm_model or DEFAULT_MODEL
+    if needs_llm(fmt) and llm_backend == "claude-code":
+        from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
+
+        if shutil.which("claude") is None:
+            _error("--llm-backend claude-code needs the `claude` CLI on PATH, and it is not there.")
+            raise typer.Exit(1)
+        llm_client = ClaudeCodeChatClient()
+        model = llm_model or DEFAULT_CLAUDE_CODE_MODEL
+    elif needs_llm(fmt):
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
+                f"{llm_api_key_env} is not set, and claims are extracted from "
+                f"{fmt.value} sources by a model. Set it (or point "
+                f"--llm-api-key-env at a variable that is set), or pass "
+                f"--llm-base-url for a local endpoint that needs no key, or "
+                f"--llm-backend claude-code to use a logged-in Claude Code."
+            )
+            raise typer.Exit(1)
+
+    import openai
+
+    try:
+        claims = asyncio.run(aextract_claims(
+            source, source_format=fmt, llm_client=llm_client,
+            model=model, concurrency=concurrency, max_tokens=llm_max_tokens,
+            citations_file=citations,
+        ))
+    except ProviderError as exc:
+        _error(f"Could not extract claims from {source}: {_claims_backend_failure(exc)}")
+        raise typer.Exit(1)
+    except (ValueError, openai.APIError) as exc:
+        _error(f"Could not extract claims from {source}: {exc}")
+        raise typer.Exit(1)
+
+    unanchored = claims.unanchored_claims
+    if unanchored:
+        near = sum(1 for c in unanchored if c.nearest_passage is not None)
+        _warn(
+            f"{len(unanchored)} of {len(claims.claim_list)} claims could not be "
+            f"found in the source; they are kept with anchor_status UNANCHORED "
+            f"and no span, and should not be taken as coming from it. "
+            f"{near} have a nearest_passage showing the closest text found."
+        )
+    conflicting = claims.cited_background_claims
+    if conflicting:
+        _warn(
+            f"{len(conflicting)} claims are marked as background knowledge but carry "
+            f"a citation ({ids_by_section(conflicting)}); either the basis or the "
+            f"citation the model attached to them is wrong."
+        )
+    logger.info(f"Extracted {len(claims.claim_list)} claims from {source}")
+
+    payload = claims.model_dump(mode="json", exclude_none=True)
+    if output is None:
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    if output.suffix.lower() in (".yaml", ".yml"):
+        rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    else:
+        rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    try:
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        _error(f"Could not write {output}: {exc}")
+        raise typer.Exit(1)
+    logger.info(f"Claims written to {output}")
 
 
 def main():

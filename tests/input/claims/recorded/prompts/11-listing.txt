@@ -1,0 +1,15 @@
+Section: Asta Literature Retrieval: antiphospholipid syndrome pathophysiology > Relevant Papers > [2] Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights.
+
+TEXT:
+<<<
+
+- Authors: Y. Fujieda
+- Year: 2025
+- Venue: Immunological medicine
+- URL: https://www.semanticscholar.org/paper/938b630e2ec211c9e6b9571d9f8084b4438f74d7
+- DOI: 10.1080/25785826.2025.2594828
+- PMID: 41307246
+- Summary: Current insights into the pathophysiology, diagnostic approaches to neuropsychiatric manifestations in SLE and APS are synthesized, emphasizing the need for integrated clinical, imaging, and laboratory evaluations to improve diagnostic precision and patient outcomes.
+
+
+>>>

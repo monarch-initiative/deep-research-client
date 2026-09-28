@@ -209,7 +209,7 @@ def test_the_mocks_quota_failure_has_the_shape_a_real_one_has():
     """
     from deep_research_client.providers import claude_code
 
-    real = claude_code._classify_cli_failure(
+    real = claude_code.classify_cli_failure(
         "claude_code", "Usage limit reached. Your limit will reset at 3pm."
     )
     assert isinstance(real, ProviderQuotaError)

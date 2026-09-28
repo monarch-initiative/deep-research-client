@@ -2,7 +2,7 @@
 
 # Regenerate every Pydantic datamodel from its LinkML schema (source of truth).
 [group('model development')]
-gen-datamodel: gen-datamodel-validation gen-term-datamodel gen-datamodel-vocabulary gen-datamodel-eval
+gen-datamodel: gen-datamodel-validation gen-term-datamodel gen-datamodel-vocabulary gen-datamodel-eval gen-datamodel-claims
 
 # Each recipe below generates to a temporary file first: a redirect straight onto
 # the target would truncate it before gen-pydantic runs, so a schema typo would
@@ -46,3 +46,12 @@ gen-datamodel-eval:
     && mv src/deep_research_client/evaluation/datamodel.py.tmp \
       src/deep_research_client/evaluation/datamodel.py \
     || { rm -f src/deep_research_client/evaluation/datamodel.py.tmp; false; }
+
+# Regenerate the claims datamodel from claims.yaml.
+[group('model development')]
+gen-datamodel-claims:
+  uv run gen-pydantic src/deep_research_client/claims/claims.yaml \
+    > src/deep_research_client/claims/datamodel.py.tmp \
+    && mv src/deep_research_client/claims/datamodel.py.tmp \
+      src/deep_research_client/claims/datamodel.py \
+    || { rm -f src/deep_research_client/claims/datamodel.py.tmp; false; }

@@ -1,0 +1,96 @@
+```json
+{
+  "claims": [
+    {
+      "claim": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management is authored by Reine Zankar, R. Jamal, G. E. Hasbani, and I. Uthman.",
+      "quote": "Authors: Reine Zankar, R. Jamal, G. E. Hasbani, I. Uthman",
+      "subject": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management",
+      "predicate": "is authored by",
+      "object": "Reine Zankar, R. Jamal, G. E. Hasbani, I. Uthman",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management", "Reine Zankar", "R. Jamal", "G. E. Hasbani", "I. Uthman"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management was published in 2025.",
+      "quote": "Year: 2025",
+      "subject": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management",
+      "predicate": "was published in",
+      "object": "2025",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management", "2025"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management was published in Clinical Rheumatology.",
+      "quote": "Venue: Clinical Rheumatology",
+      "subject": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management",
+      "predicate": "was published in",
+      "object": "Clinical Rheumatology",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management", "Clinical Rheumatology"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management has DOI 10.1007/s10067-025-07811-3.",
+      "quote": "DOI: 10.1007/s10067-025-07811-3",
+      "subject": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management",
+      "predicate": "has DOI",
+      "object": "10.1007/s10067-025-07811-3",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management", "10.1007/s10067-025-07811-3"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management has PMID 41258631.",
+      "quote": "PMID: 41258631",
+      "subject": "Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management",
+      "predicate": "has PMID",
+      "object": "41258631",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management", "41258631"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "A comprehensive search for literature on the association between antiphospholipid syndrome and avascular necrosis was performed across PubMed, Medline, and Google Scholar, focusing on its pathophysiology, prevalence, risk factors, clinical presentation, and management strategies.",
+      "quote": "To explore the association between APS and AVN, a comprehensive search was performed across medical databases, including PubMed, Medline, and Google Scholar, focusing on its pathophysiology, prevalence, risk factors, clinical presentation, and management strategies.",
+      "subject": "A comprehensive search",
+      "predicate": "was performed across medical databases focusing on",
+      "object": "pathophysiology, prevalence, risk factors, clinical presentation, and management strategies of antiphospholipid syndrome and avascular necrosis",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["antiphospholipid syndrome", "avascular necrosis", "PubMed", "Medline", "Google Scholar", "pathophysiology", "prevalence", "risk factors", "clinical presentation", "management strategies"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    }
+  ]
+}
+```

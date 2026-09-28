@@ -1298,6 +1298,10 @@ Claude will automatically:
 3. Execute the research with proper caching
 4. Save results with citations and metadata
 
+Two more skills cover claim extraction: `extract-claims` runs `claims extract`
+on a report or a curated file, and `review-claim-set` audits and filters the
+claim set it produces. Install them the same way.
+
 See [.claude/skills/README.md](.claude/skills/README.md) for more details.
 
 ## License

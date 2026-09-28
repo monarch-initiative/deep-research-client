@@ -160,9 +160,15 @@ def _answer_region(text: str) -> tuple[int, int]:
     """
     start = _body_start(text)
     level_two = [m for m in _headings(text, start) if len(m.group(1)) == 2]
+    question = next((h for h in level_two if h.group(2).strip().lower() == "question"), None)
     for heading in level_two:
         if heading.group(2).strip().lower() == "output":
-            start = heading.end()
+            if question is not None and question.start() < heading.start():
+                start = _past_echoed_question(
+                    text[question.end():heading.start()], text, heading.end(),
+                )
+            else:
+                start = heading.end()
             break
     end = len(text)
     for heading in reversed([h for h in level_two if h.start() >= start]):
@@ -172,17 +178,70 @@ def _answer_region(text: str) -> tuple[int, int]:
     return start, end
 
 
-def report_title(text: str) -> Optional[str]:
-    """The report's first top-level heading inside its answer, if any.
+#: How many of the question's closing lines must be found, in order, for the
+#: answer to count as repeating the question.
+_ECHO_TAIL_LINES = 3
 
-    >>> report_title("## Output\\n\\n# Marfan syndrome\\n\\nText")
+
+def _past_echoed_question(question: str, text: str, answer_start: int) -> int:
+    r"""Where the answer begins, past any repetition of the question.
+
+    Some providers (Falcon) open their answer by repeating the whole prompt:
+    a wrapper of their own, then the question word for word. That is the
+    question, not the answer, and its template would otherwise be decomposed
+    into claims. The answer counts as repeating the question only when it
+    holds the question's first line and, after it, the question's closing
+    lines in order; a report quoting one line of its question keeps it.
+
+    Args:
+        question: The text of this client's ``## Question`` section.
+        text: The report.
+        answer_start: Where the ``## Output`` section's text begins.
+
+    Returns:
+        The offset just past the repeated question, or ``answer_start``.
+
+    >>> q = "\n# Template\n\n- Find the gene.\n- Find the drug.\n- Cite PMIDs.\n"
+    >>> report = f"## Question\n{q}## Output\n\nQuestion: be expert.\n{q}\n## Report\n\nTBX1 matters.\n"
+    >>> start, end = _answer_region(report)
+    >>> report[start:].strip()
+    '## Report\n\nTBX1 matters.'
+    >>> quoting = f"## Question\n{q}## Output\n\n# Template\n\nTBX1 matters.\n"
+    >>> _answer_region(quoting)[0] == quoting.index("## Output") + len("## Output")
+    True
+    """
+    lines = [line.strip() for line in question.splitlines() if line.strip()]
+    if len(lines) <= _ECHO_TAIL_LINES:
+        return answer_start
+    first = text.find(lines[0], answer_start)
+    if first < 0:
+        return answer_start
+    position = first + len(lines[0])
+    for line in lines[-_ECHO_TAIL_LINES:]:
+        found = text.find(line, position)
+        if found < 0:
+            return answer_start
+        position = found + len(line)
+    return position
+
+
+def report_title(text: str) -> Optional[str]:
+    """The report's first heading at its highest level inside its answer, if any.
+
+    A report titled with ``#`` gives that; one whose sections start at ``##``
+    (as Falcon's do) gives its first ``##`` heading.
+
+    >>> report_title("## Output\\n\\n# Marfan syndrome\\n\\n## Genetics\\n\\nText")
     'Marfan syndrome'
+    >>> report_title("## Output\\n\\n## Report: 22q11.2DS\\n\\n### Summary\\n\\nText")
+    'Report: 22q11.2DS'
     """
     start, end = _answer_region(text)
-    for heading in _headings(text, start, end):
-        if len(heading.group(1)) == 1:
-            return heading.group(2).strip()
-    return None
+    headings = _headings(text, start, end)
+    if not headings:
+        return None
+    top = min(len(h.group(1)) for h in headings)
+    return next(h.group(2).strip() for h in headings if len(h.group(1)) == top)
 
 
 def _split_long(start: int, end: int, text: str, max_chars: int) -> Iterator[tuple[int, int]]:

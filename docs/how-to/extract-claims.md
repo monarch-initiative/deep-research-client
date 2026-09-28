@@ -99,8 +99,12 @@ A report written by `deep-research-client research` is read from its
 `## Output` section. The question, the numbered `## Citations` list and any
 generated validation sections are not claims the report makes, so they are
 skipped. So is a reference list the provider wrote inside its answer (a
-`References`, `Sources` or `Bibliography` heading, and anything under it). Plain
-markdown with no `## Output` is read whole. Each heading starts a new unit, and
+`References`, `Sources` or `Bibliography` heading, and anything under it). Some providers
+(Falcon) open their answer by repeating the whole question; when the answer
+holds the question's first line and then its closing lines, everything up to
+there is the question and is skipped too. Plain markdown with no `## Output` is
+read whole. The claim set's title is the answer's first heading at its highest
+level. Each heading starts a new unit, and
 long sections are split at paragraph breaks. A `#` line inside a code fence is
 code, not a heading.
 

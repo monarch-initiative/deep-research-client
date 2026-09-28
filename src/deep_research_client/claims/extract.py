@@ -28,11 +28,14 @@ from .models import (
     AnchorStatus,
     CitationHandle,
     Claim,
+    ClaimBasis,
     ClaimSet,
+    ClaimTopic,
     EntityMention,
     ExtractorInfo,
     SourceDocument,
     SourceType,
+    citation_status_for,
     content_sha256,
 )
 from .units import markdown_units, report_title, structured_units
@@ -198,6 +201,8 @@ def _from_reference_claim(
     >>> claim = _from_reference_claim("phenotypes[2]", record, EntityMention(label="Marfan syndrome"))
     >>> claim.claim_text, claim.predicate.label, claim.object.id
     ('Marfan syndrome has phenotype Ectopia lentis.', 'has phenotype', 'HP:0001083')
+    >>> claim.about, claim.citation_status, claim.basis
+    ('DOMAIN', 'UNCITED', None)
     """
     citations = []
     for evidence in record.evidence or []:
@@ -227,6 +232,11 @@ def _from_reference_claim(
         claim_text=claim_text,
         source_path=path,
         anchor_status=AnchorStatus.NOT_APPLICABLE,
+        citation_status=citation_status_for(citations, AnchorStatus.NOT_APPLICABLE),
+        about=ClaimTopic.DOMAIN,
+        # Evidence is a cited work. A record with none does not say what it
+        # rests on, so no basis is claimed for it.
+        basis=ClaimBasis.SECONDARY_SOURCE if citations else None,
         subject=subject,
         predicate=predicate,
         object=related,

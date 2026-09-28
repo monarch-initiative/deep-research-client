@@ -1,1 +1,51 @@
-{"claims": [{"claim": "Aortic aneurysms in Loeys-Dietz syndrome dissect at smaller diameters than in Marfan syndrome", "quote": "Aortic aneurysms in Loeys-Dietz syndrome dissect at smaller diameters than in Marfan syndrome", "subject": "Aortic aneurysms in Loeys-Dietz syndrome", "predicate": "dissect at", "object": "smaller diameters than in Marfan syndrome", "negated": false, "qualifier": null, "subject_qualifier": null, "object_qualifier": null, "entities": ["Aortic aneurysms", "Loeys-Dietz syndrome", "Marfan syndrome"], "citations": ["[2]", "https://pubmed.ncbi.nlm.nih.gov/16928994/"]}, {"claim": "Surgery is recommended earlier for Loeys-Dietz syndrome", "quote": "surgery is recommended earlier", "subject": "surgery", "predicate": "is recommended", "object": null, "negated": false, "qualifier": "earlier", "subject_qualifier": null, "object_qualifier": null, "entities": ["surgery", "Loeys-Dietz syndrome"], "citations": ["[2]", "https://pubmed.ncbi.nlm.nih.gov/16928994/"]}, {"claim": "Arterial tortuosity is a hallmark of Loeys-Dietz syndrome", "quote": "Arterial tortuosity, e.g. of the head and neck vessels, is a hallmark of the disorder", "subject": "Arterial tortuosity", "predicate": "is", "object": "a hallmark of Loeys-Dietz syndrome", "negated": false, "qualifier": null, "subject_qualifier": null, "object_qualifier": null, "entities": ["Arterial tortuosity", "Loeys-Dietz syndrome"], "citations": ["[3]"]}]}
+```json
+{
+  "claims": [
+    {
+      "claim": "Aortic aneurysms in Loeys-Dietz syndrome dissect at smaller diameters than in Marfan syndrome.",
+      "quote": "Aortic aneurysms in Loeys-Dietz syndrome dissect at smaller diameters than in Marfan syndrome",
+      "subject": "Aortic aneurysms in Loeys-Dietz syndrome",
+      "predicate": "dissect at",
+      "object": "smaller diameters than in Marfan syndrome",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Loeys-Dietz syndrome", "Marfan syndrome", "aortic aneurysms"],
+      "citations": ["[2]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    },
+    {
+      "claim": "Surgery is recommended earlier for aortic aneurysms in Loeys-Dietz syndrome.",
+      "quote": "so surgery is recommended earlier",
+      "subject": "surgery",
+      "predicate": "is recommended",
+      "object": "earlier",
+      "negated": false,
+      "qualifier": "for aortic aneurysms in Loeys-Dietz syndrome",
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["surgery", "Loeys-Dietz syndrome", "aortic aneurysms"],
+      "citations": [],
+      "about": "domain",
+      "basis": "background_knowledge"
+    },
+    {
+      "claim": "Arterial tortuosity of the head and neck vessels is a hallmark of Loeys-Dietz syndrome.",
+      "quote": "Arterial tortuosity, e.g. of the head and neck vessels, is a hallmark of the disorder",
+      "subject": "Arterial tortuosity of the head and neck vessels",
+      "predicate": "is",
+      "object": "a hallmark of Loeys-Dietz syndrome",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["arterial tortuosity", "head and neck vessels", "Loeys-Dietz syndrome"],
+      "citations": ["[3]"],
+      "about": "domain",
+      "basis": "secondary_source"
+    }
+  ]
+}
+```

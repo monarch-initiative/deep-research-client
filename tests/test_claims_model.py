@@ -6,8 +6,12 @@ import pytest
 
 from deep_research_client.claims import (
     AnchorStatus,
+    CitationHandle,
+    CitationStatus,
     Claim,
+    ClaimBasis,
     ClaimSet,
+    ClaimTopic,
     ExtractorInfo,
     SourceDocument,
     SourceType,
@@ -47,6 +51,8 @@ def test_a_claim_set_round_trips_through_json() -> None:
         claims=[Claim(
             id="c1", claim_text="A causes B.", anchor_status=AnchorStatus.EXACT,
             source_span=TextSpan(start=4, end=15, text="A causes B."),
+            citations=[CitationHandle(marker="[1]")], citation_status=CitationStatus.CITED,
+            about=ClaimTopic.DOMAIN, basis=ClaimBasis.SECONDARY_SOURCE,
         )],
     )
 
@@ -54,6 +60,7 @@ def test_a_claim_set_round_trips_through_json() -> None:
 
     assert again == claims
     assert again.claim_list[0].anchor_status == AnchorStatus.EXACT
+    assert again.claim_list[0].basis == ClaimBasis.SECONDARY_SOURCE
 
 
 def test_a_moved_span_is_reported() -> None:
@@ -64,8 +71,70 @@ def test_a_moved_span_is_reported() -> None:
         claims=[Claim(
             id="c1", claim_text="A causes B.", anchor_status=AnchorStatus.EXACT,
             source_span=TextSpan(start=0, end=11, text="A causes B."),
+            citation_status=CitationStatus.UNCITED,
         )],
     )
 
     assert claims.mismatched_spans("A causes B.") == []
     assert [c.id for c in claims.mismatched_spans("Now: A causes B.")] == ["c1"]
+
+
+@pytest.mark.parametrize(
+    ("fields", "problem"),
+    [
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNCITED,
+          "citations": [CitationHandle(marker="[1]")]}, "c1 is UNCITED but has citations"),
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.CITED},
+         "c1 is CITED but has no citations"),
+        ({"anchor_status": AnchorStatus.UNANCHORED, "citation_status": CitationStatus.UNCITED},
+         "c1 is UNCITED but is UNANCHORED"),
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNKNOWN},
+         "c1 is UNKNOWN but has no citations"),
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNCITED,
+          "about": ClaimTopic.WORK, "basis": ClaimBasis.OBSERVATION},
+         "c1 has a basis, which only a DOMAIN claim has"),
+        ({"anchor_status": AnchorStatus.EXACT, "citation_status": CitationStatus.UNCITED,
+          "basis": ClaimBasis.BACKGROUND_KNOWLEDGE},
+         "c1 has a basis, which only a DOMAIN claim has"),
+    ],
+)
+def test_a_claim_whose_slots_contradict_each_other_is_refused(fields, problem) -> None:
+    """An uncited claim with citations, or a basis on a work claim, cannot be written."""
+    with pytest.raises(ValueError, match=problem):
+        ClaimSet(
+            source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+            extractor=ExtractorInfo(name="x"),
+            claims=[Claim(id="c1", claim_text="A causes B.", **fields)],
+        )
+
+
+def test_a_saved_set_that_contradicts_itself_does_not_load() -> None:
+    """The rules hold when reading back as well as when building."""
+    saved = (
+        '{"source": {"id": "r.md", "source_type": "MARKDOWN_REPORT"},'
+        ' "extractor": {"name": "x"},'
+        ' "claims": [{"id": "c1", "claim_text": "A.", "anchor_status": "EXACT",'
+        ' "citation_status": "CITED"}]}'
+    )
+
+    with pytest.raises(ValueError, match="c1 is CITED but has no citations"):
+        ClaimSet.model_validate_json(saved)
+
+
+def test_a_cited_claim_called_background_knowledge_is_listed_not_refused() -> None:
+    """The two answers contradict each other; which one is wrong is the model's, not the code's."""
+    cited = [CitationHandle(marker="[2]")]
+    claims = ClaimSet(
+        source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+        extractor=ExtractorInfo(name="x"),
+        claims=[
+            Claim(id="c1", claim_text="A.", anchor_status=AnchorStatus.EXACT, citations=cited,
+                  citation_status=CitationStatus.CITED, about=ClaimTopic.DOMAIN,
+                  basis=ClaimBasis.BACKGROUND_KNOWLEDGE),
+            Claim(id="c2", claim_text="B.", anchor_status=AnchorStatus.EXACT, citations=cited,
+                  citation_status=CitationStatus.CITED, about=ClaimTopic.DOMAIN,
+                  basis=ClaimBasis.SECONDARY_SOURCE),
+        ],
+    )
+
+    assert [c.id for c in claims.cited_background_claims] == ["c1"]

@@ -4,6 +4,10 @@ The fields come from ``claims.yaml`` via ``datamodel.py``. ``ClaimSet`` is
 subclassed here to add properties computed from those fields, and adds no
 fields of its own, so its JSON schema stays exactly what LinkML would emit.
 
+``ClaimSet`` also checks, on construction and on loading, the rules that tie a
+claim's slots together (see :func:`inconsistencies`), so a set that says a
+claim is uncited while listing its citations cannot be written or read back.
+
 The generated base sets ``use_enum_values=True``, so an enum slot reads back as
 its string value; compare with ``==`` against the enum member, which is a
 ``str`` subclass.
@@ -11,10 +15,15 @@ its string value; compare with ``==`` against the enum member, which is a
 
 import hashlib
 
+from pydantic import model_validator
+
 from .datamodel import (
     AnchorStatus,
     CitationHandle,
+    CitationStatus,
     Claim,
+    ClaimBasis,
+    ClaimTopic,
     EntityMention,
     ExtractorInfo,
     SourceDocument,
@@ -26,14 +35,19 @@ from .datamodel import ClaimSet as GeneratedClaimSet
 __all__ = [
     "AnchorStatus",
     "CitationHandle",
+    "CitationStatus",
     "Claim",
+    "ClaimBasis",
     "ClaimSet",
+    "ClaimTopic",
     "EntityMention",
     "ExtractorInfo",
     "SourceDocument",
     "SourceType",
     "TextSpan",
+    "citation_status_for",
     "content_sha256",
+    "inconsistencies",
 ]
 
 
@@ -52,6 +66,63 @@ def content_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def citation_status_for(citations: list[CitationHandle], anchor_status: str) -> CitationStatus:
+    """The citation status that citations found for a claim imply.
+
+    Args:
+        citations: The citations kept for the claim.
+        anchor_status: How the claim was located.
+
+    Returns:
+        UNKNOWN for a claim that could not be located, else CITED or UNCITED.
+
+    >>> citation_status_for([], AnchorStatus.UNANCHORED).value
+    'UNKNOWN'
+    >>> citation_status_for([CitationHandle(marker="[1]")], AnchorStatus.EXACT).value
+    'CITED'
+    >>> citation_status_for([], AnchorStatus.NOT_APPLICABLE).value
+    'UNCITED'
+    """
+    if anchor_status == AnchorStatus.UNANCHORED:
+        return CitationStatus.UNKNOWN
+    return CitationStatus.CITED if citations else CitationStatus.UNCITED
+
+
+def inconsistencies(claim: Claim) -> list[str]:
+    """What is wrong with how a claim's slots fit together, if anything.
+
+    Only rules the code can check are here. Whether ``about`` and ``basis``
+    are right is the extractor's judgement, and nothing checks it.
+
+    Args:
+        claim: The claim to check.
+
+    Returns:
+        One sentence per broken rule; empty when the claim is consistent.
+
+    >>> claim = Claim(id="c1", claim_text="A.", anchor_status=AnchorStatus.EXACT,
+    ...               citation_status=CitationStatus.CITED,
+    ...               about=ClaimTopic.WORK, basis=ClaimBasis.OBSERVATION)
+    >>> for problem in inconsistencies(claim):
+    ...     print(problem)
+    c1 is CITED but has no citations
+    c1 has a basis, which only a DOMAIN claim has
+    """
+    problems = []
+    expected = citation_status_for(claim.citations or [], claim.anchor_status)
+    if claim.citation_status != expected:
+        if claim.citations and claim.anchor_status != AnchorStatus.UNANCHORED:
+            reason = "has citations"
+        elif claim.anchor_status == AnchorStatus.UNANCHORED:
+            reason = "is UNANCHORED" + (" and has citations" if claim.citations else "")
+        else:
+            reason = "has no citations"
+        problems.append(f"{claim.id} is {claim.citation_status} but {reason}")
+    if claim.basis is not None and claim.about != ClaimTopic.DOMAIN:
+        problems.append(f"{claim.id} has a basis, which only a DOMAIN claim has")
+    return problems
+
+
 class ClaimSet(GeneratedClaimSet):
     """The claims extracted from one source, with derived views.
 
@@ -60,8 +131,10 @@ class ClaimSet(GeneratedClaimSet):
     ...     extractor=ExtractorInfo(name="example"),
     ...     claims=[
     ...         Claim(id="c1", claim_text="A causes B.", anchor_status=AnchorStatus.EXACT,
+    ...               citation_status=CitationStatus.UNCITED,
     ...               source_span=TextSpan(start=0, end=11, text="A causes B.")),
-    ...         Claim(id="c2", claim_text="C.", anchor_status=AnchorStatus.UNANCHORED),
+    ...         Claim(id="c2", claim_text="C.", anchor_status=AnchorStatus.UNANCHORED,
+    ...               citation_status=CitationStatus.UNKNOWN),
     ...     ],
     ... )
     >>> [c.id for c in claims.unanchored_claims]
@@ -69,6 +142,14 @@ class ClaimSet(GeneratedClaimSet):
     >>> claims.mismatched_spans("A causes B. More.")
     []
     """
+
+    @model_validator(mode="after")
+    def _claims_are_consistent(self) -> "ClaimSet":
+        """Refuse a set with a claim whose slots contradict each other."""
+        problems = [problem for claim in self.claim_list for problem in inconsistencies(claim)]
+        if problems:
+            raise ValueError("; ".join(problems))
+        return self
 
     @property
     def claim_list(self) -> list[Claim]:
@@ -90,6 +171,22 @@ class ClaimSet(GeneratedClaimSet):
             Claims with anchor status UNANCHORED.
         """
         return [c for c in self.claim_list if c.anchor_status == AnchorStatus.UNANCHORED]
+
+    @property
+    def cited_background_claims(self) -> list[Claim]:
+        """Claims the extractor called background knowledge that carry a citation.
+
+        Background knowledge is by definition stated without a citation, so
+        one of the extractor's two answers is wrong: the basis, or which
+        claims the sentence's marker supports. Nothing here decides which.
+
+        Returns:
+            Claims with basis BACKGROUND_KNOWLEDGE and citation status CITED.
+        """
+        return [
+            c for c in self.claim_list
+            if c.basis == ClaimBasis.BACKGROUND_KNOWLEDGE and c.citation_status == CitationStatus.CITED
+        ]
 
     def mismatched_spans(self, source_text: str) -> list[Claim]:
         """Claims whose span no longer points at the text it records.

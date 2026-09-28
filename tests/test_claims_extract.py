@@ -13,7 +13,13 @@ from typing import Any
 
 import pytest
 
-from deep_research_client.claims import AnchorStatus, SourceType
+from deep_research_client.claims import (
+    AnchorStatus,
+    CitationStatus,
+    ClaimBasis,
+    ClaimTopic,
+    SourceType,
+)
 from deep_research_client.claims.extract import (
     SourceFormat,
     aextract_claims,
@@ -164,6 +170,13 @@ def test_a_dismech_file_maps_record_by_record_with_paths():
     assert [(c.marker, c.reference_id) for c in mechanism.citations] == [
         ("PMID:1852208", "PMID:1852208"),
     ]
+    assert all(c.about == ClaimTopic.DOMAIN for c in claims.claim_list)
+    assert (mechanism.citation_status, mechanism.basis) == (
+        CitationStatus.CITED, ClaimBasis.SECONDARY_SOURCE,
+    ), "evidence is a cited work"
+    assert (ectopia.citation_status, ectopia.basis) == (CitationStatus.UNCITED, None), (
+        "a record with no evidence says nothing about what it rests on"
+    )
 
 
 def test_a_gene_review_file_skips_removed_annotations_and_file_references():

@@ -133,6 +133,56 @@ class AnchorStatus(str, Enum):
     """
 
 
+class ClaimTopic(str, Enum):
+    """
+    What a claim is about. A claim about a work is checked against bibliographic records; a claim about the domain is checked against what is known of the world.
+    """
+    WORK = "WORK"
+    """
+    A publication or other work as an object: its authors, venue, date, identifiers, or what it covers ("this review discusses X"). Deep research reports that list papers make many of these.
+    """
+    DOMAIN = "DOMAIN"
+    """
+    The subject matter the works study: genes, diseases, drugs, outcomes, mechanisms.
+    """
+
+
+class ClaimBasis(str, Enum):
+    """
+    What a claim about the domain rests on, as the source presents it. This is the extractor's judgement of how the source states the claim, not a check of whether the basis holds up.
+    """
+    OBSERVATION = "OBSERVATION"
+    """
+    The source presents it as its own finding: an experiment, analysis, dataset or case it made or ran.
+    """
+    SECONDARY_SOURCE = "SECONDARY_SOURCE"
+    """
+    The source attributes it to another work, by a citation marker or by naming the work or its authors ("Smith et al. showed").
+    """
+    BACKGROUND_KNOWLEDGE = "BACKGROUND_KNOWLEDGE"
+    """
+    The source states it with no citation or attribution, as knowledge taken to be true within the field.
+    """
+
+
+class CitationStatus(str, Enum):
+    """
+    Whether the source cites a claim, as checked against the source. This makes the absence of a citation explicit: an empty citations list alone cannot tell "the source cites nothing here" from "this was not checked".
+    """
+    CITED = "CITED"
+    """
+    The source attaches at least one citation to the claim, and every one is in citations. For prose, only markers in the claim's own sentence count.
+    """
+    UNCITED = "UNCITED"
+    """
+    The claim was located and no citation is attached to it. For prose, its sentence may still cite a source for a different claim. For a curated record, the record carries no evidence.
+    """
+    UNKNOWN = "UNKNOWN"
+    """
+    Whether the source cites the claim could not be checked, because the claim's passage was not found (anchor_status UNANCHORED). Markers the extractor reported for it are not kept.
+    """
+
+
 
 class ClaimSet(ConfiguredBaseModel):
     """
@@ -190,6 +240,9 @@ class Claim(ConfiguredBaseModel):
     object_qualifier: Optional[str] = Field(default=None, description="""A modifier of the object, for example \"severe\".""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     entities: Optional[list[EntityMention]] = Field(default=None, description="""The things the claim mentions, whether or not they fill subject or object. Anchors for aligning claims across sources.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     citations: Optional[list[CitationHandle]] = Field(default=None, description="""The references the source attaches to this claim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
+    citation_status: CitationStatus = Field(default=..., description="""Whether the source cites this claim: CITED exactly when citations is non-empty, UNKNOWN exactly when the claim is UNANCHORED.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
+    about: Optional[ClaimTopic] = Field(default=None, description="""Whether the claim is about a work or about the domain. Absent when the extractor did not say.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
+    basis: Optional[ClaimBasis] = Field(default=None, description="""What a claim about the domain rests on, as the source presents it. Set only when about is DOMAIN.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
 
 
 class TextSpan(ConfiguredBaseModel):

@@ -3985,6 +3985,14 @@ def claims_extract(
             f"found in the source; they are kept with anchor_status UNANCHORED "
             f"and no span, and should not be taken as coming from it."
         )
+    conflicting = claims.cited_background_claims
+    if conflicting:
+        _warn(
+            f"{len(conflicting)} claims are marked as background knowledge but carry "
+            f"a citation ({', '.join(c.id for c in conflicting[:10])}"
+            f"{', ...' if len(conflicting) > 10 else ''}); either the basis or the "
+            f"citation the model attached to them is wrong."
+        )
     logger.info(f"Extracted {len(claims.claim_list)} claims from {source}")
 
     payload = claims.model_dump(mode="json", exclude_none=True)

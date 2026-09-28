@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from deep_research_client.claims.anchoring import locate_quote
-from deep_research_client.claims.models import AnchorStatus
+from deep_research_client.claims.models import AnchorStatus, CitationStatus, ClaimBasis, ClaimTopic
 from deep_research_client.claims.parsing import (
     TextUnit,
     UnreadableReplyError,
@@ -156,6 +156,9 @@ def test_a_reply_becomes_anchored_structured_claims():
     assert second.negated is True
     assert second.anchor_status == AnchorStatus.NORMALIZED
     assert second.citations is None
+    assert (first.citation_status, second.citation_status) == (
+        CitationStatus.CITED, CitationStatus.UNCITED,
+    )
 
 
 def test_a_citation_the_source_does_not_carry_is_dropped():
@@ -320,3 +323,38 @@ def test_a_table_row_is_its_own_citation_window():
     (claim,) = claims_from_reply(reply, unit)
 
     assert [(c.marker, c.reference_id) for c in claim.citations] == [("[2]", "PMID:8166794")]
+
+
+def test_an_unfound_quote_leaves_whether_it_is_cited_unknown():
+    """With no passage there is no sentence to check, so the model's markers are not kept."""
+    reply = _reply({"claim": "FBN1 is the only cause.", "quote": "FBN1 is the only cause",
+                    "citations": ["[1]"]})
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert claim.citation_status == CitationStatus.UNKNOWN
+    assert claim.citations is None
+
+
+@pytest.mark.parametrize(
+    ("about", "basis", "expected"),
+    [
+        ("domain", "secondary_source", (ClaimTopic.DOMAIN, ClaimBasis.SECONDARY_SOURCE)),
+        ("Domain", "Background knowledge", (ClaimTopic.DOMAIN, ClaimBasis.BACKGROUND_KNOWLEDGE)),
+        ("domain", "observation", (ClaimTopic.DOMAIN, ClaimBasis.OBSERVATION)),
+        ("domain", None, (ClaimTopic.DOMAIN, None)),
+        ("domain", "hearsay", (ClaimTopic.DOMAIN, None)),
+        ("work", "secondary_source", (ClaimTopic.WORK, None)),
+        (None, "observation", (None, None)),
+        ("the paper", None, (None, None)),
+    ],
+)
+def test_about_and_basis_are_read_and_a_basis_is_kept_only_for_domain_claims(about, basis, expected):
+    """A label the schema does not name reads as unset, never as a guess."""
+    reply = _reply({"claim": "FBN1 variants cause Marfan syndrome.",
+                    "quote": "caused by pathogenic variants in FBN1",
+                    "about": about, "basis": basis})
+
+    (claim,) = claims_from_reply(reply, _genetics_unit())
+
+    assert (claim.about, claim.basis) == expected

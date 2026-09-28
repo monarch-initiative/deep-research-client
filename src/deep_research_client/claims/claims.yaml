@@ -69,6 +69,63 @@ enums:
           The claim is a structured record rather than prose, so it is located
           by source_path and there is no quote to anchor.
 
+  ClaimTopic:
+    description: >-
+      What a claim is about. A claim about a work is checked against
+      bibliographic records; a claim about the domain is checked against
+      what is known of the world.
+    permissible_values:
+      WORK:
+        description: >-
+          A publication or other work as an object: its authors, venue, date,
+          identifiers, or what it covers ("this review discusses X"). Deep
+          research reports that list papers make many of these.
+      DOMAIN:
+        description: >-
+          The subject matter the works study: genes, diseases, drugs,
+          outcomes, mechanisms.
+
+  ClaimBasis:
+    description: >-
+      What a claim about the domain rests on, as the source presents it. This
+      is the extractor's judgement of how the source states the claim, not a
+      check of whether the basis holds up.
+    permissible_values:
+      OBSERVATION:
+        description: >-
+          The source presents it as its own finding: an experiment, analysis,
+          dataset or case it made or ran.
+      SECONDARY_SOURCE:
+        description: >-
+          The source attributes it to another work, by a citation marker or by
+          naming the work or its authors ("Smith et al. showed").
+      BACKGROUND_KNOWLEDGE:
+        description: >-
+          The source states it with no citation or attribution, as knowledge
+          taken to be true within the field.
+
+  CitationStatus:
+    description: >-
+      Whether the source cites a claim, as checked against the source. This
+      makes the absence of a citation explicit: an empty citations list alone
+      cannot tell "the source cites nothing here" from "this was not checked".
+    permissible_values:
+      CITED:
+        description: >-
+          The source attaches at least one citation to the claim, and every
+          one is in citations. For prose, only markers in the claim's own
+          sentence count.
+      UNCITED:
+        description: >-
+          The claim was located and no citation is attached to it. For prose,
+          its sentence may still cite a source for a different claim. For a
+          curated record, the record carries no evidence.
+      UNKNOWN:
+        description: >-
+          Whether the source cites the claim could not be checked, because the
+          claim's passage was not found (anchor_status UNANCHORED). Markers the
+          extractor reported for it are not kept.
+
 classes:
 
   ClaimSet:
@@ -191,6 +248,22 @@ classes:
         multivalued: true
         inlined_as_list: true
         description: The references the source attaches to this claim.
+      citation_status:
+        range: CitationStatus
+        required: true
+        description: >-
+          Whether the source cites this claim: CITED exactly when citations is
+          non-empty, UNKNOWN exactly when the claim is UNANCHORED.
+      about:
+        range: ClaimTopic
+        description: >-
+          Whether the claim is about a work or about the domain. Absent when
+          the extractor did not say.
+      basis:
+        range: ClaimBasis
+        description: >-
+          What a claim about the domain rests on, as the source presents it.
+          Set only when about is DOMAIN.
 
   TextSpan:
     description: >-

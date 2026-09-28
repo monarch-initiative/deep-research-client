@@ -26,7 +26,7 @@ DEFAULT_MAX_TOKENS = 4096
 
 #: Bumped whenever the instructions below change, and recorded on every
 #: ClaimSet, so sets made with different prompts are never compared unknowingly.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 _INSTRUCTIONS = """\
 You extract the claims a text makes. A claim is one atomic assertion: a single
@@ -49,7 +49,9 @@ Rules:
 - "quote" must be copied character for character from TEXT: the shortest
   contiguous passage that states the claim. Never paraphrase or join passages.
 - Include claims made in tables and lists. Skip headings, questions, and
-  statements about the text itself ("this report reviews...").
+  statements about how TEXT itself is organised ("this report reviews...").
+  Claims about other works (a paper's authors, venue, year, identifiers, or
+  what it covers) are claims: keep them, with "about": "work".
 - "negated" is true only when the text asserts the relationship does not hold.
 - "citations": the citation markers attached to the passage, exactly as
   written (for example "[3]", "PMID:12345", a URL); [] if none. A marker
@@ -57,18 +59,29 @@ Rules:
   claims, give its marker only to those the cited source is for.
 - "subject", "predicate", "object": the assertion's parts when it has that
   shape, else null. "entities": the things the claim mentions.
+- "about": "work" when the claim is about a publication or other work as an
+  object (its authors, venue, date, identifiers, what it covers); "domain"
+  when it is about the subject matter itself.
+- "basis", for "domain" claims only (null for "work" claims), how TEXT
+  presents the claim: "observation" when TEXT reports it as its own finding
+  (its own experiment, analysis, data or case); "secondary_source" when TEXT
+  attributes it to another work, by a citation marker or by naming the work
+  or its authors; "background_knowledge" when TEXT states it with no citation
+  or attribution, as something known in the field.
 
 Example. For TEXT
   Drug Q, an oral kinase inhibitor, reduced tumour size in 40% of patients [4].
 the claims are "Drug Q is an oral kinase inhibitor." (quote "Drug Q, an oral
-kinase inhibitor", citations [], since [4] reports the result) and "Drug Q
-reduced tumour size in 40% of patients." (quote "reduced tumour size in 40% of
-patients", citations ["[4]"]).
+kinase inhibitor", citations [], since [4] reports the result; basis
+"background_knowledge") and "Drug Q reduced tumour size in 40% of patients."
+(quote "reduced tumour size in 40% of patients", citations ["[4]"]; basis
+"secondary_source"). Both are "about": "domain".
 
 Reply with JSON only, in this form:
 {"claims": [{"claim": "...", "quote": "...", "subject": "...", "predicate": "...",
   "object": "...", "negated": false, "qualifier": null, "subject_qualifier": null,
-  "object_qualifier": null, "entities": ["..."], "citations": ["..."]}]}
+  "object_qualifier": null, "entities": ["..."], "citations": ["..."],
+  "about": "domain", "basis": "secondary_source"}]}
 If the text makes no claims, reply {"claims": []}."""
 
 

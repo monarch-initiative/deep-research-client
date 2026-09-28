@@ -1,14 +1,14 @@
 # Model replies recorded for the claim-extraction prompt, replayed through the
 # real parser by tests/test_claims_recorded.py.
 #
-# Recorded by running Claude subagents as the model: each saw only
-# prompts/SYSTEM.txt and one prompts/NN-*.txt file, and wrote the reply the
-# model should give. No other context. Re-record whenever the prompt or the
-# units change; the test fails until you do.
+# Recorded by record.py through ClaudeCodeChatClient: each reply is what the
+# model returned, over the same transport `claims extract --llm-backend
+# claude-code` uses, with no other context. Re-record whenever the prompt or
+# the units change; the test fails until you do.
 #
 # Prompt files are numbered across the sources in this order and named after
 # the source ("03-report.txt" is the third unit, from marfan_report.md).
-prompt_version: "3"
+prompt_version: "4"
 sources:
   - name: report
     file: marfan_report.md
@@ -17,5 +17,5 @@ sources:
   - name: provider
     file: lds_report.md
 recordings:
-  haiku: Claude Haiku (subagent)
-  sonnet: Claude Sonnet (subagent)
+  haiku: claude-haiku-4-5-20251001, via Claude Code 2.1.283
+  sonnet: claude-sonnet-5, via Claude Code 2.1.283

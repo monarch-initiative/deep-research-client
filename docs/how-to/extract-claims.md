@@ -107,6 +107,8 @@ For each unit the model returns, per claim:
   **negation** flag and **qualifiers** such as "may" or "in adults"
 - the **entities** mentioned, and the **citation markers** attached to the
   passage
+- what the claim is **about**, and for a claim about the domain, what its
+  **basis** is (see [What a claim is about, and what it rests on](#what-a-claim-is-about-and-what-it-rests-on))
 
 The quote is what makes a claim auditable. It is located in the report and
 becomes the claim's `source_span`: character offsets into the file, end
@@ -158,6 +160,9 @@ A curated record already is one claim, so no model is needed. Each claim has:
   `MONDO:0007947`, or `UniProtKB:P35555` for a gene review's accession)
 - the curated ontology terms as grounded **entities**
 - the evidence references as **citations**
+- `about` `DOMAIN`. A record with evidence is `CITED` with basis
+  `SECONDARY_SOURCE`; one with none is `UNCITED` with no basis, since a bare
+  curated record does not say what it rests on.
 
 Phenotype, treatment and inheritance records also get a **predicate** and
 **object** from their section ("has phenotype" `HP:0001083`). A record with no
@@ -166,6 +171,45 @@ Ectopia lentis."
 
 Only the sections the evaluation loaders already read are covered. Other dismech
 sections, such as diagnosis, prevalence and genetics, are not yet claims.
+
+## What a claim is about, and what it rests on
+
+Three slots classify a claim. The first is checked by the code; the other two
+are the model's judgement.
+
+**`citation_status`** says whether the source cites the claim. It makes the
+lack of a citation explicit, since an empty `citations` list alone cannot tell
+"cites nothing" from "not checked":
+
+| `citation_status` | Meaning |
+|-------------------|---------|
+| `CITED` | At least one citation is attached, and all are in `citations` |
+| `UNCITED` | The claim was located and nothing is attached to it. Its sentence may still cite a source for another claim. For a curated record: no evidence |
+| `UNKNOWN` | The claim is `UNANCHORED`, so there was no sentence to check |
+
+**`about`** is `WORK` for a claim about a publication as an object (its
+authors, venue, date, identifiers, what it covers) and `DOMAIN` for a claim
+about the subject matter. Reports that list papers, as Asta's do, make many
+`WORK` claims: "The paper X was published in 2021."
+
+**`basis`**, for `DOMAIN` claims only, is how the source presents the claim:
+
+| `basis` | Meaning |
+|---------|---------|
+| `OBSERVATION` | The source's own finding: an experiment, analysis, dataset or case it made or ran |
+| `SECONDARY_SOURCE` | Attributed to another work, by a citation marker or by naming it or its authors |
+| `BACKGROUND_KNOWLEDGE` | Stated with no citation or attribution, as known in the field |
+
+A deep research report observes little itself, so most of its domain claims
+rest on a secondary source or on background knowledge.
+
+A claim set is refused, when built or loaded, if these contradict what the
+code knows: a `CITED` claim with no citations, an `UNCITED` one with some, an
+`UNKNOWN` one that was anchored, or a `basis` on a claim that is not `DOMAIN`.
+One contradiction is only reported: a claim the model calls
+`BACKGROUND_KNOWLEDGE` that carries a citation. Either the basis or the marker
+it attached is wrong, and the code cannot tell which.
+`ClaimSet.cited_background_claims` lists these, and `claims extract` warns.
 
 ## The claim set
 
@@ -194,6 +238,11 @@ claims:
   object:
     label: Ectopia lentis
     id: HP:0001083
+  entities:
+  - label: Ectopia lentis
+    id: HP:0001083
+  citation_status: UNCITED
+  about: DOMAIN
 ```
 
 A claim from a report has the same fields, plus a span. `source.content_sha256`

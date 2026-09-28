@@ -13,7 +13,16 @@ from ..evaluation.scorers import extract_json_object
 from ..validation.extraction import find_reference_ids
 from ..validation.term_extraction import is_ontology_curie
 from .anchoring import NUMERIC_MARKER, locate_quote
-from .models import AnchorStatus, CitationHandle, Claim, EntityMention, TextSpan
+from .models import (
+    AnchorStatus,
+    CitationHandle,
+    Claim,
+    ClaimBasis,
+    ClaimTopic,
+    EntityMention,
+    TextSpan,
+    citation_status_for,
+)
 
 __all__ = [
     "TextUnit",
@@ -249,6 +258,23 @@ def _text(value: Any) -> Optional[str]:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def _member(value: Any, enum: type[ClaimTopic] | type[ClaimBasis]) -> Any:
+    """The enum member a model's label names, or None if it names none.
+
+    Models write these as ``"secondary_source"``, ``"Secondary source"`` or
+    ``"SECONDARY-SOURCE"``; all mean the same member.
+
+    >>> _member("secondary source", ClaimBasis).value, _member("Work", ClaimTopic).value
+    ('SECONDARY_SOURCE', 'WORK')
+    >>> _member("hearsay", ClaimBasis) is None, _member(None, ClaimTopic) is None
+    (True, True)
+    """
+    text = _text(value)
+    if text is None:
+        return None
+    return enum.__members__.get(re.sub(r"[\s-]+", "_", text).upper())
+
+
 def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
     """Build claims from an extractor's JSON reply about one unit.
 
@@ -276,8 +302,8 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
     >>> claim = claims_from_reply(reply, unit)[0]
     >>> claim.anchor_status, claim.source_span.start, claim.section
     ('EXACT', 12, 'Genetics')
-    >>> claim.subject.label, [c.marker for c in claim.citations]
-    ('FBN1 variants', ['[1]'])
+    >>> claim.subject.label, [c.marker for c in claim.citations], claim.citation_status
+    ('FBN1 variants', ['[1]'], 'CITED')
     """
     parsed = extract_json_object(reply, key="claims")
     entries = parsed.get("claims") if isinstance(parsed, dict) else None
@@ -303,6 +329,15 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
         )
         negated = entry.get("negated")
         entities = [m for m in (_mention(e) for e in entry.get("entities") or []) if m]
+        citations = resolve_citations(
+            entry.get("citations") or [],
+            citation_window(unit, span) if span is not None else "",
+            unit.bibliography,
+        )
+        about = _member(entry.get("about"), ClaimTopic)
+        # A basis is what a domain claim rests on; on a work claim it means
+        # nothing, so the model's value is not kept there.
+        basis = _member(entry.get("basis"), ClaimBasis) if about == ClaimTopic.DOMAIN else None
         claims.append(Claim(
             id=f"u{len(claims) + 1}",
             claim_text=claim_text,
@@ -318,10 +353,9 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             subject_qualifier=_text(entry.get("subject_qualifier")),
             object_qualifier=_text(entry.get("object_qualifier")),
             entities=entities or None,
-            citations=resolve_citations(
-                entry.get("citations") or [],
-                citation_window(unit, span) if span is not None else "",
-                unit.bibliography,
-            ) or None,
+            citations=citations or None,
+            citation_status=citation_status_for(citations, status),
+            about=about,
+            basis=basis,
         ))
     return claims

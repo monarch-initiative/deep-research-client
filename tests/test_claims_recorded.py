@@ -118,7 +118,10 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize(
     "prompt_file,words",
-    [("01-report.txt", ("TGFBR2", "Marfan")), ("08-provider.txt", ("ectopia lentis",))],
+    # Match the relation the negation is about, not only its words: "Unlike in
+    # Marfan syndrome, ectopia lentis is not a feature" also asserts, correctly,
+    # that it is a feature of Marfan syndrome, and that claim is not negated.
+    [("01-report.txt", ("TGFBR2", "Marfan")), ("08-provider.txt", ("ectopia lentis", "Loeys-Dietz"))],
     ids=["not-caused-by-TGFBR2", "ectopia-lentis-not-a-feature"],
 )
 def test_the_recorded_negation_is_kept(model, prompt_file, words):

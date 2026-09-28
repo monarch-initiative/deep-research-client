@@ -181,6 +181,14 @@ def _identifier_from_references(marker: str, references: Sequence[str]) -> Optio
     'DOI:10.3389/fgene.2023.1146669'
     >>> _identifier_from_references("Biggs 2023", refs) is None
     True
+
+    A surname is matched as a word, so a short one is not found inside
+    another ("Li" in "Clinical"):
+
+    >>> _identifier_from_references("Li 2020", ["- Clinical outcomes, 2020. https://doi.org/10.1016/j.cell.2020.01.001"]) is None
+    True
+    >>> _identifier_from_references("Li 2020", ["- Li et al., 2020. https://doi.org/10.1016/j.cell.2020.01.001"])
+    'DOI:10.1016/j.cell.2020.01.001'
     """
     key = _CITATION_KEY.search(marker)
     if key is not None:
@@ -189,8 +197,9 @@ def _identifier_from_references(marker: str, references: Sequence[str]) -> Optio
         author_year = _AUTHOR_YEAR.match(marker.strip())
         if author_year is None:
             return None
-        surname, year = author_year.group(1).lower(), author_year.group(2)
-        matching = [entry for entry in references if surname in entry.lower() and year in entry]
+        surname = re.compile(rf"\b{re.escape(author_year.group(1))}\b", re.IGNORECASE)
+        year = re.compile(rf"\b{author_year.group(2)}\b")
+        matching = [entry for entry in references if surname.search(entry) and year.search(entry)]
     found = {ids[0].normalized_id for entry in matching if (ids := find_reference_ids(entry))}
     return found.pop() if len(found) == 1 else None
 

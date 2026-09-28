@@ -390,12 +390,14 @@ def _paper_unit(body: str) -> TextUnit:
         ("Mice lacking X live longer", ["[1]"], [("[1]", "SECTION")]),
         ("Y shortens it", ["[1]"], [("[1]", "SENTENCE")]),
         ("not in the section", ["[1]"], []),
+        ("Z needs W", ["PMID:41258631"], [("PMID:41258631", "SENTENCE")]),
     ],
-    ids=["no-marker", "marker-only-in-heading", "marker-in-sentence-too", "unanchored"],
+    ids=["no-marker", "marker-only-in-heading", "marker-in-sentence-too", "unanchored",
+         "same-work-cited-by-identifier"],
 )
 def test_a_paper_s_section_cites_the_paper_once_and_only_for_located_claims(quote, reported, expected):
     """The heading's work is attached once, and never to a claim that may not come from it."""
-    unit = _paper_unit("- Summary: Mice lacking X live longer. Y shortens it [1].\n")
+    unit = _paper_unit("- Summary: Mice lacking X live longer. Y shortens it [1]. Z needs W (PMID:41258631).\n")
     reply = _reply({"claim": "A claim.", "quote": quote, "citations": reported})
 
     (claim,) = claims_from_reply(reply, unit)

@@ -139,6 +139,8 @@ def resolve_citations(
 
     A marker the extractor reports but the text does not contain is dropped:
     a citation is a fact about the source, not something to take on trust.
+    One reference gives one handle: a later marker that resolves to an
+    identifier already kept (``[2]``, then its URL) is skipped.
 
     Args:
         markers: Markers as the extractor reported them.
@@ -156,6 +158,13 @@ def resolve_citations(
     ... )
     >>> [(h.marker, h.reference_id, h.scope) for h in handles]
     [('[2]', 'DOI:10.1038/352337a0', 'SENTENCE'), ('PMID:15241795', 'PMID:15241795', 'SENTENCE')]
+    >>> same = resolve_citations(
+    ...     ["[2]", "https://doi.org/10.1038/352337a0"],
+    ...     "FBN1 variants [2](https://doi.org/10.1038/352337a0) cause it.",
+    ...     {2: "Dietz HC. Nature. 1991. https://doi.org/10.1038/352337a0"},
+    ... )
+    >>> [h.marker for h in same]
+    ['[2]']
     """
     handles: list[CitationHandle] = []
     seen: set[str] = set()
@@ -172,10 +181,13 @@ def resolve_citations(
         if numbered and int(numbered.group(1)) in bibliography:
             resolvable = bibliography[int(numbered.group(1))]
         found = find_reference_ids(resolvable)
+        reference_id = found[0].normalized_id if found else None
+        if reference_id is not None and reference_id in {h.reference_id for h in handles}:
+            continue
         url = _URL.search(resolvable)
         handles.append(CitationHandle(
             marker=marker,
-            reference_id=found[0].normalized_id if found else None,
+            reference_id=reference_id,
             url=url.group(0).rstrip(".,;)") if url else None,
             scope=CitationScope.SENTENCE,
         ))
@@ -402,12 +414,15 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             unit.bibliography,
         )
         # A section headed by a cited work attributes all of it to that work.
-        # Not for an unlocated claim, which may not come from the section.
-        if (
-            span is not None and unit.section_citation is not None
-            and unit.section_citation.marker not in {c.marker for c in citations}
+        # Not for an unlocated claim, which may not come from the section, and
+        # not again when the sentence already cites the same work.
+        section = unit.section_citation
+        if span is not None and section is not None and not any(
+            c.marker == section.marker
+            or (section.reference_id is not None and c.reference_id == section.reference_id)
+            for c in citations
         ):
-            citations.append(unit.section_citation)
+            citations.append(section)
         about = _member(entry.get("about"), ClaimTopic)
         basis = _member(entry.get("basis"), ClaimBasis)
         # Only a domain claim has a basis. So a basis with no readable "about"

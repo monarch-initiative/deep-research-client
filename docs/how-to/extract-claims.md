@@ -175,9 +175,12 @@ not attached on the model's say-so:
 - A claim with no span (`UNANCHORED`) gets no citations.
 
 A numbered marker such as `[2]` is resolved through the report's own citation
-list to a PMID or DOI where it names one. When the report has no `## Citations`
-list, or an empty one, the provider's own numbered reference list inside its
-answer (`References`, `Sources`...) is used instead: the longest, if there are
+list to a PMID or DOI where it names one. A report written with
+`research --separate-citations` keeps that list in a file of its own: pass it
+with `--citations`, or leave it beside the report as `<report>.citations.md` or
+`<report>.md.citations.md` (as dismech's are) to have it found. When the report
+has neither, or both are empty, the provider's own numbered reference list
+inside its answer (`References`, `Sources`...) is used instead: the longest, if there are
 several, and never a `Further reading` list. Entries may be written `1. ...`,
 `[1] ...`, `[1]: ...`, or any of them as a bulleted item, and are read only
 under such a heading: Markdown reference definitions (`[1]: https://...`) left

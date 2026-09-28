@@ -119,3 +119,23 @@ def test_the_claude_code_backend_needs_the_cli_on_path(monkeypatch):
 
     assert result.exit_code == 1
     assert "needs the `claude` CLI on PATH" in result.stderr
+
+
+def test_a_missing_citations_file_is_refused(tmp_path):
+    """An explicit --citations that is not there is named, not ignored."""
+    result = runner.invoke(app, ["claims", "extract", str(INPUT / "marfan_report.md"),
+                                 "--citations", str(tmp_path / "absent.citations.md")])
+
+    assert result.exit_code == 1
+    assert "Citations file not found" in result.stderr
+
+
+def test_a_citations_file_for_a_curated_source_is_refused(tmp_path):
+    """Curated files have no [n] markers for a citations file to resolve."""
+    side = tmp_path / "side.citations.md"
+    side.write_text("1. https://doi.org/10.1/x\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["claims", "extract", str(INPUT / "marfan_dismech.yaml"), "--citations", str(side)])
+
+    assert result.exit_code == 1
+    assert "dismech sources have none" in result.stderr

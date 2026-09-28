@@ -39,13 +39,14 @@ from .models import (
     citation_status_for,
     content_sha256,
 )
-from .units import markdown_units, report_title, structured_units
+from .units import markdown_units, read_citations_file, report_title, structured_units
 
 __all__ = [
     "SourceFormat",
     "aextract_claims",
     "detect_format",
     "extract_claims",
+    "find_citations_file",
     "needs_llm",
     "resolve_format",
 ]
@@ -132,6 +133,25 @@ def resolve_format(source: Path | str, source_format: SourceFormat | str = Sourc
     if path.suffix.lower() not in _STRUCTURED_SUFFIXES:
         return SourceFormat.MARKDOWN
     return detect_format(path, _read(path, fmt)[1])
+
+
+def find_citations_file(source: Path | str) -> Optional[Path]:
+    """The separate citations file written beside a report, if there is one.
+
+    ``research --separate-citations`` writes ``<report>.citations.md`` by
+    default; dismech's reports keep theirs as ``<report>.md.citations.md``.
+
+    Args:
+        source: The report.
+
+    Returns:
+        The first of those that exists, or None.
+    """
+    path = Path(source)
+    for candidate in (path.with_suffix(".citations.md"), path.with_name(f"{path.name}.citations.md")):
+        if candidate != path and candidate.is_file():
+            return candidate
+    return None
 
 
 def needs_llm(source_format: SourceFormat) -> bool:
@@ -255,6 +275,7 @@ async def aextract_claims(
     model: str = DEFAULT_MODEL,
     concurrency: int = 4,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    citations_file: Optional[Path | str] = None,
 ) -> ClaimSet:
     """Extract the claims a source makes.
 
@@ -266,6 +287,8 @@ async def aextract_claims(
         model: Model for LLM decomposition.
         concurrency: LLM requests in flight at once.
         max_tokens: Reply budget per unit; a reply cut off at it raises.
+        citations_file: A report's separate citations file, whose numbered
+            entries resolve its ``[n]`` markers when it has no Citations list.
 
     Returns:
         The claims, with the source's SHA-256 and the extractor recorded.
@@ -283,6 +306,10 @@ async def aextract_claims(
             f"{path} is not a YAML or JSON document with fields to read; "
             f"read prose as {SourceFormat.MARKDOWN.value}"
         )
+    if citations_file is not None and fmt != SourceFormat.MARKDOWN:
+        raise ValueError(
+            f"A citations file resolves a report's [n] markers; {fmt.value} sources have none"
+        )
     if needs_llm(fmt) and llm_client is None:
         raise ValueError(
             f"Extracting claims from {fmt.value} sources needs an LLM client"
@@ -291,8 +318,12 @@ async def aextract_claims(
     title: Optional[str]
     if fmt == SourceFormat.MARKDOWN:
         title = report_title(text)
+        side = (
+            read_citations_file(Path(citations_file).read_text(encoding="utf-8"))
+            if citations_file is not None else None
+        )
         decomposed = await decompose_units(
-            markdown_units(text), llm_client, model,
+            markdown_units(text, citations_file=side), llm_client, model,
             concurrency=concurrency, max_tokens=max_tokens,
         )
         claims = decomposed.claims
@@ -341,6 +372,7 @@ def extract_claims(
     model: str = DEFAULT_MODEL,
     concurrency: int = 4,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    citations_file: Optional[Path | str] = None,
 ) -> ClaimSet:
     """Synchronous :func:`aextract_claims`, for callers without an event loop.
 
@@ -355,6 +387,8 @@ def extract_claims(
         model: Model for LLM decomposition.
         concurrency: LLM requests in flight at once.
         max_tokens: Reply budget per unit; a reply cut off at it raises.
+        citations_file: A report's separate citations file, whose numbered
+            entries resolve its ``[n]`` markers when it has no Citations list.
 
     Returns:
         The claims the source makes.
@@ -362,4 +396,5 @@ def extract_claims(
     return asyncio.run(aextract_claims(
         source, source_format=source_format, llm_client=llm_client,
         model=model, concurrency=concurrency, max_tokens=max_tokens,
+        citations_file=citations_file,
     ))

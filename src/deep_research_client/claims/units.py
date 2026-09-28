@@ -6,12 +6,12 @@ for prose inside a structured document, the path of the field.
 """
 
 import re
-from typing import Any, Iterator, NamedTuple, Optional
+from typing import Any, Iterator, Mapping, NamedTuple, Optional
 
 from .models import CitationHandle
 from .parsing import TextUnit, section_citation
 
-__all__ = ["markdown_units", "structured_units", "report_title"]
+__all__ = ["markdown_units", "read_citations_file", "report_title", "structured_units"]
 
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
 _FENCE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})", re.MULTILINE)
@@ -146,11 +146,43 @@ def _numbered_entries(text: str, heading: re.Match[str]) -> dict[int, str]:
     }
 
 
-def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int, str]:
+#: The last header line of a citations file this client writes with
+#: --separate-citations. The query above it can hold numbered lines of its own.
+_CITATIONS_FILE_HEADER_END = re.compile(r"^\*\*Generated:\*\*.*$", re.MULTILINE)
+
+
+def read_citations_file(text: str) -> dict[int, str]:
+    """The numbered citations in a file written by ``research --separate-citations``.
+
+    That file repeats the query, which can hold numbered lines of its own (a
+    template's objectives), so only the entries after its ``**Generated:**``
+    line are read. A file without that header is read whole.
+
+    Args:
+        text: The citations file.
+
+    Returns:
+        Entry text by reference number.
+
+    >>> side = "# Citations for Research Query\\n\\n**Query:** Find:\\n1. Genes\\n**Provider:** perplexity\\n"
+    >>> side += "**Generated:** 2026-02-03\\n\\n1. https://pmc.ncbi.nlm.nih.gov/articles/PMC4900471/\\n"
+    >>> read_citations_file(side)
+    {1: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC4900471/'}
+    """
+    headers = list(_CITATIONS_FILE_HEADER_END.finditer(text))
+    body = text[headers[-1].end():] if headers else text
+    return {int(m.group(1) or m.group(2)): m.group(3) for m in _NUMBERED_ENTRY.finditer(body)}
+
+
+def _bibliography(
+    text: str, start: int, end: Optional[int] = None,
+    citations_file: Optional[Mapping[int, str]] = None,
+) -> dict[int, str]:
     """The numbered references ``[n]`` markers resolve through, by number.
 
     This client's own ``## Citations`` list, which follows the answer, comes
-    first. When it is missing or empty, the provider's own reference list
+    first, then its separate citations file when one was given. When both are
+    missing or empty, the provider's own reference list
     inside the answer (``References``, ``Sources``... at any level) is used,
     so a provider that numbers its own sources still has them resolved. If
     the answer has several, the longest is taken (the first, on a tie), and
@@ -160,9 +192,10 @@ def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int,
         text: The report.
         start: Where the answer begins.
         end: Where it ends (exclusive); the end of ``text`` if None.
+        citations_file: Entries read from a separate citations file.
 
     Returns:
-        Entry text by reference number; empty when neither list exists.
+        Entry text by reference number; empty when no list exists.
 
     >>> own = "# Title\\n\\nFBN1 [1].\\n\\n### References\\n\\n1. Dietz HC. PMID: 1852208\\n"
     >>> _bibliography(own, 0)
@@ -181,6 +214,8 @@ def _bibliography(text: str, start: int, end: Optional[int] = None) -> dict[int,
     ]
     if ours and (entries := _numbered_entries(text, ours[-1])):
         return entries
+    if citations_file:
+        return dict(citations_file)
     theirs = [
         _numbered_entries(text, m) for m in _headings(text, start, stop)
         if (name := m.group(2).rstrip(":").strip().lower()) in _REFERENCE_SECTIONS
@@ -357,7 +392,10 @@ def _table_header(text: str, position: int) -> Optional[str]:
     return "\n".join(header) if len(header) == 2 else None
 
 
-def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[TextUnit]:
+def markdown_units(
+    text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS,
+    citations_file: Optional[Mapping[int, str]] = None,
+) -> list[TextUnit]:
     """Split a markdown report into extraction units, by heading.
 
     Heading lines are not part of any unit; they become its section path.
@@ -368,6 +406,9 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     Args:
         text: The report, as read from disk; offsets index into it.
         max_chars: Largest unit; longer sections split at paragraph breaks.
+        citations_file: Entries of the report's separate citations file
+            (:func:`read_citations_file`), for a report written without its
+            own ``## Citations`` list.
 
     Returns:
         Units in document order, with blank ones dropped.
@@ -389,7 +430,7 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     [('Papers > [1] A study', 'PMID:41258631'), ('Papers > [1] A study > Methods', 'PMID:41258631'), ('Papers > Notes', None)]
     """
     start, end = _answer_region(text)
-    bibliography = _bibliography(text, start, end)
+    bibliography = _bibliography(text, start, end, citations_file)
 
     units: list[TextUnit] = []
     stack: list[_OpenHeading] = []

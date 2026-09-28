@@ -873,6 +873,7 @@ deep-research-client claims extract SOURCE [OPTIONS]
 | `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`). `openai` backend only |
 | `--concurrency INT` | Model requests in flight at once (default: 4) |
 | `--llm-max-tokens INT` | Reply budget per section (default: 4096). A reply cut off at it is an error |
+| `--citations PATH` | A report's separate citations file, from `research --separate-citations`. Default: `<report>.citations.md` or `<report>.md.citations.md` beside the report, if present |
 
 Markdown and generic YAML/JSON prose need a model; curated dismech and
 ai-gene-review files do not, and run with no key. `--llm-base-url` without a

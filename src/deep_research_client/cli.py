@@ -3922,6 +3922,10 @@ def claims_extract(
     llm_max_tokens: Annotated[int, typer.Option(
         "--llm-max-tokens", min=1,
         help="Reply budget per section; a reply cut off at it is an error")] = 4096,
+    citations: Annotated[Optional[Path], typer.Option(
+        "--citations",
+        help="A report's separate citations file (research --separate-citations). "
+             "By default <report>.citations.md or <report>.md.citations.md, if present")] = None,
 ):
     """Extract the claims a source makes, without judging whether they are true.
 
@@ -3943,6 +3947,7 @@ def claims_extract(
     import yaml
 
     from .claims import SourceFormat, aextract_claims, needs_llm, resolve_format
+    from .claims.extract import find_citations_file
     from .claims.models import ids_by_section
     from .claims.llm import DEFAULT_MODEL
 
@@ -3960,6 +3965,14 @@ def claims_extract(
     except (json.JSONDecodeError, yaml.YAMLError) as exc:
         _error(f"Could not parse {source}: {exc}")
         raise typer.Exit(1)
+
+    if citations is not None and not citations.is_file():
+        _error(f"Citations file not found: {citations}")
+        raise typer.Exit(1)
+    if citations is None and fmt == SourceFormat.MARKDOWN:
+        citations = find_citations_file(source)
+        if citations is not None:
+            logger.info(f"Resolving [n] markers through {citations}")
 
     backends = ("openai", "claude-code")
     if llm_backend not in backends:
@@ -3997,6 +4010,7 @@ def claims_extract(
         claims = asyncio.run(aextract_claims(
             source, source_format=fmt, llm_client=llm_client,
             model=model, concurrency=concurrency, max_tokens=llm_max_tokens,
+            citations_file=citations,
         ))
     except ProviderError as exc:
         _error(f"Could not extract claims from {source}: {_claims_backend_failure(exc)}")

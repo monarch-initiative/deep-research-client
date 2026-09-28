@@ -25,11 +25,12 @@ from deep_research_client.claims.extract import (
     aextract_claims,
     detect_format,
     extract_claims,
+    find_citations_file,
 )
 from deep_research_client.claims.llm import build_prompt
 from deep_research_client.claims.models import content_sha256
 from deep_research_client.claims.parsing import claims_from_reply
-from deep_research_client.claims.units import markdown_units, structured_units
+from deep_research_client.claims.units import markdown_units, read_citations_file, structured_units
 
 INPUT = Path(__file__).parent / "input" / "claims"
 REPORT = INPUT / "marfan_report.md"
@@ -309,3 +310,33 @@ def test_a_reference_list_is_known_by_its_entries_not_only_its_name():
     assert [u.section for u in markdown_units(report)] == [
         "Report > 1.4 Evidence sources (patient-level vs aggregated)",
     ]
+
+
+def test_a_separate_citations_file_resolves_the_report_s_markers():
+    """A report written with --separate-citations has no list of its own; its side file is the list."""
+    report = "## Output\n\n# TBX1\n\nTBX1 haploinsufficiency drives the phenotype[1][2].\n"
+    side = (
+        "# Citations for Research Query\n\n**Query:** Find:\n1. Genes\n2. Drugs\n"
+        "**Provider:** perplexity\n**Generated:** 2026-02-03\n\n"
+        "1. https://pubmed.ncbi.nlm.nih.gov/23799583/\n2. https://www.mayoclinic.org/digeorge\n"
+    )
+    (unit,) = markdown_units(report, citations_file=read_citations_file(side))
+    reply = ('{"claims": [{"claim": "TBX1 haploinsufficiency drives the phenotype.",'
+             ' "quote": "TBX1 haploinsufficiency drives the phenotype", "citations": ["[1]", "[2]"]}]}')
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.reference_id) for c in claim.citations] == [
+        ("[1]", "PMID:23799583"), ("[2]", None),
+    ], "entry 1 is the side file's, not the query's numbered line"
+
+
+@pytest.mark.parametrize("name", ["report.citations.md", "report.md.citations.md"])
+def test_a_citations_file_is_found_under_either_name(tmp_path, name):
+    """This client's default name, and the one dismech's reports use."""
+    report = tmp_path / "report.md"
+    report.write_text("# R\n", encoding="utf-8")
+    (tmp_path / name).write_text("1. x\n", encoding="utf-8")
+
+    assert find_citations_file(report) == tmp_path / name
+    assert find_citations_file(tmp_path / "other.md") is None

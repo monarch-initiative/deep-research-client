@@ -156,7 +156,10 @@ def _marker_present(marker: str, body: str) -> bool:
 
 
 #: A citation key as Falcon writes them: surname, year, title words run
-#: together, as in "mustillo2023clinicalpracticeguidelines".
+#: together, as in "mustillo2023clinicalpracticeguidelines". It also matches
+#: accession-like tokens (NCT01234567, PMC4900471), which is why the key
+#: lookup runs only after find_reference_ids found nothing in the marker:
+#: keep that order, or an accession would be looked up as a key.
 _CITATION_KEY = re.compile(r"(?<![\w.])([^\W\d_]{2,}\d{4}[^\s(),;:]*)")
 
 #: An author-year citation: a surname, then a year, as in "Soster 2023" or
@@ -265,6 +268,7 @@ def resolve_citations(
             if linked is not None:
                 resolvable = linked.group(1)[1:-1]
         found = find_reference_ids(resolvable)
+        # Identifiers in the marker itself first; see _CITATION_KEY on why.
         reference_id = (
             found[0].normalized_id if found else _identifier_from_references(marker, references)
         )

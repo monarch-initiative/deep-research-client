@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from deep_research_client.claims import AnchorStatus
+from deep_research_client.claims import AnchorStatus, CitationScope, CitationStatus, ClaimBasis
 from deep_research_client.claims.llm import PROMPT_VERSION, build_prompt
 from deep_research_client.claims.parsing import TextUnit, citation_window, claims_from_reply
 from deep_research_client.claims.units import markdown_units, structured_units
@@ -36,6 +36,10 @@ MODELS = sorted(MANIFEST["recordings"])
 
 #: Prefix for assertions that test the recorded model's choices, not the code.
 MODEL_DEPENDENT = "MODEL_DEPENDENT (re-check after re-recording): "
+
+#: Units that only describe the report ("This report is retrieval-only...",
+#: counts of papers retrieved), which the prompt says are not claims.
+ABOUT_THE_REPORT_ITSELF = {"09-listing.txt"}
 
 
 @cache
@@ -72,6 +76,9 @@ def test_every_recorded_claim_anchors_and_its_span_reads_as_the_source(model):
     """Real replies anchor, and every span is the source's own text."""
     for name, unit in _units():
         claims = claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit)
+        if name in ABOUT_THE_REPORT_ITSELF:
+            assert claims == [], f"{MODEL_DEPENDENT}{model} made claims of {name}, which only describes the report"
+            continue
         assert claims, f"{MODEL_DEPENDENT}{model} reported no claims for {name}"
         for claim in claims:
             assert claim.anchor_status != AnchorStatus.UNANCHORED, (
@@ -87,8 +94,10 @@ def test_every_recorded_claim_anchors_and_its_span_reads_as_the_source(model):
 def test_recorded_citations_resolve_to_the_bibliography_entries(model):
     """Every marker kept is in its claim's sentence and resolves to its own entry.
 
-    Which markers a model attaches is its choice, so this checks only that
-    those kept resolve correctly, not that every one was cited.
+    A section citation is not in the sentence: it is the work the section is
+    headed by, and must be exactly the unit's. Which sentence markers a model
+    attaches is its choice, so this checks only that those kept resolve
+    correctly, not that every one was cited.
     """
     expected = {
         ("report", "[1]"): "DOI:10.1038/352337a0",
@@ -103,12 +112,17 @@ def test_recorded_citations_resolve_to_the_bibliography_entries(model):
         ("provider", "[2](https://pubmed.ncbi.nlm.nih.gov/16928994/)"): "PMID:16928994",
         ("provider", "https://pubmed.ncbi.nlm.nih.gov/16928994/"): "PMID:16928994",
         ("provider", "[3]"): "PMID:24922459",
+        ("listing", "[1]"): "PMID:41258631",
+        ("listing", "[2]"): "PMID:41307246",
     }
     seen: dict[tuple[str, str], str | None] = {}
     for name, unit in _units():
         for claim in claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit):
             for citation in claim.citations or []:
-                assert citation.marker in citation_window(unit, claim.source_span), claim.claim_text
+                if citation.scope == CitationScope.SECTION:
+                    assert citation == unit.section_citation, claim.claim_text
+                else:
+                    assert citation.marker in citation_window(unit, claim.source_span), claim.claim_text
                 # One marker must resolve the same way in every claim citing it.
                 key = (_source(name), citation.marker)
                 assert seen.setdefault(key, citation.reference_id) == citation.reference_id
@@ -147,3 +161,22 @@ def test_recorded_claims_from_structured_prose_keep_their_field(model):
     assert paths == {"sections[0].text", "sections[1].text"}, (
         f"{MODEL_DEPENDENT}{model} left a notes field with no claims"
     )
+
+
+@pytest.mark.parametrize("model", MODELS)
+def test_every_claim_from_a_paper_s_section_cites_that_paper(model):
+    """In a report that lists papers, the heading is the citation, not any sentence."""
+    papers = {"10-listing.txt": "PMID:41258631", "11-listing.txt": "PMID:41307246"}
+    for name, unit in _units():
+        if name not in papers:
+            continue
+        claims = claims_from_reply((RECORDED / model / name).read_text(encoding="utf-8"), unit)
+        assert claims, f"{MODEL_DEPENDENT}{model} reported no claims for {name}"
+        for claim in claims:
+            assert claim.citation_status == CitationStatus.CITED, claim.claim_text
+            section = [c for c in claim.citations if c.scope == CitationScope.SECTION]
+            assert [c.reference_id for c in section] == [papers[name]], claim.claim_text
+            assert claim.basis != ClaimBasis.OBSERVATION, (
+                f"{MODEL_DEPENDENT}{model} called a finding it reports from paper "
+                f"{papers[name]} an observation: {claim.claim_text}"
+            )

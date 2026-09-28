@@ -8,7 +8,8 @@ for prose inside a structured document, the path of the field.
 import re
 from typing import Any, Iterator, Optional
 
-from .parsing import TextUnit
+from .models import CitationHandle
+from .parsing import TextUnit, section_citation
 
 __all__ = ["markdown_units", "structured_units", "report_title"]
 
@@ -183,32 +184,48 @@ def markdown_units(text: str, max_chars: int = DEFAULT_MAX_UNIT_CHARS) -> list[T
     >>> own = "# Title\\n\\nFBN1 [1].\\n\\n## References\\n\\n1. Dietz HC. Nature. 1991.\\n"
     >>> [u.section for u in markdown_units(own)]
     ['Title']
+
+    A section headed by a cited work carries that work as its citation, and
+    so do its subsections:
+
+    >>> listing = "# Papers\\n\\n### [1] A study\\n\\n- PMID: 41258631\\n\\n#### Methods\\n\\nMice.\\n\\n### Notes\\n\\nX.\\n"
+    >>> [(u.section, u.section_citation and u.section_citation.reference_id) for u in markdown_units(listing)]
+    [('Papers > [1] A study', 'PMID:41258631'), ('Papers > [1] A study > Methods', 'PMID:41258631'), ('Papers > Notes', None)]
     """
     start, end = _answer_region(text)
     bibliography = _bibliography(text, start)
 
     units: list[TextUnit] = []
-    stack: list[tuple[int, str]] = []
+    # Each open heading: its level, its title, and the cited work it names.
+    stack: list[tuple[int, str, Optional[CitationHandle]]] = []
     cursor = start
     headings = _headings(text, start, end)
     boundaries = [(h.start(), h.end(), len(h.group(1)), h.group(2).strip()) for h in headings]
     boundaries.append((end, end, 0, ""))
 
-    for heading_start, heading_end, level, title in boundaries:
-        section = " > ".join(name for _, name in stack) or None
+    for index, (heading_start, heading_end, level, title) in enumerate(boundaries):
+        section = " > ".join(name for _, name, _ in stack) or None
         in_references = any(
-            name.rstrip(":").strip().lower() in _REFERENCE_SECTIONS for _, name in stack
+            name.rstrip(":").strip().lower() in _REFERENCE_SECTIONS for _, name, _ in stack
         )
+        cited = next((c for _, _, c in reversed(stack) if c is not None), None)
         if not in_references and text[cursor:heading_start].strip():
             for piece_start, piece_end in _split_long(cursor, heading_start, text, max_chars):
                 if text[piece_start:piece_end].strip():
                     units.append(TextUnit(
                         text=text, start=piece_start, end=piece_end,
                         section=section, bibliography=bibliography,
+                        section_citation=cited,
                     ))
         if level:
-            stack = [(lvl, name) for lvl, name in stack if lvl < level]
-            stack.append((level, title))
+            # The heading's section runs to the next heading at its level or above.
+            extent_end = next(
+                (b[0] for b in boundaries[index + 1:] if 0 < b[2] <= level), end,
+            )
+            stack = [entry for entry in stack if entry[0] < level]
+            stack.append((level, title, section_citation(
+                title, text[heading_end:extent_end], bibliography,
+            )))
         cursor = heading_end
     return units
 

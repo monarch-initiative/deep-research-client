@@ -1,0 +1,96 @@
+```json
+{
+  "claims": [
+    {
+      "claim": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights' was authored by Y. Fujieda.",
+      "quote": "Authors: Y. Fujieda",
+      "subject": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights'",
+      "predicate": "was authored by",
+      "object": "Y. Fujieda",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Y. Fujieda", "Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights' was published in 2025.",
+      "quote": "Year: 2025",
+      "subject": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights'",
+      "predicate": "was published in",
+      "object": "2025",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights' was published in the venue Immunological medicine.",
+      "quote": "Venue: Immunological medicine",
+      "subject": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights'",
+      "predicate": "was published in",
+      "object": "Immunological medicine",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights", "Immunological medicine"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights' has the DOI 10.1080/25785826.2025.2594828.",
+      "quote": "DOI: 10.1080/25785826.2025.2594828",
+      "subject": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights'",
+      "predicate": "has the DOI",
+      "object": "10.1080/25785826.2025.2594828",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights' has the PMID 41307246.",
+      "quote": "PMID: 41307246",
+      "subject": "A work titled 'Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights'",
+      "predicate": "has the PMID",
+      "object": "41307246",
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["Neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome: pathophysiology and current insights"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    },
+    {
+      "claim": "Current insights into the pathophysiology and diagnostic approaches to neuropsychiatric manifestations in systemic lupus erythematosus and antiphospholipid syndrome are synthesized, emphasizing the need for integrated clinical, imaging, and laboratory evaluations to improve diagnostic precision and patient outcomes.",
+      "quote": "Current insights into the pathophysiology, diagnostic approaches to neuropsychiatric manifestations in SLE and APS are synthesized, emphasizing the need for integrated clinical, imaging, and laboratory evaluations to improve diagnostic precision and patient outcomes.",
+      "subject": null,
+      "predicate": null,
+      "object": null,
+      "negated": false,
+      "qualifier": null,
+      "subject_qualifier": null,
+      "object_qualifier": null,
+      "entities": ["systemic lupus erythematosus", "antiphospholipid syndrome", "neuropsychiatric manifestations"],
+      "citations": [],
+      "about": "work",
+      "basis": null
+    }
+  ]
+}
+```

@@ -150,6 +150,20 @@ not attached on the model's say-so:
 A numbered marker such as `[2]` is resolved through the report's own citation
 list to a PMID or DOI where it names one.
 
+Some reports list papers, one section each, headed `### [n] Title`, with the
+paper's metadata and abstract under it. Asta's reports do. There the source of
+every claim in the section is paper `n`, though no sentence carries a marker.
+So a section headed by `[n]` gives each located claim in it, subsections
+included, a citation of paper `n`. Its identifier comes from the citation list,
+or else from the section's own `PMID:` or `DOI:` lines. Every citation records
+how it was attached, in `scope`:
+
+| `scope` | Meaning |
+|---------|---------|
+| `SENTENCE` | A marker in the claim's own sentence |
+| `SECTION` | The claim's section is headed by the cited work |
+| `RECORD` | A curated record's own evidence |
+
 ### Curated files
 
 A curated record already is one claim, so no model is needed. Each claim has:
@@ -183,7 +197,7 @@ lack of a citation explicit, since an empty `citations` list alone cannot tell
 
 | `citation_status` | Meaning |
 |-------------------|---------|
-| `CITED` | At least one citation is attached, and all are in `citations` |
+| `CITED` | At least one citation is attached, by sentence or by section, and all are in `citations` |
 | `UNCITED` | The claim was located and nothing is attached to it. Its sentence may still cite a source for another claim. For a curated record: no evidence |
 | `UNKNOWN` | The claim is `UNANCHORED`, so there was no sentence to check |
 
@@ -196,12 +210,15 @@ about the subject matter. Reports that list papers, as Asta's do, make many
 
 | `basis` | Meaning |
 |---------|---------|
-| `OBSERVATION` | The source's own finding: an experiment, analysis, dataset or case it made or ran |
+| `OBSERVATION` | The source document's own finding: an experiment, analysis, dataset or case it made or ran. A finding it reports from another work, such as an abstract under a `[n]` heading, is `SECONDARY_SOURCE` |
 | `SECONDARY_SOURCE` | Attributed to another work, by a citation marker or by naming it or its authors |
 | `BACKGROUND_KNOWLEDGE` | Stated with no citation or attribution, as known in the field |
 
 A deep research report observes little itself, so most of its domain claims
-rest on a secondary source or on background knowledge.
+rest on a secondary source or on background knowledge. In a section headed by a
+cited work (`### [n] Title`), a located domain claim's basis is set to
+`SECONDARY_SOURCE` by the code, whatever the model said: the section's
+structure already says where the claim comes from.
 
 A claim set is refused, when built or loaded, if these contradict what the
 code knows: a `CITED` claim with no citations, an `UNCITED` one with some, an

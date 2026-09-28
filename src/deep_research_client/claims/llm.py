@@ -26,7 +26,7 @@ DEFAULT_MAX_TOKENS = 4096
 
 #: Bumped whenever the instructions below change, and recorded on every
 #: ClaimSet, so sets made with different prompts are never compared unknowingly.
-PROMPT_VERSION = "4"
+PROMPT_VERSION = "5"
 
 _INSTRUCTIONS = """\
 You extract the claims a text makes. A claim is one atomic assertion: a single
@@ -67,7 +67,10 @@ Rules:
   (its own experiment, analysis, data or case); "secondary_source" when TEXT
   attributes it to another work, by a citation marker or by naming the work
   or its authors; "background_knowledge" when TEXT states it with no citation
-  or attribution, as something known in the field.
+  or attribution, as something known in the field. When the Section names a
+  cited work (a heading such as "[3] Title"), TEXT reports that work, for
+  example its abstract: its domain claims are "secondary_source", never
+  "observation".
 
 Example. For TEXT
   Drug Q, an oral kinase inhibitor, reduced tumour size in 40% of patients [4].

@@ -27,6 +27,7 @@ from .llm import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, PROMPT_VERSION, decompose_un
 from .models import (
     AnchorStatus,
     CitationHandle,
+    CitationScope,
     Claim,
     ClaimBasis,
     ClaimSet,
@@ -210,6 +211,7 @@ def _from_reference_claim(
         citations.append(CitationHandle(
             marker=evidence.reference,
             reference_id=found[0].normalized_id if found else None,
+            scope=CitationScope.RECORD,
         ))
     entities = [
         EntityMention(label=term.label or term.id, id=term.id)

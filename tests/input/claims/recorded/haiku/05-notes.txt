@@ -2,16 +2,16 @@
 {
   "claims": [
     {
-      "claim": "About 60 percent of people with ectopia lentis develop ectopia lentis.",
+      "claim": "About 60 percent of affected people develop ectopia lentis.",
       "quote": "About 60 percent of affected people develop ectopia lentis.",
-      "subject": "people with ectopia lentis",
+      "subject": "affected people",
       "predicate": "develop",
       "object": "ectopia lentis",
       "negated": false,
       "qualifier": "about 60 percent",
       "subject_qualifier": null,
       "object_qualifier": null,
-      "entities": ["ectopia lentis", "people"],
+      "entities": ["ectopia lentis", "affected people"],
       "citations": [],
       "about": "domain",
       "basis": "background_knowledge"

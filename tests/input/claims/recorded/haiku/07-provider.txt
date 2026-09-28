@@ -17,23 +17,23 @@
       "basis": "secondary_source"
     },
     {
-      "claim": "Surgery is recommended earlier for aortic aneurysms in Loeys-Dietz syndrome.",
+      "claim": "Surgery is recommended earlier in Loeys-Dietz syndrome for aortic aneurysms.",
       "quote": "so surgery is recommended earlier",
       "subject": "surgery",
       "predicate": "is recommended",
-      "object": "earlier",
+      "object": "earlier in Loeys-Dietz syndrome",
       "negated": false,
-      "qualifier": "for aortic aneurysms in Loeys-Dietz syndrome",
+      "qualifier": null,
       "subject_qualifier": null,
       "object_qualifier": null,
-      "entities": ["surgery", "Loeys-Dietz syndrome", "aortic aneurysms"],
+      "entities": ["Loeys-Dietz syndrome"],
       "citations": [],
       "about": "domain",
       "basis": "background_knowledge"
     },
     {
       "claim": "Arterial tortuosity of the head and neck vessels is a hallmark of Loeys-Dietz syndrome.",
-      "quote": "Arterial tortuosity, e.g. of the head and neck vessels, is a hallmark of the disorder",
+      "quote": "Arterial tortuosity, e.g. of the head and neck vessels, is a hallmark of the disorder.",
       "subject": "Arterial tortuosity of the head and neck vessels",
       "predicate": "is",
       "object": "a hallmark of Loeys-Dietz syndrome",
@@ -41,7 +41,7 @@
       "qualifier": null,
       "subject_qualifier": null,
       "object_qualifier": null,
-      "entities": ["arterial tortuosity", "head and neck vessels", "Loeys-Dietz syndrome"],
+      "entities": ["Loeys-Dietz syndrome", "arterial tortuosity", "head and neck vessels"],
       "citations": ["[3]"],
       "about": "domain",
       "basis": "secondary_source"

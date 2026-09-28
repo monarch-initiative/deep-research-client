@@ -93,8 +93,10 @@ enums:
     permissible_values:
       OBSERVATION:
         description: >-
-          The source presents it as its own finding: an experiment, analysis,
-          dataset or case it made or ran.
+          The source document presents it as its own finding: an experiment,
+          analysis, dataset or case it made or ran. A finding the source
+          reports from another work, even word for word (a quoted abstract,
+          a section headed by a cited paper), is SECONDARY_SOURCE.
       SECONDARY_SOURCE:
         description: >-
           The source attributes it to another work, by a citation marker or by
@@ -113,8 +115,9 @@ enums:
       CITED:
         description: >-
           The source attaches at least one citation to the claim, and every
-          one is in citations. For prose, only markers in the claim's own
-          sentence count.
+          one is in citations. For prose, a marker counts when it is in the
+          claim's own sentence, and so does the cited work a section is
+          headed by; each citation's scope says which.
       UNCITED:
         description: >-
           The claim was located and no citation is attached to it. For prose,
@@ -125,6 +128,20 @@ enums:
           Whether the source cites the claim could not be checked, because the
           claim's passage was not found (anchor_status UNANCHORED). Markers the
           extractor reported for it are not kept.
+
+  CitationScope:
+    description: How a citation came to be attached to a claim.
+    permissible_values:
+      SENTENCE:
+        description: >-
+          A marker in the claim's own sentence (or table row, or list item).
+      SECTION:
+        description: >-
+          The claim sits in a section headed by a cited work, such as
+          "### [3] Title" in a report that lists papers, so the whole section
+          is attributed to that work.
+      RECORD:
+        description: The evidence a curated record lists for itself.
 
 classes:
 
@@ -263,7 +280,9 @@ classes:
         range: ClaimBasis
         description: >-
           What a claim about the domain rests on, as the source presents it.
-          Set only when about is DOMAIN.
+          Set only when about is DOMAIN. The extractor's judgement, except in
+          a section headed by a cited work, where it is SECONDARY_SOURCE by
+          the section's structure.
 
   TextSpan:
     description: >-
@@ -312,3 +331,7 @@ classes:
           source's bibliography, for example PMID:7913883 or DOI:10.1038/x.
       url:
         description: URL of the reference, when the marker or bibliography gives one.
+      scope:
+        range: CitationScope
+        required: true
+        description: How the citation was attached to the claim.

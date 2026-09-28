@@ -16,6 +16,7 @@ from .extract import (
 from .models import (
     AnchorStatus,
     CitationHandle,
+    CitationScope,
     CitationStatus,
     Claim,
     ClaimBasis,
@@ -38,6 +39,7 @@ __all__ = [
     "resolve_format",
     "AnchorStatus",
     "CitationHandle",
+    "CitationScope",
     "CitationStatus",
     "Claim",
     "ClaimBasis",

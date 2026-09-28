@@ -20,6 +20,7 @@ from pydantic import model_validator
 from .datamodel import (
     AnchorStatus,
     CitationHandle,
+    CitationScope,
     CitationStatus,
     Claim,
     ClaimBasis,
@@ -35,6 +36,7 @@ from .datamodel import ClaimSet as GeneratedClaimSet
 __all__ = [
     "AnchorStatus",
     "CitationHandle",
+    "CitationScope",
     "CitationStatus",
     "Claim",
     "ClaimBasis",
@@ -78,7 +80,7 @@ def citation_status_for(citations: list[CitationHandle], anchor_status: str) -> 
 
     >>> citation_status_for([], AnchorStatus.UNANCHORED).value
     'UNKNOWN'
-    >>> citation_status_for([CitationHandle(marker="[1]")], AnchorStatus.EXACT).value
+    >>> citation_status_for([CitationHandle(marker="[1]", scope=CitationScope.SENTENCE)], AnchorStatus.EXACT).value
     'CITED'
     >>> citation_status_for([], AnchorStatus.NOT_APPLICABLE).value
     'UNCITED'

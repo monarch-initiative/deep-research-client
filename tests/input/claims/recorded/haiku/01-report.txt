@@ -48,8 +48,8 @@
     },
     {
       "claim": "Variants in TGFBR2 cause Loeys-Dietz syndrome.",
-      "quote": "which instead cause Loeys-Dietz syndrome",
-      "subject": "Variants in TGFBR2",
+      "quote": "variants in *TGFBR2*, which instead cause Loeys-Dietz syndrome",
+      "subject": "variants in TGFBR2",
       "predicate": "cause",
       "object": "Loeys-Dietz syndrome",
       "negated": false,

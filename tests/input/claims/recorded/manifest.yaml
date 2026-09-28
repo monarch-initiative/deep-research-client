@@ -8,7 +8,7 @@
 #
 # Prompt files are numbered across the sources in this order and named after
 # the source ("03-report.txt" is the third unit, from marfan_report.md).
-prompt_version: "4"
+prompt_version: "5"
 sources:
   - name: report
     file: marfan_report.md
@@ -16,6 +16,10 @@ sources:
     file: generic_notes.yaml
   - name: provider
     file: lds_report.md
+  # The first two papers of a real Asta retrieval report, which gives each
+  # paper its own "### [n] Title" section.
+  - name: listing
+    file: asta_listing.md
 recordings:
   haiku: claude-haiku-4-5-20251001, via Claude Code 2.1.283
   sonnet: claude-sonnet-5, via Claude Code 2.1.283

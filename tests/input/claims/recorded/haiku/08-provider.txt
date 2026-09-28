@@ -48,7 +48,7 @@
     },
     {
       "claim": "Ectopia lentis is not a feature of Loeys-Dietz syndrome.",
-      "quote": "ectopia lentis is not a feature.",
+      "quote": "Unlike in Marfan syndrome, ectopia lentis is not a feature.",
       "subject": "Ectopia lentis",
       "predicate": "is a feature",
       "object": null,
@@ -56,7 +56,7 @@
       "qualifier": null,
       "subject_qualifier": "in Loeys-Dietz syndrome",
       "object_qualifier": null,
-      "entities": ["Ectopia lentis", "Loeys-Dietz syndrome"],
+      "entities": ["Ectopia lentis", "Loeys-Dietz syndrome", "Marfan syndrome"],
       "citations": ["[2]"],
       "about": "domain",
       "basis": "secondary_source"

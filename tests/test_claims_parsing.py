@@ -16,6 +16,7 @@ from deep_research_client.claims.parsing import (
     UnreadableReplyError,
     citation_window,
     claims_from_reply,
+    section_citation,
 )
 
 REPORT = (Path(__file__).parent / "input" / "claims" / "marfan_report.md").read_text(
@@ -358,3 +359,53 @@ def test_about_and_basis_are_read_and_a_basis_is_kept_only_for_domain_claims(abo
     (claim,) = claims_from_reply(reply, _genetics_unit())
 
     assert (claim.about, claim.basis) == expected
+
+
+def _paper_unit(body: str) -> TextUnit:
+    """A unit from a section headed by cited work [1], as report listings give each paper."""
+    text = f"### [1] A study\n{body}"
+    return TextUnit(
+        text=text, start=len("### [1] A study\n"), end=len(text),
+        section="[1] A study", bibliography={1: "Author (2025). A study. PMID: 41258631"},
+        section_citation=section_citation("[1] A study", body, {1: "Author (2025). A study. PMID: 41258631"}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("quote", "reported", "expected"),
+    [
+        ("Mice lacking X live longer", [], [("[1]", "SECTION")]),
+        ("Mice lacking X live longer", ["[1]"], [("[1]", "SECTION")]),
+        ("Y shortens it", ["[1]"], [("[1]", "SENTENCE")]),
+        ("not in the section", ["[1]"], []),
+    ],
+    ids=["no-marker", "marker-only-in-heading", "marker-in-sentence-too", "unanchored"],
+)
+def test_a_paper_s_section_cites_the_paper_once_and_only_for_located_claims(quote, reported, expected):
+    """The heading's work is attached once, and never to a claim that may not come from it."""
+    unit = _paper_unit("- Summary: Mice lacking X live longer. Y shortens it [1].\n")
+    reply = _reply({"claim": "A claim.", "quote": quote, "citations": reported})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert [(c.marker, c.scope) for c in claim.citations or []] == expected
+    assert all(c.reference_id == "PMID:41258631" for c in claim.citations or [])
+
+
+@pytest.mark.parametrize(
+    ("quote", "model_basis", "expected"),
+    [
+        ("Mice lacking X live longer", "observation", ClaimBasis.SECONDARY_SOURCE),
+        ("Mice lacking X live longer", "background_knowledge", ClaimBasis.SECONDARY_SOURCE),
+        ("not in the section", "observation", ClaimBasis.OBSERVATION),
+    ],
+    ids=["observation", "background", "unanchored-keeps-the-model-s-word"],
+)
+def test_a_domain_claim_in_a_paper_s_section_rests_on_that_paper(quote, model_basis, expected):
+    """The section says where its claims come from; the model's basis is not needed."""
+    unit = _paper_unit("- Summary: Mice lacking X live longer.\n")
+    reply = _reply({"claim": "A claim.", "quote": quote, "about": "domain", "basis": model_basis})
+
+    (claim,) = claims_from_reply(reply, unit)
+
+    assert claim.basis == expected

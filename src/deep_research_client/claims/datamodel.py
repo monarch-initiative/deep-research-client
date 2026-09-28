@@ -153,7 +153,7 @@ class ClaimBasis(str, Enum):
     """
     OBSERVATION = "OBSERVATION"
     """
-    The source presents it as its own finding: an experiment, analysis, dataset or case it made or ran.
+    The source document presents it as its own finding: an experiment, analysis, dataset or case it made or ran. A finding the source reports from another work, even word for word (a quoted abstract, a section headed by a cited paper), is SECONDARY_SOURCE.
     """
     SECONDARY_SOURCE = "SECONDARY_SOURCE"
     """
@@ -171,7 +171,7 @@ class CitationStatus(str, Enum):
     """
     CITED = "CITED"
     """
-    The source attaches at least one citation to the claim, and every one is in citations. For prose, only markers in the claim's own sentence count.
+    The source attaches at least one citation to the claim, and every one is in citations. For prose, a marker counts when it is in the claim's own sentence, and so does the cited work a section is headed by; each citation's scope says which.
     """
     UNCITED = "UNCITED"
     """
@@ -180,6 +180,24 @@ class CitationStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
     """
     Whether the source cites the claim could not be checked, because the claim's passage was not found (anchor_status UNANCHORED). Markers the extractor reported for it are not kept.
+    """
+
+
+class CitationScope(str, Enum):
+    """
+    How a citation came to be attached to a claim.
+    """
+    SENTENCE = "SENTENCE"
+    """
+    A marker in the claim's own sentence (or table row, or list item).
+    """
+    SECTION = "SECTION"
+    """
+    The claim sits in a section headed by a cited work, such as "### [3] Title" in a report that lists papers, so the whole section is attributed to that work.
+    """
+    RECORD = "RECORD"
+    """
+    The evidence a curated record lists for itself.
     """
 
 
@@ -242,7 +260,7 @@ class Claim(ConfiguredBaseModel):
     citations: Optional[list[CitationHandle]] = Field(default=None, description="""The references the source attaches to this claim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     citation_status: CitationStatus = Field(default=..., description="""Whether the source cites this claim: CITED exactly when citations is non-empty, UNKNOWN exactly when the claim is UNANCHORED.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
     about: Optional[ClaimTopic] = Field(default=None, description="""Whether the claim is about a work or about the domain. Absent when the extractor did not say.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
-    basis: Optional[ClaimBasis] = Field(default=None, description="""What a claim about the domain rests on, as the source presents it. Set only when about is DOMAIN.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
+    basis: Optional[ClaimBasis] = Field(default=None, description="""What a claim about the domain rests on, as the source presents it. Set only when about is DOMAIN. The extractor's judgement, except in a section headed by a cited work, where it is SECONDARY_SOURCE by the section's structure.""", json_schema_extra = { "linkml_meta": {'domain_of': ['Claim']} })
 
 
 class TextSpan(ConfiguredBaseModel):
@@ -275,6 +293,7 @@ class CitationHandle(ConfiguredBaseModel):
     marker: str = Field(default=..., description="""The citation as it appears in the source, for example \"[3]\", \"PMID:7913883\" or a URL.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
     reference_id: Optional[str] = Field(default=None, description="""Normalised identifier when one could be read from the marker or the source's bibliography, for example PMID:7913883 or DOI:10.1038/x.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
     url: Optional[str] = Field(default=None, description="""URL of the reference, when the marker or bibliography gives one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
+    scope: CitationScope = Field(default=..., description="""How the citation was attached to the claim.""", json_schema_extra = { "linkml_meta": {'domain_of': ['CitationHandle']} })
 
 
 # Model rebuild

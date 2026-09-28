@@ -1,0 +1,15 @@
+Section: Asta Literature Retrieval: antiphospholipid syndrome pathophysiology > Relevant Papers > [1] Avascular necrosis in antiphospholipid syndrome: pathophysiology, risk factors, and management
+
+TEXT:
+<<<
+
+- Authors: Reine Zankar, R. Jamal, G. E. Hasbani, I. Uthman
+- Year: 2025
+- Venue: Clinical Rheumatology
+- URL: https://www.semanticscholar.org/paper/70595d6db1677edcd46229131515b75f2c763920
+- DOI: 10.1007/s10067-025-07811-3
+- PMID: 41258631
+- Summary: To explore the association between APS and AVN, a comprehensive search was performed across medical databases, including PubMed, Medline, and Google Scholar, focusing on its pathophysiology, prevalence, risk factors, clinical presentation, and management strategies.
+
+
+>>>

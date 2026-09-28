@@ -3,9 +3,9 @@
   "claims": [
     {
       "claim": "Beta-blockers may slow aortic root growth.",
-      "quote": "Beta-blockers may slow aortic root growth [3]",
+      "quote": "Beta-blockers may slow aortic root growth",
       "subject": "Beta-blockers",
-      "predicate": "may slow",
+      "predicate": "slow",
       "object": "aortic root growth",
       "negated": false,
       "qualifier": "may",

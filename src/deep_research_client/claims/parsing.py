@@ -16,6 +16,7 @@ from .anchoring import NUMERIC_MARKER, locate_quote
 from .models import (
     AnchorStatus,
     CitationHandle,
+    CitationScope,
     Claim,
     ClaimBasis,
     ClaimTopic,
@@ -30,6 +31,7 @@ __all__ = [
     "citation_window",
     "claims_from_reply",
     "resolve_citations",
+    "section_citation",
 ]
 
 _URL = re.compile(r"https?://[^\s<>\]]+")
@@ -60,6 +62,9 @@ class TextUnit:
         source_path: Path of the field, for prose inside a structured document.
         bibliography: Numbered reference list entries by number, used to
             resolve markers such as ``[3]``.
+        section_citation: The cited work the unit's section is headed by, if
+            any (see :func:`section_citation`). Every located claim in the
+            unit is attributed to it.
 
     >>> TextUnit(text="abc", start=0, end=3).body
     'abc'
@@ -71,6 +76,7 @@ class TextUnit:
     section: Optional[str] = None
     source_path: Optional[str] = None
     bibliography: Mapping[int, str] = field(default_factory=dict)
+    section_citation: Optional[CitationHandle] = None
 
     @property
     def body(self) -> str:
@@ -129,6 +135,8 @@ def resolve_citations(
 ) -> list[CitationHandle]:
     """Keep the citation markers that are really there, and resolve them.
 
+    Each is a citation of the claim's own sentence (scope SENTENCE).
+
     A marker the extractor reports but the text does not contain is dropped:
     a citation is a fact about the source, not something to take on trust.
 
@@ -146,8 +154,8 @@ def resolve_citations(
     ...     "FBN1 variants [2] cause it (PMID:15241795).",
     ...     {2: "Dietz HC. Nature. 1991. https://doi.org/10.1038/352337a0"},
     ... )
-    >>> [(h.marker, h.reference_id) for h in handles]
-    [('[2]', 'DOI:10.1038/352337a0'), ('PMID:15241795', 'PMID:15241795')]
+    >>> [(h.marker, h.reference_id, h.scope) for h in handles]
+    [('[2]', 'DOI:10.1038/352337a0', 'SENTENCE'), ('PMID:15241795', 'PMID:15241795', 'SENTENCE')]
     """
     handles: list[CitationHandle] = []
     seen: set[str] = set()
@@ -169,8 +177,62 @@ def resolve_citations(
             marker=marker,
             reference_id=found[0].normalized_id if found else None,
             url=url.group(0).rstrip(".,;)") if url else None,
+            scope=CitationScope.SENTENCE,
         ))
     return handles
+
+
+#: A heading that names a cited work: "[3] Title", as reports that list
+#: papers write them.
+_CITED_HEADING = re.compile(r"^\[(\d+)\]\s+\S")
+
+#: A metadata line giving the section's own work an identifier: "- PMID: 123",
+#: "DOI: 10.1/x". Only such lines are read, so an identifier the section's
+#: prose mentions in passing is not taken for the work's own.
+_IDENTIFIER_LINE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?(?:PMID|PMCID|DOI)[ \t]*:.*$", re.IGNORECASE | re.MULTILINE)
+
+
+def section_citation(
+    heading: str, section_text: str, bibliography: Mapping[int, str],
+) -> Optional[CitationHandle]:
+    r"""The cited work a section is headed by, if its heading names one.
+
+    A report that lists papers gives each its own section, headed "[n] Title".
+    Everything in that section comes from work n, so it is a citation of every
+    claim in the section even where no sentence carries a marker. The work is
+    identified through its bibliography entry, or else through the section's
+    own PMID or DOI metadata lines.
+
+    Args:
+        heading: The heading's text, without the leading ``#``.
+        section_text: The whole section under the heading.
+        bibliography: Numbered reference entries, for resolving ``[n]``.
+
+    Returns:
+        A handle with scope SECTION, or None when the heading names no work.
+
+    >>> body = "- Year: 2025\n- DOI: 10.1007/s10067-025-07811-3\n- PMID: 41258631\n- Summary: ..."
+    >>> handle = section_citation("[1] Avascular necrosis in APS", body,
+    ...                           {1: "Zankar R (2025). https://www.semanticscholar.org/paper/70595d"})
+    >>> handle.marker, handle.reference_id, handle.url, handle.scope
+    ('[1]', 'PMID:41258631', 'https://www.semanticscholar.org/paper/70595d', 'SECTION')
+    >>> section_citation("Genetics", body, {}) is None
+    True
+    """
+    numbered = _CITED_HEADING.match(heading.strip())
+    if not numbered:
+        return None
+    entry = bibliography.get(int(numbered.group(1)), "")
+    found = find_reference_ids(entry) or find_reference_ids(
+        "\n".join(m.group(0) for m in _IDENTIFIER_LINE.finditer(section_text))
+    )
+    url = _URL.search(entry)
+    return CitationHandle(
+        marker=f"[{numbered.group(1)}]",
+        reference_id=found[0].normalized_id if found else None,
+        url=url.group(0).rstrip(".,;)") if url else None,
+        scope=CitationScope.SECTION,
+    )
 
 
 #: Where a sentence, table row or list item ends: terminal punctuation
@@ -334,10 +396,22 @@ def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
             citation_window(unit, span) if span is not None else "",
             unit.bibliography,
         )
+        # A section headed by a cited work attributes all of it to that work.
+        # Not for an unlocated claim, which may not come from the section.
+        if (
+            span is not None and unit.section_citation is not None
+            and unit.section_citation.marker not in {c.marker for c in citations}
+        ):
+            citations.append(unit.section_citation)
         about = _member(entry.get("about"), ClaimTopic)
         # A basis is what a domain claim rests on; on a work claim it means
         # nothing, so the model's value is not kept there.
         basis = _member(entry.get("basis"), ClaimBasis) if about == ClaimTopic.DOMAIN else None
+        # In a section headed by a cited work, the source presents every claim
+        # as that work's. That is structure, not judgement, so it is not left
+        # to the model, which does not always apply it.
+        if about == ClaimTopic.DOMAIN and span is not None and unit.section_citation is not None:
+            basis = ClaimBasis.SECONDARY_SOURCE
         claims.append(Claim(
             id=f"u{len(claims) + 1}",
             claim_text=claim_text,

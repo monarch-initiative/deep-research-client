@@ -429,12 +429,23 @@ runnable sample lives in `tests/input/astra_dismech/`.
 
 ### How it runs
 
-The provider invokes `lc run` in the project directory. Per the Lightcone CLI,
-`lc run [OPTIONS] [OUTPUTS]...` generates a Snakefile and dispatches it through
-Snakemake + Dask; `--universe NAME` restricts execution to one universe (all of
-`universes/*.yaml` otherwise), and positional output IDs restrict which outputs
-are built. If your recipes run in containers, run `lc build` first to prepare
-images.
+The provider invokes `lc` in the project directory. Lightcone is early-alpha
+and documents two build verbs with different selection syntax, so the provider
+builds the command **verb-aware** (keyed on the first token of
+`materialize_args`):
+
+- **`lc materialize [TARGETS]...`** (the default) validates the spec, runs
+  recipes in dependency order, and commits each output with its manifest. A
+  universe is selected as a `<universe>/<output>` target prefix (so `outputs`
+  must be set to pin a universe); it deliberately has no `--universe`, `--jobs`,
+  or `--force`.
+- **`lc run [OPTIONS] [OUTPUTS]...`** dispatches via Snakemake + Dask and takes
+  `--universe NAME`, `--jobs`, and `--force` as flags.
+
+If your recipes run in containers, run `lc build` first to prepare images.
+Because the stack is early-alpha ("expect breaking changes between minor
+versions"), `materialize_args` and `extra_args` are the escape hatches for when
+the verb or flags move.
 
 Materialized outputs are discovered **deterministically** rather than by
 guessing an output directory: `lc` writes a `.lightcone-manifest.json` sidecar
@@ -461,15 +472,15 @@ The provider is auto-detected whenever `lc` is found on PATH. Set
 from deep_research_client.provider_params import LightconeParams
 
 params = LightconeParams(
-    universe="baseline",          # optional; else all universes/*.yaml are built
-    outputs=["mito_enrichment"],  # optional output IDs to materialize (else all)
-    jobs=4,                       # optional parallel Snakemake jobs (--jobs)
-    force=False,                  # rebuild everything, ignoring staleness (--force)
-    materialize_args=["run"],     # the `lc` subcommand (overridable escape hatch)
+    outputs=["mito_enrichment"],  # output IDs to materialize (else all)
+    universe="baseline",          # with materialize, needs `outputs` (-> baseline/mito_enrichment)
+    materialize_args=["materialize"],  # build verb; use ["run"] for the Snakemake/Dask verb
+    jobs=4,                       # run-verb only (--jobs); ignored under materialize
+    force=False,                  # run-verb only (--force); ignored under materialize
     scan_subdir="",               # restrict manifest scan to a subdir (default: whole project)
     working_dir="/data/my-astra-project",  # explicit project dir (else derived from query)
     save_artifacts=True,          # harvest output files discovered via manifests
-    extra_args=[],                # escape hatch for unmodeled flags
+    extra_args=[],                # escape hatch for unmodeled flags (e.g. --refresh)
 )
 ```
 

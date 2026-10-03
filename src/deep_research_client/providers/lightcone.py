@@ -5,9 +5,10 @@ service. `Lightcone <https://lightconeresearch.org>`_ is a local command-line
 tool (the ``lc`` binary) that materializes an **ASTRA** (*Agentic Schema for
 Transparent Research Analysis*) specification -- an ``astra.yaml`` file -- into
 a tree of outputs, recording the methodological decisions and their provenance
-along the way. ``lc run`` generates a Snakefile and dispatches it through
-Snakemake + Dask; each materialized output is written with a sidecar
-``.lightcone-manifest.json`` recording its provenance.
+along the way. ``lc materialize`` (the default verb) validates the spec, runs
+recipes in dependency order, and commits each output with a sidecar
+``.lightcone-manifest.json`` recording its provenance; ``lc run`` is an
+alternative verb that dispatches via Snakemake + Dask.
 
 This provider is therefore a *spec runner*: the research "query" is a path to
 an ASTRA project directory (or an ``astra.yaml`` file), not a free-text
@@ -195,35 +196,76 @@ class LightconeProvider(ResearchProvider):
         return project_dir
 
     def _build_command(self) -> List[str]:
-        """Build the ``lc`` command-line invocation.
+        """Build the ``lc`` command-line invocation (verb-aware).
 
         The spec is discovered from the working directory rather than passed as
-        an argument. Mirrors ``lc run [OPTIONS] [OUTPUTS]...``. This method is
-        pure and side-effect free to keep it easy to unit test.
+        an argument. Lightcone documents two build verbs with different selection
+        syntax, so the first token of ``materialize_args`` selects the shape:
+
+        - ``materialize`` → ``lc materialize [TARGETS]...`` where a universe is a
+          ``<universe>/<output>`` target prefix (no ``--universe``/``--jobs``/
+          ``--force``).
+        - ``run`` (or anything else) → ``lc run [OPTIONS] [OUTPUTS]...`` with
+          ``--universe``/``--jobs``/``--force`` as flags.
+
+        This method is pure and side-effect free to keep it easy to unit test.
 
         Returns:
             The argument list to pass to the subprocess.
 
+        Raises:
+            ValueError: Under ``materialize``, if ``universe`` is set without
+                ``outputs`` (a lone token is read as an output across all
+                universes, so a universe cannot be selected on its own).
+
         Examples:
             >>> from deep_research_client.models import ProviderConfig
             >>> from deep_research_client.provider_params import LightconeParams
-            >>> p = LightconeProvider(
-            ...     ProviderConfig(name="lightcone", api_key=None, enabled=True),
-            ...     LightconeParams(universe="baseline", jobs=4, outputs=["accuracy"]),
-            ... )
-            >>> p._build_command()
-            ['lc', 'run', '--universe', 'baseline', '--jobs', '4', 'accuracy']
+            >>> cfg = ProviderConfig(name="lightcone", api_key=None, enabled=True)
+            >>> LightconeProvider(cfg, LightconeParams())._build_command()
+            ['lc', 'materialize']
+            >>> LightconeProvider(
+            ...     cfg, LightconeParams(universe="robust", outputs=["fit"])
+            ... )._build_command()
+            ['lc', 'materialize', 'robust/fit']
+            >>> LightconeProvider(
+            ...     cfg, LightconeParams(materialize_args=["run"], universe="baseline", jobs=4)
+            ... )._build_command()
+            ['lc', 'run', '--universe', 'baseline', '--jobs', '4']
         """
-        command: List[str] = [self.lc_executable, *self.params.materialize_args]
-        if self.params.universe:
-            command.extend(["--universe", self.params.universe])
-        if self.params.jobs is not None:
-            command.extend(["--jobs", str(self.params.jobs)])
-        if self.params.force:
-            command.append("--force")
-        command.extend(self.params.extra_args)
-        command.extend(self.params.outputs)
+        args = self.params.materialize_args
+        verb = args[0] if args else ""
+        command: List[str] = [self.lc_executable, *args]
+
+        if verb == "materialize":
+            command.extend(self.params.extra_args)
+            command.extend(self._materialize_targets())
+        else:
+            if self.params.universe:
+                command.extend(["--universe", self.params.universe])
+            if self.params.jobs is not None:
+                command.extend(["--jobs", str(self.params.jobs)])
+            if self.params.force:
+                command.append("--force")
+            command.extend(self.params.extra_args)
+            command.extend(self.params.outputs)
+
         return command
+
+    def _materialize_targets(self) -> List[str]:
+        """Build ``lc materialize`` TARGETS from the universe/outputs params."""
+        universe, outputs = self.params.universe, self.params.outputs
+        if outputs:
+            return [f"{universe}/{out}" if universe else out for out in outputs]
+        if universe:
+            raise ValueError(
+                "lc materialize selects a universe only via '<universe>/<output>' "
+                "targets, so `outputs` must be set when `universe` is set under the "
+                "materialize verb. (A lone token is read as an output name across "
+                "all universes.) Set outputs=[...], or use materialize_args=['run'] "
+                "with the --universe flag instead."
+            )
+        return []
 
     async def research(self, query: str) -> ResearchResult:
         """Materialize an ASTRA spec by running the Lightcone CLI.

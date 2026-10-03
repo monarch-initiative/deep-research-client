@@ -68,23 +68,44 @@ def test_is_available_false_when_disabled():
 @pytest.mark.parametrize(
     "params, expected",
     [
-        (LightconeParams(), ["lc", "run"]),
-        (LightconeParams(universe="baseline"), ["lc", "run", "--universe", "baseline"]),
-        (LightconeParams(jobs=4, force=True), ["lc", "run", "--jobs", "4", "--force"]),
+        # materialize verb (default): universe is a target prefix, no flags
+        (LightconeParams(), ["lc", "materialize"]),
+        (LightconeParams(outputs=["fit"]), ["lc", "materialize", "fit"]),
         (
-            LightconeParams(universe="baseline", outputs=["accuracy", "precision"]),
-            ["lc", "run", "--universe", "baseline", "accuracy", "precision"],
+            LightconeParams(universe="robust", outputs=["fit", "acc"]),
+            ["lc", "materialize", "robust/fit", "robust/acc"],
         ),
         (
-            LightconeParams(materialize_args=["materialize"], extra_args=["--dry-run"]),
-            ["lc", "materialize", "--dry-run"],
+            LightconeParams(materialize_args=["materialize"], extra_args=["--refresh"]),
+            ["lc", "materialize", "--refresh"],
         ),
-        (LightconeParams(lc_executable="/opt/lc"), ["/opt/lc", "run"]),
+        # run verb: universe/jobs/force are flags, outputs are bare positionals
+        (LightconeParams(materialize_args=["run"]), ["lc", "run"]),
+        (
+            LightconeParams(materialize_args=["run"], universe="baseline"),
+            ["lc", "run", "--universe", "baseline"],
+        ),
+        (
+            LightconeParams(materialize_args=["run"], jobs=4, force=True),
+            ["lc", "run", "--jobs", "4", "--force"],
+        ),
+        (
+            LightconeParams(materialize_args=["run"], universe="baseline", outputs=["accuracy"]),
+            ["lc", "run", "--universe", "baseline", "accuracy"],
+        ),
+        (LightconeParams(lc_executable="/opt/lc"), ["/opt/lc", "materialize"]),
     ],
 )
 def test_build_command(params, expected):
-    """The command reflects executable, subcommand, universe, flags, and outputs."""
+    """Command building is verb-aware: materialize targets vs run flags."""
     assert make_provider(params)._build_command() == expected
+
+
+def test_build_command_materialize_universe_without_outputs_raises():
+    """Under materialize, a universe needs outputs to form <universe>/<output>."""
+    provider = make_provider(LightconeParams(universe="baseline"))
+    with pytest.raises(ValueError, match="universe.*output"):
+        provider._build_command()
 
 
 # --- project resolution ----------------------------------------------------

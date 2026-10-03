@@ -424,6 +424,16 @@ class LightconeParams(BaseProviderParams):
     sidecar that ``lc`` writes next to each output, so no output-directory guess
     is needed. ``materialize_args`` and ``extra_args`` remain overridable escape
     hatches for CLI flags not otherwise modeled.
+
+    Lightcone is early-alpha and documents two build verbs with *different*
+    selection syntax, so command building is verb-aware (keyed on the first
+    token of ``materialize_args``):
+
+    - ``lc materialize [TARGETS]...`` (the default) commits each output with its
+      manifest. A universe is selected as a ``<universe>/<output>`` target
+      prefix; there is no ``--universe``/``--jobs``/``--force``.
+    - ``lc run [OPTIONS] [OUTPUTS]...`` dispatches via Snakemake + Dask and takes
+      ``--universe NAME``, ``--jobs``, and ``--force`` as flags.
     """
 
     lc_executable: str = Field(
@@ -431,39 +441,47 @@ class LightconeParams(BaseProviderParams):
         description="Path or name of the Lightcone CLI executable to invoke",
     )
     materialize_args: List[str] = Field(
-        default_factory=lambda: ["run"],
+        default_factory=lambda: ["materialize"],
         description=(
             "Subcommand/arguments passed to `lc` to materialize the spec, run in "
-            "the project directory (which is expected to contain astra.yaml). "
-            "Defaults to ['run'] (the documented materialize command). The "
-            "astra.yaml is discovered from the working directory rather than "
-            "passed as an argument."
+            "the project directory (which contains astra.yaml). Defaults to "
+            "['materialize'] (the documented build verb that commits each output "
+            "with its manifest); use ['run'] for the Snakemake/Dask dispatch verb. "
+            "The first token selects verb-aware command building. The astra.yaml "
+            "is discovered from the working directory rather than passed as an arg."
         ),
     )
     universe: Optional[str] = Field(
         default=None,
         description=(
-            "Optional ASTRA universe name to materialize (selects one option per "
-            "decision, e.g. 'baseline'). Forwarded as '--universe <name>' when set. "
-            "When unset, `lc run` materializes all universes in universes/*.yaml."
+            "Optional ASTRA universe to materialize. Under `materialize` it is "
+            "used as a '<universe>/<output>' target prefix and therefore requires "
+            "`outputs` to be set; under `run` it is forwarded as '--universe <name>'. "
+            "When unset, all universes in universes/*.yaml are materialized."
         ),
     )
     outputs: List[str] = Field(
         default_factory=list,
         description=(
-            "Optional list of ASTRA output IDs to materialize (e.g. "
-            "['mito_enrichment']). Forwarded as positional arguments to `lc run`. "
-            "When empty, all declared outputs are materialized."
+            "Optional ASTRA output IDs to materialize (e.g. ['mito_enrichment']). "
+            "Forwarded as `run` positional OUTPUTS, or combined with `universe` "
+            "into `materialize` TARGETS. When empty, all declared outputs are built."
         ),
     )
     jobs: Optional[int] = Field(
         default=None,
         gt=0,
-        description="Number of parallel Snakemake jobs (forwarded as '--jobs N').",
+        description=(
+            "Number of parallel jobs (forwarded as '--jobs N'). Only applies to "
+            "the `run` verb; `lc materialize` deliberately has no --jobs."
+        ),
     )
     force: bool = Field(
         default=False,
-        description="Rebuild everything, ignoring staleness detection (`lc run --force`).",
+        description=(
+            "Rebuild everything, ignoring staleness (`lc run --force`). Only "
+            "applies to the `run` verb; `lc materialize` deliberately has no --force."
+        ),
     )
     scan_subdir: str = Field(
         default="",

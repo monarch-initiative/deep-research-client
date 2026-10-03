@@ -247,6 +247,7 @@ See [Artifact selection](#artifact-selection) for what the last four do.
 - **Capabilities**: PubMed search, code execution, hypothesis-driven research
 - **Citations**: PMID format with deduplication
 - **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see [Artifact selection](#artifact-selection).
+- **Job ID**: the result's `run_metadata` carries the OpenScientist `job_id`, which is also written to the report frontmatter. With it, a caller can fetch the job's complete artifacts ZIP from `GET {OPENSCIENTIST_URL}/api/v1/jobs/{job_id}/artifacts` when artifact selection leaves out a file it needs. Results cached before this field existed have no `run_metadata` (the cache version was deliberately not bumped, since runs are long), so callers must handle its absence.
 
 ### When to Use
 

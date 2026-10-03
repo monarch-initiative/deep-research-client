@@ -192,7 +192,7 @@ class OpenScientistProvider(ResearchProvider):
                 # The job ID is the only handle on the job's full artifacts ZIP,
                 # which callers may need to re-fetch when the selected artifacts
                 # above leave out files they must audit.
-                run_metadata={"job_id": job_id, "base_url": self.base_url},
+                run_metadata={"job_id": job_id},
             )
 
     async def _health_check(self, client: httpx.AsyncClient) -> None:

@@ -2851,6 +2851,7 @@ params = OpenScientistParams(
 <li><strong>Capabilities</strong>: PubMed search, code execution, hypothesis-driven research</li>
 <li><strong>Citations</strong>: PMID format with deduplication</li>
 <li><strong>Artifacts</strong>: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as <code>ResearchArtifact</code> entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see <a href="#artifact-selection">Artifact selection</a>.</li>
+<li><strong>Job ID</strong>: the result's <code>run_metadata</code> carries the OpenScientist <code>job_id</code>, which is also written to the report frontmatter. With it, a caller can fetch the job's complete artifacts ZIP from <code>GET {OPENSCIENTIST_URL}/api/v1/jobs/{job_id}/artifacts</code> when artifact selection leaves out a file it needs. Results cached before this field existed have no <code>run_metadata</code> (the cache version was deliberately not bumped, since runs are long), so callers must handle its absence.</li>
 </ul>
 <h3 id="when-to-use">When to Use</h3>
 <ul>

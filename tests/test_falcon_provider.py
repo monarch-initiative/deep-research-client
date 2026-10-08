@@ -952,6 +952,28 @@ def test_research_cancels_the_task_when_we_stop_waiting(monkeypatch, on_poll, ex
     assert client.closed
 
 
+def test_research_cancels_the_task_when_the_caller_cancels(monkeypatch):
+    """Cancelling the coroutine, as ``asyncio.wait_for`` does, cancels the job."""
+    client = _UnfinishedTaskClient()
+    monkeypatch.setattr("edison_client.EdisonClient", lambda api_key: client)
+    monkeypatch.setattr(
+        "deep_research_client.providers.falcon.TASK_POLL_INTERVAL_SECONDS", 0.01
+    )
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+
+    async def _run_and_cancel():
+        task = asyncio.ensure_future(provider.research("what causes scurvy"))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(_run_and_cancel())
+
+    assert client.cancelled == [TASK_ID]
+    assert client.closed
+
+
 @pytest.mark.parametrize(
     "error",
     [

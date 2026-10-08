@@ -10,7 +10,7 @@ from uuid import UUID
 # Skip all tests in this module if edison_client is not installed
 pytest.importorskip("edison_client")
 
-from deep_research_client.providers.falcon import FalconProvider
+from deep_research_client.providers.falcon import EdisonTaskTimeoutError, FalconProvider
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import FalconParams
 
@@ -932,13 +932,12 @@ def _raise(exc: BaseException):
 @pytest.mark.parametrize(
     ("on_poll", "expected"),
     [
-        (None, TimeoutError),
+        (None, EdisonTaskTimeoutError),
         (_raise(KeyboardInterrupt()), KeyboardInterrupt),
-        (_raise(ConnectionError("connection dropped")), ConnectionError),
     ],
 )
-def test_research_cancels_the_task_when_the_wait_ends_early(monkeypatch, on_poll, expected):
-    """A timeout, an interrupt or a failed status check cancels the Edison job."""
+def test_research_cancels_the_task_when_we_stop_waiting(monkeypatch, on_poll, expected):
+    """Our timeout or an interrupt cancels the Edison job."""
     client = _UnfinishedTaskClient(on_poll=on_poll)
     monkeypatch.setattr("edison_client.EdisonClient", lambda api_key: client)
     monkeypatch.setattr(
@@ -953,6 +952,28 @@ def test_research_cancels_the_task_when_the_wait_ends_early(monkeypatch, on_poll
     assert client.closed
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionError("connection dropped"),
+        # A socket timeout is a TimeoutError too, but it is not our deadline.
+        TimeoutError("timed out"),
+    ],
+)
+def test_research_leaves_the_task_running_when_a_status_check_fails(monkeypatch, caplog, error):
+    """Losing contact is not giving up: the job may still finish and be collected."""
+    client = _UnfinishedTaskClient(on_poll=_raise(error))
+    monkeypatch.setattr("edison_client.EdisonClient", lambda api_key: client)
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+
+    with pytest.raises(type(error)):
+        asyncio.run(provider.research("what causes scurvy"))
+
+    assert client.cancelled == []
+    assert client.closed
+    assert f"edison-trajectory {TASK_ID}" in caplog.text
+
+
 def test_a_failed_cancel_does_not_hide_why_the_wait_ended(monkeypatch):
     """The timeout reaches the caller even when Edison refuses the cancel."""
     client = _UnfinishedTaskClient(cancel_error=RuntimeError("cancel refused"))
@@ -962,7 +983,7 @@ def test_a_failed_cancel_does_not_hide_why_the_wait_ended(monkeypatch):
     )
     provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key", timeout=1))
 
-    with pytest.raises(TimeoutError, match=TASK_ID):
+    with pytest.raises(EdisonTaskTimeoutError, match=TASK_ID):
         asyncio.run(provider.research("what causes scurvy"))
 
     assert client.cancelled == [TASK_ID]

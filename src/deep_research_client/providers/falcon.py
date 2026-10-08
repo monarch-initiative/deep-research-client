@@ -42,6 +42,17 @@ logger = logging.getLogger(__name__)
 
 
 _DATA_URL_PREFIX = "data:"
+
+
+class EdisonTaskTimeoutError(TimeoutError):
+    """An Edison task did not finish within the provider's timeout.
+
+    Its own type so that only our deadline cancels the task. Since Python 3.10
+    ``socket.timeout`` is ``TimeoutError`` too, and a network timeout means we
+    lost contact with the job, not that we gave up on it.
+    """
+
+
 #: How long to wait for an Edison task when ``ProviderConfig.timeout`` is unset.
 #: Matches edison-client's own ``DEFAULT_AGENT_TIMEOUT``.
 DEFAULT_TASK_TIMEOUT_SECONDS = 2400
@@ -168,12 +179,20 @@ class FalconProvider(ResearchProvider):
             logger.info(f"Submitted Edison task {task_id}")
             try:
                 task = await self._wait_for_task(client, task_id)
-            except BaseException:
-                # A timeout, Ctrl-C, a cancelled coroutine or a failed status
-                # check all end our wait while Edison keeps running -- and
-                # billing -- the job. BaseException, because the interrupt and
-                # the cancellation are not Exceptions.
+            except (EdisonTaskTimeoutError, KeyboardInterrupt, asyncio.CancelledError):
+                # We chose to stop waiting, so stop the job too: otherwise
+                # Edison keeps running -- and billing -- it for nobody.
                 self._cancel_task(client, task_id)
+                raise
+            except Exception:
+                # We lost track of the job, which is not the same as giving up
+                # on it. Over a 40-minute wait one failed status check would
+                # otherwise throw away a run that is likely to finish, so leave
+                # it running and say how to collect it.
+                logger.warning(
+                    f"Lost track of Edison task {task_id}; it is still running. "
+                    f"Collect it later with: deep-research-client edison-trajectory {task_id}"
+                )
                 raise
             response = self._coerce_response([task])
             logger.info("Edison API request completed successfully")
@@ -208,7 +227,7 @@ class FalconProvider(ResearchProvider):
             The finished task as a verbose response.
 
         Raises:
-            TimeoutError: When the task is still running after the timeout.
+            EdisonTaskTimeoutError: When the task is still running after the timeout.
         """
         from edison_client.models.rest import ExecutionStatus
 
@@ -216,7 +235,7 @@ class FalconProvider(ResearchProvider):
         deadline = time.monotonic() + timeout
         while not ExecutionStatus(client.get_task(task_id, lite=True).status).is_terminal_state():
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"Edison task {task_id} did not finish within {timeout}s")
+                raise EdisonTaskTimeoutError(f"Edison task {task_id} did not finish within {timeout}s")
             await asyncio.sleep(TASK_POLL_INTERVAL_SECONDS)
         return cast("TaskResponseVerbose", client.get_task(task_id, verbose=True))
 

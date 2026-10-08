@@ -15,6 +15,10 @@ from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import FalconParams
 
 
+#: Edison task ids are UUIDs; its response models reject anything else.
+TASK_ID = "44444444-4444-4444-4444-444444444444"
+
+
 def create_mock_pqa_response(
     answer: str = "Test answer",
     formatted_answer: str = "Test formatted answer with references",
@@ -45,17 +49,6 @@ def create_mock_pqa_response(
     )
 
 
-#: Edison task ids are UUIDs; its response models reject anything else.
-TASK_ID = "44444444-4444-4444-4444-444444444444"
-
-
-def _lite_task(task_id: str, status: str):
-    """Build the lite status response Edison returns while polling."""
-    from edison_client.models.app import LiteTaskResponse
-
-    return LiteTaskResponse(task_id=UUID(task_id), query="test query", status=status)
-
-
 def create_verbose_response(environment_frame: dict):
     """Create a verbose Edison response for testing."""
     from edison_client.models.app import TaskResponseVerbose
@@ -78,6 +71,13 @@ def create_verbose_response(environment_frame: dict):
         metadata=None,
         deployment_config=None,
     )
+
+
+def _lite_task(task_id: str, status: str):
+    """Build the lite status response Edison returns while polling."""
+    from edison_client.models.app import LiteTaskResponse
+
+    return LiteTaskResponse(task_id=UUID(task_id), query="test query", status=status)
 
 
 def test_extract_text_from_pqa_response():

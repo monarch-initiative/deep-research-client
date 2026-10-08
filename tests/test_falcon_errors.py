@@ -77,7 +77,7 @@ def test_an_sdk_signature_change_is_left_alone(monkeypatch):
 def test_payment_required_mid_run_reaches_the_caller_as_billing(monkeypatch):
     """The failure this issue started with: a 402 raised during the run."""
     class _Client:
-        def run_tasks_until_done(self, *args, **kwargs):
+        def create_task(self, *args, **kwargs):
             raise _http_error(402)
 
         def close(self) -> None:
@@ -95,7 +95,7 @@ def test_payment_required_mid_run_reaches_the_caller_as_billing(monkeypatch):
 def test_a_run_failure_we_cannot_explain_is_left_alone(monkeypatch):
     """Same discipline on the run path as on the constructor path."""
     class _Client:
-        def run_tasks_until_done(self, *args, **kwargs):
+        def create_task(self, *args, **kwargs):
             raise RuntimeError("the response was shaped unexpectedly")
 
         def close(self) -> None:

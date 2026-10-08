@@ -231,16 +231,24 @@ class FalconProvider(ResearchProvider):
         """
         from edison_client.models.rest import ExecutionStatus
 
+        # The SDK is synchronous. Each call runs in a worker thread so that
+        # other providers running alongside this one are not held up.
         timeout = self.config.timeout or DEFAULT_TASK_TIMEOUT_SECONDS
         deadline = time.monotonic() + timeout
-        while not ExecutionStatus(client.get_task(task_id, lite=True).status).is_terminal_state():
+        while True:
+            status = (await asyncio.to_thread(client.get_task, task_id, lite=True)).status
+            if ExecutionStatus(status).is_terminal_state():
+                break
             if time.monotonic() >= deadline:
                 raise EdisonTaskTimeoutError(f"Edison task {task_id} did not finish within {timeout}s")
             await asyncio.sleep(TASK_POLL_INTERVAL_SECONDS)
-        return cast("TaskResponseVerbose", client.get_task(task_id, verbose=True))
+        return cast("TaskResponseVerbose", await asyncio.to_thread(client.get_task, task_id, verbose=True))
 
     def _cancel_task(self, client: EdisonClient, task_id: str) -> None:
         """Ask Edison to stop a task we are no longer waiting for.
+
+        Synchronous on purpose, unlike the polling: it runs while a
+        cancellation is propagating, when awaiting anything would be cut short.
 
         Called while another exception is propagating, so a failure to cancel
         is logged rather than raised: raising here would replace the reason the

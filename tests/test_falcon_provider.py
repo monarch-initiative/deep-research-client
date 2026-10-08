@@ -45,6 +45,17 @@ def create_mock_pqa_response(
     )
 
 
+#: Edison task ids are UUIDs; its response models reject anything else.
+TASK_ID = "44444444-4444-4444-4444-444444444444"
+
+
+def _lite_task(task_id: str, status: str):
+    """Build the lite status response Edison returns while polling."""
+    from edison_client.models.app import LiteTaskResponse
+
+    return LiteTaskResponse(task_id=UUID(task_id), query="test query", status=status)
+
+
 def create_verbose_response(environment_frame: dict):
     """Create a verbose Edison response for testing."""
     from edison_client.models.app import TaskResponseVerbose
@@ -352,6 +363,10 @@ def test_extract_output_data_from_complex_nested_environment_frame():
             UUID("33333333-3333-3333-3333-333333333333"),
         ),
         ({}, None),
+        # A short alias, which edison-client 0.16 accepts but 0.11 cannot
+        # fetch, is skipped rather than raised (issue #88).
+        ({"entry_id": "data_entry:my-alias"}, None),
+        ({"id": "not-a-uuid"}, None),
     ],
 )
 def test_get_data_storage_id_accepts_supported_id_shapes(item, expected):
@@ -788,14 +803,16 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
     class FakeEdisonClient:
         def __init__(self, api_key: str):
             self.api_key = api_key
-            self.run_task_calls: list[tuple[dict, bool]] = []
+            self.created_tasks: list[dict] = []
             self.get_task_calls: list[tuple[str, bool]] = []
 
-        def run_tasks_until_done(self, task_data: dict, verbose: bool = False):
-            self.run_task_calls.append((task_data, verbose))
-            return [verbose_response]
+        def create_task(self, task_data: dict) -> str:
+            self.created_tasks.append(task_data)
+            return TASK_ID
 
-        def get_task(self, task_id: str, verbose: bool = False):
+        def get_task(self, task_id: str, verbose: bool = False, lite: bool = False):
+            if lite:
+                return _lite_task(task_id, "success")
             self.get_task_calls.append((task_id, verbose))
             return verbose_response
 
@@ -830,5 +847,159 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
         "artifact-00.md",
         "image-1.png",
     ]
-    assert created_clients[0].run_task_calls[0][1] is True
+    assert len(created_clients[0].created_tasks) == 1
+    assert created_clients[0].get_task_calls == [(TASK_ID, True)]
     assert created_clients[1].get_task_calls == [("trajectory-123", True)]
+
+
+def test_extract_artifacts_continues_past_a_non_uuid_storage_id(tmp_path):
+    """One unreadable storage id must not cost the other artifacts (issue #88)."""
+
+    class FakeEdisonClient:
+        def __init__(self, fetched_path: Path):
+            self.fetched_path = fetched_path
+            self.fetch_calls: list[UUID] = []
+
+        def fetch_data_from_storage(self, data_storage_id: UUID):
+            self.fetch_calls.append(data_storage_id)
+            return self.fetched_path
+
+    fetched_path = tmp_path / "artifact-00.md"
+    fetched_path.write_text("Fetched artifact", encoding="utf-8")
+    storage_id = UUID("11111111-1111-1111-1111-111111111111")
+    response = [
+        create_verbose_response(
+            {
+                "state": {
+                    "info": {
+                        "output_data": [
+                            {"entry_id": "data_entry:my-alias"},
+                            {"entry_id": f"data_entry:{storage_id}"},
+                        ]
+                    },
+                    "state": {"response": {"answer": {"formatted_answer": "Formatted answer"}}},
+                }
+            }
+        )
+    ]
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key"))
+    client = FakeEdisonClient(fetched_path)
+
+    artifacts = provider._extract_artifacts(client, response)
+
+    assert [artifact.filename for artifact in artifacts] == ["artifact-00.md"]
+    assert client.fetch_calls == [storage_id]
+
+
+class _UnfinishedTaskClient:
+    """An Edison client whose submitted task never leaves ``in progress``.
+
+    ``on_poll`` lets a test end the wait some other way, by raising from the
+    status check the way a Ctrl-C or a dropped connection would.
+    """
+
+    def __init__(self, on_poll=None, cancel_error: Exception | None = None):
+        self.on_poll = on_poll
+        self.cancel_error = cancel_error
+        self.cancelled: list[str] = []
+        self.closed = False
+
+    def create_task(self, task_data: dict) -> str:
+        return TASK_ID
+
+    def get_task(self, task_id: str, verbose: bool = False, lite: bool = False):
+        if self.on_poll is not None:
+            self.on_poll()
+        return _lite_task(task_id, "in progress")
+
+    def cancel_task(self, task_id: str) -> bool:
+        self.cancelled.append(task_id)
+        if self.cancel_error is not None:
+            raise self.cancel_error
+        return True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _raise(exc: BaseException):
+    """Return a callable that raises ``exc``."""
+    def _do():
+        raise exc
+    return _do
+
+
+@pytest.mark.parametrize(
+    ("on_poll", "expected"),
+    [
+        (None, TimeoutError),
+        (_raise(KeyboardInterrupt()), KeyboardInterrupt),
+        (_raise(ConnectionError("connection dropped")), ConnectionError),
+    ],
+)
+def test_research_cancels_the_task_when_the_wait_ends_early(monkeypatch, on_poll, expected):
+    """A timeout, an interrupt or a failed status check cancels the Edison job."""
+    client = _UnfinishedTaskClient(on_poll=on_poll)
+    monkeypatch.setattr("edison_client.EdisonClient", lambda api_key: client)
+    monkeypatch.setattr(
+        "deep_research_client.providers.falcon.TASK_POLL_INTERVAL_SECONDS", 0.01
+    )
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key", timeout=1))
+
+    with pytest.raises(expected):
+        asyncio.run(provider.research("what causes scurvy"))
+
+    assert client.cancelled == [TASK_ID]
+    assert client.closed
+
+
+def test_a_failed_cancel_does_not_hide_why_the_wait_ended(monkeypatch):
+    """The timeout reaches the caller even when Edison refuses the cancel."""
+    client = _UnfinishedTaskClient(cancel_error=RuntimeError("cancel refused"))
+    monkeypatch.setattr("edison_client.EdisonClient", lambda api_key: client)
+    monkeypatch.setattr(
+        "deep_research_client.providers.falcon.TASK_POLL_INTERVAL_SECONDS", 0.01
+    )
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key="test-key", timeout=1))
+
+    with pytest.raises(TimeoutError, match=TASK_ID):
+        asyncio.run(provider.research("what causes scurvy"))
+
+    assert client.cancelled == [TASK_ID]
+
+
+@pytest.mark.integration
+def test_cancel_task_stops_a_live_edison_task():
+    """Submit a real literature task, then cancel it once Edison is running it.
+
+    Edison only cancels a task that is in progress, not one still queued, so
+    this waits for the job to start before cancelling. Costs one short run.
+    """
+    import os
+    import time
+
+    from edison_client import EdisonClient, JobNames
+    from edison_client.models.rest import ExecutionStatus
+
+    api_key = os.environ.get("EDISON_API_KEY")
+    if not api_key:
+        pytest.skip("EDISON_API_KEY not set")
+
+    provider = FalconProvider(ProviderConfig(name="falcon", api_key=api_key))
+    client = EdisonClient(api_key=api_key)
+    try:
+        task_id = client.create_task(
+            {"name": JobNames.LITERATURE, "query": "What causes scurvy?"}
+        )
+        deadline = time.monotonic() + 300
+        status = client.get_task(task_id, lite=True).status
+        while status == ExecutionStatus.QUEUED.value and time.monotonic() < deadline:
+            time.sleep(5)
+            status = client.get_task(task_id, lite=True).status
+        assert status == ExecutionStatus.IN_PROGRESS.value, f"task never started: {status}"
+
+        provider._cancel_task(client, task_id)
+
+        assert client.get_task(task_id, lite=True).status == ExecutionStatus.CANCELLED.value
+    finally:
+        client.close()

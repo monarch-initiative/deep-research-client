@@ -15,6 +15,7 @@ import json
 import logging
 import mimetypes
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Sequence, TypedDict, cast
 from uuid import UUID
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 
 
 _DATA_URL_PREFIX = "data:"
+#: How long to wait for an Edison task when ``ProviderConfig.timeout`` is unset.
+#: Matches edison-client's own ``DEFAULT_AGENT_TIMEOUT``.
+DEFAULT_TASK_TIMEOUT_SECONDS = 2400
+#: Seconds between status checks. Matches ``EdisonClient.DEFAULT_POLLING_TIME``.
+TASK_POLL_INTERVAL_SECONDS = 5
 type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
 
@@ -158,7 +164,18 @@ class FalconProvider(ResearchProvider):
 
         try:
             logger.debug("Making API request to Edison")
-            response = self._coerce_response(client.run_tasks_until_done(task_data, verbose=True))
+            task_id = client.create_task(task_data)
+            logger.info(f"Submitted Edison task {task_id}")
+            try:
+                task = await self._wait_for_task(client, task_id)
+            except BaseException:
+                # A timeout, Ctrl-C, a cancelled coroutine or a failed status
+                # check all end our wait while Edison keeps running -- and
+                # billing -- the job. BaseException, because the interrupt and
+                # the cancellation are not Exceptions.
+                self._cancel_task(client, task_id)
+                raise
+            response = self._coerce_response([task])
             logger.info("Edison API request completed successfully")
             return self._result_from_response(client, response, query)
         except Exception as e:
@@ -175,6 +192,58 @@ class FalconProvider(ResearchProvider):
             # A long-lived caller doing repeated runs would otherwise leak a
             # session per run, including on the failure path.
             client.close()
+
+    async def _wait_for_task(self, client: EdisonClient, task_id: str) -> TaskResponseVerbose:
+        """Poll an Edison task until it reaches a terminal state.
+
+        edison-client's ``run_tasks_until_done`` submits and waits in one call,
+        never hands back the task id, and on timeout returns the unfinished task
+        instead of raising. Waiting here keeps the id in hand for cancelling.
+
+        Args:
+            client: The Edison client that submitted the task.
+            task_id: The id ``create_task`` returned.
+
+        Returns:
+            The finished task as a verbose response.
+
+        Raises:
+            TimeoutError: When the task is still running after the timeout.
+        """
+        from edison_client.models.rest import ExecutionStatus
+
+        timeout = self.config.timeout or DEFAULT_TASK_TIMEOUT_SECONDS
+        deadline = time.monotonic() + timeout
+        while not ExecutionStatus(client.get_task(task_id, lite=True).status).is_terminal_state():
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Edison task {task_id} did not finish within {timeout}s")
+            await asyncio.sleep(TASK_POLL_INTERVAL_SECONDS)
+        return cast("TaskResponseVerbose", client.get_task(task_id, verbose=True))
+
+    def _cancel_task(self, client: EdisonClient, task_id: str) -> None:
+        """Ask Edison to stop a task we are no longer waiting for.
+
+        Called while another exception is propagating, so a failure to cancel
+        is logged rather than raised: raising here would replace the reason the
+        wait ended with a less useful one.
+
+        Args:
+            client: The Edison client that submitted the task.
+            task_id: The task to cancel.
+        """
+        try:
+            cancelled = client.cancel_task(task_id)
+        except Exception as e:
+            logger.warning(
+                f"Could not cancel Edison task {task_id}; it may still be running and billing: {e}"
+            )
+            return
+        if cancelled:
+            logger.warning(f"Cancelled Edison task {task_id}")
+        else:
+            # cancel_task returns False when the task was not in progress,
+            # e.g. still queued or already finished.
+            logger.warning(f"Edison task {task_id} was not cancelled; check it on the Edison dashboard")
 
     async def check_health(self) -> ProviderHealth:
         """Probe Edison with a cheap authenticated call.
@@ -439,7 +508,6 @@ class FalconProvider(ResearchProvider):
         for item in output_data:
             storage_id = self._get_data_storage_id(item)
             if storage_id is None:
-                logger.debug(f"Skipping Edison artifact without entry_id: {item}")
                 continue
             if str(storage_id) in used_storage_ids:
                 continue
@@ -669,16 +737,31 @@ class FalconProvider(ResearchProvider):
                 yield from self._walk_values(nested_value)
 
     def _get_data_storage_id(self, item: dict[str, Any]) -> UUID | None:
-        """Extract a data-storage UUID from an Edison output_data item."""
+        """Extract a data-storage UUID from an Edison output_data item.
+
+        An id that is not a UUID is skipped with a warning rather than raised.
+        By the time artifacts are extracted the run has finished and been
+        paid for, so one unreadable artifact must not cost the answer and the
+        other artifacts. edison-client 0.16 accepts short string aliases here
+        too (issue #85); once we are on it, such an id can be passed through.
+
+        Args:
+            item: One entry of a task's ``output_data``.
+
+        Returns:
+            The storage UUID, or None when the item has no usable id.
+        """
         raw_id = item.get("entry_id") or item.get("data_storage_id") or item.get("id")
         if raw_id is None:
+            logger.debug(f"Skipping Edison artifact without entry_id: {item}")
             return None
 
-        id_text = str(raw_id)
-        if id_text.startswith("data_entry:"):
-            id_text = id_text.removeprefix("data_entry:")
-
-        return UUID(id_text)
+        id_text = str(raw_id).removeprefix("data_entry:")
+        try:
+            return UUID(id_text)
+        except ValueError:
+            logger.warning(f"Skipping Edison artifact whose storage id is not a UUID: {item}")
+            return None
 
     def _artifacts_from_fetch_response(
         self,

@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 name = "deep_research_client"
 description = "Wrapper for multiple deep research tools"
 authors = [
-  {name = "My Name", email = "my-name@my-org.org"},
+  {name = "Chris Mungall", email = "cjmungall@lbl.gov"},
+  {name = "J. Harry Caufield", email = "jhc@lbl.gov"},
 ]
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]

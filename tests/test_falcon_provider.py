@@ -1017,7 +1017,11 @@ def test_cancel_task_stops_a_live_edison_task():
         while status == ExecutionStatus.QUEUED.value and time.monotonic() < deadline:
             time.sleep(5)
             status = client.get_task(task_id, lite=True).status
-        assert status == ExecutionStatus.IN_PROGRESS.value, f"task never started: {status}"
+        # A task still queued cannot be cancelled and will run and bill
+        # unwatched, so name it for the Edison dashboard.
+        assert status == ExecutionStatus.IN_PROGRESS.value, (
+            f"Edison task {task_id} never started ({status}); stop it from the dashboard"
+        )
 
         provider._cancel_task(client, task_id)
 

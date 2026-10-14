@@ -1084,11 +1084,8 @@ source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "cyberian" },
-    { name = "edison-client" },
-    { name = "fhlmi" },
     { name = "httpx" },
     { name = "jinja2" },
-    { name = "ldp" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -1104,6 +1101,16 @@ biomni = [
 ]
 cyberian = [
     { name = "cyberian" },
+]
+edison = [
+    { name = "edison-client" },
+    { name = "fhlmi" },
+    { name = "ldp" },
+]
+falcon = [
+    { name = "edison-client" },
+    { name = "fhlmi" },
+    { name = "ldp" },
 ]
 terms = [
     { name = "linkml-term-validator" },
@@ -1152,13 +1159,16 @@ requires-dist = [
     { name = "biomni", marker = "extra == 'biomni'", specifier = ">=0.0.8" },
     { name = "cyberian", specifier = ">=0.2.2" },
     { name = "cyberian", marker = "extra == 'cyberian'", specifier = ">=0.2.2" },
-    { name = "edison-client", specifier = ">=0.11.0" },
-    { name = "fhlmi", specifier = ">=0.45.1" },
+    { name = "edison-client", marker = "extra == 'edison'", specifier = ">=0.11.0" },
+    { name = "edison-client", marker = "extra == 'falcon'", specifier = ">=0.11.0" },
+    { name = "fhlmi", marker = "extra == 'edison'", specifier = ">=0.45.1" },
+    { name = "fhlmi", marker = "extra == 'falcon'", specifier = ">=0.45.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "langchain-anthropic", marker = "extra == 'biomni'", specifier = ">=0.3.18" },
     { name = "langchain-openai", marker = "extra == 'biomni'", specifier = ">=0.3.28" },
-    { name = "ldp", specifier = ">=0.45.1" },
+    { name = "ldp", marker = "extra == 'edison'", specifier = ">=0.45.1" },
+    { name = "ldp", marker = "extra == 'falcon'", specifier = ">=0.45.1" },
     { name = "linkml-reference-validator", marker = "extra == 'validation'", specifier = ">=0.2.1" },
     { name = "linkml-term-validator", marker = "extra == 'terms'", specifier = ">=0.4.5" },
     { name = "mcp", marker = "extra == 'tooluniverse'", specifier = ">=1.30.0,<2" },
@@ -1173,7 +1183,7 @@ requires-dist = [
     { name = "tooluniverse", marker = "extra == 'tooluniverse-tools'", specifier = ">=1.4.1,<2" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
-provides-extras = ["biomni", "cyberian", "terms", "tooluniverse", "tooluniverse-tools", "validation"]
+provides-extras = ["biomni", "cyberian", "edison", "falcon", "terms", "tooluniverse", "tooluniverse-tools", "validation"]
 
 [package.metadata.requires-dev]
 browser = [

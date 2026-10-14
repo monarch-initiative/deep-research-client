@@ -19,9 +19,6 @@ dependencies = [
   "typer >= 0.9.0",
   "pydantic >= 2.0.0",
   "openai >= 2.0.0",
-  "edison-client >= 0.11.0",
-  "ldp >= 0.45.1",
-  "fhlmi >= 0.45.1",
   "httpx>=0.28.1",
   "aiofiles >= 23.0.0",
   "pyyaml >= 6.0",
@@ -33,6 +30,20 @@ dependencies = [
 # cyberian extra kept for backwards compatibility (cyberian is now a main dependency)
 cyberian = [
     "cyberian>=0.2.2",
+]
+# The Edison (formerly Falcon) provider's SDK brings aviary, ldp, fhlmi and,
+# through them, LiteLLM. Kept out of the base install so users of other
+# providers neither install that stack nor inherit its version constraints
+# (issue #92). ldp and fhlmi are not imported here; their floors keep the
+# resolver off releases older than what edison-client 0.11 was tested with.
+edison = [
+    "edison-client >= 0.11.0",
+    "ldp >= 0.45.1",
+    "fhlmi >= 0.45.1",
+]
+# Alias matching the provider's name in the CLI.
+falcon = [
+    "deep_research_client[edison]",
 ]
 # Biomni is a heavy optional provider (local biomedical agent + a large external
 # software environment and ~11GB data lake), so it is not part of the base

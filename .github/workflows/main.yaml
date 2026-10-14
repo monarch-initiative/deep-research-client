@@ -48,11 +48,56 @@ jobs:
         run: |
           uv tool install rust-just
 
+      # The edison extra is needed for mypy, which type-checks the Edison
+      # provider against its SDK, and for the Edison tests, which skip without it.
       - name: Install project
-        run: uv sync --dev
+        run: uv sync --dev --extra edison
+
+      - name: Confirm the Edison extra is installed
+        run: uv run python -c "import edison_client"
 
       - name: Run test suite
         run: just test
+
+  no-edison-extra:
+    name: Without the Edison extra
+    runs-on: ubuntu-latest
+    env:
+      # Packages the edison extra brings, by import name (fhlmi imports as lmi).
+      EDISON_STACK: "edison_client ldp lmi litellm"
+      CHECK_ABSENT: |
+        import importlib.util, os
+        present = [m for m in os.environ["EDISON_STACK"].split() if importlib.util.find_spec(m)]
+        assert not present, f"installed without the edison extra: {present}"
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6.4.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install just
+        run: uv tool install rust-just
+      - name: Base install leaves out the Edison stack
+        run: |
+          uv sync --no-dev
+          uv run --no-dev python -c "$CHECK_ABSENT"
+      - name: CLI help and provider discovery work without it
+        run: |
+          uv run --no-dev deep-research-client --help
+          uv run --no-dev deep-research-client providers
+      - name: Cyberian install leaves out the Edison stack
+        run: |
+          uv sync --no-dev --extra cyberian
+          uv run --no-dev python -c "$CHECK_ABSENT"
+      # mypy is left to the main job: it needs the Edison SDK to check falcon.py.
+      - name: Tests and doctests pass without it
+        run: |
+          uv sync --dev
+          uv run python -c "$CHECK_ABSENT"
+          just pytest doctest
 
   tooluniverse-extra:
     name: ToolUniverse extra (${{ matrix.python-version }})

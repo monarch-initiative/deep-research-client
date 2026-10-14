@@ -7,6 +7,8 @@ with it. Nothing here is faked; each test reads the real environment.
 """
 
 import asyncio
+import tomllib
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -21,6 +23,11 @@ from deep_research_client.providers.falcon import (
     edison_client_installed,
 )
 
+PYPROJECT = Path(__file__).parent.parent / "pyproject.toml"
+
+#: Distributions that belong to the Edison stack and nowhere else.
+EDISON_STACK = ("edison-client", "ldp", "fhlmi")
+
 without_extra = pytest.mark.skipif(
     edison_client_installed(), reason="checks behaviour without the edison extra"
 )
@@ -29,9 +36,42 @@ with_extra = pytest.mark.skipif(
 )
 
 
+def _project() -> dict:
+    """Read the ``[project]`` table of the repository's pyproject.toml."""
+    return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
+
+
+def _requirement_names(requirements: list[str]) -> set[str]:
+    """Reduce requirement strings to their distribution names.
+
+    >>> sorted(_requirement_names(["edison-client >= 0.11.0", "ldp>=0.45.1"]))
+    ['edison-client', 'ldp']
+    """
+    return {
+        requirement.split(">")[0].split("=")[0].split("[")[0].strip().lower()
+        for requirement in requirements
+    }
+
+
 def _provider(api_key: str | None = "test-key") -> FalconProvider:
     """Build a Falcon provider with the given key."""
     return FalconProvider(ProviderConfig(name="falcon", api_key=api_key, enabled=True))
+
+
+def test_the_edison_stack_is_not_a_base_dependency():
+    """A base install must not pull in edison-client or what it brings."""
+    assert not _requirement_names(_project()["dependencies"]) & set(EDISON_STACK)
+
+
+@pytest.mark.parametrize("extra", ["edison", "falcon"])
+def test_the_edison_extra_installs_the_stack(extra):
+    """Both names install the stack: ``falcon`` by naming the ``edison`` extra."""
+    extras = _project()["optional-dependencies"]
+
+    if extra == "edison":
+        assert _requirement_names(extras[extra]) == set(EDISON_STACK)
+    else:
+        assert extras[extra] == ["deep_research_client[edison]"]
 
 
 @without_extra

@@ -26,10 +26,11 @@ setup: _git-init _ai-instructions install _git-add
   git commit -m "Initialise git with minimal project" -a
 
   
-# Install project dependencies
+# Install project dependencies. The edison extra is included because mypy
+# type-checks the Edison provider against its SDK.
 [group('project management')]
 install:
-  uv sync --group dev
+  uv sync --group dev --extra edison
 
 
 # Run all tests

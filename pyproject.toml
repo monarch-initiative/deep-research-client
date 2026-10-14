@@ -55,6 +55,9 @@ biomni = [
     "pandas>=2.0",
     "langchain-openai>=0.3.28",
     "langchain-anthropic>=0.3.18",
+    # Imported by biomni.utils but not declared; it arrived through the Edison
+    # stack until that became the edison extra (#92).
+    "tqdm>=4.0",
 ]
 validation = [
     "linkml-reference-validator>=0.2.1",

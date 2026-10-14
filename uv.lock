@@ -1098,6 +1098,7 @@ biomni = [
     { name = "langchain-anthropic" },
     { name = "langchain-openai" },
     { name = "pandas" },
+    { name = "tqdm" },
 ]
 cyberian = [
     { name = "cyberian" },
@@ -1181,6 +1182,7 @@ requires-dist = [
     { name = "smolagents", marker = "extra == 'tooluniverse'", specifier = ">=1.26.0,<2" },
     { name = "tooluniverse", marker = "extra == 'tooluniverse'", specifier = ">=1.4.1,<2" },
     { name = "tooluniverse", marker = "extra == 'tooluniverse-tools'", specifier = ">=1.4.1,<2" },
+    { name = "tqdm", marker = "extra == 'biomni'", specifier = ">=4.0" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
 provides-extras = ["biomni", "cyberian", "edison", "falcon", "terms", "tooluniverse", "tooluniverse-tools", "validation"]

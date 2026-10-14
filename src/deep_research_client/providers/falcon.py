@@ -5,12 +5,18 @@ in aviary and litellm -- seconds of imports, and litellm fetches a price list
 over the network on import -- and this module is imported just to read the
 class's declared credential whenever the CLI lists providers (issue #70).
 Tests that substitute the client patch ``edison_client.EdisonClient``.
+
+``edison_client`` is also optional to install: it ships in the ``edison``
+extra (``deep-research-client[edison]``), so a base install never pulls in
+that stack (issue #92). Without it the provider still loads and says what to
+install, rather than failing on an import.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import json
 import logging
 import mimetypes
@@ -21,7 +27,11 @@ from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Sequence, Typed
 from uuid import UUID
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError, classify_exception
+from ..exceptions import (
+    ProviderNotConfiguredError,
+    ProviderNotInstalledError,
+    classify_exception,
+)
 from ..models import (
     ProviderConfig,
     ProviderHealth,
@@ -58,8 +68,25 @@ class EdisonTaskTimeoutError(TimeoutError):
 DEFAULT_TASK_TIMEOUT_SECONDS = 2400
 #: Seconds between status checks. Matches ``EdisonClient.DEFAULT_POLLING_TIME``.
 TASK_POLL_INTERVAL_SECONDS = 5
+#: What to run to get ``edison_client``, for the sentence saying it is missing.
+EDISON_INSTALL_HINT = "pip install 'deep-research-client[edison]'"
 type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
+
+
+def edison_client_installed() -> bool:
+    """Whether the optional ``edison_client`` package can be imported.
+
+    Asks the import system where the package is rather than importing it, so
+    the answer costs nothing even where the package is installed.
+
+    Returns:
+        True when ``edison_client`` is installed
+
+    >>> isinstance(edison_client_installed(), bool)
+    True
+    """
+    return importlib.util.find_spec("edison_client") is not None
 
 
 def _without_echoed_question(formatted_answer: str, query: str | None) -> str:
@@ -131,6 +158,43 @@ class FalconProvider(ResearchProvider):
         """Get default model."""
         return "Edison Scientific Literature"
 
+    def is_available(self) -> bool:
+        """Check for both an API key and the optional Edison client package."""
+        return super().is_available() and edison_client_installed()
+
+    def unavailable_reason(self) -> str:
+        """Say what is missing: the key, the Edison client package, or both.
+
+        Both are named when both are missing, so whoever fixes one is not
+        surprised by the other on the next run.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled or edison_client_installed():
+            return super().unavailable_reason()
+        not_installed = (
+            "the Edison client is not installed "
+            f"(install it with `{EDISON_INSTALL_HINT}`)"
+        )
+        if self.config.api_key is None:
+            return f"{super().unavailable_reason()}; {not_installed}"
+        return not_installed
+
+    def require_available(self) -> None:
+        """Raise the error that says what is missing, if anything is.
+
+        Raises:
+            ProviderNotInstalledError: If ``edison_client`` is not installed.
+            ProviderNotConfiguredError: If the provider is disabled or has no key.
+        """
+        installed = edison_client_installed()
+        if installed and super().is_available():
+            return
+        if self.config.enabled and not installed:
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+
     @classmethod
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Falcon provider."""
@@ -141,8 +205,7 @@ class FalconProvider(ResearchProvider):
         logger.info(f"Starting Edison research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
-        if not self.is_available():
-            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+        self.require_available()
 
         from edison_client import EdisonClient, JobNames
 
@@ -320,8 +383,7 @@ class FalconProvider(ResearchProvider):
 
     def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
         """Retrieve an existing Edison trajectory and preserve its artifacts."""
-        if not self.is_available():
-            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+        self.require_available()
 
         from edison_client import EdisonClient
 

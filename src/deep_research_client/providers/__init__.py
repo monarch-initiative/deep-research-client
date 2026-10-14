@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional, Union, TYPE_CHECKING
 
+from ..exceptions import ProviderNotConfiguredError
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..model_cards import ProviderModelCards
 
@@ -105,6 +106,25 @@ class ResearchProvider(ABC):
     def is_available(self) -> bool:
         """Check if provider is available (has API key, etc.)."""
         return self.config.enabled and self.config.api_key is not None
+
+    #: What :meth:`require_available` raises. A provider whose missing piece
+    #: is a local binary or package sets ``ProviderNotInstalledError``, so a
+    #: caller can offer an install rather than ask for a key.
+    unavailable_error: ClassVar[type[ProviderNotConfiguredError]] = ProviderNotConfiguredError
+
+    def require_available(self) -> None:
+        """Raise the error that says what this provider is missing, if anything.
+
+        The client calls this as well as :meth:`research`, so one cause raises
+        one class whichever way the provider is reached. Override it where the
+        class depends on what is missing, as falcon and tooluniverse do.
+
+        Raises:
+            ProviderNotConfiguredError: Or the subclass in
+                :attr:`unavailable_error`, if the provider cannot run.
+        """
+        if not self.is_available():
+            raise self.unavailable_error(self.name, self.unavailable_reason())
 
     def unavailable_reason(self) -> str:
         """Explain why this provider is unavailable.

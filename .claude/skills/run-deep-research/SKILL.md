@@ -61,7 +61,7 @@ Use this skill when:
 ```bash
 # At least one of these is required:
 export OPENAI_API_KEY="your-openai-key"           # For OpenAI Deep Research
-export FUTUREHOUSE_API_KEY="your-futurehouse-key" # For Falcon
+export EDISON_API_KEY="your-edison-key" # For Falcon (also needs: pip install "deep-research-client[edison]")
 export PERPLEXITY_API_KEY="your-perplexity-key"   # For Perplexity AI
 export CONSENSUS_API_KEY="your-consensus-key"     # For Consensus AI (requires approval)
 ```

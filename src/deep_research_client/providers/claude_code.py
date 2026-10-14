@@ -210,6 +210,9 @@ class ClaudeCodeProvider(ResearchProvider):
         "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
     )
 
+    #: Nothing to run is an install problem, not a missing key.
+    unavailable_error = ProviderNotInstalledError
+
     def __init__(self, config: ProviderConfig, params: Optional[ClaudeCodeParams] = None):
         """Initialize the Claude Code provider.
 
@@ -470,8 +473,7 @@ class ClaudeCodeProvider(ResearchProvider):
         """
         start_time = datetime.now()
 
-        if not self.is_available():
-            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        self.require_available()
 
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")

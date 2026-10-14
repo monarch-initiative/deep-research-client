@@ -171,47 +171,6 @@ def test_named_provider_is_the_only_one_probed(capsys):
     assert "b:" not in out
 
 
-@pytest.fixture
-def bare_machine(monkeypatch):
-    """Pin PATH and credentials so the explanations below do not depend on the box.
-
-    The CLI now asks the client, and the client asks the provider, so a runner
-    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
-    exported -- gets a different, equally correct sentence. A provider that is
-    actually usable is told so rather than told what it is missing, which is the
-    whole point of the client's availability guard. Fixing the environment is
-    what makes these assertions about wording rather than about the machine.
-
-    The variables are read from the provider classes rather than listed here,
-    so a keyed provider added to the registry cannot leave a stale exception.
-    """
-    import shutil
-
-    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
-    for provider_name in _settable_credential_hints():
-        monkeypatch.delenv(load_provider_class(provider_name).credential_env_var, raising=False)
-    # Three gates no credential variable covers: the deprecated alias the client
-    # still accepts for falcon, the mock's opt-in flag, and biomni, which is
-    # gated on an import rather than a variable -- so `uv sync --extra biomni`
-    # would otherwise register it.
-    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
-    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
-    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
-
-    # Assert the state rather than trust the list: a fourth gate should fail
-    # here, naming what stayed available, not downstream as a missing heading.
-    # Only a variable or a PATH probe can be closed from here, so a future
-    # provider registered on a bare import with no opt-out will fail this --
-    # correctly, and the fix is to give that provider an opt-out variable.
-    from deep_research_client.client import DeepResearchClient
-    from deep_research_client.models import CacheConfig
-
-    still_up = DeepResearchClient(
-        cache_config=CacheConfig(enabled=False)
-    ).get_available_providers()
-    assert not still_up, f"bare_machine left {still_up} registered"
-
-
 def test_no_configured_providers_is_an_error(capsys, bare_machine):
     """Probing nothing is not the same as everything being fine."""
     with pytest.raises(typer.Exit) as excinfo:
@@ -382,7 +341,7 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     assert "has no effect" not in result.stdout
 
 
-def test_the_research_hint_list_keeps_its_heading(monkeypatch):
+def test_the_research_hint_list_keeps_its_heading(bare_machine):
     """A heading on one stream and its list on another is half a message.
 
     The list is indented variable names; without the sentence above it, a
@@ -392,9 +351,8 @@ def test_the_research_hint_list_keeps_its_heading(monkeypatch):
     """
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
     assert result.exit_code == 1
@@ -405,11 +363,16 @@ def test_the_research_hint_list_keeps_its_heading(monkeypatch):
 
 
 @pytest.mark.parametrize("err", [False, True])
-def test_the_no_providers_heading_and_list_share_a_stream(capsys, err):
+def test_the_no_providers_heading_and_list_share_a_stream(capsys, bare_machine, err):
     """Whichever stream the caller picks, the heading and its list both go there."""
     import deep_research_client.cli as cli_module
 
-    cli_module._echo_no_providers_message(err=err)
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.models import CacheConfig
+
+    cli_module._echo_no_providers_message(
+        DeepResearchClient(cache_config=CacheConfig(enabled=False)), err=err
+    )
     captured = capsys.readouterr()
     chosen, other = (captured.err, captured.out) if err else (captured.out, captured.err)
 
@@ -417,13 +380,12 @@ def test_the_no_providers_heading_and_list_share_a_stream(capsys, err):
     assert other == ""
 
 
-def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
+def test_the_key_list_offers_only_things_a_user_can_set(bare_machine):
     """A CLI on PATH and a test double are not answers to "set API keys"."""
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
 

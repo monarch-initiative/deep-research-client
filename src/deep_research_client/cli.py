@@ -10,7 +10,7 @@ import shutil
 import typer
 from pathlib import Path
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -324,7 +324,21 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
-def _echo_no_providers_message(err: bool = False) -> None:
+def _exit_provider_unavailable(client: DeepResearchClient, provider: str) -> NoReturn:
+    """Stop the run, saying what the named provider is missing.
+
+    Args:
+        client: Client that knows why the provider cannot run.
+        provider: Canonical name of a known provider.
+
+    Raises:
+        typer.Exit: Always, with exit code 1.
+    """
+    _error(f"Provider '{provider}' not available: {client.unregistered_reason(provider)}")
+    raise typer.Exit(1)
+
+
+def _echo_no_providers_message(client: DeepResearchClient, err: bool = False) -> None:
     """Tell the user nothing is configured, and what to set.
 
     The heading and its list always share a stream: split, a redirect keeps
@@ -333,10 +347,11 @@ def _echo_no_providers_message(err: bool = False) -> None:
     for `research` it is why the run stopped, so stderr.
 
     Args:
+        client: Client whose providers decide which keys are worth offering.
         err: Write to stderr rather than stdout.
     """
     typer.echo("No research providers available. Please set API keys:", err=err)
-    _echo_credential_hints(_settable_credential_hints(), err=err)
+    _echo_credential_hints(_credential_hints_to_offer(client), err=err)
 
 
 def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
@@ -363,7 +378,7 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
         client: Client to ask what is available and why the rest is not.
     """
     available = set(client.get_available_providers())
-    settable = set(_settable_credential_hints())
+    settable = set(_credential_hints_to_offer(client))
     stubs = _stub_hints()
     other = [
         name
@@ -396,6 +411,31 @@ def _settable_credential_hints() -> list[str]:
         name
         for name in PROVIDER_CLASS_PATHS
         if load_provider_class(name).credential_env_var
+    ]
+
+
+def _credential_hints_to_offer(client: DeepResearchClient) -> list[str]:
+    """Keyed providers that setting their key would enable.
+
+    Leaves out those whose key is set: the available ones, and those that
+    still cannot run -- falcon without the ``edison`` extra, for one
+    (issue #92). Telling a reader to set a key they have set hides the real
+    fix, so those are described under "Other unavailable providers" instead,
+    with their own reason.
+
+    Args:
+        client: Client holding the providers registered from the environment.
+
+    Returns:
+        Provider names, in registry order, whose missing key is the fix
+    """
+    # Providers register only once their key is set, so an unregistered one
+    # is exactly one whose key would help; a registered one is either
+    # available or missing something other than its key.
+    return [
+        name
+        for name in _settable_credential_hints()
+        if client.registry.get_provider(name) is None
     ]
 
 
@@ -520,7 +560,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # answer, rendered claude_code's binary through a formatter built
             # for variables, and left biomni and cyberian in no section at all
             # -- in the command a reader runs precisely because nothing works.
-            _echo_credential_hints(_settable_credential_hints())
+            _echo_credential_hints(_credential_hints_to_offer(client))
             _echo_other_unavailable_hints(client)
             _echo_stub_hints()
             raise typer.Exit(1)
@@ -1023,17 +1063,21 @@ def research(
     client = DeepResearchClient(
         cache_config=cache_config, provider_configs=provider_configs)
 
-    # Check if any providers are available
-    available_providers = client.get_available_providers()
-    if not available_providers:
-        _echo_no_providers_message(err=True)
-        raise typer.Exit(1)
-
     # An explicit list is an ordering instruction, so it replaces the
     # automatic one rather than adding to it.
     fallback_request: Union[bool, List[str]] = (
         list(fallback_provider) if fallback_provider else fallback
     )
+
+    # Check if any providers are available
+    available_providers = client.get_available_providers()
+    if not available_providers:
+        # A provider named on its own has a fix of its own, which the list of
+        # keys to set would bury -- or leave out, for an install.
+        if provider and not fallback_request and client.knows_provider(provider):
+            _exit_provider_unavailable(client, provider)
+        _echo_no_providers_message(client, err=True)
+        raise typer.Exit(1)
 
     # Show available providers
     if provider:
@@ -1045,10 +1089,13 @@ def research(
             # unconfigured -- which is the error 89e5840 rejected in the other
             # direction. The client answers the distinction; asking it here is
             # what keeps the two surfaces from drifting.
-            if not fallback_request or not client.knows_provider(provider):
+            if not client.knows_provider(provider):
                 _error(
                     f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
                 raise typer.Exit(1)
+            if not fallback_request:
+                # A known name needs the fix, not the list of other names.
+                _exit_provider_unavailable(client, provider)
             # "Not configured" is one of the failures a fallback exists to
             # handle, and the client treats it as one. Ending the run here
             # would make the CLI refuse what the library allows, and would
@@ -1907,11 +1954,7 @@ def providers(
                         typer.echo(
                             f"    {field_name}: {field_info.description}")
 
-        missing_credential_providers = [
-            provider_name
-            for provider_name in _settable_credential_hints()
-            if provider_name not in available
-        ]
+        missing_credential_providers = _credential_hints_to_offer(client)
         if missing_credential_providers:
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
@@ -1919,7 +1962,7 @@ def providers(
     else:
         # One stream, so the heading and its lists stay together -- the failure
         # _echo_no_providers_message exists to prevent.
-        _echo_no_providers_message()
+        _echo_no_providers_message(client)
 
     # Common to both arms: what differs above is only what is said about
     # credentials.

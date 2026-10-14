@@ -10,6 +10,9 @@ import asyncio
 import httpx
 import pytest
 
+# These substitute edison_client.EdisonClient, which needs the `edison` extra.
+pytest.importorskip("edison_client")
+
 from deep_research_client.exceptions import (
     ProviderAuthError,
     ProviderBillingError,

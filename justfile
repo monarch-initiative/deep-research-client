@@ -26,10 +26,11 @@ setup: _git-init _ai-instructions install _git-add
   git commit -m "Initialise git with minimal project" -a
 
   
-# Install project dependencies
+# Install project dependencies. The edison extra is included because mypy
+# type-checks the Edison provider against its SDK.
 [group('project management')]
 install:
-  uv sync --group dev
+  uv sync --group dev --extra edison
 
 
 # Run all tests
@@ -52,7 +53,10 @@ pytest-integration:
 doctest:
   uv run pytest  --doctest-modules src
 
+# falcon.py is checked against the Edison SDK, so say so up front rather than
+# leave a plain `uv sync --dev` to fail with import errors.
 mypy:
+  @uv run python -c "import importlib.util, sys; importlib.util.find_spec('edison_client') or sys.exit('mypy needs the edison extra: run just install (uv sync --group dev --extra edison)')"
   uv run mypy src tests .claude/skills
 
 format:

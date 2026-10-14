@@ -2538,7 +2538,7 @@
 </tr>
 <tr>
 <td>Edison</td>
-<td><code>EDISON_API_KEY</code></td>
+<td><code>EDISON_API_KEY</code> + <code>edison</code> extra</td>
 <td>Scientific literature</td>
 <td>Slow</td>
 </tr>
@@ -2697,8 +2697,14 @@ params = PerplexityParams(
 <hr />
 <h2 id="edison-scientific-falcon">Edison Scientific (Falcon)</h2>
 <h3 id="setup_2">Setup</h3>
-<pre><code class="language-bash">export EDISON_API_KEY=&quot;your-key&quot;
+<pre><code class="language-bash">pip install &quot;deep-research-client[edison]&quot;
+export EDISON_API_KEY=&quot;your-key&quot;
 </code></pre>
+<p>The Edison SDK (<code>edison-client</code>) and what it brings with it (<code>ldp</code>, <code>fhlmi</code>,
+LiteLLM) are an optional extra, so users of other providers do not install
+that stack or inherit its version constraints. <code>[falcon]</code> is an alias for the
+same extra. Without it, the provider still appears in <code>providers</code> and says
+what to install; selecting it fails with that same install hint.</p>
 <h3 id="models_2">Models</h3>
 <table>
 <thead>

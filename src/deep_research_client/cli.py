@@ -417,8 +417,8 @@ def _settable_credential_hints() -> list[str]:
 def _credential_hints_to_offer(client: DeepResearchClient) -> list[str]:
     """Keyed providers that setting their key would enable.
 
-    Leaves out the available ones, and those whose key is already set but
-    which still cannot run -- falcon without the ``edison`` extra, for one
+    Leaves out those whose key is set: the available ones, and those that
+    still cannot run -- falcon without the ``edison`` extra, for one
     (issue #92). Telling a reader to set a key they have set hides the real
     fix, so those are described under "Other unavailable providers" instead,
     with their own reason.
@@ -429,15 +429,13 @@ def _credential_hints_to_offer(client: DeepResearchClient) -> list[str]:
     Returns:
         Provider names, in registry order, whose missing key is the fix
     """
-    available = set(client.get_available_providers())
+    # Providers register only once their key is set, so an unregistered one
+    # is exactly one whose key would help; a registered one is either
+    # available or missing something other than its key.
     return [
         name
         for name in _settable_credential_hints()
-        if name not in available
-        and (
-            (registered := client.registry.get_provider(name)) is None
-            or registered.is_available()
-        )
+        if client.registry.get_provider(name) is None
     ]
 
 

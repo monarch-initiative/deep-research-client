@@ -341,7 +341,7 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     assert "has no effect" not in result.stdout
 
 
-def test_the_research_hint_list_keeps_its_heading(monkeypatch):
+def test_the_research_hint_list_keeps_its_heading(bare_machine):
     """A heading on one stream and its list on another is half a message.
 
     The list is indented variable names; without the sentence above it, a
@@ -351,9 +351,8 @@ def test_the_research_hint_list_keeps_its_heading(monkeypatch):
     """
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
     assert result.exit_code == 1
@@ -381,13 +380,12 @@ def test_the_no_providers_heading_and_list_share_a_stream(capsys, bare_machine, 
     assert other == ""
 
 
-def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
+def test_the_key_list_offers_only_things_a_user_can_set(bare_machine):
     """A CLI on PATH and a test double are not answers to "set API keys"."""
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
 

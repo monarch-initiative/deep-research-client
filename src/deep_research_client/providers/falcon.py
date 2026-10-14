@@ -188,9 +188,10 @@ class FalconProvider(ResearchProvider):
             ProviderNotInstalledError: If ``edison_client`` is not installed.
             ProviderNotConfiguredError: If the provider is disabled or has no key.
         """
-        if self.is_available():
+        installed = edison_client_installed()
+        if installed and super().is_available():
             return
-        if self.config.enabled and not edison_client_installed():
+        if self.config.enabled and not installed:
             raise ProviderNotInstalledError(self.name, self.unavailable_reason())
         raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
 

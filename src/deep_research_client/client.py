@@ -295,6 +295,12 @@ class DeepResearchClient:
         """
         if provider_name in self.get_available_providers():
             return f"'{provider_name}' is available"
+        # Registered but unavailable -- a key set for a provider whose optional
+        # package is missing, say. The registered instance has the key, so it
+        # can tell what is missing; a throwaway one would blame the key.
+        registered = self.registry.get_provider(provider_name)
+        if registered is not None:
+            return registered.unavailable_reason()
         return self._unregistered_reason(provider_name)
 
     def _unregistered_reason(self, provider_name: str) -> str:

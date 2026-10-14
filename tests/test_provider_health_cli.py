@@ -405,11 +405,16 @@ def test_the_research_hint_list_keeps_its_heading(monkeypatch):
 
 
 @pytest.mark.parametrize("err", [False, True])
-def test_the_no_providers_heading_and_list_share_a_stream(capsys, err):
+def test_the_no_providers_heading_and_list_share_a_stream(capsys, bare_machine, err):
     """Whichever stream the caller picks, the heading and its list both go there."""
     import deep_research_client.cli as cli_module
 
-    cli_module._echo_no_providers_message(err=err)
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.models import CacheConfig
+
+    cli_module._echo_no_providers_message(
+        DeepResearchClient(cache_config=CacheConfig(enabled=False)), err=err
+    )
     captured = capsys.readouterr()
     chosen, other = (captured.err, captured.out) if err else (captured.out, captured.err)
 

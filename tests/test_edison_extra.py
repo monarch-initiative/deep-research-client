@@ -92,6 +92,39 @@ def test_edison_trajectory_without_the_extra_names_the_extra(monkeypatch):
     assert EDISON_INSTALL_HINT in result.output
 
 
+@without_extra
+def test_research_command_without_the_extra_names_the_extra(monkeypatch):
+    """A known provider gets its fix, not the list of other providers' names."""
+    monkeypatch.setenv("EDISON_API_KEY", "test-key")
+
+    result = CliRunner().invoke(app, ["research", "what causes scurvy", "--provider", "falcon"])
+
+    assert result.exit_code == 1
+    assert EDISON_INSTALL_HINT in result.output
+
+
+@without_extra
+def test_providers_listing_does_not_ask_for_a_key_that_is_set(monkeypatch):
+    """With the key set, the missing package is the only thing worth saying."""
+    monkeypatch.setenv("EDISON_API_KEY", "test-key")
+
+    result = CliRunner().invoke(app, ["providers"])
+
+    assert result.exit_code == 0, result.output
+    assert "EDISON_API_KEY" not in result.output
+    assert f"falcon: the Edison client is not installed (install it with `{EDISON_INSTALL_HINT}`)" in (
+        result.output
+    )
+
+
+@pytest.mark.parametrize("args", [["--help"], ["providers"]])
+def test_cli_discovery_works_with_or_without_the_extra(args):
+    """Help and the provider listing must not depend on optional packages."""
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+
+
 @with_extra
 def test_a_keyed_provider_with_the_extra_is_available():
     """Installing the extra is all it takes, once a key is set."""

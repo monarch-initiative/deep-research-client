@@ -600,7 +600,8 @@ class DeepResearchClient:
             A provider instance configured for this run.
 
         Raises:
-            ProviderNotConfiguredError: If the provider is known but not set up.
+            ProviderNotConfiguredError: If the provider is known but not set up;
+                ProviderNotInstalledError where a package or binary is missing.
             ValueError: If the name is not a provider at all.
         """
         base_provider = self.registry.get_provider(provider_name)
@@ -613,10 +614,8 @@ class DeepResearchClient:
                     provider_name, self._unregistered_reason(provider_name)
                 )
             raise ValueError(f"Provider '{provider_name}' not found")
-        if not base_provider.is_available():
-            raise ProviderNotConfiguredError(
-                provider_name, base_provider.unavailable_reason()
-            )
+        # The provider picks the class: a missing package is not a missing key.
+        base_provider.require_available()
 
         # Create new instance with custom parameters if needed
         if provider_params or model:

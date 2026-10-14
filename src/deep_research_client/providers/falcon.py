@@ -181,7 +181,7 @@ class FalconProvider(ResearchProvider):
             return f"{super().unavailable_reason()}; {not_installed}"
         return not_installed
 
-    def _require_available(self) -> None:
+    def require_available(self) -> None:
         """Raise the error that says what is missing, if anything is.
 
         Raises:
@@ -205,7 +205,7 @@ class FalconProvider(ResearchProvider):
         logger.info(f"Starting Edison research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
-        self._require_available()
+        self.require_available()
 
         from edison_client import EdisonClient, JobNames
 
@@ -383,7 +383,7 @@ class FalconProvider(ResearchProvider):
 
     def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
         """Retrieve an existing Edison trajectory and preserve its artifacts."""
-        self._require_available()
+        self.require_available()
 
         from edison_client import EdisonClient
 

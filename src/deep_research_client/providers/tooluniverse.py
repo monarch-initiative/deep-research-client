@@ -81,6 +81,18 @@ class ToolUniverseProvider(ResearchProvider):
             and not missing_tooluniverse_runtime_modules()
         )
 
+    def require_available(self) -> None:
+        """Raise for a missing key or setting first, then for a missing SDK.
+
+        Raises:
+            ProviderNotConfiguredError: If disabled, keyless, or given a timeout.
+            ProviderNotInstalledError: If the ToolUniverse runtime is missing.
+        """
+        if not self.config.enabled or not self.config.api_key or self.config.timeout is not None:
+            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+        if missing_tooluniverse_runtime_modules():
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+
     def unavailable_reason(self) -> str:
         """Explain disabled configuration, missing credentials, or missing SDKs."""
         if not self.config.enabled:
@@ -161,10 +173,7 @@ class ToolUniverseProvider(ResearchProvider):
         """Investigate a question and return markdown, citations, and run timing."""
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
-        if not self.config.enabled or not self.config.api_key or self.config.timeout is not None:
-            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
-        if missing_tooluniverse_runtime_modules():
-            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        self.require_available()
 
         start_time = datetime.now()
         try:

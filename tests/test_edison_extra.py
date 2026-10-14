@@ -15,7 +15,7 @@ from typer.testing import CliRunner
 
 from deep_research_client.cli import app
 from deep_research_client.client import DeepResearchClient
-from deep_research_client.exceptions import ProviderNotConfiguredError, ProviderNotInstalledError
+from deep_research_client.exceptions import ProviderNotInstalledError
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.providers.falcon import (
     EDISON_INSTALL_HINT,
@@ -113,11 +113,11 @@ def test_health_check_without_the_extra_names_the_extra():
 
 @without_extra
 def test_the_client_reports_the_missing_extra(monkeypatch):
-    """A key in the environment registers the provider; running it says why it cannot."""
+    """The client raises what the provider would: an install problem, not a key."""
     monkeypatch.setenv("EDISON_API_KEY", "test-key")
     client = DeepResearchClient(cache_config=CacheConfig(enabled=False))
 
-    with pytest.raises(ProviderNotConfiguredError, match=r"deep-research-client\[edison\]"):
+    with pytest.raises(ProviderNotInstalledError, match=r"deep-research-client\[edison\]"):
         client.research("what causes scurvy", provider="falcon")
 
 

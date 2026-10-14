@@ -11,6 +11,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from typer.testing import CliRunner
 
 from deep_research_client.cli import app
@@ -42,15 +44,14 @@ def _project() -> dict:
 
 
 def _requirement_names(requirements: list[str]) -> set[str]:
-    """Reduce requirement strings to their distribution names.
+    """Reduce requirement strings to their normalized distribution names.
 
-    >>> sorted(_requirement_names(["edison-client >= 0.11.0", "ldp>=0.45.1"]))
+    Parsed rather than split, so any specifier, extra or marker is handled.
+
+    >>> sorted(_requirement_names(["Edison_Client >= 0.11.0", "ldp~=0.45; python_version>'3'"]))
     ['edison-client', 'ldp']
     """
-    return {
-        requirement.split(">")[0].split("=")[0].split("[")[0].strip().lower()
-        for requirement in requirements
-    }
+    return {canonicalize_name(Requirement(requirement).name) for requirement in requirements}
 
 
 def _provider(api_key: str | None = "test-key") -> FalconProvider:

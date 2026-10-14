@@ -63,15 +63,18 @@ def test_the_edison_stack_is_not_a_base_dependency():
     assert not _requirement_names(_project()["dependencies"]) & set(EDISON_STACK)
 
 
-@pytest.mark.parametrize("extra", ["edison", "falcon"])
-def test_the_edison_extra_installs_the_stack(extra):
-    """Both names install the stack: ``falcon`` by naming the ``edison`` extra."""
+def test_the_edison_extra_installs_the_stack():
+    """The extra carries exactly the packages the base install left out."""
     extras = _project()["optional-dependencies"]
 
-    if extra == "edison":
-        assert _requirement_names(extras[extra]) == set(EDISON_STACK)
-    else:
-        assert extras[extra] == ["deep_research_client[edison]"]
+    assert _requirement_names(extras["edison"]) == set(EDISON_STACK)
+
+
+def test_the_falcon_extra_is_an_alias_for_edison():
+    """``falcon`` names the ``edison`` extra rather than repeating its contents."""
+    extras = _project()["optional-dependencies"]
+
+    assert extras["falcon"] == ["deep_research_client[edison]"]
 
 
 @without_extra

@@ -8,7 +8,7 @@ Complete reference for all supported research providers.
 |----------|--------------|-----------|-------|
 | OpenAI | `OPENAI_API_KEY` | Most comprehensive | Slow |
 | Perplexity | `PERPLEXITY_API_KEY` | Real-time web, multiple speeds | Fast-Slow |
-| Edison | `EDISON_API_KEY` | Scientific literature | Slow |
+| Edison | `EDISON_API_KEY` + `edison` extra | Scientific literature | Slow |
 | Asta | `ASTA_API_KEY` | Semantic Scholar-scale literature retrieval + snippets | Fast |
 | Consensus | `CONSENSUS_API_KEY` | Academic papers | Fast |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
@@ -109,8 +109,15 @@ params = PerplexityParams(
 ### Setup
 
 ```bash
+pip install "deep-research-client[edison]"
 export EDISON_API_KEY="your-key"
 ```
+
+The Edison SDK (`edison-client`) and what it brings with it (`ldp`, `fhlmi`,
+LiteLLM) are an optional extra, so users of other providers do not install
+that stack or inherit its version constraints. `[falcon]` is an alias for the
+same extra. Without it, the provider still appears in `providers` and says
+what to install; selecting it fails with that same install hint.
 
 ### Models
 

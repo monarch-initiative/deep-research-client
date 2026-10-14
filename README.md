@@ -37,10 +37,14 @@ pip install "deep-research-client[validation]"
 # With ontology term validation (checks cited CURIEs are the terms they are named as)
 pip install "deep-research-client[terms]"
 
-# For development
+# With the Edison Scientific (Falcon) provider; its SDK brings LiteLLM, so it is
+# not part of the base install. `[falcon]` is an alias for the same extra.
+pip install "deep-research-client[edison]"
+
+# For development (the edison extra is needed for mypy and the Edison tests)
 git clone <repo-url>
 cd deep-research-client
-uv sync
+just install  # uv sync --group dev --extra edison
 ```
 
 ## Quick Start
@@ -51,7 +55,8 @@ uv sync
 # For OpenAI Deep Research
 export OPENAI_API_KEY="your-openai-key"
 
-# For Edison Scientific (formerly FutureHouse Falcon)
+# For Edison Scientific (formerly FutureHouse Falcon) - requires the edison extra
+pip install "deep-research-client[edison]"
 export EDISON_API_KEY="your-edison-key"
 
 # For Asta retrieval
@@ -1075,7 +1080,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Provider | Environment Variable | Model/Service | Strengths |
 |----------|---------------------|---------------|-----------|
 | OpenAI | `OPENAI_API_KEY` | o3-deep-research-2025-06-26 | Deep research, comprehensive reports |
-| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
+| Edison | `EDISON_API_KEY` + `edison` extra | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
@@ -1199,8 +1204,8 @@ just mypy
 # Format code
 just format
 
-# Install dependencies
-uv sync
+# Install dependencies, including the edison extra mypy needs
+just install
 
 # Run CLI locally
 uv run deep-research-client --help

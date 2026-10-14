@@ -133,8 +133,17 @@ def test_edison_trajectory_without_the_extra_names_the_extra(monkeypatch):
 
 
 @without_extra
-def test_research_command_without_the_extra_names_the_extra(monkeypatch):
-    """A known provider gets its fix, not the list of other providers' names."""
+@pytest.mark.parametrize("another_provider_available", [False, True])
+def test_research_command_without_the_extra_names_the_extra(
+    monkeypatch, bare_machine, another_provider_available
+):
+    """A known provider gets its fix, whether or not anything else could run.
+
+    With nothing else available, the run used to stop at the list of keys to
+    set, which never mentions the extra.
+    """
+    if another_provider_available:
+        monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
     monkeypatch.setenv("EDISON_API_KEY", "test-key")
 
     result = CliRunner().invoke(app, ["research", "what causes scurvy", "--provider", "falcon"])

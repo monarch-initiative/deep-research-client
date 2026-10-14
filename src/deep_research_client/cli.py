@@ -10,7 +10,7 @@ import shutil
 import typer
 from pathlib import Path
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -322,6 +322,20 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
             raise ValueError(f"Invalid base64 content for artifact {artifact.filename}") from exc
         artifact_path.write_bytes(content)
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
+
+
+def _exit_provider_unavailable(client: DeepResearchClient, provider: str) -> NoReturn:
+    """Stop the run, saying what the named provider is missing.
+
+    Args:
+        client: Client that knows why the provider cannot run.
+        provider: Canonical name of a known provider.
+
+    Raises:
+        typer.Exit: Always, with exit code 1.
+    """
+    _error(f"Provider '{provider}' not available: {client.unregistered_reason(provider)}")
+    raise typer.Exit(1)
 
 
 def _echo_no_providers_message(client: DeepResearchClient, err: bool = False) -> None:
@@ -1051,17 +1065,21 @@ def research(
     client = DeepResearchClient(
         cache_config=cache_config, provider_configs=provider_configs)
 
-    # Check if any providers are available
-    available_providers = client.get_available_providers()
-    if not available_providers:
-        _echo_no_providers_message(client, err=True)
-        raise typer.Exit(1)
-
     # An explicit list is an ordering instruction, so it replaces the
     # automatic one rather than adding to it.
     fallback_request: Union[bool, List[str]] = (
         list(fallback_provider) if fallback_provider else fallback
     )
+
+    # Check if any providers are available
+    available_providers = client.get_available_providers()
+    if not available_providers:
+        # A provider named on its own has a fix of its own, which the list of
+        # keys to set would bury -- or leave out, for an install.
+        if provider and not fallback_request and client.knows_provider(provider):
+            _exit_provider_unavailable(client, provider)
+        _echo_no_providers_message(client, err=True)
+        raise typer.Exit(1)
 
     # Show available providers
     if provider:
@@ -1079,9 +1097,7 @@ def research(
                 raise typer.Exit(1)
             if not fallback_request:
                 # A known name needs the fix, not the list of other names.
-                _error(
-                    f"Provider '{provider}' not available: {client.unregistered_reason(provider)}")
-                raise typer.Exit(1)
+                _exit_provider_unavailable(client, provider)
             # "Not configured" is one of the failures a fallback exists to
             # handle, and the client treats it as one. Ending the run here
             # would make the CLI refuse what the library allows, and would

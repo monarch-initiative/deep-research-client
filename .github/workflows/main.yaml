@@ -95,6 +95,8 @@ jobs:
       # mypy is left to the main job: it needs the Edison SDK to check falcon.py.
       - name: Tests and doctests pass without it
         run: |
+          # Back to the default install plus dev tools; this drops cyberian's
+          # extra again, on purpose.
           uv sync --dev
           uv run python -c "$CHECK_ABSENT"
           just pytest doctest

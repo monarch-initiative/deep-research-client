@@ -53,7 +53,10 @@ pytest-integration:
 doctest:
   uv run pytest  --doctest-modules src
 
+# falcon.py is checked against the Edison SDK, so say so up front rather than
+# leave a plain `uv sync --dev` to fail with import errors.
 mypy:
+  @uv run python -c "import importlib.util, sys; importlib.util.find_spec('edison_client') or sys.exit('mypy needs the edison extra: run just install (uv sync --group dev --extra edison)')"
   uv run mypy src tests .claude/skills
 
 format:

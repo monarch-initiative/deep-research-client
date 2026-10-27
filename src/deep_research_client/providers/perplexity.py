@@ -1,8 +1,10 @@
 """Perplexity AI provider."""
 
+import json
 import logging
 import re
-from typing import List, Optional, Dict, Any
+from dataclasses import dataclass, field
+from typing import AsyncIterator, List, Optional, Dict, Any
 
 import httpx
 
@@ -14,6 +16,102 @@ from ..model_cards import ProviderModelCards, create_perplexity_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+_THINK_BLOCK = re.compile(r"\A\s*<think>.*?</think>\s*", re.DOTALL)
+
+
+@dataclass
+class _StreamState:
+    """What has been gathered from a Perplexity event stream so far."""
+
+    content: str = ""
+    citations: List[Any] = field(default_factory=list)
+    search_results: List[Any] = field(default_factory=list)
+
+    def add_line(self, line: str) -> None:
+        """Fold one server-sent-event line into the state.
+
+        Perplexity is inconsistent about chunk shape: some streams repeat the
+        whole answer so far in every chunk, others send true deltas. So keep
+        the longest full ``message.content`` seen, and append ``delta.content``
+        only when it is not itself the accumulated text plus more.
+
+        >>> state = _StreamState()
+        >>> for text in ["Hel", "lo"]:
+        ...     state.add_line('data: {"choices": [{"delta": {"content": "%s"}}]}' % text)
+        >>> state.content
+        'Hello'
+        >>> state = _StreamState()
+        >>> for text in ["Hel", "Hello"]:
+        ...     state.add_line('data: {"choices": [{"delta": {"content": "%s"}}]}' % text)
+        >>> state.content
+        'Hello'
+        >>> state.add_line("data: [DONE]")
+        >>> state.content
+        'Hello'
+        """
+        if not line.startswith("data:"):
+            return
+        body = line[len("data:"):].strip()
+        if not body or body == "[DONE]":
+            return
+        chunk = json.loads(body)
+
+        # Citations and search results arrive on intermediate chunks, and the
+        # final chunk does not always repeat them.
+        if chunk.get("citations"):
+            self.citations = chunk["citations"]
+        if chunk.get("search_results"):
+            self.search_results = chunk["search_results"]
+
+        choices = chunk.get("choices") or []
+        if not choices:
+            return
+        choice = choices[0]
+        message = (choice.get("message") or {}).get("content")
+        if message:
+            if len(message) > len(self.content):
+                self.content = message
+            return
+        delta = (choice.get("delta") or {}).get("content")
+        if delta:
+            if self.content and delta.startswith(self.content):
+                self.content = delta
+            else:
+                self.content += delta
+
+
+async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
+    """Consume a Perplexity event stream line by line.
+
+    The body is never buffered whole: cumulative streams can run to hundreds
+    of megabytes for a report of a few tens of kilobytes. The server sometimes
+    resets the connection just after the report is complete, so a dropped
+    connection is tolerated once content has arrived.
+    """
+    state = _StreamState()
+    try:
+        async for line in lines:
+            state.add_line(line)
+    except (httpx.RemoteProtocolError, httpx.ReadError) as e:
+        if not state.content:
+            raise
+        logger.warning(
+            f"Perplexity stream ended abruptly after {len(state.content)} characters; "
+            f"keeping what arrived ({e})"
+        )
+    return state
+
+
+def _strip_think(content: str) -> str:
+    """Remove a leading ``<think>...</think>`` reasoning block.
+
+    >>> _strip_think("<think>\\nplanning\\n</think>\\n\\n# Report")
+    '# Report'
+    >>> _strip_think("# Report mentioning <think>tags</think>")
+    '# Report mentioning <think>tags</think>'
+    """
+    return _THINK_BLOCK.sub("", content, count=1)
 
 
 class PerplexityProvider(ResearchProvider):
@@ -85,32 +183,38 @@ class PerplexityProvider(ResearchProvider):
         # Always pass return_citations since it affects response format
         payload["return_citations"] = self.params.return_citations
 
+        # Stream the response: sonar-deep-research can take several minutes and
+        # sends nothing until it is done, so a single blocking POST gets cut off
+        # by any proxy with an idle timeout. Streamed chunks keep the line busy.
+        payload["stream"] = True
+
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "text/event-stream"
         }
 
         try:
-            logger.debug(f"Making API request to Perplexity (model: {self.model})")
+            logger.debug(f"Making streaming API request to Perplexity (model: {self.model})")
             async with httpx.AsyncClient(timeout=self.config.timeout or 600) as client:
-                response = await client.post(
+                async with client.stream(
+                    "POST",
                     self.api_url,
                     json=payload,
                     headers=headers
-                )
-                response.raise_for_status()
-
-                data = response.json()
+                ) as response:
+                    if response.is_error:
+                        await response.aread()
+                    response.raise_for_status()
+                    stream = await _read_stream(response.aiter_lines())
 
             logger.info("Perplexity API request completed successfully")
 
-            # Extract the response content
-            if "choices" in data and data["choices"] and "message" in data["choices"][0]:
-                markdown_content = data["choices"][0]["message"].get("content", "")
-                logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
-            else:
+            if not stream.content:
                 raise ValueError("No response content received from Perplexity")
+            markdown_content = _strip_think(stream.content)
+            logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
+            data = {"citations": stream.citations, "search_results": stream.search_results}
 
             # Extract citations from the response (both from content and metadata)
             citations = self._extract_citations(markdown_content, data)

@@ -1287,6 +1287,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#toxindex-sage-stub-with-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      ToxIndex Sage (Stub, with retrieval)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ToxIndex Sage (Stub, with retrieval)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-it-is-a-stub" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why it is a stub
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      What works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-a-conversation-becomes-a-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      How a conversation becomes a report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Errors
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#biomni-biomedical-co-scientist" class="md-nav__link">
     <span class="md-ellipsis">
       Biomni (Biomedical Co-Scientist)
@@ -2265,6 +2316,57 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#toxindex-sage-stub-with-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      ToxIndex Sage (Stub, with retrieval)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ToxIndex Sage (Stub, with retrieval)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-it-is-a-stub" class="md-nav__link">
+    <span class="md-ellipsis">
+      Why it is a stub
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      What works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-a-conversation-becomes-a-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      How a conversation becomes a report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Errors
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#biomni-biomedical-co-scientist" class="md-nav__link">
     <span class="md-ellipsis">
       Biomni (Biomedical Co-Scientist)
@@ -2588,6 +2690,12 @@
 <td>DeepER-Med</td>
 <td>(stub - no API yet)</td>
 <td>Evidence-based agentic medical research (arXiv:2604.15456)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>ToxIndex</td>
+<td>(stub - no submit API yet; <code>TOXINDEX_API_KEY</code> for retrieval)</td>
+<td>Chemical safety and toxicology agent (Sage), cited to tool calls</td>
 <td>n/a</td>
 </tr>
 </tbody>
@@ -3068,6 +3176,70 @@ paper — nothing has been measured, because there is no endpoint to measure. Th
 card's <code>limitations</code> say so explicitly.</p>
 <p>Once an API is published, only the body of <code>providers/deeper_med.py</code> needs to
 change.</p>
+<hr />
+<h2 id="toxindex-sage-stub-with-retrieval">ToxIndex Sage (Stub, with retrieval)</h2>
+<p><a href="https://toxindex.com">ToxIndex</a> (Insilica) is a <strong>toxicology-specific</strong>
+platform. Its conversational agent, Sage, answers chemical safety and hazard
+questions over curated toxicology datasets, a regulatory document index and
+structure-based predictors, citing every claim to the tool call behind it. It
+is not a general literature research agent.</p>
+<h3 id="why-it-is-a-stub">Why it is a stub</h3>
+<p>ToxIndex's bearer-authenticated API (<code>https://platform.toxindex.com/v1</code>,
+OpenAPI at <code>/v1/openapi.json</code>) can <strong>read</strong> a Sage conversation but cannot
+<strong>start</strong> one, as of 2026-10-28:</p>
+<ul>
+<li>the REST spec has no route that sends a message to Sage;</li>
+<li>the A2A endpoint its agent card advertises (<code>/a2a</code>) accepts the key and then
+  answers every JSON-RPC method (<code>message/send</code>, <code>message/stream</code>, <code>tasks/get</code>)
+  with <code>501 {"error": "not implemented"}</code>.</li>
+</ul>
+<p>So <code>research()</code> raises <code>NotImplementedError</code> and <code>is_available()</code> is always
+<code>False</code>. The class declares <code>stub_reason</code>, not <code>credential_env_var</code>, because
+setting the key does not make research work. Once a submit route ships, swap
+the two and fill in <code>research()</code>.</p>
+<h3 id="what-works">What works</h3>
+<pre><code class="language-bash">export TOXINDEX_API_KEY=&quot;your-key&quot;   # minted at https://platform.toxindex.com/settings/keys
+# Optional: another API root (defaults to https://platform.toxindex.com/v1)
+# export TOXINDEX_BASE_URL=&quot;https://platform.toxindex.com/v1&quot;
+
+# Verify the key (GET /whoami). Reports UNREACHABLE even when the key is
+# accepted, since Sage cannot take work over the API yet; the detail says which.
+deep-research-client providers --check --provider toxindex
+
+# Ask Sage in the web app, then fetch the finished conversation as a report
+deep-research-client toxindex-conversation &lt;conversation-id&gt; --output report.md
+</code></pre>
+<p>The conversation id is in the ToxIndex app's URL. From Python:</p>
+<pre><code class="language-python">import asyncio
+from deep_research_client.models import ProviderConfig
+from deep_research_client.providers.toxindex import ToxIndexProvider
+
+provider = ToxIndexProvider(ProviderConfig(name=&quot;toxindex&quot;, api_key=&quot;...&quot;))
+result = asyncio.run(provider.retrieve_conversation(&quot;6c906ccf-...&quot;))
+</code></pre>
+<h3 id="how-a-conversation-becomes-a-report">How a conversation becomes a report</h3>
+<ul>
+<li><strong>Query</strong> is the first user message; <strong>markdown</strong> is the text of the last
+  assistant message.</li>
+<li><strong>Citations</strong>: Sage cites inline as <code>[tc-45957cb5]</code>. Each tag is the
+  <code>citation_id</code> that opens a tool result, so it resolves to the tool call that
+  produced it, rendered as
+  <code>[tc-45957cb5] tox_chemical_identity {"identifier": "carbamate"} (tool call toolu_...)</code>.
+  A tag with no matching tool result is logged and listed in
+  <code>run_metadata.unresolved_citations</code>.</li>
+<li><strong><code>run_metadata</code></strong> also counts <code>tool_calls</code>, <code>tools_used</code> by name, and
+  <code>failed_tool_calls</code>.</li>
+<li>A conversation that is empty, still <code>running</code>, or ends on something other
+  than an answer (Sage asking a clarifying question, say) is refused with a
+  <code>ValueError</code>. The API answers an unknown id with an empty <code>200</code>, not a <code>404</code>,
+  so "has no messages" may mean a wrong id.</li>
+</ul>
+<h3 id="errors">Errors</h3>
+<p>The API returns <code>{"error": "..."}</code> bodies. <code>401</code> (<code>missing api key</code>,
+<code>invalid api key</code>) maps to <code>ProviderAuthError</code> and <code>5xx</code> to
+<code>ProviderTransientError</code>. The API documents no <code>402</code> or <code>429</code>, and the free
+tier's limits are unpublished, so those are classified by status alone if
+they ever appear.</p>
 <hr />
 <h2 id="biomni-biomedical-co-scientist">Biomni (Biomedical Co-Scientist)</h2>
 <p><a href="https://github.com/snap-stanford/Biomni">Biomni</a> is a general-purpose biomedical

@@ -26,6 +26,7 @@ import json
 import logging
 import re
 from typing import Any, Literal, Optional
+from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, Field
@@ -58,6 +59,9 @@ SAGE_BACKEND = "sage-agent"
 
 #: Attributes our calls in ToxIndex's logs, as its API invites clients to.
 HARNESS_HEADERS = {"X-ToxIndex-Agent-Harness": "deep-research-client"}
+
+#: Why research cannot run, shared by ``stub_reason`` and the health detail.
+_NO_SUBMIT_ROUTE = "Sage has no API route to submit a question yet (A2A returns 501)"
 
 TOXINDEX_UNAVAILABLE_MESSAGE = (
     "ToxIndex has no API route that submits a question to Sage yet: the REST "
@@ -125,12 +129,27 @@ def _cited_tool_calls(messages: list[SageMessage]) -> dict[str, tuple[SageConten
     }
     cited = {}
     for message in messages:
-        if message.role != "toolResult" or not message.texts():
+        texts = message.texts()
+        if message.role != "toolResult" or not texts:
             continue
-        match = _CITATION_ID.match(message.texts()[0])
+        match = _CITATION_ID.match(texts[0])
         if match and message.toolCallId in calls:
             cited[match.group(1)] = (calls[message.toolCallId], message)
     return cited
+
+
+def _messages_path(conversation_id: str) -> str:
+    """Return the API path for a conversation's messages, the id escaped as one segment.
+
+    The id arrives from the command line, so a ``?``, ``#`` or ``/`` in it must
+    not reshape the request into some other route.
+
+    >>> _messages_path("6c906ccf-a1e9-4dc7-820f-5d4626155e9f")
+    '/agent/6c906ccf-a1e9-4dc7-820f-5d4626155e9f/messages'
+    >>> _messages_path("abc?x=1#/y")
+    '/agent/abc%3Fx%3D1%23%2Fy/messages'
+    """
+    return f"/agent/{quote(conversation_id, safe='')}/messages"
 
 
 def _format_citation(citation_id: str, call: SageContentBlock) -> str:
@@ -258,7 +277,7 @@ class ToxIndexProvider(ResearchProvider):
     """
 
     #: The key is real and checked, but nothing it unlocks runs research yet.
-    stub_reason = "ToxIndex - Sage has no API route to submit a question yet (A2A returns 501)"
+    stub_reason = f"ToxIndex - {_NO_SUBMIT_ROUTE}"
 
     def __init__(self, config: ProviderConfig, params: Optional[ToxIndexParams] = None):
         """Initialize the provider.
@@ -380,7 +399,7 @@ class ToxIndexProvider(ResearchProvider):
             provider=self.name,
             configured=True,
             reachable=False,
-            detail=f"key accepted ({plan} plan), but {self.stub_reason.split(' - ', 1)[1]}",
+            detail=f"key accepted ({plan} plan), but {_NO_SUBMIT_ROUTE}",
         )
 
     async def fetch_conversation(self, conversation_id: str) -> SageMessages:
@@ -394,7 +413,7 @@ class ToxIndexProvider(ResearchProvider):
         """
         async with self._client() as client:
             response = await client.get(
-                f"/agent/{conversation_id}/messages", params={"backend": SAGE_BACKEND}
+                _messages_path(conversation_id), params={"backend": SAGE_BACKEND}
             )
         self._raise_for_status(response)
         return SageMessages.model_validate(response.json())

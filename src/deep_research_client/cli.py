@@ -1804,6 +1804,9 @@ def toxindex_conversation(
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
 
+    # Outside the try, as in edison_trajectory: typer.Exit is a RuntimeError.
+    _exit_if_unsuccessful(result)
+
 
 class TranscriptStatsFormat(str, Enum):
     """Output formats for the transcript-stats command."""

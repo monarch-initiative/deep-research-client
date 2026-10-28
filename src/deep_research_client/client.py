@@ -40,6 +40,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
+    "rss_agent": ("deep_research_client.providers.rss_agent", "RssAgentProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -243,6 +244,20 @@ class DeepResearchClient:
                 timeout=1800,  # 30 minutes for long-running agentic research
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
+
+        # RSS Agent provider - opt-in: registered only when RSS_AGENT_DIR names
+        # a local rss_agent_claude checkout. Its scoring LLM authenticates via
+        # ANTHROPIC_API_KEY (or the checkout's .env), so no key is needed here.
+        from .providers.rss_agent import RSS_AGENT_DEFAULT_TIMEOUT, RSS_AGENT_DIR_ENV
+
+        if os.getenv(RSS_AGENT_DIR_ENV):
+            rss_agent_config = ProviderConfig(
+                name="rss_agent",
+                api_key=None,
+                enabled=True,
+                timeout=RSS_AGENT_DEFAULT_TIMEOUT,
+            )
+            self.registry.register(self._create_provider("rss_agent", rss_agent_config))
 
         # DeepER-Med is a stub with no upstream endpoint. It is registered
         # unconditionally and needs no credentials: is_available() is always False,

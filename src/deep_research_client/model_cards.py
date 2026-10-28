@@ -964,6 +964,59 @@ def create_biomni_model_cards() -> ProviderModelCards:
     )
 
 
+def create_rss_agent_model_cards() -> ProviderModelCards:
+    """Create model cards for the RSS Agent (rss_agent_claude) digest provider."""
+
+    digest = ModelCard(
+        name="rss-agent-digest",
+        display_name="RSS Agent Literature Digest",
+        description=(
+            "Local literature curation pipeline (rss_agent_claude). Fetches recent "
+            "papers from RSS feeds, Crossref, bioRxiv, Nature-family and ASM "
+            "journals, filters them by embedding similarity to the query, scores "
+            "novelty against a personal paper library, and ranks the survivors "
+            "with Claude Haiku. Returns a ranked digest of new papers rather "
+            "than a synthesized answer."
+        ),
+        cost_level=CostLevel.LOW,  # Claude Haiku scoring with prompt caching
+        time_estimate=TimeEstimate.SLOW,  # Full fetch plus local embedding
+        capabilities=[
+            ResearchCapability.academic_search,
+            ResearchCapability.scientific_literature,
+            ResearchCapability.real_time_data,
+            ResearchCapability.retrieval_only,
+        ],
+        archetype=ProviderArchetype.retriever,
+        resources=[
+            ResearchResource.preprint_servers,
+        ],
+        aliases=["rss-agent", "rss", "digest"],
+        pricing_notes=(
+            "Roughly $0.05-0.15 per run in Claude Haiku calls, per upstream; "
+            "embedding runs locally."
+        ),
+        use_cases=[
+            "Finding what was published in the last few days on a topic",
+            "Screening new papers against a detailed relevance rubric",
+            "Seeding a curation queue with recent literature",
+        ],
+        limitations=[
+            "Requires a local rss_agent_claude checkout (RSS_AGENT_DIR) with its "
+            "Python requirements (torch, faiss-cpu, anthropic) installed",
+            "Requires a FAISS index of a personal paper library",
+            "Only sees recent papers from the configured feeds and journals",
+            "Lists papers; does not answer the question or synthesize findings",
+            "Results change from day to day; use --no-cache for a fresh digest",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="rss_agent",
+        default_model="rss-agent-digest",
+        models={"rss-agent-digest": digest},
+    )
+
+
 def create_tooluniverse_model_cards() -> ProviderModelCards:
     """Create the model card for the local ToolUniverse co-scientist."""
     card = ModelCard(
@@ -1017,4 +1070,5 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
     "tooluniverse": create_tooluniverse_model_cards(),
+    "rss_agent": create_rss_agent_model_cards(),
 }

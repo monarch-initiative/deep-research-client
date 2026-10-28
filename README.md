@@ -90,6 +90,12 @@ pip install deep-research-client[biomni]
 # Biomni's external R, CLI, or bioinformatics toolchain.
 # Run only in a trusted/sandboxed environment; set DISABLE_BIOMNI_PROVIDER=true to opt out.
 
+# For RSS Agent (digest of recent papers via https://github.com/jcthrash/rss_agent_claude):
+# clone it, install its requirements in its own venv, and build its library index.
+export RSS_AGENT_DIR="/path/to/rss_agent_claude"
+export RSS_AGENT_PYTHON="/path/to/rss_agent_claude/venv/bin/python"
+# Claude scoring uses ANTHROPIC_API_KEY (or the checkout's .env).
+
 # For ToolUniverse (local co-scientist with scientific tools and Python execution):
 uv add 'deep-research-client[tooluniverse]'
 export TOOLUNIVERSE_API_KEY="your-llm-key"  # falls back to OPENAI_API_KEY
@@ -1085,6 +1091,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | tooluniverse-coscientist | Local co-scientist, scientific database tools, hypothesis investigation and Python execution |
+| RSS Agent | `RSS_AGENT_DIR` (local rss_agent_claude checkout) | rss-agent-digest | Ranked digest of recent papers from RSS feeds, Crossref and bioRxiv, scored by Claude against your interests |
 
 ToolUniverse exposes its scientific Python tools to a `smolagents.CodeAgent`.
 Like Biomni and OpenScientist, it has the

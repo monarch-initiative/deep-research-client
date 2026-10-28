@@ -25,15 +25,16 @@ def bare_machine(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
     for provider_name in _settable_credential_hints():
         monkeypatch.delenv(load_provider_class(provider_name).credential_env_var, raising=False)
-    # Three gates no credential variable covers: the deprecated alias the client
-    # still accepts for falcon, the mock's opt-in flag, and biomni, which is
-    # gated on an import rather than a variable -- so `uv sync --extra biomni`
-    # would otherwise register it.
+    # Four gates no credential variable covers: the deprecated alias the client
+    # still accepts for falcon, the mock's opt-in flag, rss_agent's checkout
+    # path, and biomni, which is gated on an import rather than a variable --
+    # so `uv sync --extra biomni` would otherwise register it.
     monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
     monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
+    monkeypatch.delenv("RSS_AGENT_DIR", raising=False)
     monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
 
-    # Assert the state rather than trust the list: a fourth gate should fail
+    # Assert the state rather than trust the list: a fifth gate should fail
     # here, naming what stayed available, not downstream as a missing heading.
     # Only a variable or a PATH probe can be closed from here, so a future
     # provider registered on a bare import with no opt-out will fail this --

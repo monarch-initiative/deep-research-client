@@ -161,12 +161,13 @@ providers would make those records wrong. So you have to ask for it.
 which is a fixed sequence filtered down to whichever you have configured — not
 a preference ranking, and not dependent on how your environment is set up:
 
-    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code
+    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code, rss_agent
 
 Most candidates are a paid account, and `biomni` is not: it is a local agent
 that executes generated code and may pull down a multi-gigabyte data lake the
 first time it runs. `tooluniverse` also executes code locally while using a
-configured LLM backend and scientific tools. When it matters which one does the work, name
+configured LLM backend and scientific tools. `rss_agent` returns a digest of
+recent papers rather than an answer to the question. When it matters which one does the work, name
 them yourself rather than relying on that order:
 
 ```bash

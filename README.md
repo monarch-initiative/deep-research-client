@@ -4,7 +4,7 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist).
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
 
 ## Features
 
@@ -96,6 +96,11 @@ export TOOLUNIVERSE_API_KEY="your-llm-key"  # falls back to OPENAI_API_KEY
 # Optional OpenAI-compatible endpoint:
 # export TOOLUNIVERSE_BASE_URL="https://your-server.example/v1"
 # Set DISABLE_TOOLUNIVERSE_PROVIDER=true to opt out of auto-detection.
+
+# For ToxIndex Sage (chemical safety / toxicology). A stub for research:
+# ToxIndex has no API route that submits a question yet, so the key only
+# verifies itself (`providers --check`) and retrieves finished conversations.
+export TOXINDEX_API_KEY="your-toxindex-key"
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -117,6 +122,9 @@ deep-research-client research "Machine learning trends 2024" --output report.md
 
 # Retrieve an existing Edison trajectory by ID
 deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 --output edison-report.md
+
+# Retrieve a finished ToxIndex Sage conversation by ID
+deep-research-client toxindex-conversation 6c906ccf-a1e9-4dc7-820f-5d4626155e9f --output tox-report.md
 
 # Summarize what an agent did, from its saved transcripts
 deep-research-client transcript-stats run_artifacts/provenance/

@@ -322,6 +322,44 @@ deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
 
 ---
 
+### toxindex-conversation
+
+Retrieve a finished ToxIndex Sage conversation as a report. ToxIndex has no API
+route that submits a question yet, so ask Sage in the
+[ToxIndex app](https://platform.toxindex.com) and fetch the answer here.
+
+```bash
+deep-research-client toxindex-conversation [OPTIONS] CONVERSATION_ID
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `CONVERSATION_ID` | Existing Sage conversation ID, from the ToxIndex app URL |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output PATH` | Output file path (prints to stdout if not provided) |
+| `--separate-citations PATH` | Save citations to a separate file |
+
+#### Notes
+
+- Requires `TOXINDEX_API_KEY`; `TOXINDEX_BASE_URL` overrides the API root.
+- Each citation is the ToxIndex tool call behind a `[tc-...]` tag in the answer.
+- Exits 1 if the conversation is unknown, still running, or did not end on an answer.
+
+#### Examples
+
+```bash
+deep-research-client toxindex-conversation 6c906ccf-a1e9-4dc7-820f-5d4626155e9f \
+  --output carbamate.md --separate-citations carbamate.citations.md
+```
+
+---
+
 ### transcript-stats
 
 Summarize what an agent did, from the transcripts saved alongside a run.

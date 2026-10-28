@@ -17,6 +17,7 @@ Complete reference for all supported research providers.
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
+| ToxIndex | (stub - no submit API yet; `TOXINDEX_API_KEY` for retrieval) | Chemical safety and toxicology agent (Sage), cited to tool calls | n/a |
 
 See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
@@ -516,6 +517,83 @@ card's `limitations` say so explicitly.
 
 Once an API is published, only the body of `providers/deeper_med.py` needs to
 change.
+
+---
+
+## ToxIndex Sage (Stub, with retrieval)
+
+[ToxIndex](https://toxindex.com) (Insilica) is a **toxicology-specific**
+platform. Its conversational agent, Sage, answers chemical safety and hazard
+questions over curated toxicology datasets, a regulatory document index and
+structure-based predictors, citing every claim to the tool call behind it. It
+is not a general literature research agent.
+
+### Why it is a stub
+
+ToxIndex's bearer-authenticated API (`https://platform.toxindex.com/v1`,
+OpenAPI at `/v1/openapi.json`) can **read** a Sage conversation but cannot
+**start** one, as of 2026-10-28:
+
+- the REST spec has no route that sends a message to Sage;
+- the A2A endpoint its agent card advertises (`/a2a`) accepts the key and then
+  answers every JSON-RPC method (`message/send`, `message/stream`, `tasks/get`)
+  with `501 {"error": "not implemented"}`.
+
+So `research()` raises `NotImplementedError` and `is_available()` is always
+`False`. The class declares `stub_reason`, not `credential_env_var`, because
+setting the key does not make research work. Once a submit route ships, swap
+the two and fill in `research()`.
+
+### What works
+
+```bash
+export TOXINDEX_API_KEY="your-key"   # minted at https://platform.toxindex.com/settings/keys
+# Optional: another API root (defaults to https://platform.toxindex.com/v1)
+# export TOXINDEX_BASE_URL="https://platform.toxindex.com/v1"
+
+# Verify the key (GET /whoami). Reports UNREACHABLE even when the key is
+# accepted, since Sage cannot take work over the API yet; the detail says which.
+deep-research-client providers --check --provider toxindex
+
+# Ask Sage in the web app, then fetch the finished conversation as a report
+deep-research-client toxindex-conversation <conversation-id> --output report.md
+```
+
+The conversation id is in the ToxIndex app's URL. From Python:
+
+```python
+import asyncio
+from deep_research_client.models import ProviderConfig
+from deep_research_client.providers.toxindex import ToxIndexProvider
+
+provider = ToxIndexProvider(ProviderConfig(name="toxindex", api_key="..."))
+result = asyncio.run(provider.retrieve_conversation("6c906ccf-..."))
+```
+
+### How a conversation becomes a report
+
+- **Query** is the first user message; **markdown** is the text of the last
+  assistant message.
+- **Citations**: Sage cites inline as `[tc-45957cb5]`. Each tag is the
+  `citation_id` that opens a tool result, so it resolves to the tool call that
+  produced it, rendered as
+  `[tc-45957cb5] tox_chemical_identity {"identifier": "carbamate"} (tool call toolu_...)`.
+  A tag with no matching tool result is logged and listed in
+  `run_metadata.unresolved_citations`.
+- **`run_metadata`** also counts `tool_calls`, `tools_used` by name, and
+  `failed_tool_calls`.
+- A conversation that is empty, still `running`, or ends on something other
+  than an answer (Sage asking a clarifying question, say) is refused with a
+  `ValueError`. The API answers an unknown id with an empty `200`, not a `404`,
+  so "has no messages" may mean a wrong id.
+
+### Errors
+
+The API returns `{"error": "..."}` bodies. `401` (`missing api key`,
+`invalid api key`) maps to `ProviderAuthError` and `5xx` to
+`ProviderTransientError`. The API documents no `402` or `429`, and the free
+tier's limits are unpublished, so those are classified by status alone if
+they ever appear.
 
 ---
 

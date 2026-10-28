@@ -40,6 +40,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
+    "toxindex": ("deep_research_client.providers.toxindex", "ToxIndexProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
@@ -255,6 +256,19 @@ class DeepResearchClient:
             enabled=True,
         )
         self.registry.register(self._create_provider("deeper_med", deeper_med_config))
+
+        # ToxIndex is a stub too -- Sage has no submit route -- so it is also
+        # registered unconditionally and never available. The key is still
+        # passed along: it serves `providers --check` and conversation retrieval.
+        # The literal, not the module's constant: importing the module here
+        # would undo the lazy loading every other provider gets.
+        toxindex_config = ProviderConfig(
+            name="toxindex",
+            api_key=os.getenv("TOXINDEX_API_KEY"),
+            base_url=os.getenv("TOXINDEX_BASE_URL"),
+            enabled=True,
+        )
+        self.registry.register(self._create_provider("toxindex", toxindex_config))
 
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):

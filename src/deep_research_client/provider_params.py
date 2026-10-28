@@ -434,6 +434,14 @@ class DeeperMedParams(BaseProviderParams):
     """
 
 
+class ToxIndexParams(BaseProviderParams):
+    """Parameters specific to the ToxIndex provider stub.
+
+    None yet: ToxIndex has no route that submits a question to Sage, so there
+    is nothing to tune. Fields will be added once one ships.
+    """
+
+
 class CyberianParams(ToolUniverseMixin, BaseProviderParams):
     """Parameters specific to Cyberian agent-based research provider.
 
@@ -696,6 +704,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "biomni": BiomniParams,
     "tooluniverse": ToolUniverseParams,
     "deeper_med": DeeperMedParams,
+    "toxindex": ToxIndexParams,
 }
 
 

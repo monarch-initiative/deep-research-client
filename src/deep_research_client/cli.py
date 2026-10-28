@@ -1686,6 +1686,59 @@ def validate_terms_command(
         raise typer.Exit(2)
 
 
+def _emit_retrieved_result(
+    result: ResearchResult,
+    output: Optional[Path],
+    separate_citations: Optional[Path],
+) -> None:
+    """Write or print a report fetched from a provider by id.
+
+    Shared by the commands that retrieve an existing run rather than start one.
+
+    Args:
+        result: The retrieved report.
+        output: File to write it to, or None to print it.
+        separate_citations: Where to put the citations on their own, if anywhere.
+    """
+    processor = ResearchProcessor()
+    should_separate_citations = separate_citations is not None
+
+    if output:
+        _write_result_artifacts(result, output)
+
+    output_content = processor.format_research_result(
+        result,
+        separate_citations=should_separate_citations,
+    )
+
+    if output:
+        output.write_text(output_content, encoding="utf-8")
+        logger.info(f"Result saved to: {output}")
+
+        if should_separate_citations and result.citations:
+            if isinstance(separate_citations, Path):
+                citations_output = separate_citations
+            else:
+                citations_output = output.with_suffix('.citations.md')
+
+            citations_content = processor.format_citations_only(result)
+            citations_output.write_text(citations_content, encoding="utf-8")
+            logger.info(f"Citations saved to: {citations_output}")
+
+        if result.citations:
+            logger.info(f"Found {len(result.citations)} citations")
+        if result.artifacts:
+            logger.info(f"Recovered {len(result.artifacts)} artifacts")
+    else:
+        typer.echo("\n" + "=" * 60)
+        typer.echo(output_content)
+        if should_separate_citations and result.citations:
+            typer.echo("\n" + "=" * 60)
+            typer.echo("CITATIONS:")
+            typer.echo("=" * 60)
+            typer.echo(processor.format_citations_only(result))
+
+
 @app.command()
 def edison_trajectory(
     trajectory_id: Annotated[str, typer.Argument(help="Existing Edison trajectory/task ID")],
@@ -1703,48 +1756,11 @@ def edison_trajectory(
         _error("EDISON_API_KEY is required to retrieve an Edison trajectory")
         raise typer.Exit(1)
 
-    processor = ResearchProcessor()
     provider = FalconProvider(ProviderConfig(name="falcon", api_key=api_key, enabled=True))
 
     try:
         result = provider.retrieve_trajectory(trajectory_id)
-        should_separate_citations = separate_citations is not None
-
-        if output:
-            _write_result_artifacts(result, output)
-
-        output_content = processor.format_research_result(
-            result,
-            separate_citations=should_separate_citations,
-        )
-
-        if output:
-            output.write_text(output_content, encoding="utf-8")
-            logger.info(f"Result saved to: {output}")
-
-            if should_separate_citations and result.citations:
-                if isinstance(separate_citations, Path):
-                    citations_output = separate_citations
-                else:
-                    citations_output = output.with_suffix('.citations.md')
-
-                citations_content = processor.format_citations_only(result)
-                citations_output.write_text(citations_content, encoding="utf-8")
-                logger.info(f"Citations saved to: {citations_output}")
-
-            if result.citations:
-                logger.info(f"Found {len(result.citations)} citations")
-            if result.artifacts:
-                logger.info(f"Recovered {len(result.artifacts)} artifacts")
-        else:
-            typer.echo("\n" + "=" * 60)
-            typer.echo(output_content)
-            if should_separate_citations and result.citations:
-                typer.echo("\n" + "=" * 60)
-                typer.echo("CITATIONS:")
-                typer.echo("=" * 60)
-                typer.echo(processor.format_citations_only(result))
-
+        _emit_retrieved_result(result, output, separate_citations)
     except Exception as e:
         _error(str(e))
         logger.debug("Exception details:", exc_info=True)
@@ -1753,6 +1769,40 @@ def edison_trajectory(
     # Outside the try: typer.Exit is a RuntimeError, which the handler above
     # would report as an error and turn into exit 1.
     _exit_if_unsuccessful(result)
+
+
+@app.command()
+def toxindex_conversation(
+    conversation_id: Annotated[str, typer.Argument(help="Existing ToxIndex Sage conversation ID")],
+    output: Annotated[Optional[Path], typer.Option(
+        help="Output file path (prints to stdout if not provided)")] = None,
+    separate_citations: Annotated[Optional[Path], typer.Option(
+        "--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
+):
+    """Retrieve a finished ToxIndex Sage conversation as a report, by ID.
+
+    ToxIndex has no API route that submits a question yet, so ask Sage in the
+    ToxIndex app and fetch the answer here.
+    """
+    from .models import ProviderConfig
+    from .providers.toxindex import TOXINDEX_API_KEY_VAR, ToxIndexProvider
+
+    api_key = os.getenv(TOXINDEX_API_KEY_VAR)
+    if not api_key:
+        _error(f"{TOXINDEX_API_KEY_VAR} is required to retrieve a ToxIndex conversation")
+        raise typer.Exit(1)
+
+    provider = ToxIndexProvider(ProviderConfig(
+        name="toxindex", api_key=api_key, base_url=os.getenv("TOXINDEX_BASE_URL"),
+    ))
+
+    try:
+        result = asyncio.run(provider.retrieve_conversation(conversation_id))
+        _emit_retrieved_result(result, output, separate_citations)
+    except Exception as e:
+        _error(str(e))
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
 
 
 class TranscriptStatsFormat(str, Enum):

@@ -182,12 +182,13 @@ INCOMPLETE_REPORT_MARKER = "**Incomplete report:**"
 # assistant text block, so narration ("Let me search...") can precede it. The
 # words are matched rather than the exact spelling, because a model reproducing
 # the marker varies its markdown ("**Incomplete report**:", "## Incomplete
-# report:", "> **Incomplete report:**", no bold at all), and a missed variant
+# report:", "> **Incomplete report:**", a list item, no bold at all), and a missed variant
 # fails quietly: the partial report is cached and exits 0. Anchoring to the
 # start of a line, before any other text, keeps prose that merely uses the
 # words from matching.
 _INCOMPLETE_REPORT_PATTERN = re.compile(
-    r"^[ \t>#*_]*incomplete report[*_]*[ \t]*:", re.MULTILINE | re.IGNORECASE
+    r"^[ \t>#*_+-]*(?:\d+[.)][ \t]*)?[*_]*incomplete report[*_]*[ \t]*:",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 # Appended to every system prompt, the default research prompt or a custom one.
@@ -219,9 +220,10 @@ _INLINE_REPORT_DIRECTIVE = (
     "Retrieve before you write. Use your research tools (web search, web fetch, "
     "and any others you have been given) to find sources first, and cite the "
     "source of each claim inline, with its URL or identifier, as you write it. "
-    "Do not state any specific factual claim, citation or identifier (PMID, DOI, "
-    "ontology ID) that you have not retrieved in this session. If you cannot retrieve enough to support a "
-    "section, say so in that section rather than filling it from memory.\n\n"
+    "Do not state any specific factual claim, citation or identifier "
+    "(PMID, DOI, ontology ID) that you have not retrieved in this session. "
+    "If you cannot retrieve enough to support a section, say so in that "
+    "section rather than filling it from memory.\n\n"
     "If you cannot complete the report -- a tool fails, too little can be "
     "retrieved, or you are unable to continue -- you may return a partial report "
     "instead of nothing: start it with a line that begins "

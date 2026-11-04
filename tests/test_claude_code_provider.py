@@ -869,6 +869,11 @@ async def test_research_does_not_count_a_denied_call_as_retrieval(tmp_path):
         pytest.param("> **Incomplete report:** the fetch tool failed.", True, id="blockquote"),
         pytest.param("Incomplete report: the fetch tool failed.", True, id="unbolded"),
         pytest.param("*incomplete REPORT:* the fetch tool failed.", True, id="italic-any-case"),
+        pytest.param("- **Incomplete report:** the fetch tool failed.", True, id="bullet"),
+        pytest.param("+ Incomplete report: the fetch tool failed.", True, id="plus-bullet"),
+        pytest.param("1. Incomplete report: the fetch tool failed.", True, id="numbered"),
+        pytest.param("2) **Incomplete report**: the fetch tool failed.", True, id="numbered-paren"),
+        pytest.param("- Incomplete reporting of cases: see below.", False, id="control-bullet-reporting"),
         pytest.param("Surveys gave an incomplete report: of cases.", False, id="control-mid-line"),
         pytest.param("## Incomplete reporting of cases", False, id="control-heading-without-colon"),
     ],
@@ -879,4 +884,4 @@ def test_the_incomplete_marker_is_recognised_in_any_markdown_spelling(line, is_m
     reason = ClaudeCodeProvider._unsuccessful_reason(
         markdown, ["https://example.org"], retrieval_calls=2, web_search_requests=1
     )
-    assert (reason is not None and reason.startswith("the model marked the report incomplete")) is is_marker
+    assert bool(reason and reason.startswith("the model marked the report incomplete")) == is_marker

@@ -524,6 +524,8 @@ async def test_research_allows_short_report_when_guard_disabled(tmp_path):
     )
     result = await provider.research("anything")
     assert result.markdown == "done"
+    # Kept, but no longer passed off as a report: no tools, no sources (#101).
+    assert result.answer_successful is False
 
 
 @pytest.mark.asyncio
@@ -548,6 +550,9 @@ async def test_research_end_to_end():
         pytest.skip("claude CLI not available")
 
     provider = make_provider()
+    # Allowed to answer from memory, so the run may well be marked unsuccessful
+    # (no retrieval, no sources: issue #101). Whether the model searches anyway
+    # is its call, so answer_successful is deliberately not asserted here.
     result = await provider.research(
         "In one short paragraph, what is CRISPR? You may answer from prior knowledge."
     )
@@ -607,13 +612,13 @@ LONG_BODY = "The substantive findings, at length. " * 10
         pytest.param(
             [assistant_event(POWASSAN_REFUSAL)],
             {"claude-opus-4-8": {}, "claude-opus-5-5": {}},
-            "no tool calls, web searches or cited sources",
+            "no retrieval calls, web searches or cited sources",
             id="issue-101-refusal-with-no-retrieval",
         ),
         pytest.param(
             [assistant_event(f"# Report\n\n{LONG_BODY}")],
             {},
-            "no tool calls, web searches or cited sources",
+            "no retrieval calls, web searches or cited sources",
             id="from-memory-report-is-not-a-report",
         ),
         pytest.param(
@@ -649,6 +654,38 @@ LONG_BODY = "The substantive findings, at length. " * 10
             {"claude-opus-5-5": {"webSearchRequests": 1}},
             None,
             id="control-hedging-and-halted-by-in-a-researched-report",
+        ),
+        pytest.param(
+            [
+                tool_use_event("WebSearch"),
+                assistant_event(
+                    f"# Report\n\n{LONG_BODY} I cannot provide medical advice. This report "
+                    "summarizes the literature. I cannot provide clinical advice; this "
+                    "report is informational. I can't provide research-backed dosing."
+                ),
+            ],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            None,
+            id="control-disclaimers-next-to-the-word-report",
+        ),
+        pytest.param(
+            [
+                tool_use_event("ToolUniverse"),
+                assistant_event(
+                    f"# Report\n\n{LONG_BODY} Elongation is halted by RNA polymerase "
+                    "pausing (PMID: 12345). I'm not going to reproduce the full research "
+                    "narrative here; see doi:10.1000/xyz123."
+                ),
+            ],
+            {},
+            None,
+            id="control-pmid-and-doi-cited-report",
+        ),
+        pytest.param(
+            [tool_use_event("TodoWrite"), assistant_event(f"# Report\n\n{LONG_BODY}")],
+            {},
+            "no retrieval calls, web searches or cited sources",
+            id="bookkeeping-calls-are-not-retrieval",
         ),
         pytest.param(
             [assistant_event(f"# Report\n\n{LONG_BODY} A safety classifier https://example.org/x")],
@@ -710,7 +747,31 @@ def test_the_cli_exits_4_and_names_the_reason_for_a_refusal(tmp_path):
     )
 
     assert result.exit_code == EXIT_UNSUCCESSFUL_ANSWER, result.output
-    assert "Reason: no tool calls, web searches or cited sources" in result.stderr
+    assert "Reason: no retrieval calls, web searches or cited sources" in result.stderr
     content = output.read_text(encoding="utf-8")
     assert "answer_status: unsuccessful" in content
     assert "> **Warning:** claude_code reported that it could not answer" in content
+
+
+@pytest.mark.asyncio
+async def test_research_does_not_count_a_denied_call_as_retrieval(tmp_path):
+    """A run that tried a tool, was refused, then answered from memory is flagged."""
+    stdout = make_stream(
+        tool_use_event("Bash"),
+        assistant_event(f"# Report\n\n{LONG_BODY}"),
+        {
+            "type": "result",
+            "is_error": False,
+            "result": "",
+            "permission_denials": [{"tool_name": "Bash", "tool_use_id": "toolu_1"}],
+        },
+    )
+    provider = make_provider(
+        ClaudeCodeParams(claude_executable=str(write_stub_claude(tmp_path, stdout)))
+    )
+    result = await provider.research("Powassan virus disease")
+
+    assert result.run_metadata["tool_calls"] == 1
+    assert result.run_metadata["retrieval_calls"] == 0
+    assert result.run_metadata["denied_tools"] == ["Bash"]
+    assert result.answer_successful is False

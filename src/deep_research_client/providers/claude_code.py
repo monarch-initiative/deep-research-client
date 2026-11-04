@@ -206,20 +206,36 @@ _URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
 # halted by a safety classifier"). Only consulted when the text cites nothing,
 # so a sourced report that merely discusses classifiers is never read as one.
 #
-# A refusal verb counts only when its object, within a few words, is the report
-# itself: "I cannot provide a definitive answer" is hedging, not a refusal. Bare
-# "halted by" is not a marker either, since "the outbreak was halted by vector
-# control" is ordinary epidemiology. Both apostrophes, because models write ’.
+# A refusal verb counts only when its object, within a few words of the same
+# clause, is the report itself: "I cannot provide a definitive answer" is
+# hedging, and "I cannot provide medical advice. This report ..." is a
+# disclaimer followed by the report, so the gap between verb and noun never
+# crosses . ; : ! ? or a newline. The noun must stand alone, so "research-backed"
+# is a modifier, not the object. Bare "halted by" is not a marker either, since
+# "the outbreak was halted by vector control" is ordinary epidemiology. Both
+# apostrophes, because models write ’.
+_REFUSAL_TAIL = (
+    r" (?:regenerate|reproduce|produce|write|provide)\b"
+    r"(?:[ \t,]+[\w'’-]+){0,5}?[ \t]+"
+    r"(?:report|narrative|research|write-?up)(?![\w-])"
+)
 _REFUSAL_PATTERN = re.compile(
     r"safety classifier"
-    r"|\bI(?:['’]m| am) not going to"
-    r" (?:regenerate|reproduce|produce|write|provide)\b(?:\W+\w+){0,5}?\W+"
-    r"(?:report|narrative|research|write-?up)\b"
-    r"|\bI (?:can['’]t|cannot|won['’]t|will not)"
-    r" (?:regenerate|reproduce|produce|write|provide)\b(?:\W+\w+){0,5}?\W+"
-    r"(?:report|narrative|research|write-?up)\b",
+    rf"|\bI(?:['’]m| am) not going to{_REFUSAL_TAIL}"
+    rf"|\bI (?:can['’]t|cannot|won['’]t|will not){_REFUSAL_TAIL}",
     re.IGNORECASE,
 )
+
+# Non-URL source identifiers. A run backed by literature tools (ToolUniverse,
+# say) can cite PMIDs or DOIs and no URL, and that is still a sourced report.
+_SOURCE_ID_PATTERN = re.compile(
+    r"\bPMID:?\s*\d+|\bPMC\d+|\bdoi:?\s*10\.\d{4,9}/\S+|\b10\.\d{4,9}/[^\s,;)\]]+",
+    re.IGNORECASE,
+)
+
+# Tools that organise the agent's own work rather than retrieve anything. A run
+# whose only calls are these has still answered from memory.
+_NON_RETRIEVAL_TOOLS = frozenset({"TodoWrite", "ExitPlanMode"})
 
 
 class ParsedStream(NamedTuple):
@@ -538,7 +554,9 @@ class ClaudeCodeProvider(ResearchProvider):
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
+        retrieval_calls = self._retrieval_calls(tool_uses, data.get("permission_denials"))
         run_metadata["tool_calls"] = len(tool_uses)
+        run_metadata["retrieval_calls"] = retrieval_calls
         run_metadata.update(self.params.toolset_run_metadata())
         # How many separate assistant messages the report was assembled from.
         # More than one is normal for an agentic run (the model narrates between
@@ -549,7 +567,7 @@ class ClaudeCodeProvider(ResearchProvider):
         unsuccessful_reason = self._unsuccessful_reason(
             markdown,
             citations,
-            tool_calls=len(tool_uses),
+            retrieval_calls=retrieval_calls,
             web_search_requests=run_metadata.get("web_search_requests", 0),
         )
         if unsuccessful_reason:
@@ -793,10 +811,41 @@ class ClaudeCodeProvider(ResearchProvider):
         )
 
     @staticmethod
+    def _retrieval_calls(tool_uses: List[str], permission_denials: Optional[list]) -> int:
+        """Count the tool calls that could have retrieved something.
+
+        A denied call retrieved nothing, and neither did a bookkeeping call such
+        as ``TodoWrite``, so a run that tried ``Bash``, was refused and then
+        answered from memory has no retrieval calls. Denials are matched to
+        calls by tool name, one denial cancelling one call.
+
+        Args:
+            tool_uses: Names of the tools the model called, repeats included.
+            permission_denials: The result event's ``permission_denials``.
+
+        Returns:
+            How many calls were neither denied nor bookkeeping.
+
+        >>> ClaudeCodeProvider._retrieval_calls(["WebSearch", "WebFetch"], None)
+        2
+        >>> ClaudeCodeProvider._retrieval_calls(["Bash"], [{"tool_name": "Bash"}])
+        0
+        >>> ClaudeCodeProvider._retrieval_calls(["TodoWrite", "WebSearch", "WebSearch"],
+        ...                                     [{"tool_name": "WebSearch"}])
+        1
+        """
+        remaining = list(tool_uses)
+        for denial in permission_denials or []:
+            name = denial.get("tool_name") if isinstance(denial, dict) else None
+            if name in remaining:
+                remaining.remove(name)
+        return sum(1 for name in remaining if name not in _NON_RETRIEVAL_TOOLS)
+
+    @staticmethod
     def _unsuccessful_reason(
         markdown: str,
         citations: List[str],
-        tool_calls: int,
+        retrieval_calls: int,
         web_search_requests: int,
     ) -> Optional[str]:
         """Say why a completed run's text is not a research report, if it is not.
@@ -804,13 +853,13 @@ class ClaudeCodeProvider(ResearchProvider):
         The CLI exits 0 and reports success whatever the model wrote, so a
         refusal or a from-memory answer used to be written out as a valid
         report (issue #101). Two shapes are recognised, both requiring that the
-        text cites nothing -- a report with even one sourced URL is left alone,
-        since judging its quality is not this check's job:
+        text cites nothing -- no URL, PMID or DOI. A report with even one source
+        is left alone, since judging its quality is not this check's job:
 
-        - no tool call and no web search at all: nothing was retrieved, so
+        - no retrieval call and no web search at all: nothing was retrieved, so
           whatever the text says was written from memory (issue #102);
-        - refusal or halt phrasing: the model declined, typically after an
-          output safety classifier stopped its first attempt.
+        - refusal phrasing aimed at the report itself: the model declined,
+          typically after an output safety classifier stopped its first attempt.
 
         The text alone cannot prove the model refused, which is why the
         phrasing counts only alongside the missing sources, and why the result
@@ -819,16 +868,18 @@ class ClaudeCodeProvider(ResearchProvider):
         Args:
             markdown: The assembled report text.
             citations: URLs extracted from it.
-            tool_calls: How many tool_use blocks the model emitted.
+            retrieval_calls: Tool calls that could have retrieved something
+                (see :meth:`_retrieval_calls`).
             web_search_requests: Server-side web searches the run reported.
 
         Returns:
             A one-line reason when the text is not a report, otherwise None.
 
         >>> ClaudeCodeProvider._unsuccessful_reason("From memory.", [], 0, 0)
-        'no tool calls, web searches or cited sources: the text was written from memory, not researched'
+        'no retrieval calls, web searches or cited sources: the text was written from memory, not researched'
         >>> ClaudeCodeProvider._unsuccessful_reason(
-        ...     "I'm not going to regenerate that narrative.", [], tool_calls=3, web_search_requests=2,
+        ...     "I'm not going to regenerate that narrative.", [], retrieval_calls=3,
+        ...     web_search_requests=2,
         ... )
         'the model declined to write the report, and it cites no sources'
         >>> ClaudeCodeProvider._unsuccessful_reason(
@@ -838,19 +889,30 @@ class ClaudeCodeProvider(ResearchProvider):
         >>> ClaudeCodeProvider._unsuccessful_reason("Researched, uncited.", [], 4, 0) is None
         True
 
-        Hedging and ordinary prose in a researched report are not refusals:
+        Hedging, disclaimers and ordinary prose in a researched report are not
+        refusals, and a PMID is a source:
 
         >>> ClaudeCodeProvider._unsuccessful_reason(
         ...     "I cannot provide a definitive answer. The outbreak was halted by vector control.",
-        ...     [], tool_calls=5, web_search_requests=3,
+        ...     [], retrieval_calls=5, web_search_requests=3,
+        ... ) is None
+        True
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "I cannot provide medical advice. This report summarizes the literature.",
+        ...     [], retrieval_calls=5, web_search_requests=0,
+        ... ) is None
+        True
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "Elongation is halted by a safety classifier-like checkpoint (PMID: 12345).",
+        ...     [], retrieval_calls=2, web_search_requests=0,
         ... ) is None
         True
         """
-        if citations:
+        if citations or _SOURCE_ID_PATTERN.search(markdown):
             return None
-        if tool_calls == 0 and web_search_requests == 0:
+        if retrieval_calls == 0 and web_search_requests == 0:
             return (
-                "no tool calls, web searches or cited sources: the text was "
+                "no retrieval calls, web searches or cited sources: the text was "
                 "written from memory, not researched"
             )
         if _REFUSAL_PATTERN.search(markdown):

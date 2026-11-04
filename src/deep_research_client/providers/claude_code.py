@@ -572,7 +572,10 @@ class ClaudeCodeProvider(ResearchProvider):
         )
         if unsuccessful_reason:
             run_metadata["unsuccessful_reason"] = unsuccessful_reason
-            logger.warning("Claude Code did not produce a report: %s", unsuccessful_reason)
+            # INFO, not WARNING: the client already warns that the result is
+            # not cached and the CLI names this reason, so a WARNING here would
+            # print the same news a third time at the CLI's default log level.
+            logger.info("Claude Code did not produce a report: %s", unsuccessful_reason)
 
         # Prefer the model id(s) the run actually reported over our sentinel
         # default, so provenance reflects what really ran (even if unspecified or

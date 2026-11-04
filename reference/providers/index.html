@@ -1204,6 +1204,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#what-every-run-is-told" class="md-nav__link">
+    <span class="md-ellipsis">
+      What every run is told
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#failing-loudly-on-an-empty-report" class="md-nav__link">
     <span class="md-ellipsis">
       Failing loudly on an empty report
@@ -2242,6 +2251,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#what-every-run-is-told" class="md-nav__link">
+    <span class="md-ellipsis">
+      What every run is told
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#failing-loudly-on-an-empty-report" class="md-nav__link">
     <span class="md-ellipsis">
       Failing loudly on an empty report
@@ -3089,6 +3107,29 @@ params = ClaudeCodeParams(
 </code></pre>
 <p>When <code>skip_permissions</code> is <code>False</code> (the default), you can also set
 <code>permission_mode</code> (e.g. <code>"plan"</code> or <code>"acceptEdits"</code>).</p>
+<h3 id="what-every-run-is-told">What every run is told</h3>
+<p>Whatever <code>system_prompt</code> you pass (or the default research prompt), the
+provider appends a fixed directive to it:</p>
+<ul>
+<li><strong>Do the work in this run.</strong> Print mode has no "later", so the model is told
+  not to defer to a background task or sub-agent. No one can answer questions
+  mid-run, so instead of asking, the model states its interpretation of an
+  ambiguous request at the top of the report.</li>
+<li><strong>Retrieve before writing</strong> (issue #102). Find sources with the research
+  tools first, cite each claim's URL or identifier inline as it is written, and
+  state no specific factual claim, citation or identifier (PMID, DOI, ontology
+  ID) that was not retrieved in this session. A section that can't be sourced says so rather
+  than being filled from memory. Besides being what a curation input needs,
+  this avoids the large unsourced narrative that output safety classifiers
+  halt.</li>
+<li><strong>A partial report is allowed</strong> (issue #103). A run that can't finish may
+  return what it has, starting with a line that begins <code>**Incomplete report:**</code>
+  and a one-sentence reason. That marker makes the run unsuccessful (see below),
+  so a partial report is kept but flagged for review, not passed off as done.</li>
+</ul>
+<p>The directive is not part of the cache key. A report cached before it changed
+(including a from-memory one) is still served for the same query, so rerun with
+<code>--no-cache</code> if you need a fresh run under the current directive.</p>
 <h3 id="failing-loudly-on-an-empty-report">Failing loudly on an empty report</h3>
 <p>A run that produces no research is the expensive failure mode, because it still
 writes a well-formed file with real cost and provenance metadata — easy to skim
@@ -3106,7 +3147,7 @@ find sufficient information on this topic"</em> passes it cleanly.</p>
 <h3 id="runs-that-are-not-a-report">Runs that are not a report</h3>
 <p>The CLI exits 0 whatever the model wrote, so a run that declined, or answered
 without researching, used to be written out as a clean report (issue #101). The
-provider now marks two shapes as unsuccessful:</p>
+provider now marks three shapes as unsuccessful:</p>
 <ul>
 <li><strong>Nothing retrieved</strong>: no retrieval call and no web search in the whole run,
   so the text was written from memory. This holds even when the text cites
@@ -3114,6 +3155,12 @@ provider now marks two shapes as unsuccessful:</p>
   be hallucinated. A denied call retrieved nothing, and neither did a
   bookkeeping or write call (<code>TodoWrite</code>, <code>Write</code>, <code>Edit</code> and similar), so
   none of them count.</li>
+<li><strong>Marked incomplete</strong>: a line of the report begins <code>**Incomplete report:**</code>,
+  the marker the directive above asks for when a run can't finish. Any markdown
+  spelling counts (<code>**Incomplete report**:</code>, <code>## Incomplete report:</code>, a
+  blockquote, no bold), and so does any line, so a run that writes the marker
+  and then recovers is still flagged. This holds whatever the report cites,
+  since a partial report can be well sourced.</li>
 <li><strong>Declined</strong>, in a text that cites no source at all (no URL, PMID or DOI): a
   refusal aimed at the report itself (<em>"I'm not going to regenerate that …
   research narrative"</em>) or a mention of a <em>safety classifier</em>, typically after
@@ -3126,8 +3173,8 @@ provider now marks two shapes as unsuccessful:</p>
 <code>answer_status: unsuccessful</code>, <code>## Output</code> opens with a warning,
 <code>run_metadata.unsuccessful_reason</code> says which shape it was, the result is not
 cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
-find nothing"). A report from a run that retrieved something and cites even
-one source is never marked: this is a check that the run did research, not a
+find nothing"). A report from a run that retrieved something, cites even one
+source and isn't marked incomplete is never marked: this is a check that the run did research, not a
 judgment of how well.</p>
 <p>Five <code>run_metadata</code> fields help diagnose a thin result after the fact:</p>
 <ul>
@@ -3136,8 +3183,8 @@ judgment of how well.</p>
   for how the report was assembled, not a warning sign.</li>
 <li><code>tool_calls</code> — how many tools the model called, denied ones included.</li>
 <li><code>retrieval_calls</code> — the calls that could have retrieved something: not denied,
-  not bookkeeping. Zero, with no web search and no cited source, is what marks a
-  run as written from memory.</li>
+  not bookkeeping. Zero, with no web search, is what marks a run as written from
+  memory, whatever it cites.</li>
 <li><code>permission_denials</code> — how many tool calls were refused.</li>
 <li><code>denied_tools</code> — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside <code>allowed_tools</code> and gave up,

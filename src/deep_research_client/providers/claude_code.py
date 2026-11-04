@@ -201,15 +201,23 @@ _DEFAULT_MODEL_SENTINELS = {
 _URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
 
 # How a run that declined to write the report talks about it: the shape of the
-# reply saved as a "report" in issue #101 ("I'm not going to regenerate that ...
-# the previous attempt was halted by a safety classifier"). Only consulted when
-# the text cites nothing, so a sourced report that merely discusses classifiers
-# or refusals is never read as one.
+# reply saved as a "report" in issue #101 ("I'm not going to regenerate that
+# comprehensive from-memory research narrative -- the previous attempt was
+# halted by a safety classifier"). Only consulted when the text cites nothing,
+# so a sourced report that merely discusses classifiers is never read as one.
+#
+# A refusal verb counts only when its object, within a few words, is the report
+# itself: "I cannot provide a definitive answer" is hedging, not a refusal. Bare
+# "halted by" is not a marker either, since "the outbreak was halted by vector
+# control" is ordinary epidemiology. Both apostrophes, because models write ’.
 _REFUSAL_PATTERN = re.compile(
     r"safety classifier"
-    r"|\bhalted by\b"
-    r"|\bI(?:'m| am) not going to (?:regenerate|reproduce|produce|write|provide)\b"
-    r"|\bI (?:can't|cannot|won't|will not) (?:regenerate|reproduce|produce|write|provide)\b",
+    r"|\bI(?:['’]m| am) not going to"
+    r" (?:regenerate|reproduce|produce|write|provide)\b(?:\W+\w+){0,5}?\W+"
+    r"(?:report|narrative|research|write-?up)\b"
+    r"|\bI (?:can['’]t|cannot|won['’]t|will not)"
+    r" (?:regenerate|reproduce|produce|write|provide)\b(?:\W+\w+){0,5}?\W+"
+    r"(?:report|narrative|research|write-?up)\b",
     re.IGNORECASE,
 )
 
@@ -828,6 +836,14 @@ class ClaudeCodeProvider(ResearchProvider):
         ... ) is None
         True
         >>> ClaudeCodeProvider._unsuccessful_reason("Researched, uncited.", [], 4, 0) is None
+        True
+
+        Hedging and ordinary prose in a researched report are not refusals:
+
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "I cannot provide a definitive answer. The outbreak was halted by vector control.",
+        ...     [], tool_calls=5, web_search_requests=3,
+        ... ) is None
         True
         """
         if citations:

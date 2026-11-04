@@ -629,6 +629,28 @@ LONG_BODY = "The substantive findings, at length. " * 10
             id="control-searched-uncited-is-not-judged",
         ),
         pytest.param(
+            [
+                tool_use_event("WebSearch"),
+                assistant_event(POWASSAN_REFUSAL.replace("I'm", "I’m").replace(
+                    "halted by a safety classifier", "stopped")),
+            ],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            "the model declined to write the report",
+            id="declined-with-a-curly-apostrophe",
+        ),
+        pytest.param(
+            [
+                tool_use_event("WebSearch"),
+                assistant_event(
+                    f"# Report\n\n{LONG_BODY} The 2016 outbreak was halted by vector "
+                    "control. I cannot provide a definitive answer on incidence."
+                ),
+            ],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            None,
+            id="control-hedging-and-halted-by-in-a-researched-report",
+        ),
+        pytest.param(
             [assistant_event(f"# Report\n\n{LONG_BODY} A safety classifier https://example.org/x")],
             {},
             None,

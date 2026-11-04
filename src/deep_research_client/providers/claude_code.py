@@ -173,17 +173,62 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     return None
 
 
+#: The line a report opens with when the model could not finish it. The
+#: directive below asks for it verbatim, and ``_unsuccessful_reason`` looks for
+#: it, so the instruction and the detection cannot drift apart.
+INCOMPLETE_REPORT_MARKER = "**Incomplete report:**"
+
+# Matches the marker at the start of any line: the report is joined from every
+# assistant text block, so narration ("Let me search...") can precede it. The
+# words are matched rather than the exact spelling, because a model reproducing
+# the marker varies its markdown ("**Incomplete report**:", "## Incomplete
+# report:", "> **Incomplete report:**", a list item, no bold at all), and a missed variant
+# fails quietly: the partial report is cached and exits 0. Anchoring to the
+# start of a line, before any other text, keeps prose that merely uses the
+# words from matching.
+_INCOMPLETE_REPORT_PATTERN = re.compile(
+    r"^[ \t>#*_+-]*(?:\d+[.)][ \t]*)?[*_]*incomplete report[*_]*[ \t]*:",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# Appended to every system prompt, the default research prompt or a custom one.
+#
 # Non-interactive ("print") mode has no "later": the process emits one response
 # and exits. Local skills/workflows that defer work to a background task would be
-# orphaned, leaving us with only a chatty preamble instead of a report. This
-# directive forces Claude Code to do the work and emit the finished report inline.
+# orphaned, leaving us with only a chatty preamble instead of a report, so the
+# work has to happen in this run.
+#
+# Retrieval comes first (issue #102). Told only to write "a comprehensive
+# report" in one response, the model could skip its tools and write the whole
+# thing from memory: no sources to curate from, identifiers that cannot be
+# trusted, and the large unsourced narrative that output safety classifiers
+# halt. Grounding each claim in a fetched source is what the task wants anyway.
+#
+# There is also a legitimate way out (issue #103). A run that cannot finish --
+# a tool fails, too little can be retrieved, output is stopped -- is told to
+# return what it has, marked incomplete, instead of having no move left but a
+# refusal. It is offered as an option, not imposed: the directive does not tell
+# the model not to decline.
+# The marker makes the run unsuccessful (output kept, exit code 4), so a partial
+# report is flagged for review rather than passed off as a finished one.
 _INLINE_REPORT_DIRECTIVE = (
-    "IMPORTANT: You are running non-interactively and must produce the complete "
-    "final research report directly in this single response. Do the research now "
-    "using your available tools (web search, web fetch, etc.) and write the full "
-    "report inline. Do NOT defer the work, do NOT hand it off to a background task, "
-    "workflow, or sub-agent, do NOT promise to follow up later, and do NOT ask "
-    "clarifying questions. Output only the report itself in Markdown."
+    "IMPORTANT: You are running non-interactively. Do the research now, in this "
+    "single run, and write the report inline. Do not defer the work, hand it off "
+    "to a background task, workflow or sub-agent, or promise to follow up later. "
+    "No one can answer questions during this run, so if the request is ambiguous, "
+    "choose a reasonable interpretation and state it at the top of the report.\n\n"
+    "Retrieve before you write. Use your research tools (web search, web fetch, "
+    "and any others you have been given) to find sources first, and cite the "
+    "source of each claim inline, with its URL or identifier, as you write it. "
+    "Do not state any specific factual claim, citation or identifier "
+    "(PMID, DOI, ontology ID) that you have not retrieved in this session. "
+    "If you cannot retrieve enough to support a section, say so in that "
+    "section rather than filling it from memory.\n\n"
+    "If you cannot complete the report -- a tool fails, too little can be "
+    "retrieved, or you are unable to continue -- you may return a partial report "
+    "instead of nothing: start it with a line that begins "
+    f"'{INCOMPLETE_REPORT_MARKER}' followed by a one-sentence reason, then give "
+    "the sourced findings you do have. Output only the report itself in Markdown."
 )
 
 # Aliases that point at the provider's own default model card rather than a real
@@ -862,12 +907,20 @@ class ClaudeCodeProvider(ResearchProvider):
 
         The CLI exits 0 and reports success whatever the model wrote, so a
         refusal or a from-memory answer used to be written out as a valid
-        report (issue #101). Two shapes are recognised:
+        report (issue #101). Three shapes are recognised, checked in this order:
 
         - no retrieval call and no web search at all: nothing was retrieved, so
           whatever the text says was written from memory (issue #102). This
           holds even when the text cites URLs, PMIDs or DOIs: with nothing
           fetched, those came from memory too, and may be hallucinated;
+        - a line of the report begins with ``INCOMPLETE_REPORT_MARKER``, in any
+          markdown spelling: the model said, as the directive asks, that it
+          could not finish (issue #103). Its sourced findings are kept, but it
+          is not a finished report. Any line counts, so a run that writes the
+          marker and then recovers is still flagged: the conservative way to
+          be wrong. The reason is left in the report rather than copied here,
+          so this string stays a fixed literal and no model text reaches the
+          CLI's stderr through it;
         - refusal phrasing aimed at the report itself, in a text that cites
           nothing (no URL, PMID or DOI): the model declined, typically after an
           output safety classifier stopped its first attempt. A cited source
@@ -899,6 +952,14 @@ class ClaudeCodeProvider(ResearchProvider):
         ...     "Mentions a safety classifier. https://example.org", ["https://example.org"], 1, 0,
         ... ) is None
         True
+
+        A partial report the model marked incomplete is flagged, sources or not:
+
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "Searching.\\n\\n**Incomplete report:** the fetch tool failed.\\n\\nOne finding https://example.org",
+        ...     ["https://example.org"], retrieval_calls=2, web_search_requests=1,
+        ... )
+        "the model marked the report incomplete; its reason is on the line that begins 'Incomplete report:'"
 
         Citations without retrieval are recalled, not researched:
 
@@ -941,6 +1002,11 @@ class ClaudeCodeProvider(ResearchProvider):
             return (
                 "no retrieval calls or web searches: the text, and any sources it "
                 "cites, was written from memory, not researched"
+            )
+        if _INCOMPLETE_REPORT_PATTERN.search(markdown):
+            return (
+                "the model marked the report incomplete; its reason is on the line "
+                "that begins 'Incomplete report:'"
             )
         if citations or _SOURCE_ID_PATTERN.search(markdown):
             return None

@@ -389,6 +389,31 @@ params = ClaudeCodeParams(
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
 
+### What every run is told
+
+Whatever `system_prompt` you pass (or the default research prompt), the
+provider appends a fixed directive to it:
+
+- **Do the work in this run.** Print mode has no "later", so the model is told
+  not to defer to a background task or sub-agent. No one can answer questions
+  mid-run, so instead of asking, the model states its interpretation of an
+  ambiguous request at the top of the report.
+- **Retrieve before writing** (issue #102). Find sources with the research
+  tools first, cite each claim's URL or identifier inline as it is written, and
+  state no specific factual claim, citation or identifier (PMID, DOI, ontology
+  ID) that was not retrieved in this session. A section that can't be sourced says so rather
+  than being filled from memory. Besides being what a curation input needs,
+  this avoids the large unsourced narrative that output safety classifiers
+  halt.
+- **A partial report is allowed** (issue #103). A run that can't finish may
+  return what it has, starting with a line that begins `**Incomplete report:**`
+  and a one-sentence reason. That marker makes the run unsuccessful (see below),
+  so a partial report is kept but flagged for review, not passed off as done.
+
+The directive is not part of the cache key. A report cached before it changed
+(including a from-memory one) is still served for the same query, so rerun with
+`--no-cache` if you need a fresh run under the current directive.
+
 ### Failing loudly on an empty report
 
 A run that produces no research is the expensive failure mode, because it still
@@ -411,7 +436,7 @@ find sufficient information on this topic"* passes it cleanly.
 
 The CLI exits 0 whatever the model wrote, so a run that declined, or answered
 without researching, used to be written out as a clean report (issue #101). The
-provider now marks two shapes as unsuccessful:
+provider now marks three shapes as unsuccessful:
 
 - **Nothing retrieved**: no retrieval call and no web search in the whole run,
   so the text was written from memory. This holds even when the text cites
@@ -419,6 +444,12 @@ provider now marks two shapes as unsuccessful:
   be hallucinated. A denied call retrieved nothing, and neither did a
   bookkeeping or write call (`TodoWrite`, `Write`, `Edit` and similar), so
   none of them count.
+- **Marked incomplete**: a line of the report begins `**Incomplete report:**`,
+  the marker the directive above asks for when a run can't finish. Any markdown
+  spelling counts (`**Incomplete report**:`, `## Incomplete report:`, a
+  blockquote, no bold), and so does any line, so a run that writes the marker
+  and then recovers is still flagged. This holds whatever the report cites,
+  since a partial report can be well sourced.
 - **Declined**, in a text that cites no source at all (no URL, PMID or DOI): a
   refusal aimed at the report itself (*"I'm not going to regenerate that …
   research narrative"*) or a mention of a *safety classifier*, typically after
@@ -431,8 +462,8 @@ Either way the report is still written, but its frontmatter says
 `answer_status: unsuccessful`, `## Output` opens with a warning,
 `run_metadata.unsuccessful_reason` says which shape it was, the result is not
 cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
-find nothing"). A report from a run that retrieved something and cites even
-one source is never marked: this is a check that the run did research, not a
+find nothing"). A report from a run that retrieved something, cites even one
+source and isn't marked incomplete is never marked: this is a check that the run did research, not a
 judgment of how well.
 
 Five `run_metadata` fields help diagnose a thin result after the fact:
@@ -442,8 +473,8 @@ Five `run_metadata` fields help diagnose a thin result after the fact:
   for how the report was assembled, not a warning sign.
 - `tool_calls` — how many tools the model called, denied ones included.
 - `retrieval_calls` — the calls that could have retrieved something: not denied,
-  not bookkeeping. Zero, with no web search and no cited source, is what marks a
-  run as written from memory.
+  not bookkeeping. Zero, with no web search, is what marks a run as written from
+  memory, whatever it cites.
 - `permission_denials` — how many tool calls were refused.
 - `denied_tools` — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside `allowed_tools` and gave up,

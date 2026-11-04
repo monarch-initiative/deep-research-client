@@ -13,6 +13,7 @@ import shutil
 import pytest
 
 from deep_research_client.providers.claude_code import (
+    INCOMPLETE_REPORT_MARKER,
     ClaudeCodeProvider,
     _INLINE_REPORT_DIRECTIVE,
 )
@@ -84,6 +85,27 @@ def test_build_command_defaults():
     assert _INLINE_REPORT_DIRECTIVE in appended
     # No model is forwarded for the default sentinel.
     assert "--model" not in command
+
+
+@pytest.mark.parametrize("system_prompt", [None, "Be terse."], ids=["default", "custom"])
+def test_directive_requires_retrieval_and_offers_an_incomplete_report(system_prompt):
+    """Every run is told to retrieve first, and how to say it could not finish (#102, #103).
+
+    The marker is the contract between the instruction and the detection in
+    `_unsuccessful_reason`, so it must reach the model verbatim, under a custom
+    system prompt as well as the default one.
+    """
+    provider = make_provider(ClaudeCodeParams(system_prompt=system_prompt))
+    command = provider._build_command()
+    appended = command[command.index("--append-system-prompt") + 1]
+
+    assert "Retrieve before you write." in appended
+    assert "not retrieved in this session" in appended
+    assert f"begins '{INCOMPLETE_REPORT_MARKER}'" in appended
+    # The single-shot "do NOT ask clarifying questions" box from #103 is gone;
+    # the run is told to state its interpretation instead.
+    assert "clarifying questions" not in appended
+    assert "state it at the top of the report" in appended
 
 
 def test_build_command_skip_permissions_opt_in():
@@ -686,6 +708,32 @@ LONG_BODY = "The substantive findings, at length. " * 10
             id="control-pmid-and-doi-override-refusal-phrasing",
         ),
         pytest.param(
+            [
+                tool_use_event("WebSearch"),
+                assistant_event("Let me search for that."),
+                assistant_event(
+                    f"{INCOMPLETE_REPORT_MARKER} the fetch tool kept failing, so only "
+                    f"the transmission section is sourced.\n\n## Transmission\n\n{LONG_BODY}"
+                    "https://example.org/ticks"
+                ),
+            ],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            "the model marked the report incomplete",
+            id="issue-103-partial-report-marked-incomplete",
+        ),
+        pytest.param(
+            [
+                tool_use_event("WebSearch"),
+                assistant_event(
+                    f"# Report\n\n{LONG_BODY} Earlier surveys gave an "
+                    "**incomplete report:** of cases https://example.org/survey"
+                ),
+            ],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            None,
+            id="control-marker-text-mid-line-is-not-the-marker",
+        ),
+        pytest.param(
             [tool_use_event("TodoWrite"), assistant_event(f"# Report\n\n{LONG_BODY}")],
             {},
             "no retrieval calls or web searches",
@@ -810,3 +858,30 @@ async def test_research_does_not_count_a_denied_call_as_retrieval(tmp_path):
     assert result.run_metadata["retrieval_calls"] == 0
     assert result.run_metadata["denied_tools"] == ["Bash"]
     assert result.answer_successful is False
+
+
+@pytest.mark.parametrize(
+    "line,is_marker",
+    [
+        pytest.param(f"{INCOMPLETE_REPORT_MARKER} the fetch tool failed.", True, id="as-asked"),
+        pytest.param("**Incomplete report**: the fetch tool failed.", True, id="colon-outside-bold"),
+        pytest.param("## Incomplete report: the fetch tool failed.", True, id="heading"),
+        pytest.param("> **Incomplete report:** the fetch tool failed.", True, id="blockquote"),
+        pytest.param("Incomplete report: the fetch tool failed.", True, id="unbolded"),
+        pytest.param("*incomplete REPORT:* the fetch tool failed.", True, id="italic-any-case"),
+        pytest.param("- **Incomplete report:** the fetch tool failed.", True, id="bullet"),
+        pytest.param("+ Incomplete report: the fetch tool failed.", True, id="plus-bullet"),
+        pytest.param("1. Incomplete report: the fetch tool failed.", True, id="numbered"),
+        pytest.param("2) **Incomplete report**: the fetch tool failed.", True, id="numbered-paren"),
+        pytest.param("- Incomplete reporting of cases: see below.", False, id="control-bullet-reporting"),
+        pytest.param("Surveys gave an incomplete report: of cases.", False, id="control-mid-line"),
+        pytest.param("## Incomplete reporting of cases", False, id="control-heading-without-colon"),
+    ],
+)
+def test_the_incomplete_marker_is_recognised_in_any_markdown_spelling(line, is_marker):
+    """A model reproducing the marker varies its markdown; a missed variant exits 0 (#103)."""
+    markdown = f"Let me search for that.\n\n{line}\n\nOne sourced finding."
+    reason = ClaudeCodeProvider._unsuccessful_reason(
+        markdown, ["https://example.org"], retrieval_calls=2, web_search_requests=1
+    )
+    assert bool(reason and reason.startswith("the model marked the report incomplete")) == is_marker

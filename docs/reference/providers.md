@@ -407,11 +407,33 @@ paying for a second one.
 This is an emptiness check, not a quality one — a 250-character *"I was unable to
 find sufficient information on this topic"* passes it cleanly.
 
-Three `run_metadata` fields help diagnose a thin result after the fact:
+### Runs that are not a report
+
+The CLI exits 0 whatever the model wrote, so a run that declined, or answered
+without researching, used to be written out as a clean report (issue #101). The
+provider now marks two shapes as unsuccessful, both only when the text cites no
+URL at all:
+
+- **Nothing retrieved**: no tool call and no web search in the whole run, so the
+  text was written from memory.
+- **Declined**: refusal or halt phrasing (*"I'm not going to regenerate…"*,
+  *"halted by a safety classifier"*), typically after an output safety
+  classifier stopped the first attempt.
+
+Either way the report is still written, but its frontmatter says
+`answer_status: unsuccessful`, `## Output` opens with a warning,
+`run_metadata.unsuccessful_reason` says which shape it was, the result is not
+cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
+find nothing"). A report with even one cited URL is never marked: this is a
+check that the run did research, not a judgment of how well.
+
+Four `run_metadata` fields help diagnose a thin result after the fact:
 
 - `assistant_text_blocks` — how many separate assistant messages the report was
   assembled from. More than one is normal for an agentic run; this is provenance
   for how the report was assembled, not a warning sign.
+- `tool_calls` — how many tools the model called. Zero, with no citations, is
+  what marks a run as written from memory.
 - `permission_denials` — how many tool calls were refused.
 - `denied_tools` — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside `allowed_tools` and gave up,

@@ -150,7 +150,7 @@ def test_parse_stream_and_report_text_success():
         assistant_event("# Report\n\nbody"),
         {"type": "result", "is_error": False, "result": "# Report\n\nbody"},
     )
-    texts, data = ClaudeCodeProvider._parse_stream(stdout)
+    texts, data, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert ClaudeCodeProvider._report_text(texts, data) == "# Report\n\nbody"
 
 
@@ -168,7 +168,7 @@ def test_report_text_joins_all_assistant_messages():
         # The terminal event's `result` carries only that final message.
         {"type": "result", "is_error": False, "result": "One correction: nothing else changes."},
     )
-    texts, data = ClaudeCodeProvider._parse_stream(stdout)
+    texts, data, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert len(texts) == 2
 
     report = ClaudeCodeProvider._report_text(texts, data)
@@ -191,8 +191,29 @@ def test_parse_stream_ignores_non_text_blocks():
         },
         {"type": "result", "is_error": False, "result": "visible answer"},
     )
-    texts, _ = ClaudeCodeProvider._parse_stream(stdout)
+    texts, _, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert texts == ["visible answer"]
+
+
+def test_parse_stream_records_tool_calls_in_order():
+    """Tool calls are counted, repeats included, so a run that retrieved nothing is visible."""
+    stdout = make_stream(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "WebSearch", "input": {}},
+                    {"type": "text", "text": "Searching."},
+                ]
+            },
+        },
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "WebFetch"}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "WebSearch"}]}},
+        {"type": "result", "is_error": False, "result": "Searching."},
+    )
+    parsed = ClaudeCodeProvider._parse_stream(stdout)
+    assert parsed.tool_uses == ["WebSearch", "WebFetch", "WebSearch"]
+    assert parsed.assistant_texts == ["Searching."]
 
 
 @pytest.mark.parametrize(
@@ -217,7 +238,7 @@ def test_parse_stream_tolerates_malformed_assistant_events(message):
         assistant_event("the real report"),
         {"type": "result", "is_error": False, "result": "the real report"},
     )
-    texts, _ = ClaudeCodeProvider._parse_stream(stdout)
+    texts, _, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert texts == ["the real report"]
 
 
@@ -227,7 +248,7 @@ def test_parse_stream_accepts_string_content():
         {"type": "assistant", "message": {"content": "a whole report as one string"}},
         {"type": "result", "is_error": False, "result": "x"},
     )
-    texts, _ = ClaudeCodeProvider._parse_stream(stdout)
+    texts, _, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert texts == ["a whole report as one string"]
 
 
@@ -238,7 +259,7 @@ def test_parse_stream_skips_unparseable_lines():
         json.dumps(assistant_event("the report")),
         json.dumps({"type": "result", "is_error": False, "result": "the report"}),
     ])
-    texts, data = ClaudeCodeProvider._parse_stream(stdout)
+    texts, data, _ = ClaudeCodeProvider._parse_stream(stdout)
     assert texts == ["the report"]
     assert data["type"] == "result"
 
@@ -469,6 +490,9 @@ async def test_research_joins_blocks_and_records_provenance(tmp_path):
     assert result.run_metadata["denied_tools"] == ["Read"]
     # Provenance reports the model that actually ran, not the sentinel default.
     assert result.model == "claude-opus-5[1m]"
+    # Searched and cited: a report, so nothing is inferred about it.
+    assert result.answer_successful is None
+    assert "unsuccessful_reason" not in result.run_metadata
 
 
 @pytest.mark.asyncio
@@ -557,3 +581,114 @@ async def test_research_keeps_output_preceding_a_tool_call():
     assert "granite" in result.markdown.lower()
     # The essay dwarfs the "done" sign-off that the old parser would have kept alone.
     assert len(result.markdown) > 500
+
+
+# The reply saved as a "report" in issue #101: the first, from-memory attempt
+# was halted by an output safety classifier, and the second turn declined.
+POWASSAN_REFUSAL = (
+    "I'm not going to regenerate that comprehensive from-memory research "
+    "narrative -- the previous attempt was halted by a safety classifier, and "
+    "I've been instructed not to reproduce it, reworded or otherwise. I'll "
+    "respect that. " * 2
+)
+
+
+def tool_use_event(name: str) -> dict:
+    """Build an assistant event carrying a single tool call."""
+    return {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": name}]}}
+
+
+LONG_BODY = "The substantive findings, at length. " * 10
+
+
+@pytest.mark.parametrize(
+    "events,model_usage,expected_reason",
+    [
+        pytest.param(
+            [assistant_event(POWASSAN_REFUSAL)],
+            {"claude-opus-4-8": {}, "claude-opus-5-5": {}},
+            "no tool calls, web searches or cited sources",
+            id="issue-101-refusal-with-no-retrieval",
+        ),
+        pytest.param(
+            [assistant_event(f"# Report\n\n{LONG_BODY}")],
+            {},
+            "no tool calls, web searches or cited sources",
+            id="from-memory-report-is-not-a-report",
+        ),
+        pytest.param(
+            [tool_use_event("WebSearch"), assistant_event(POWASSAN_REFUSAL)],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            "the model declined to write the report",
+            id="searched-then-declined",
+        ),
+        pytest.param(
+            [tool_use_event("WebSearch"), assistant_event(f"# Report\n\n{LONG_BODY}")],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            None,
+            id="control-searched-uncited-is-not-judged",
+        ),
+        pytest.param(
+            [assistant_event(f"# Report\n\n{LONG_BODY} A safety classifier https://example.org/x")],
+            {},
+            None,
+            id="control-cited-report-mentioning-classifiers",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_research_marks_a_non_report_unsuccessful(
+    tmp_path, events, model_usage, expected_reason
+):
+    """A completed run whose text is not a report is not passed off as one (#101)."""
+    stdout = make_stream(
+        *events,
+        {"type": "result", "is_error": False, "result": "", "num_turns": 2, "modelUsage": model_usage},
+    )
+    provider = make_provider(
+        ClaudeCodeParams(claude_executable=str(write_stub_claude(tmp_path, stdout)))
+    )
+    result = await provider.research("Powassan virus disease")
+
+    if expected_reason is None:
+        assert result.answer_successful is None
+        assert "unsuccessful_reason" not in result.run_metadata
+    else:
+        assert result.answer_successful is False
+        assert result.run_metadata["unsuccessful_reason"].startswith(expected_reason)
+        assert result.answer_frontmatter() == {"answer_status": "unsuccessful", "citation_count": 0}
+    assert result.run_metadata["tool_calls"] == sum(
+        1 for event in events if event["message"]["content"][0]["type"] == "tool_use"
+    )
+
+
+def test_the_cli_exits_4_and_names_the_reason_for_a_refusal(tmp_path):
+    """The issue #101 run, through the CLI: the file is kept, marked, and the exit is not 0."""
+    from typer.testing import CliRunner
+
+    from deep_research_client.cli import EXIT_UNSUCCESSFUL_ANSWER, app
+
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = write_stub_claude(
+        stub_dir,
+        make_stream(
+            assistant_event(POWASSAN_REFUSAL),
+            {"type": "result", "is_error": False, "result": "", "num_turns": 2},
+        ),
+    )
+    stub.rename(stub_dir / "claude")
+    output = tmp_path / "Powassan_Virus_Disease-deep-research-claude_code.md"
+
+    result = CliRunner().invoke(
+        app,
+        ["research", "Powassan virus disease", "--provider", "claude_code",
+         "--no-cache", "--output", str(output)],
+        env={"PATH": f"{stub_dir}:/usr/bin:/bin", "DISABLE_CLAUDE_CODE_PROVIDER": ""},
+    )
+
+    assert result.exit_code == EXIT_UNSUCCESSFUL_ANSWER, result.output
+    assert "Reason: no tool calls, web searches or cited sources" in result.stderr
+    content = output.read_text(encoding="utf-8")
+    assert "answer_status: unsuccessful" in content
+    assert "> **Warning:** claude_code reported that it could not answer" in content

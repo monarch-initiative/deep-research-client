@@ -32,7 +32,7 @@ import logging
 import re
 import shutil
 from datetime import datetime
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -199,6 +199,30 @@ _DEFAULT_MODEL_SENTINELS = {
 
 # URL pattern for citation extraction (mirrors the other providers).
 _URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
+
+# How a run that declined to write the report talks about it: the shape of the
+# reply saved as a "report" in issue #101 ("I'm not going to regenerate that ...
+# the previous attempt was halted by a safety classifier"). Only consulted when
+# the text cites nothing, so a sourced report that merely discusses classifiers
+# or refusals is never read as one.
+_REFUSAL_PATTERN = re.compile(
+    r"safety classifier"
+    r"|\bhalted by\b"
+    r"|\bI(?:'m| am) not going to (?:regenerate|reproduce|produce|write|provide)\b"
+    r"|\bI (?:can't|cannot|won't|will not) (?:regenerate|reproduce|produce|write|provide)\b",
+    re.IGNORECASE,
+)
+
+
+class ParsedStream(NamedTuple):
+    """What a ``stream-json`` run produced, as read by ``_parse_stream``."""
+
+    #: The model's text blocks, in emission order.
+    assistant_texts: List[str]
+    #: The terminal ``result`` event: provenance and error status.
+    result: dict
+    #: Names of the tools the model called, in call order, repeats included.
+    tool_uses: List[str]
 
 
 class ClaudeCodeProvider(ResearchProvider):
@@ -501,11 +525,12 @@ class ClaudeCodeProvider(ResearchProvider):
                 f"{stderr.strip() or '<no stderr>'}"
             )
 
-        assistant_texts, data = self._parse_stream(stdout, self.name)
+        assistant_texts, data, tool_uses = self._parse_stream(stdout, self.name)
         markdown = self._report_text(assistant_texts, data)
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
+        run_metadata["tool_calls"] = len(tool_uses)
         run_metadata.update(self.params.toolset_run_metadata())
         # How many separate assistant messages the report was assembled from.
         # More than one is normal for an agentic run (the model narrates between
@@ -513,6 +538,15 @@ class ClaudeCodeProvider(ResearchProvider):
         # not a warning sign.
         run_metadata["assistant_text_blocks"] = len(assistant_texts)
         citations = self._extract_citations(markdown)
+        unsuccessful_reason = self._unsuccessful_reason(
+            markdown,
+            citations,
+            tool_calls=len(tool_uses),
+            web_search_requests=run_metadata.get("web_search_requests", 0),
+        )
+        if unsuccessful_reason:
+            run_metadata["unsuccessful_reason"] = unsuccessful_reason
+            logger.warning("Claude Code did not produce a report: %s", unsuccessful_reason)
 
         # Prefer the model id(s) the run actually reported over our sentinel
         # default, so provenance reflects what really ran (even if unspecified or
@@ -540,6 +574,7 @@ class ClaudeCodeProvider(ResearchProvider):
             start_time=start_time,
             end_time=end_time,
             duration_seconds=duration,
+            answer_successful=False if unsuccessful_reason else None,
         )
 
     async def _run_process(self, command: List[str], query: str) -> tuple[str, str, int]:
@@ -590,7 +625,7 @@ class ClaudeCodeProvider(ResearchProvider):
         )
 
     @staticmethod
-    def _parse_stream(stdout: str, provider: str = "claude_code") -> tuple[List[str], dict]:
+    def _parse_stream(stdout: str, provider: str = "claude_code") -> ParsedStream:
         """Parse Claude Code's ``stream-json`` output into text blocks and metadata.
 
         The stream is JSON Lines: one event per line. ``assistant`` events carry
@@ -603,7 +638,8 @@ class ClaudeCodeProvider(ResearchProvider):
             provider: Provider name to attribute a classified failure to.
 
         Returns:
-            Tuple of (assistant text blocks in emission order, terminal result event).
+            The assistant text blocks, the terminal result event, and the names
+            of the tools the model called.
 
         Raises:
             ValueError: If the output is empty, contains no terminal result event,
@@ -614,6 +650,7 @@ class ClaudeCodeProvider(ResearchProvider):
             raise ValueError("Claude Code returned empty output.")
 
         assistant_texts: List[str] = []
+        tool_uses: List[str] = []
         result_event: Optional[dict] = None
 
         for line in text.splitlines():
@@ -649,10 +686,14 @@ class ClaudeCodeProvider(ResearchProvider):
                 elif not isinstance(content, list):
                     continue
                 for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text":
                         block_text = str(block.get("text") or "")
                         if block_text.strip():
                             assistant_texts.append(block_text)
+                    elif block.get("type") == "tool_use":
+                        tool_uses.append(str(block.get("name") or "<unnamed>"))
             elif event.get("type") == "result":
                 result_event = event
 
@@ -670,7 +711,7 @@ class ClaudeCodeProvider(ResearchProvider):
                 raise classified
             raise ValueError(f"Claude Code reported an error ({subtype}): {detail}")
 
-        return assistant_texts, result_event
+        return ParsedStream(assistant_texts, result_event, tool_uses)
 
     @staticmethod
     def _report_text(assistant_texts: List[str], data: dict) -> str:
@@ -742,6 +783,63 @@ class ClaudeCodeProvider(ResearchProvider):
             "the threshold (min_report_chars=0) if short answers are expected. "
             f"Report text: {preview!r}"
         )
+
+    @staticmethod
+    def _unsuccessful_reason(
+        markdown: str,
+        citations: List[str],
+        tool_calls: int,
+        web_search_requests: int,
+    ) -> Optional[str]:
+        """Say why a completed run's text is not a research report, if it is not.
+
+        The CLI exits 0 and reports success whatever the model wrote, so a
+        refusal or a from-memory answer used to be written out as a valid
+        report (issue #101). Two shapes are recognised, both requiring that the
+        text cites nothing -- a report with even one sourced URL is left alone,
+        since judging its quality is not this check's job:
+
+        - no tool call and no web search at all: nothing was retrieved, so
+          whatever the text says was written from memory (issue #102);
+        - refusal or halt phrasing: the model declined, typically after an
+          output safety classifier stopped its first attempt.
+
+        The text alone cannot prove the model refused, which is why the
+        phrasing counts only alongside the missing sources, and why the result
+        is marked unsuccessful (output kept, exit code 4) rather than raised.
+
+        Args:
+            markdown: The assembled report text.
+            citations: URLs extracted from it.
+            tool_calls: How many tool_use blocks the model emitted.
+            web_search_requests: Server-side web searches the run reported.
+
+        Returns:
+            A one-line reason when the text is not a report, otherwise None.
+
+        >>> ClaudeCodeProvider._unsuccessful_reason("From memory.", [], 0, 0)
+        'no tool calls, web searches or cited sources: the text was written from memory, not researched'
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "I'm not going to regenerate that narrative.", [], tool_calls=3, web_search_requests=2,
+        ... )
+        'the model declined to write the report, and it cites no sources'
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "Mentions a safety classifier. https://example.org", ["https://example.org"], 0, 0,
+        ... ) is None
+        True
+        >>> ClaudeCodeProvider._unsuccessful_reason("Researched, uncited.", [], 4, 0) is None
+        True
+        """
+        if citations:
+            return None
+        if tool_calls == 0 and web_search_requests == 0:
+            return (
+                "no tool calls, web searches or cited sources: the text was "
+                "written from memory, not researched"
+            )
+        if _REFUSAL_PATTERN.search(markdown):
+            return "the model declined to write the report, and it cites no sources"
+        return None
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:

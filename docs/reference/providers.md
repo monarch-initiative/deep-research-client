@@ -400,8 +400,8 @@ provider appends a fixed directive to it:
   ambiguous request at the top of the report.
 - **Retrieve before writing** (issue #102). Find sources with the research
   tools first, cite each claim's URL or identifier inline as it is written, and
-  state no fact, citation or identifier (PMID, DOI, ontology ID) that was not
-  retrieved in this session. A section that can't be sourced says so rather
+  state no specific factual claim, citation or identifier (PMID, DOI, ontology
+  ID) that was not retrieved in this session. A section that can't be sourced says so rather
   than being filled from memory. Besides being what a curation input needs,
   this avoids the large unsourced narrative that output safety classifiers
   halt.
@@ -445,8 +445,11 @@ provider now marks three shapes as unsuccessful:
   bookkeeping or write call (`TodoWrite`, `Write`, `Edit` and similar), so
   none of them count.
 - **Marked incomplete**: a line of the report begins `**Incomplete report:**`,
-  the marker the directive above asks for when a run can't finish. This holds
-  whatever the report cites, since a partial report can be well sourced.
+  the marker the directive above asks for when a run can't finish. Any markdown
+  spelling counts (`**Incomplete report**:`, `## Incomplete report:`, a
+  blockquote, no bold), and so does any line, so a run that writes the marker
+  and then recovers is still flagged. This holds whatever the report cites,
+  since a partial report can be well sourced.
 - **Declined**, in a text that cites no source at all (no URL, PMID or DOI): a
   refusal aimed at the report itself (*"I'm not going to regenerate that …
   research narrative"*) or a mention of a *safety classifier*, typically after

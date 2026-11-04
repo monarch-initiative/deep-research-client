@@ -858,3 +858,25 @@ async def test_research_does_not_count_a_denied_call_as_retrieval(tmp_path):
     assert result.run_metadata["retrieval_calls"] == 0
     assert result.run_metadata["denied_tools"] == ["Bash"]
     assert result.answer_successful is False
+
+
+@pytest.mark.parametrize(
+    "line,is_marker",
+    [
+        pytest.param(f"{INCOMPLETE_REPORT_MARKER} the fetch tool failed.", True, id="as-asked"),
+        pytest.param("**Incomplete report**: the fetch tool failed.", True, id="colon-outside-bold"),
+        pytest.param("## Incomplete report: the fetch tool failed.", True, id="heading"),
+        pytest.param("> **Incomplete report:** the fetch tool failed.", True, id="blockquote"),
+        pytest.param("Incomplete report: the fetch tool failed.", True, id="unbolded"),
+        pytest.param("*incomplete REPORT:* the fetch tool failed.", True, id="italic-any-case"),
+        pytest.param("Surveys gave an incomplete report: of cases.", False, id="control-mid-line"),
+        pytest.param("## Incomplete reporting of cases", False, id="control-heading-without-colon"),
+    ],
+)
+def test_the_incomplete_marker_is_recognised_in_any_markdown_spelling(line, is_marker):
+    """A model reproducing the marker varies its markdown; a missed variant exits 0 (#103)."""
+    markdown = f"Let me search for that.\n\n{line}\n\nOne sourced finding."
+    reason = ClaudeCodeProvider._unsuccessful_reason(
+        markdown, ["https://example.org"], retrieval_calls=2, web_search_requests=1
+    )
+    assert (reason is not None and reason.startswith("the model marked the report incomplete")) is is_marker

@@ -179,9 +179,15 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
 INCOMPLETE_REPORT_MARKER = "**Incomplete report:**"
 
 # Matches the marker at the start of any line: the report is joined from every
-# assistant text block, so narration ("Let me search...") can precede it.
+# assistant text block, so narration ("Let me search...") can precede it. The
+# words are matched rather than the exact spelling, because a model reproducing
+# the marker varies its markdown ("**Incomplete report**:", "## Incomplete
+# report:", "> **Incomplete report:**", no bold at all), and a missed variant
+# fails quietly: the partial report is cached and exits 0. Anchoring to the
+# start of a line, before any other text, keeps prose that merely uses the
+# words from matching.
 _INCOMPLETE_REPORT_PATTERN = re.compile(
-    r"^[ \t]*" + re.escape(INCOMPLETE_REPORT_MARKER), re.MULTILINE | re.IGNORECASE
+    r"^[ \t>#*_]*incomplete report[*_]*[ \t]*:", re.MULTILINE | re.IGNORECASE
 )
 
 # Appended to every system prompt, the default research prompt or a custom one.
@@ -213,13 +219,12 @@ _INLINE_REPORT_DIRECTIVE = (
     "Retrieve before you write. Use your research tools (web search, web fetch, "
     "and any others you have been given) to find sources first, and cite the "
     "source of each claim inline, with its URL or identifier, as you write it. "
-    "Do not state any "
-    "fact, citation or identifier (PMID, DOI, ontology ID) that you have not "
-    "retrieved in this session. If you cannot retrieve enough to support a "
+    "Do not state any specific factual claim, citation or identifier (PMID, DOI, "
+    "ontology ID) that you have not retrieved in this session. If you cannot retrieve enough to support a "
     "section, say so in that section rather than filling it from memory.\n\n"
     "If you cannot complete the report -- a tool fails, too little can be "
     "retrieved, or you are unable to continue -- you may return a partial report "
-    f"instead of nothing: start it with a line that begins "
+    "instead of nothing: start it with a line that begins "
     f"'{INCOMPLETE_REPORT_MARKER}' followed by a one-sentence reason, then give "
     "the sourced findings you do have. Output only the report itself in Markdown."
 )
@@ -906,9 +911,14 @@ class ClaudeCodeProvider(ResearchProvider):
           whatever the text says was written from memory (issue #102). This
           holds even when the text cites URLs, PMIDs or DOIs: with nothing
           fetched, those came from memory too, and may be hallucinated;
-        - the report opens a line with ``INCOMPLETE_REPORT_MARKER``: the model
-          said, as the directive asks, that it could not finish (issue #103).
-          Its sourced findings are kept, but it is not a finished report;
+        - a line of the report begins with ``INCOMPLETE_REPORT_MARKER``, in any
+          markdown spelling: the model said, as the directive asks, that it
+          could not finish (issue #103). Its sourced findings are kept, but it
+          is not a finished report. Any line counts, so a run that writes the
+          marker and then recovers is still flagged: the conservative way to
+          be wrong. The reason is left in the report rather than copied here,
+          so this string stays a fixed literal and no model text reaches the
+          CLI's stderr through it;
         - refusal phrasing aimed at the report itself, in a text that cites
           nothing (no URL, PMID or DOI): the model declined, typically after an
           output safety classifier stopped its first attempt. A cited source
@@ -947,7 +957,7 @@ class ClaudeCodeProvider(ResearchProvider):
         ...     "Searching.\\n\\n**Incomplete report:** the fetch tool failed.\\n\\nOne finding https://example.org",
         ...     ["https://example.org"], retrieval_calls=2, web_search_requests=1,
         ... )
-        'the model marked the report incomplete; its reason is at the top of the report'
+        "the model marked the report incomplete; its reason is on the line that begins 'Incomplete report:'"
 
         Citations without retrieval are recalled, not researched:
 
@@ -992,7 +1002,10 @@ class ClaudeCodeProvider(ResearchProvider):
                 "cites, was written from memory, not researched"
             )
         if _INCOMPLETE_REPORT_PATTERN.search(markdown):
-            return "the model marked the report incomplete; its reason is at the top of the report"
+            return (
+                "the model marked the report incomplete; its reason is on the line "
+                "that begins 'Incomplete report:'"
+            )
         if citations or _SOURCE_ID_PATTERN.search(markdown):
             return None
         if _REFUSAL_PATTERN.search(markdown):

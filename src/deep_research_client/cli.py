@@ -484,9 +484,13 @@ def _exit_if_unsuccessful(result: ResearchResult) -> None:
     """
     if result.answer_successful is not False:
         return
+    # A provider that has to infer the failure (claude_code, issue #101) says
+    # what it saw; one that is told (falcon) has nothing more to add.
+    reason = (result.run_metadata or {}).get("unsuccessful_reason")
     _warn(
         f"{result.provider} could not answer this question. The output is its "
         f"response, not a finished report (answer_status: unsuccessful)."
+        + (f" Reason: {reason}." if reason else "")
     )
     raise typer.Exit(EXIT_UNSUCCESSFUL_ANSWER)
 

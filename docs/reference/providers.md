@@ -407,11 +407,43 @@ paying for a second one.
 This is an emptiness check, not a quality one — a 250-character *"I was unable to
 find sufficient information on this topic"* passes it cleanly.
 
-Three `run_metadata` fields help diagnose a thin result after the fact:
+### Runs that are not a report
+
+The CLI exits 0 whatever the model wrote, so a run that declined, or answered
+without researching, used to be written out as a clean report (issue #101). The
+provider now marks two shapes as unsuccessful:
+
+- **Nothing retrieved**: no retrieval call and no web search in the whole run,
+  so the text was written from memory. This holds even when the text cites
+  URLs, PMIDs or DOIs: with nothing fetched, those were recalled too, and may
+  be hallucinated. A denied call retrieved nothing, and neither did a
+  bookkeeping or write call (`TodoWrite`, `Write`, `Edit` and similar), so
+  none of them count.
+- **Declined**, in a text that cites no source at all (no URL, PMID or DOI): a
+  refusal aimed at the report itself (*"I'm not going to regenerate that …
+  research narrative"*) or a mention of a *safety classifier*, typically after
+  an output safety classifier stopped the first attempt. A disclaimer such as
+  *"I cannot provide medical advice. This report …"* or *"…recommendations,
+  but this report …"* is not a refusal: the verb and *report* must sit in the
+  same clause, with nothing but spaces between them.
+
+Either way the report is still written, but its frontmatter says
+`answer_status: unsuccessful`, `## Output` opens with a warning,
+`run_metadata.unsuccessful_reason` says which shape it was, the result is not
+cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
+find nothing"). A report from a run that retrieved something and cites even
+one source is never marked: this is a check that the run did research, not a
+judgment of how well.
+
+Five `run_metadata` fields help diagnose a thin result after the fact:
 
 - `assistant_text_blocks` — how many separate assistant messages the report was
   assembled from. More than one is normal for an agentic run; this is provenance
   for how the report was assembled, not a warning sign.
+- `tool_calls` — how many tools the model called, denied ones included.
+- `retrieval_calls` — the calls that could have retrieved something: not denied,
+  not bookkeeping. Zero, with no web search and no cited source, is what marks a
+  run as written from memory.
 - `permission_denials` — how many tool calls were refused.
 - `denied_tools` — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside `allowed_tools` and gave up,

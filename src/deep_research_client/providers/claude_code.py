@@ -208,15 +208,17 @@ _URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
 #
 # A refusal verb counts only when its object, within a few words of the same
 # clause, is the report itself: "I cannot provide a definitive answer" is
-# hedging, and "I cannot provide medical advice. This report ..." is a
-# disclaimer followed by the report, so the gap between verb and noun never
-# crosses . ; : ! ? or a newline. The noun must stand alone, so "research-backed"
-# is a modifier, not the object. Bare "halted by" is not a marker either, since
-# "the outbreak was halted by vector control" is ordinary epidemiology. Both
-# apostrophes, because models write ’.
+# hedging, and "I cannot provide medical advice. This report ..." or "...
+# recommendations, but this report ..." is a disclaimer followed by the report,
+# so the gap between verb and noun is spaces only: never a comma, . ; : ! ? or
+# a newline. Markdown emphasis around a word ("the **report**") is allowed. The
+# noun must stand alone, so "research-backed" is a modifier, not the object.
+# Bare "halted by" is not a marker either, since "the outbreak was halted by
+# vector control" is ordinary epidemiology. Both apostrophes, because models
+# write ’.
 _REFUSAL_TAIL = (
     r" (?:regenerate|reproduce|produce|write|provide)\b"
-    r"(?:[ \t,]+[\w'’-]+){0,5}?[ \t]+"
+    r"(?:[ \t]+[*_]{0,2}[\w'’-]+[*_]{0,2}){0,5}?[ \t]+[*_]{0,2}"
     r"(?:report|narrative|research|write-?up)(?![\w-])"
 )
 _REFUSAL_PATTERN = re.compile(
@@ -233,9 +235,14 @@ _SOURCE_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Tools that organise the agent's own work rather than retrieve anything. A run
-# whose only calls are these has still answered from memory.
-_NON_RETRIEVAL_TOOLS = frozenset({"TodoWrite", "ExitPlanMode"})
+# Tools that organise or save the agent's own work rather than retrieve
+# anything. A run whose only calls are these has still answered from memory.
+# The write tools are reachable only when allowed_tools is widened or
+# skip_permissions is set, but a from-memory answer saved with Write is still
+# from memory.
+_NON_RETRIEVAL_TOOLS = frozenset(
+    {"TodoWrite", "ExitPlanMode", "Write", "Edit", "MultiEdit", "NotebookEdit"}
+)
 
 
 class ParsedStream(NamedTuple):
@@ -855,14 +862,17 @@ class ClaudeCodeProvider(ResearchProvider):
 
         The CLI exits 0 and reports success whatever the model wrote, so a
         refusal or a from-memory answer used to be written out as a valid
-        report (issue #101). Two shapes are recognised, both requiring that the
-        text cites nothing -- no URL, PMID or DOI. A report with even one source
-        is left alone, since judging its quality is not this check's job:
+        report (issue #101). Two shapes are recognised:
 
         - no retrieval call and no web search at all: nothing was retrieved, so
-          whatever the text says was written from memory (issue #102);
-        - refusal phrasing aimed at the report itself: the model declined,
-          typically after an output safety classifier stopped its first attempt.
+          whatever the text says was written from memory (issue #102). This
+          holds even when the text cites URLs, PMIDs or DOIs: with nothing
+          fetched, those came from memory too, and may be hallucinated;
+        - refusal phrasing aimed at the report itself, in a text that cites
+          nothing (no URL, PMID or DOI): the model declined, typically after an
+          output safety classifier stopped its first attempt. A cited source
+          overrides the phrasing, since judging a sourced report's quality is
+          not this check's job.
 
         The text alone cannot prove the model refused, which is why the
         phrasing counts only alongside the missing sources, and why the result
@@ -879,16 +889,23 @@ class ClaudeCodeProvider(ResearchProvider):
             A one-line reason when the text is not a report, otherwise None.
 
         >>> ClaudeCodeProvider._unsuccessful_reason("From memory.", [], 0, 0)
-        'no retrieval calls, web searches or cited sources: the text was written from memory, not researched'
+        'no retrieval calls or web searches: the text, and any sources it cites, was written from memory, not researched'
         >>> ClaudeCodeProvider._unsuccessful_reason(
         ...     "I'm not going to regenerate that narrative.", [], retrieval_calls=3,
         ...     web_search_requests=2,
         ... )
         'the model declined to write the report, and it cites no sources'
         >>> ClaudeCodeProvider._unsuccessful_reason(
-        ...     "Mentions a safety classifier. https://example.org", ["https://example.org"], 0, 0,
+        ...     "Mentions a safety classifier. https://example.org", ["https://example.org"], 1, 0,
         ... ) is None
         True
+
+        Citations without retrieval are recalled, not researched:
+
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "As shown (PMID: 12345678), see https://example.org", ["https://example.org"], 0, 0,
+        ... )
+        'no retrieval calls or web searches: the text, and any sources it cites, was written from memory, not researched'
         >>> ClaudeCodeProvider._unsuccessful_reason("Researched, uncited.", [], 4, 0) is None
         True
 
@@ -906,18 +923,27 @@ class ClaudeCodeProvider(ResearchProvider):
         ... ) is None
         True
         >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "I cannot provide treatment recommendations, but this report summarizes it.",
+        ...     [], retrieval_calls=5, web_search_requests=0,
+        ... ) is None
+        True
+        >>> ClaudeCodeProvider._unsuccessful_reason(
+        ...     "I won't write the **report**.", [], retrieval_calls=1, web_search_requests=0,
+        ... )
+        'the model declined to write the report, and it cites no sources'
+        >>> ClaudeCodeProvider._unsuccessful_reason(
         ...     "Elongation is halted by a safety classifier-like checkpoint (PMID: 12345).",
         ...     [], retrieval_calls=2, web_search_requests=0,
         ... ) is None
         True
         """
-        if citations or _SOURCE_ID_PATTERN.search(markdown):
-            return None
         if retrieval_calls == 0 and web_search_requests == 0:
             return (
-                "no retrieval calls, web searches or cited sources: the text was "
-                "written from memory, not researched"
+                "no retrieval calls or web searches: the text, and any sources it "
+                "cites, was written from memory, not researched"
             )
+        if citations or _SOURCE_ID_PATTERN.search(markdown):
+            return None
         if _REFUSAL_PATTERN.search(markdown):
             return "the model declined to write the report, and it cites no sources"
         return None

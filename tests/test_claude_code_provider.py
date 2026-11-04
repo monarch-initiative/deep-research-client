@@ -612,13 +612,13 @@ LONG_BODY = "The substantive findings, at length. " * 10
         pytest.param(
             [assistant_event(POWASSAN_REFUSAL)],
             {"claude-opus-4-8": {}, "claude-opus-5-5": {}},
-            "no retrieval calls, web searches or cited sources",
+            "no retrieval calls or web searches",
             id="issue-101-refusal-with-no-retrieval",
         ),
         pytest.param(
             [assistant_event(f"# Report\n\n{LONG_BODY}")],
             {},
-            "no retrieval calls, web searches or cited sources",
+            "no retrieval calls or web searches",
             id="from-memory-report-is-not-a-report",
         ),
         pytest.param(
@@ -661,7 +661,9 @@ LONG_BODY = "The substantive findings, at length. " * 10
                 assistant_event(
                     f"# Report\n\n{LONG_BODY} I cannot provide medical advice. This report "
                     "summarizes the literature. I cannot provide clinical advice; this "
-                    "report is informational. I can't provide research-backed dosing."
+                    "report is informational. I can't provide research-backed dosing. "
+                    "I cannot provide treatment recommendations, but this report "
+                    "summarizes the evidence."
                 ),
             ],
             {"claude-opus-5-5": {"webSearchRequests": 1}},
@@ -679,16 +681,43 @@ LONG_BODY = "The substantive findings, at length. " * 10
             ],
             {},
             None,
-            id="control-pmid-and-doi-cited-report",
+            # The refusal-shaped sentence is deliberate: a cited PMID or DOI
+            # overrides refusal phrasing, as a URL does.
+            id="control-pmid-and-doi-override-refusal-phrasing",
         ),
         pytest.param(
             [tool_use_event("TodoWrite"), assistant_event(f"# Report\n\n{LONG_BODY}")],
             {},
-            "no retrieval calls, web searches or cited sources",
+            "no retrieval calls or web searches",
             id="bookkeeping-calls-are-not-retrieval",
         ),
         pytest.param(
-            [assistant_event(f"# Report\n\n{LONG_BODY} A safety classifier https://example.org/x")],
+            [tool_use_event("Write"), assistant_event(f"# Report\n\n{LONG_BODY}")],
+            {},
+            "no retrieval calls or web searches",
+            id="saving-the-answer-is-not-retrieval",
+        ),
+        pytest.param(
+            [assistant_event(
+                f"# Report\n\n{LONG_BODY} (PMID: 12345678) https://example.org/recalled"
+            )],
+            {},
+            "no retrieval calls or web searches",
+            id="citations-without-retrieval-are-recalled",
+        ),
+        pytest.param(
+            [tool_use_event("WebSearch"), assistant_event(
+                f"# Report\n\n{LONG_BODY} I won't write the **full** research narrative."
+            )],
+            {"claude-opus-5-5": {"webSearchRequests": 1}},
+            "the model declined to write the report",
+            id="declined-with-markdown-emphasis",
+        ),
+        pytest.param(
+            [
+                tool_use_event("WebFetch"),
+                assistant_event(f"# Report\n\n{LONG_BODY} A safety classifier https://example.org/x"),
+            ],
             {},
             None,
             id="control-cited-report-mentioning-classifiers",
@@ -715,7 +744,13 @@ async def test_research_marks_a_non_report_unsuccessful(
     else:
         assert result.answer_successful is False
         assert result.run_metadata["unsuccessful_reason"].startswith(expected_reason)
-        assert result.answer_frontmatter() == {"answer_status": "unsuccessful", "citation_count": 0}
+        assert result.answer_frontmatter() == {
+            "answer_status": "unsuccessful",
+            "citation_count": len(result.citations),
+        }
+    if "recalled" in (result.markdown or "") and expected_reason:
+        # Recalled sources are still extracted; they just don't make it a report.
+        assert result.citations == ["https://example.org/recalled"]
     assert result.run_metadata["tool_calls"] == sum(
         1 for event in events if event["message"]["content"][0]["type"] == "tool_use"
     )
@@ -747,7 +782,7 @@ def test_the_cli_exits_4_and_names_the_reason_for_a_refusal(tmp_path):
     )
 
     assert result.exit_code == EXIT_UNSUCCESSFUL_ANSWER, result.output
-    assert "Reason: no retrieval calls, web searches or cited sources" in result.stderr
+    assert "Reason: no retrieval calls or web searches" in result.stderr
     content = output.read_text(encoding="utf-8")
     assert "answer_status: unsuccessful" in content
     assert "> **Warning:** claude_code reported that it could not answer" in content

@@ -1213,6 +1213,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#runs-that-are-not-a-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Runs that are not a report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       Security
@@ -2242,6 +2251,15 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#runs-that-are-not-a-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      Runs that are not a report
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#security" class="md-nav__link">
     <span class="md-ellipsis">
       Security
@@ -3085,11 +3103,41 @@ one-sentence reply is typically under 200 characters. Set
 </code></pre>
 <p>This is an emptiness check, not a quality one — a 250-character <em>"I was unable to
 find sufficient information on this topic"</em> passes it cleanly.</p>
-<p>Three <code>run_metadata</code> fields help diagnose a thin result after the fact:</p>
+<h3 id="runs-that-are-not-a-report">Runs that are not a report</h3>
+<p>The CLI exits 0 whatever the model wrote, so a run that declined, or answered
+without researching, used to be written out as a clean report (issue #101). The
+provider now marks two shapes as unsuccessful:</p>
+<ul>
+<li><strong>Nothing retrieved</strong>: no retrieval call and no web search in the whole run,
+  so the text was written from memory. This holds even when the text cites
+  URLs, PMIDs or DOIs: with nothing fetched, those were recalled too, and may
+  be hallucinated. A denied call retrieved nothing, and neither did a
+  bookkeeping or write call (<code>TodoWrite</code>, <code>Write</code>, <code>Edit</code> and similar), so
+  none of them count.</li>
+<li><strong>Declined</strong>, in a text that cites no source at all (no URL, PMID or DOI): a
+  refusal aimed at the report itself (<em>"I'm not going to regenerate that …
+  research narrative"</em>) or a mention of a <em>safety classifier</em>, typically after
+  an output safety classifier stopped the first attempt. A disclaimer such as
+  <em>"I cannot provide medical advice. This report …"</em> or <em>"…recommendations,
+  but this report …"</em> is not a refusal: the verb and <em>report</em> must sit in the
+  same clause, with nothing but spaces between them.</li>
+</ul>
+<p>Either way the report is still written, but its frontmatter says
+<code>answer_status: unsuccessful</code>, <code>## Output</code> opens with a warning,
+<code>run_metadata.unsuccessful_reason</code> says which shape it was, the result is not
+cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
+find nothing"). A report from a run that retrieved something and cites even
+one source is never marked: this is a check that the run did research, not a
+judgment of how well.</p>
+<p>Five <code>run_metadata</code> fields help diagnose a thin result after the fact:</p>
 <ul>
 <li><code>assistant_text_blocks</code> — how many separate assistant messages the report was
   assembled from. More than one is normal for an agentic run; this is provenance
   for how the report was assembled, not a warning sign.</li>
+<li><code>tool_calls</code> — how many tools the model called, denied ones included.</li>
+<li><code>retrieval_calls</code> — the calls that could have retrieved something: not denied,
+  not bookkeeping. Zero, with no web search and no cited source, is what marks a
+  run as written from memory.</li>
 <li><code>permission_denials</code> — how many tool calls were refused.</li>
 <li><code>denied_tools</code> — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside <code>allowed_tools</code> and gave up,

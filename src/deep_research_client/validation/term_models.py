@@ -199,6 +199,23 @@ class TermValidationReport(GeneratedTermValidationReport):
         return sum(1 for t in self.checked_terms if t.status == TermStatus.UNVERIFIABLE)
 
     @property
+    def not_configured_terms(self) -> List[TermCheck]:
+        """Terms from an ontology the run was not configured with.
+
+        Examples:
+            >>> report = TermValidationReport(terms=[
+            ...     TermCheck(term_id="GO:0006914", prefix="GO", status=TermStatus.NOT_CONFIGURED)])
+            >>> [t.term_id for t in report.not_configured_terms]
+            ['GO:0006914']
+        """
+        return [t for t in self.checked_terms if t.status == TermStatus.NOT_CONFIGURED]
+
+    @property
+    def not_configured_count(self) -> int:
+        """Number of terms from an ontology the run was not configured with."""
+        return len(self.not_configured_terms)
+
+    @property
     def resolvable_count(self) -> int:
         """Number of terms a lookup actually returned an answer about.
 
@@ -392,7 +409,15 @@ class TermValidationReport(GeneratedTermValidationReport):
             ]
         if self.unresolvable_prefixes:
             summary["unresolvable_prefixes"] = list(self.unresolvable_prefixes)
-        if self.has_problems or self.obsolete_terms or self.variant_label_terms:
+        if self.not_configured_terms:
+            summary["not_configured"] = self.not_configured_count
+            summary["not_configured_terms"] = [t.term_id for t in self.not_configured_terms]
+        if (
+            self.has_problems
+            or self.obsolete_terms
+            or self.variant_label_terms
+            or self.not_configured_terms
+        ):
             # Stated rather than implied, so that reading one number off the
             # frontmatter cannot produce a false all-clear.
             summary["needs_review"] = True
@@ -462,6 +487,8 @@ class TermValidationReport(GeneratedTermValidationReport):
         lines.append(f"| Unresolved (possible confabulation) | {self.not_found_count} |")
         lines.append(f"| Obsolete | {self.obsolete_count} |")
         lines.append(f"| Unverifiable | {self.unverifiable_count} |")
+        if self.not_configured_terms:
+            lines.append(f"| Not in the configured ontologies | {self.not_configured_count} |")
         if self.labels_checked:
             # Worded as terms, not labels, because that is what they count: a
             # report naming one identifier three ways contributes one to each.
@@ -568,6 +595,22 @@ class TermValidationReport(GeneratedTermValidationReport):
             for check in self.inconsistently_named_terms:
                 names = ", ".join(f'"{name}"' for name in check.reported_labels or [])
                 lines.append(f"- `{check.term_id}` - called {names}")
+            lines.append("")
+
+        if self.not_configured_terms:
+            lines.append("### Terms from ontologies the report was not asked to use")
+            lines.append("")
+            lines.append(
+                "The report was asked for terms from a fixed set of ontologies, and "
+                "these come from others, so they were not looked up. Nothing here is "
+                "evidence of fabrication; it does mean the report reached outside the "
+                "ontologies it was given:"
+            )
+            lines.append("")
+            for check in self.not_configured_terms:
+                lines.append(
+                    f"- `{check.term_id}` ({self._mentions(check)}){self._reported_as(check)}"
+                )
             lines.append("")
 
         if self.unresolvable_prefixes:

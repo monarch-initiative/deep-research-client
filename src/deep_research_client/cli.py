@@ -15,6 +15,7 @@ from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
     from .evaluation.datamodel import ArmSpec, EvalSet
+    from .ontologies import OntologyConfig
     from .transcript_stats import TranscriptStats
     from .validation import (
         ReferenceValidationReport,
@@ -615,9 +616,17 @@ def _build_reference_validator(
         _error(INSTALL_HINT)
         raise typer.Exit(1)
 
+    email = email or os.getenv("NCBI_EMAIL")
+    if not email:
+        # NCBI answers without one, so this is a request rather than a requirement;
+        # said once per run because validation now runs by default.
+        logger.warning(
+            "NCBI asks for a contact email on Entrez requests: set NCBI_EMAIL or pass "
+            "--validation-email"
+        )
     kwargs: dict = {
         "cache_dir": cache_dir,
-        "email": email or os.getenv("NCBI_EMAIL"),
+        "email": email,
         "fetch_full_text": full_text,
         "max_references": max_references,
         "skip_prefixes": list(skip_prefix or []),
@@ -636,6 +645,7 @@ def _build_term_validator(
     max_terms: Optional[int],
     skip_prefix: Optional[List[str]] = None,
     check_labels: bool = True,
+    ontologies: Optional["OntologyConfig"] = None,
 ) -> "TermValidator":
     """Build a TermValidator, exiting with a hint if the extra is missing."""
     from .validation import DEFAULT_ADAPTER, TERM_INSTALL_HINT, TermValidator, term_validator_is_available
@@ -652,6 +662,7 @@ def _build_term_validator(
         max_terms=max_terms,
         skip_prefixes=list(skip_prefix or []),
         check_labels=check_labels,
+        ontologies=ontologies,
     )
 
 
@@ -846,9 +857,9 @@ def research(
         "--contributor", help="Contributor to the research (can be used multiple times)")] = None,
     # Reference validation options
     validate_references: Annotated[bool, typer.Option(
-        "--validate-references", help="Resolve every cited identifier and append a validation section (requires the 'validation' extra)")] = False,
+        "--validate-references/--no-validate-references", help="Resolve every cited identifier, check quotes attributed to it, and append a validation section (on by default)")] = True,
     validation_cache_dir: Annotated[Optional[Path], typer.Option(
-        "--validation-cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+        "--validation-cache-dir", help="Directory for cached reference lookups (default: ~/.deep_research_cache/references)")] = None,
     validation_email: Annotated[Optional[str], typer.Option(
         "--validation-email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
     validation_full_text: Annotated[bool, typer.Option(
@@ -861,7 +872,9 @@ def research(
         "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
     validation_relevance: Annotated[bool, typer.Option(
         "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
-    # Ontology term validation options
+    # Ontology term options
+    ontology_config: Annotated[Optional[Path], typer.Option(
+        "--ontology-config", exists=True, dir_okay=False, help="OAK-style YAML whose 'ontology_adapters' keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses --term-adapter). Asks the provider for CURIEs from those ontologies only, and validates them, reporting terms from any other ontology as not configured. Implies --validate-terms (requires the 'terms' extra)")] = None,
     validate_terms: Annotated[bool, typer.Option(
         "--validate-terms", help="Resolve every cited ontology CURIE, check it against the label the report gave it, and append a validation section (requires the 'terms' extra)")] = False,
     term_adapter: Annotated[Optional[str], typer.Option(
@@ -1147,7 +1160,20 @@ def research(
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
-                _warn(f"{flag_name} has no effect without --validate-references")
+                _warn(f"{flag_name} has no effect with --no-validate-references")
+
+    ontologies = None
+    if ontology_config is not None:
+        from .ontologies import OntologyConfig
+
+        try:
+            ontologies = OntologyConfig.from_file(ontology_config)
+        except ValueError as exc:
+            _error(str(exc))
+            raise typer.Exit(1)
+        if term_oak_config is not None:
+            _warn("--term-oak-config is ignored with --ontology-config, which says how each ontology is looked up")
+        validate_terms = True
 
     if not validate_terms:
         unused_term_flags: tuple[tuple[str, object, object], ...] = (
@@ -1161,12 +1187,12 @@ def research(
         )
         for flag_name, flag_value, default in unused_term_flags:
             if flag_value != default:
-                _warn(f"{flag_name} has no effect without --validate-terms")
+                _warn(f"{flag_name} has no effect without --validate-terms or --ontology-config")
 
     if not validate_references and not validate_terms and fail_on_unresolved:
         _warn(
-            "--fail-on-unresolved has no effect without --validate-references "
-            "or --validate-terms"
+            "--fail-on-unresolved has no effect with --no-validate-references "
+            "and no term validation"
         )
 
     # Checked before the provider call: discovering a missing extra after a run
@@ -1198,6 +1224,7 @@ def research(
             provider_params,
             metadata,
             fallback_request,
+            ontologies,
         )
 
         # Show cache status
@@ -1307,6 +1334,7 @@ def research(
     # succeeded; losing a report that cost minutes and real money to an NCBI
     # outage would be a poor trade for a citation check.
     validation_report = None
+    validation_failed = False
     if validate_references:
         reference_validator = _build_reference_validator(
             cache_dir=validation_cache_dir,
@@ -1326,9 +1354,9 @@ def research(
             # as a filesystem error.
             _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
-            raise typer.Exit(3)
-
-        _echo_validation_summary(validation_report)
+            validation_failed = True
+        else:
+            _echo_validation_summary(validation_report)
 
     term_report = None
     if validate_terms:
@@ -1340,6 +1368,7 @@ def research(
             max_terms=term_max_terms,
             skip_prefix=term_skip_prefix,
             check_labels=term_labels,
+            ontologies=ontologies,
         )
         logger.info("Validating ontology terms...")
         from .validation import lookup_error_types
@@ -1351,9 +1380,14 @@ def research(
             # costs the term section, not the research.
             _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
-            raise typer.Exit(3)
+            validation_failed = True
+        else:
+            _echo_term_validation_summary(term_report)
 
-        _echo_term_validation_summary(term_report)
+    # A validator that failed costs its own section, not the other's: each one
+    # that succeeded is still written, and the run exits 3 afterwards.
+    if validation_report is None and term_report is None:
+        raise typer.Exit(3)
 
     validated_content = processor.format_research_result(
         result,
@@ -1377,6 +1411,8 @@ def research(
                 typer.echo("\n" + "=" * 60)
                 typer.echo(report.to_markdown())
 
+    if validation_failed:
+        raise typer.Exit(3)
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:
@@ -1549,6 +1585,8 @@ def validate_terms_command(
         "--adapter", help="OAK adapter to resolve terms through (default: ols:; use sqlite:obo: to download each ontology once and answer locally)")] = None,
     oak_config: Annotated[Optional[Path], typer.Option(
         "--oak-config", help="oak_config.yaml mapping prefixes to adapters, for ontologies the default adapter does not serve")] = None,
+    ontology_config: Annotated[Optional[Path], typer.Option(
+        "--ontology-config", exists=True, dir_okay=False, help="Ontology config the report was researched with (see research --ontology-config): check only its ontologies, through its adapters, and report terms from any other ontology as not configured. Replaces --oak-config")] = None,
     cache_dir: Annotated[Optional[Path], typer.Option(
         "--cache-dir", help="Directory for cached term labels (default: ./terms_cache)")] = None,
     offline: Annotated[bool, typer.Option(
@@ -1614,6 +1652,18 @@ def validate_terms_command(
             _error(f"File not found: {path}")
         raise typer.Exit(1)
 
+    ontologies = None
+    if ontology_config is not None:
+        from .ontologies import OntologyConfig
+
+        try:
+            ontologies = OntologyConfig.from_file(ontology_config)
+        except ValueError as exc:
+            _error(str(exc))
+            raise typer.Exit(1)
+        if oak_config is not None:
+            _warn("--oak-config is ignored with --ontology-config, which says how each ontology is looked up")
+
     validator = _build_term_validator(
         adapter=adapter,
         cache_dir=cache_dir,
@@ -1622,6 +1672,7 @@ def validate_terms_command(
         max_terms=max_terms,
         skip_prefix=skip_prefix,
         check_labels=check_labels,
+        ontologies=ontologies,
     )
     lookup_errors = (OSError, ValueError) + lookup_error_types()
 

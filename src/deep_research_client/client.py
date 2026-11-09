@@ -23,6 +23,7 @@ from .models import (
     CacheConfig,
     QueryMetadata,
 )
+from .ontologies import OntologyConfig
 from .providers import ProviderRegistry, ResearchProvider
 from .provider_params import BaseProviderParams, create_provider_params
 
@@ -37,6 +38,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "claude_managed": ("deep_research_client.providers.claude_managed", "ClaudeManagedProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
@@ -244,6 +246,17 @@ class DeepResearchClient:
                 timeout=1800,  # 30 minutes for long-running agentic research
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
+
+        # Claude Managed Agents - runs the deep-research workflow in an
+        # Anthropic-hosted sandbox, billed to the Anthropic API key.
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key:
+            config = ProviderConfig(
+                name="claude_managed",
+                api_key=anthropic_key,
+                enabled=True,
+            )
+            self.registry.register(self._create_provider("claude_managed", config))
 
         # DeepER-Med is a stub with no upstream endpoint. It is registered
         # unconditionally and needs no credentials: is_available() is always False,
@@ -759,6 +772,7 @@ class DeepResearchClient:
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
+        ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Perform research on the given query.
 
@@ -775,6 +789,10 @@ class DeepResearchClient:
                 order, excluding providers that do not do real research. A
                 list -- or a bare string, for one -- names them explicitly, in
                 preference order, and replaces the automatic ordering.
+            ontologies: Ontologies the report should cite terms from. Their
+                prefixes are named in a section appended to the query, which
+                asks for CURIEs from those ontologies only. None (the default)
+                asks for no ontology terms.
 
         Returns:
             ResearchResult with markdown content and citations
@@ -795,6 +813,7 @@ class DeepResearchClient:
                 provider_params,
                 metadata,
                 fallback,
+                ontologies,
             )
         )
 
@@ -807,6 +826,7 @@ class DeepResearchClient:
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
+        ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Async version of research method.
 
@@ -823,6 +843,12 @@ class DeepResearchClient:
         """
         start_time = datetime.now()
         start_timestamp = time.time()
+
+        if ontologies is not None:
+            # Part of the query, so it is part of the cache key and of the
+            # recorded question: a report is cached and shown with what it was
+            # actually asked.
+            query = f"{query}\n\n{ontologies.prompt_section()}"
 
         candidates = self._fallback_candidates(provider, fallback)
         failed: list[ProviderAttempt] = []

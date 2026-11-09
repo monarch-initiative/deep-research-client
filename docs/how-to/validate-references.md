@@ -22,20 +22,11 @@ Three things are checked:
    passes an existence check without complaint. See
    [topical relevance](#topical-relevance).
 
-## Install
+## Setup
 
-Reference validation pulls in bibliographic tooling that most users do not need, so it is
-an optional extra:
-
-```bash
-pip install "deep_research_client[validation]"
-```
-
-Or, in a uv project:
-
-```bash
-uv add "deep_research_client[validation]"
-```
+Reference validation is part of the base install and runs on every `research` call; pass
+`--no-validate-references` to skip it. (The `validation` extra still exists, so existing
+`deep_research_client[validation]` installs keep working, but it adds nothing now.)
 
 NCBI asks for a contact address on Entrez requests. Set it once:
 
@@ -93,10 +84,10 @@ keeps everything.
 
 ## Validate as part of the research run
 
+This happens by default:
+
 ```bash
-deep-research-client research "Statins and myopathy risk" \
-  --output statins.md \
-  --validate-references
+deep-research-client research "Statins and myopathy risk" --output statins.md
 ```
 
 The saved report gains both a `## Reference Validation` section and a frontmatter summary:
@@ -206,8 +197,8 @@ is reported rather than what is fetched, and the run it would speed up is alread
 | `--rate-limit-delay 2` | 44.3s |
 | `--full-text` | 354.5s |
 
-- **Cache, above all.** Fetched references are written to `./references_cache` by default
-  and reused on later runs. Point `--cache-dir` at a shared directory - or commit it - to
+- **Cache, above all.** Fetched references are written to `~/.deep_research_cache/references`
+  by default and reused on later runs. Point `--cache-dir` at a shared directory - or commit it - to
   make repeated validation across a corpus nearly free. This is worth more than every other
   option combined. Two caveats: PMC accessions still need one request to NCBI's ID
   converter on every run, which is not cached, so a warm run is fast but not offline; and a
@@ -241,7 +232,7 @@ is reported rather than what is fetched, and the run it would speed up is alread
   not want the extra section.
 
 Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven minutes on
-a cold cache, against under three for a hundred PMIDs. Validating as part of `research --validate-references` adds that time to a run
+a cold cache, against under three for a hundred PMIDs. Validating as part of `research` adds that time to a run
 that is already slow; validating afterwards with `validate-references` lets you do it once
 across a whole corpus against a shared cache.
 

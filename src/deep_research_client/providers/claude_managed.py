@@ -352,6 +352,12 @@ def read_trail(events: List[dict], after_event_id: Optional[str] = None) -> Sess
     True
     >>> read_trail([{"type": "session.status_idle", "stop_reason": {"type": "budget_reached"}}]).stop_reason
     'budget_reached'
+    >>> capped = {"type": "session.thread_status_idle", "session_thread_id": "sthr_1",
+    ...           "stop_reason": {"type": "budget_reached"}}
+    >>> start = {"type": "session.thread_status_running", "session_thread_id": "sthr_1"}
+    >>> trail = read_trail([start, verdict, capped])
+    >>> (trail.finished, trail.stop_reason)
+    (True, 'budget_reached')
     >>> refused = {"type": "session.status_idle", "stop_reason": {"type": "end_turn"},
     ...            "stop_details": {"type": "refusal", "category": "bio"}}
     >>> trail = read_trail([refused])
@@ -361,8 +367,21 @@ def read_trail(events: List[dict], after_event_id: Optional[str] = None) -> Sess
     trail = SessionTrail()
     status: Optional[dict] = None
     status_index = outcome_index = repair_index = -1
+    primary_thread: Optional[str] = None
     for index, event in enumerate(events):
         kind = event["type"]
+        if kind == "session.thread_status_running" and primary_thread is None:
+            # The first thread to run is the session's primary thread.
+            primary_thread = event.get("session_thread_id")
+        if (
+            kind in ("session.thread_status_idle", "session.thread_status_terminated")
+            and event.get("session_thread_id") == primary_thread
+        ):
+            # The primary thread's status is the session's. The platform does not
+            # always emit the session-level event as well: a session that hit its
+            # cost cap went idle with only this one recorded.
+            kind = kind.replace("thread_status_", "status_")
+            event = {**event, "type": kind}
         if after_event_id is not None and event.get("id") == after_event_id:
             repair_index, trail.repair_started_at = index, event["processed_at"]
         if kind == "agent.message":
@@ -518,7 +537,9 @@ def unsuccessful_reason(trail: SessionTrail) -> Optional[str]:
     >>> unsuccessful_reason(SessionTrail(stop_reason="end_turn", outcome=verdict)) is None
     True
     """
-    if trail.stop_reason == "budget_reached":
+    if trail.stop_reason == "budget_reached" and trail.outcome_result != "satisfied":
+        # Checked against the verdict: a session can reach its cap just after
+        # the grader is satisfied, and that report is finished.
         return "the session reached its cost cap (max_cost_usd) before the grader was satisfied"
     if trail.stop_reason == "refusal":
         category = f" ({trail.refusal_category})" if trail.refusal_category else ""
@@ -893,8 +914,8 @@ class ClaudeManagedProvider(ResearchProvider):
 
         Raises:
             ProviderError: If the session stopped in a way that leaves nothing
-                to collect (see :func:`session_failure`).
-            TimeoutError: If the session does not settle after an interrupt.
+                to collect (see :func:`session_failure`), or did not settle
+                after an interrupt.
         """
         from anthropic import APIConnectionError
 
@@ -920,9 +941,13 @@ class ClaudeManagedProvider(ResearchProvider):
                 logger.warning("Lost contact with session %s (%s); will retry", session_id, exc)
             if time.monotonic() > deadline:
                 if interrupted:
-                    raise TimeoutError(
-                        f"Claude Managed Agents session {session_id} did not settle "
-                        f"{_INTERRUPT_GRACE_SECONDS}s after being interrupted"
+                    # Not TimeoutError: that is an OSError, which the CLI reports
+                    # as a filesystem problem.
+                    raise ProviderError(
+                        self.name,
+                        f"session {session_id} did not settle {_INTERRUPT_GRACE_SECONDS}s "
+                        f"after being interrupted; collect it later with "
+                        f"--param session_id={session_id}",
                     )
                 logger.warning(
                     "Session %s still running after %ss; interrupting it", session_id, self.timeout

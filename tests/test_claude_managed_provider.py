@@ -109,6 +109,40 @@ def test_read_trail_decides_when_the_run_is_over(events, finished, stop_reason):
     assert trail.stop_reason == stop_reason
 
 
+PRIMARY = {"type": "session.thread_status_running", "session_thread_id": "sthr_primary"}
+CHILD_RUNNING = {"type": "session.thread_status_running", "session_thread_id": "sthr_child"}
+
+
+def thread_idle(thread: str, stop: str = "end_turn") -> dict:
+    """A session.thread_status_idle event for one thread."""
+    return {"type": "session.thread_status_idle", "session_thread_id": thread, "stop_reason": {"type": stop}}
+
+
+@pytest.mark.parametrize(
+    "events,finished,stop_reason",
+    [
+        # A real Marfan session hit its cap just after the grader was satisfied,
+        # and only the primary thread's idle was recorded.
+        ([PRIMARY, CHILD_RUNNING, verdict("satisfied"), thread_idle("sthr_primary", "budget_reached")],
+         True, "budget_reached"),
+        # A retriever thread going idle says nothing about the session.
+        ([PRIMARY, CHILD_RUNNING, thread_idle("sthr_child")], False, None),
+        ([PRIMARY, verdict("satisfied"), thread_idle("sthr_primary")], True, "end_turn"),
+    ],
+)
+def test_the_primary_threads_status_stands_in_for_a_missing_session_status(events, finished, stop_reason):
+    """The session-level idle is not always emitted; the primary thread's always is."""
+    trail = read_trail(events)
+    assert (trail.finished, trail.stop_reason) == (finished, stop_reason)
+
+
+def test_a_cap_reached_after_the_grader_is_satisfied_is_a_finished_report():
+    """The verdict came first, so the report is done; the cap only stopped what followed."""
+    trail = read_trail([PRIMARY, verdict("satisfied"), thread_idle("sthr_primary", "budget_reached")])
+    assert unsuccessful_reason(trail) is None
+    assert can_repair(trail) is False
+
+
 def test_read_trail_collects_messages_tools_and_errors():
     """Text blocks are joined per message; redacted blocks and empty messages are dropped."""
     events = [

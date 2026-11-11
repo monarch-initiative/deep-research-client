@@ -46,6 +46,8 @@ from deep_research_client.providers.claude_managed import (
     render_task,
     repair_message,
     retriever_definition,
+    WRITER_PROMPT_FILE,
+    writer_definition,
     session_failure,
     session_title,
     unsuccessful_reason,
@@ -321,7 +323,7 @@ def test_unsuccessful_reason_flags_runs_that_are_not_a_finished_report(stop_reas
 
 def test_coordinator_hands_fan_out_only_to_the_retriever():
     """Inline agents would run on the coordinator's model, so only the retriever is allowed."""
-    definition = coordinator_definition("claude-opus-5-5", "Custom prompt.", [], "agent_retriever")
+    definition = coordinator_definition("claude-opus-5-5", "Custom prompt.", [], ["agent_retriever", "agent_writer"])
 
     assert definition["model"] == "claude-opus-5-5"
     assert definition["system"].startswith("Custom prompt.")
@@ -332,7 +334,10 @@ def test_coordinator_hands_fan_out_only_to_the_retriever():
         "workflows": {
             "type": "enabled",
             "inline_agents": {"type": "disabled"},
-            "predefined_agents": [{"type": "agent", "id": "agent_retriever"}],
+            "predefined_agents": [
+                {"type": "agent", "id": "agent_retriever"},
+                {"type": "agent", "id": "agent_writer"},
+            ],
         },
     }
 
@@ -346,9 +351,19 @@ def test_retriever_runs_on_its_own_model_with_its_own_prompt():
     assert definition["system"] == RETRIEVER_PROMPT_FILE.read_text(encoding="utf-8")
 
 
+def test_the_writer_writes_one_section_on_its_own_model():
+    """Section writers keep any one context from holding every source."""
+    definition = writer_definition("claude-sonnet-5-5", [])
+
+    assert definition["model"] == "claude-sonnet-5-5"
+    assert "multiagent" not in definition
+    assert definition["system"] == WRITER_PROMPT_FILE.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize("make", [
     lambda domains: retriever_definition("m", domains),
-    lambda domains: coordinator_definition("m", "p", domains, "agent_1"),
+    lambda domains: coordinator_definition("m", "p", domains, ["agent_1"]),
+    lambda domains: writer_definition("m", domains),
 ])
 def test_both_agents_limit_both_web_tools_to_allowed_domains(make):
     """allowed_domains is the harmonized parameter; it restricts search and fetch alike."""
@@ -371,8 +386,9 @@ def test_environment_definition_lets_package_managers_through_limited_networking
     "first,second",
     [
         (retriever_definition("claude-haiku-5-5", []), retriever_definition("claude-sonnet-5-5", [])),
-        (coordinator_definition("m", "p", [], "agent_1"), coordinator_definition("m", "p", [], "agent_2")),
-        (coordinator_definition("m", "p", [], "a"), coordinator_definition("m", "other prompt", [], "a")),
+        (coordinator_definition("m", "p", [], ["agent_1"]), coordinator_definition("m", "p", [], ["agent_2"])),
+        (coordinator_definition("m", "p", [], ["a"]), coordinator_definition("m", "other prompt", [], ["a"])),
+        (writer_definition("claude-sonnet-5-5", []), writer_definition("claude-opus-5-5", [])),
         (environment_definition([]), environment_definition(["europepmc.org"])),
     ],
 )
@@ -398,6 +414,21 @@ def test_session_title_from_a_rendered_template_has_no_control_characters():
     assert len(title) <= len("deep-research-client: ") + 100
 
 
+def test_a_changed_prompt_or_rubric_misses_the_result_cache(tmp_path):
+    """A cache hit served a report made with old prompts after the prompts changed."""
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.providers.claude_managed import prompt_fingerprint
+
+    rubric = tmp_path / "rubric.md"
+    rubric.write_text("first rubric", encoding="utf-8")
+    before = prompt_fingerprint(rubric_file=str(rubric))
+    rubric.write_text("second rubric", encoding="utf-8")
+
+    assert prompt_fingerprint(rubric_file=str(rubric)) != before
+    key_params = DeepResearchClient._get_cache_provider_params("claude_managed", {"rubric_file": str(rubric)})
+    assert key_params["_prompt_fingerprint"] == prompt_fingerprint(rubric_file=str(rubric))
+
+
 def test_render_task_uses_a_custom_template(tmp_path):
     """The task template is a parameter, with the question as its only variable."""
     template = tmp_path / "task.md"
@@ -408,7 +439,7 @@ def test_render_task_uses_a_custom_template(tmp_path):
 
 def test_bundled_prompts_and_rubric_ship_with_the_package():
     """All four are read at run time, so a packaging slip would fail every run."""
-    for path in (DEFAULT_TASK_FILE, COORDINATOR_PROMPT_FILE, RETRIEVER_PROMPT_FILE):
+    for path in (DEFAULT_TASK_FILE, COORDINATOR_PROMPT_FILE, RETRIEVER_PROMPT_FILE, WRITER_PROMPT_FILE):
         assert path.is_file()
     rubric = DEFAULT_RUBRIC_FILE.read_text(encoding="utf-8")
     assert "evidence file" in rubric and "supports the sentence" in rubric

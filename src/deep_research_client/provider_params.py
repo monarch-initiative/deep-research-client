@@ -616,6 +616,14 @@ class ClaudeManagedParams(ArtifactSelectionParams):
             "Most of a run's tokens are theirs, so a small model keeps it cheap"
         )
     )
+    writer_model: str = Field(
+        default="claude-sonnet-5-5",
+        min_length=1,
+        description=(
+            "Model for the section writers, each of which writes one report section "
+            "from the findings cards for it, so no single context holds every source"
+        )
+    )
     task_file: Optional[str] = Field(
         default=None,
         description=(

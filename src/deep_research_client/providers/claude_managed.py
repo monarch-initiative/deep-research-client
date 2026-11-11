@@ -96,6 +96,7 @@ DEFAULT_TASK_FILE = _WORKFLOWS_DIR / "managed-task.md"
 DEFAULT_RUBRIC_FILE = _WORKFLOWS_DIR / "managed-rubric.md"
 COORDINATOR_PROMPT_FILE = _WORKFLOWS_DIR / "managed-coordinator.md"
 RETRIEVER_PROMPT_FILE = _WORKFLOWS_DIR / "managed-retriever.md"
+WRITER_PROMPT_FILE = _WORKFLOWS_DIR / "managed-writer.md"
 
 #: Output files can appear a few seconds after the session goes idle, so the
 #: listing is retried this many times, this many seconds apart.
@@ -180,27 +181,50 @@ def retriever_definition(model: str, allowed_domains: List[str]) -> dict:
     }
 
 
-def coordinator_definition(
-    model: str, system_prompt: str, allowed_domains: List[str], retriever_id: str
-) -> dict:
-    """Build the coordinator agent, which plans, fans out retrievers, and writes.
-
-    Dynamic workflows are on, with the retriever as the only agent a workflow
-    may use, so every fanned-out agent runs on the retriever's model. Inline
-    agents (which would run on the coordinator's model) and subagents are off.
+def writer_definition(model: str, allowed_domains: List[str]) -> dict:
+    """Build the section writer, which writes one report section from findings cards.
 
     Args:
-        model: Claude model ID for planning and synthesis.
-        system_prompt: Research system prompt, before the coordinator's phases.
-        allowed_domains: Domains web search and web fetch are limited to.
-        retriever_id: ID of the retriever agent.
+        model: Claude model ID for writing.
+        allowed_domains: Domains web search and web fetch are limited to; the
+            writer is told not to search, but shares the toolset.
 
     Returns:
         Keyword arguments for ``beta.agents.create``, without the name.
 
-    >>> workflows = coordinator_definition("claude-opus-5-5", "p", [], "agent_1")["multiagent"]["workflows"]
+    >>> writer_definition("claude-sonnet-5-5", [])["model"]
+    'claude-sonnet-5-5'
+    """
+    return {
+        "model": model,
+        "description": "Writes one or more sections of the report from the findings cards it is given.",
+        "system": WRITER_PROMPT_FILE.read_text(encoding="utf-8"),
+        "tools": [toolset(allowed_domains)],
+    }
+
+
+def coordinator_definition(
+    model: str, system_prompt: str, allowed_domains: List[str], agent_ids: List[str]
+) -> dict:
+    """Build the coordinator agent, which plans, fans out retrievers and writers, and assembles.
+
+    Dynamic workflows are on, with the retriever and the writer as the only
+    agents a workflow may use, so every fanned-out agent runs on its own model.
+    Inline agents (which would run on the coordinator's model) and subagents
+    are off.
+
+    Args:
+        model: Claude model ID for planning and assembly.
+        system_prompt: Research system prompt, before the coordinator's phases.
+        allowed_domains: Domains web search and web fetch are limited to.
+        agent_ids: IDs of the agents a workflow may use (retriever, writer).
+
+    Returns:
+        Keyword arguments for ``beta.agents.create``, without the name.
+
+    >>> workflows = coordinator_definition("claude-opus-5-5", "p", [], ["agent_1", "agent_2"])["multiagent"]["workflows"]
     >>> workflows["predefined_agents"], workflows["inline_agents"]
-    ([{'type': 'agent', 'id': 'agent_1'}], {'type': 'disabled'})
+    ([{'type': 'agent', 'id': 'agent_1'}, {'type': 'agent', 'id': 'agent_2'}], {'type': 'disabled'})
     """
     coordinator_prompt = COORDINATOR_PROMPT_FILE.read_text(encoding="utf-8")
     return {
@@ -213,7 +237,7 @@ def coordinator_definition(
             "workflows": {
                 "type": "enabled",
                 "inline_agents": {"type": "disabled"},
-                "predefined_agents": [{"type": "agent", "id": retriever_id}],
+                "predefined_agents": [{"type": "agent", "id": agent_id} for agent_id in agent_ids],
             },
         },
     }
@@ -268,6 +292,35 @@ def session_title(query: str, limit: int = 100) -> str:
     one_line = " ".join(query.split())
     printable = "".join(ch for ch in one_line if unicodedata.category(ch) not in ("Cc", "Cf"))
     return f"{RESOURCE_PREFIX}: {printable[:limit]}"
+
+
+def prompt_fingerprint(task_file: Optional[str] = None, rubric_file: Optional[str] = None) -> str:
+    """Hash the prompts and rubric a run would use, for the result cache key.
+
+    Editing a bundled prompt changes what a run produces without changing any
+    parameter, so a cached report made with the old prompts must not be served.
+
+    Args:
+        task_file: The task template parameter, or None for the bundled one.
+        rubric_file: The rubric parameter, or None for the bundled one.
+
+    Returns:
+        A short hex digest of the files' contents.
+
+    >>> prompt_fingerprint() == prompt_fingerprint()
+    True
+    """
+    files = [
+        Path(task_file or DEFAULT_TASK_FILE),
+        Path(rubric_file or DEFAULT_RUBRIC_FILE),
+        COORDINATOR_PROMPT_FILE,
+        RETRIEVER_PROMPT_FILE,
+        WRITER_PROMPT_FILE,
+    ]
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def render_task(task_file: Path, query: str) -> str:
@@ -650,13 +703,14 @@ def missing_report_message(session_id: str, trail: SessionTrail, outputs: List[s
     )
 
 
-def run_metadata_for(session: Any, trail: SessionTrail, retriever_model: str) -> dict:
+def run_metadata_for(session: Any, trail: SessionTrail, retriever_model: str, writer_model: str) -> dict:
     """Provenance for the result: the session, the grader's verdict, and usage.
 
     Args:
         session: The retrieved session.
         trail: The finished trail.
         retriever_model: Model the retrievers ran on.
+        writer_model: Model the section writers ran on.
 
     Returns:
         A JSON-serialisable dict. Usage covers the whole session, retrievers
@@ -668,6 +722,7 @@ def run_metadata_for(session: Any, trail: SessionTrail, retriever_model: str) ->
         "agent_version": session.agent.version,
         "environment_id": session.environment_id,
         "retriever_model": retriever_model,
+        "writer_model": writer_model,
         "stop_reason": trail.stop_reason,
         "outcome_result": trail.outcome_result,
         "workflow_runs": trail.workflow_runs,
@@ -802,7 +857,7 @@ class ClaudeManagedProvider(ResearchProvider):
         finally:
             await client.close()
 
-        run_metadata = run_metadata_for(session, trail, self.params.retriever_model)
+        run_metadata = run_metadata_for(session, trail, self.params.retriever_model, self.params.writer_model)
         run_metadata["evidence_check"] = evidence_check.model_dump()
         run_metadata["repair_rounds"] = len(repair_history)
         if repair_history:
@@ -864,10 +919,13 @@ class ClaudeManagedProvider(ResearchProvider):
         retriever_id = await self._ensure(
             client.beta.agents, retriever_definition(self.params.retriever_model, domains)
         )
+        writer_id = await self._ensure(
+            client.beta.agents, writer_definition(self.params.writer_model, domains)
+        )
         system_prompt = self.params.system_prompt or DEFAULT_RESEARCH_SYSTEM_PROMPT
         agent_id = await self._ensure(
             client.beta.agents,
-            coordinator_definition(self.model, system_prompt, domains, retriever_id),
+            coordinator_definition(self.model, system_prompt, domains, [retriever_id, writer_id]),
         )
         environment_id = await self._ensure(
             client.beta.environments, environment_definition(self.params.allowed_hosts)

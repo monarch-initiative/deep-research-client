@@ -476,6 +476,15 @@ class DeepResearchClient:
         # stale cache entries from shadowing current live results.
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
+        # The team's prompts and rubric decide what a claude_managed run
+        # produces, and they change without any parameter changing, so their
+        # content is part of the key.
+        elif provider_name == "claude_managed":
+            from .providers.claude_managed import prompt_fingerprint
+
+            effective_params["_prompt_fingerprint"] = prompt_fingerprint(
+                effective_params.get("task_file"), effective_params.get("rubric_file")
+            )
         elif provider_name == "tooluniverse":
             effective_params = create_provider_params(
                 provider_name, provider_params=provider_params,

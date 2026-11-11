@@ -8,8 +8,9 @@ as retrieved.
 
 ## Evidence
 
-- Every evidence file has the frontmatter fields, and its body is source text,
-  not a summary written by the agent.
+- Each evidence file's body is source text, not a summary written by the
+  agent. Missing or inconsistent frontmatter fields (`key`, `content`) are not
+  a reason to ask for revision: the file name stands in for a missing key.
 - Identifiers in an evidence file are consistent with its body and
   `source_url` (for example, a PubMed URL whose PMID matches).
 
@@ -53,6 +54,11 @@ as retrieved.
   identifier, a full citation and its evidence file.
 
 ## Coverage
+
+- Sample at least ten evidence files across the sub-questions and their
+  findings cards (`<key>.findings.md`). Any specific finding there that matters
+  to the research question (a number, a named model or variant, a negative or
+  contrary result) and is missing from the report is a gap: name it.
 
 - Each sub-question in `PLAN.md` is answered in the report or explicitly set
   aside as not covered, with the reason.

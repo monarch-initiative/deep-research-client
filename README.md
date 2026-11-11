@@ -81,7 +81,7 @@ pip install deep-research-client[cyberian]
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
 
-# For Claude Managed Agents (a coordinator and retriever team in an Anthropic-hosted sandbox)
+# For Claude Managed Agents (a coordinator, retriever and writer team in an Anthropic-hosted sandbox)
 export ANTHROPIC_API_KEY="sk-ant-..."
 
 # For Biomni (biomedical co-scientist), first provision an upstream Biomni
@@ -479,7 +479,7 @@ result = client.research(
 
 #### Claude Managed Agents-Specific Parameters (Hosted Sandbox)
 
-This provider runs a research team in an Anthropic-hosted sandbox through [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). A coordinator (Opus) plans the review and fans sub-questions out to retriever agents (Haiku), which save each source's text verbatim as an evidence file. The coordinator writes the report from that evidence, citing by identifier (`PMID:5568449`) and quoting it word for word. A separate grader checks that citations support their sentences and sends the team back until a rubric is met.
+This provider runs a research team in an Anthropic-hosted sandbox through [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). A coordinator (Opus) plans the review and fans sub-questions out to retriever agents (Haiku), which save each source's text verbatim as an evidence file plus a findings card of quoted findings. Section writers (Sonnet) write the report from the cards, citing by identifier (`PMID:5568449`) and quoting word for word, and the coordinator assembles it. A separate grader checks that citations support their sentences and sends the team back until a rubric is met.
 
 ```python
 from deep_research_client.provider_params import ClaudeManagedParams
@@ -487,6 +487,7 @@ from deep_research_client.provider_params import ClaudeManagedParams
 params = ClaudeManagedParams(
     model="opus",                        # coordinator; or "sonnet", or any Claude model ID
     retriever_model="claude-haiku-5-5",  # retrievers, which do most of the reading
+    writer_model="claude-sonnet-5-5",    # section writers
     max_iterations=5,                    # grader revision cycles, 1-20
     max_cost_usd=20.0,                   # hard per-session cap; None removes it
 )

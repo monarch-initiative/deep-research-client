@@ -556,11 +556,16 @@ in the session.
 2. **Retrieve.** The coordinator starts a
    [workflow run](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration#dynamic-workflows)
    that gives each sub-question to its own retriever agent (Haiku 5.5 by
-   default). Each retriever saves every source it finds as an *evidence file*
-   in `citations/`, holding the source's text verbatim, and returns a short
-   digest. A second, smaller run fills gaps.
-3. **Write.** The coordinator writes `REPORT.md` from the evidence, citing by
-   identifier and quoting the evidence word for word.
+   default). Each retriever saves up to four sources, each as an *evidence
+   file* in `citations/` holding the source's text verbatim, plus a *findings
+   card* (`<key>.findings.md`): one terse line per finding, each with a
+   verbatim quote. A second, smaller run fills gaps.
+3. **Write.** The coordinator assigns cards to sections by their headers and
+   starts a second workflow run of writer agents (Sonnet 5.5 by default), each
+   writing a group of related sections from its cards within a word budget,
+   citing by identifier and quoting the cards word for word. The coordinator
+   writes the introduction and Open Questions from the writers' summaries,
+   assembles `REPORT.md`, and generates the References with a script.
 4. **Grade.** The whole task is a Managed Agents *outcome*. After each turn a
    separate grader, in its own context window, checks the report and evidence
    files against a rubric (`workflows/managed-rubric.md`). It looks at what a
@@ -571,13 +576,16 @@ in the session.
    evidence files, not the live sources.
 
 Retrieval is where most tokens go (raw pages and abstracts), so it runs on the
-small model in many short contexts. The coordinator reads only the evidence.
-All agents share one sandbox filesystem, so the evidence files are how they
-hand work to each other.
+small model in many short contexts, and retrievers are told to `grep` long
+texts rather than read them. No single context holds every source: the
+coordinator reads card headers and writers' summaries, and each writer reads
+only its own cards, so the coordinator's cost does not grow with the number of
+sources. All agents share one sandbox filesystem, so the evidence files and
+cards are how they hand work to each other.
 
 The prompts are in `src/deep_research_client/workflows/`: `managed-task.md`
-(the task, a Jinja template), `managed-coordinator.md`, `managed-retriever.md`
-and `managed-rubric.md`.
+(the task, a Jinja template), `managed-coordinator.md`, `managed-retriever.md`,
+`managed-writer.md` and `managed-rubric.md`.
 
 ### Evidence files
 
@@ -669,7 +677,8 @@ The `model` parameter is the coordinator's model:
 | `claude-sonnet-5-5` | `sonnet` | Cheaper synthesis |
 
 Any other Claude model ID is passed through. `retriever_model` (default
-`claude-haiku-5-5`) is the retrievers'.
+`claude-haiku-5-5`) is the retrievers', and `writer_model` (default
+`claude-sonnet-5-5`) the section writers'.
 
 ### Parameters
 
@@ -679,6 +688,7 @@ from deep_research_client.provider_params import ClaudeManagedParams
 params = ClaudeManagedParams(
     model="opus",                         # coordinator
     retriever_model="claude-haiku-5-5",   # retrievers
+    writer_model="claude-sonnet-5-5",     # section writers
     max_iterations=5,        # grader revision cycles, 1-20
     max_repair_rounds=2,     # evidence-check repairs before the report is marked unsuccessful
     max_cost_usd=20.0,       # hard per-session cap at list prices, retrievers included; None removes it
@@ -703,7 +713,7 @@ The other artifact selection fields work as described in
 
 ### How a session becomes a result
 
-1. The retriever agent, the coordinator agent and the cloud environment are
+1. The retriever, writer and coordinator agents and the cloud environment are
    created on first use and reused afterwards. Each is named
    `deep-research-client-<fingerprint>`, a hash of its definition, so changing
    a model, prompt or networking makes a new one rather than editing the old.
@@ -719,11 +729,11 @@ The other artifact selection fields work as described in
    artifacts. Files come back flat: `citations/hodges-1971.md` is listed as `hodges-1971.md`.
 
 `run_metadata` records `session_id`, `agent_id`, `environment_id`,
-`retriever_model`, `workflow_runs`, `stop_reason`, `outcome_result`,
+`retriever_model`, `writer_model`, `workflow_runs`, `stop_reason`, `outcome_result`,
 `outcome_iterations`, `grader_explanation`, `evidence_check`, `repair_rounds`,
 `repair_history`, token counts,
 web search and fetch counts, `list_cost_usd` and `active_seconds`. Usage covers
-the whole session, retrievers and grader included. With the session kept, its
+the whole session, retrievers, writers and grader included. With the session kept, its
 threads in the Claude Console show every search and fetch each agent made.
 
 ### Recovering a run whose client lost contact

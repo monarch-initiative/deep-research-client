@@ -27,8 +27,11 @@ that may not exist in an older installed release.
 
 3. Choose a configured provider and model suitable for the requested depth.
    Model cards describe capabilities and cost categories, not a guarantee of
-   live availability or a current price quote. Use `providers --show-params`
-   for accepted provider parameters. `providers --check` makes live probe calls.
+   live availability or a current price quote. `providers --show-params` lists
+   accepted parameters for configured providers only; use
+   `providers --provider NAME` to see a provider's parameters and the
+   credential it needs even when it is not yet set up. `providers --check`
+   makes live probe calls.
 4. If the request leaves a consequential cost/depth decision unresolved, clarify
    it before starting. An explicit deep-research request with an established
    provider/budget does not need another confirmation. Keep credentials in the
@@ -47,18 +50,29 @@ uvx deep-research-client research --input-file question.md \
   --output report.md --separate-citations citations.md
 ```
 
-For reusable questions, use a template with `{variable}` placeholders or a Jinja2
-template supported by DRC:
+For reusable questions, use a template. DRC renders a template as Jinja2
+(`{{ gene }}`, loops, conditionals) only when its filename ends in `.j2`,
+`.jinja` or `.jinja2` (e.g. `question.md.j2`) or its YAML frontmatter sets
+`format: jinja`. Any other file gets plain `{variable}` substitution, so do not
+write `{{ variable }}` in a `.md` template without one of those markers. Every
+variable the template uses must be passed with `--var`, or the run stops before
+reaching a provider.
+
+This skill bundles an example template, `examples/gene_research.md`, which
+uses `{gene}`, `{organism}`, `{tissue}` and `{year}`. Replace `SKILL_DIR` with
+the directory containing this `SKILL.md`:
 
 ```bash
-uvx deep-research-client research --template gene_research.md \
-  --var gene=TP53 --var organism=human \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/gene_research.md \
+  --var gene=TP53 --var organism=human --var tissue=liver --var year=2020 \
   --provider PROVIDER --model MODEL --output tp53-report.md
 ```
 
 Keep caching enabled for retries and repeated questions. The default cache is
 `~/.deep_research_cache`; use `--cache-dir PATH` for project-specific storage.
-Inspect cached work with `list-cache` before repeating a costly run. Use
+Before repeating a costly run, check whether the question was already asked
+with `search-cache KEYWORD`, or browse everything with `list-cache`. Use
 `--no-cache` only when freshness or an explicit rerun requires it; do not clear
 the entire cache to retry one question.
 
@@ -82,7 +96,11 @@ uvx --from 'deep-research-client[validation,terms]' deep-research-client \
   --output report.md --validate-references --validate-terms --fail-on-unresolved
 ```
 
-These checks fetch references and ontology data and may add substantial runtime.
+Each `uvx --from ...` spelling builds its own temporary environment, so the
+validation extras are resolved again on every call. For repeated use, install
+once with `uv tool install 'deep-research-client[validation,terms]'` and call
+`deep-research-client` directly. These checks fetch references and ontology data
+and may add substantial runtime.
 Use them on the initial run when wanted; for an existing report inspect
 `validate-references --help` and `validate-terms --help` to validate without
 repeating research. Identifier resolution and quotation matching do not

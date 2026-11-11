@@ -1302,6 +1302,7 @@ For Claude Code, manual copying from a checkout also remains available:
 ```bash
 # Copy to your local Claude skills directory
 cp -r .claude/skills/run-deep-research ~/.claude/skills/
+cp -r .claude/skills/gene-set-enrichment ~/.claude/skills/
 
 # Or use it project-wide (already available in this repo)
 # Claude Code will auto-detect skills in .claude/skills/

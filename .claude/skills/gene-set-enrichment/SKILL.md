@@ -53,6 +53,7 @@ uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=APOH APP COL3A1 VEGFA THBD" \
   --var "organism=human" \
+  --var "context=" \
   --provider perplexity \
   --model sonar-deep-research \
   --output enrichment_results.md
@@ -62,6 +63,7 @@ uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=APOH APP COL3A1 VEGFA THBD" \
   --var "organism=human" \
+  --var "context=" \
   --provider openai \
   --output enrichment_detailed.md
 ```
@@ -82,7 +84,7 @@ The enrichment template accepts:
 
 - `{geneset}` - **Space-separated** list of gene symbols (e.g., "APOH APP VEGFA")
 - `{organism}` - Organism name (e.g., "human", "mouse", "rat")
-- `{context}` - Optional: Study context (e.g., "upregulated in heart disease", "differentially expressed in cancer")
+- `{context}` - Study context (e.g., "upregulated in heart disease", "differentially expressed in cancer"). DRC requires every template variable, so pass `--var "context="` to leave it blank
 
 ## Workflow
 
@@ -134,6 +136,7 @@ uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
+  --var "context=" \
   --provider perplexity \
   --model sonar-pro
 ```
@@ -144,8 +147,7 @@ uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
-  --var "context=upregulated in diabetic cardiomyopathy" \
-  --var "focus=cardiac remodeling pathways"
+  --var "context=upregulated in diabetic cardiomyopathy; focus on cardiac remodeling pathways"
 ```
 
 ### Comprehensive publication-quality
@@ -154,6 +156,7 @@ uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
+  --var "context=" \
   --provider openai
 ```
 
@@ -193,7 +196,8 @@ cut -f1 significant_genes.txt | tr '\n' ' ' > geneset.txt
 uv run deep-research-client research \
   --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
   --var "geneset=$(cat geneset.txt)" \
-  --var "organism=human"
+  --var "organism=human" \
+  --var "context="
 ```
 
 ## Comparison with Traditional Tools

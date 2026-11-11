@@ -123,6 +123,16 @@ def test_clean_end_without_the_final_chunk_is_an_error(lines):
         asyncio.run(_read_stream(_lines(lines)))
 
 
+@pytest.mark.parametrize("then", [None, httpx.RemoteProtocolError("peer closed")], ids=["clean-end", "reset"])
+@pytest.mark.parametrize("finish_reason", ["length", "content_filter"])
+def test_final_chunk_other_than_stop_is_an_error(finish_reason, then):
+    """Running out of tokens mid-report is a truncated report, not a finished one."""
+    lines = _lines([_delta("# Rep", finish_reason=finish_reason)], then=then)
+
+    with pytest.raises(ValueError, match=f"finish_reason='{finish_reason}'"):
+        asyncio.run(_read_stream(lines))
+
+
 def test_unreadable_line_names_the_line():
     """A format change should say what arrived, not just that JSON failed."""
     with pytest.raises(ValueError, match="not json"):

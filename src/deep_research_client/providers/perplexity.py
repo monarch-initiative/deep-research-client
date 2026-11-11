@@ -107,7 +107,9 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
     ``finish_reason``) has arrived. A drop before that means the report is
     incomplete, and the error is raised rather than returning a partial report.
     The same holds for a stream that ends cleanly without its final chunk --
-    a proxy closing gracefully, say -- which raises too.
+    a proxy closing gracefully, say -- which raises too. A final chunk whose
+    ``finish_reason`` is anything but ``"stop"`` (``"length"`` when the model
+    ran out of output tokens) also means the report was cut short.
     """
     state = _StreamState()
     try:
@@ -125,6 +127,11 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
         raise ValueError(
             f"Perplexity stream ended after {len(state.content)} characters without "
             f"its final chunk; the report is incomplete"
+        )
+    if state.finish_reason != "stop":
+        raise ValueError(
+            f"Perplexity stopped with finish_reason={state.finish_reason!r} after "
+            f"{len(state.content)} characters; the report is incomplete"
         )
     return state
 

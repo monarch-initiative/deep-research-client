@@ -112,6 +112,17 @@ def test_reset_before_the_final_chunk_is_an_error(lines, error):
         asyncio.run(_read_stream(_lines(lines, then=error)))
 
 
+@pytest.mark.parametrize(
+    "lines",
+    [[], [_delta("# Rep")], [_delta("# Rep"), "data: [DONE]"]],
+    ids=["empty", "content-only", "done-without-finish"],
+)
+def test_clean_end_without_the_final_chunk_is_an_error(lines):
+    """A graceful close before the final chunk is as incomplete as a reset."""
+    with pytest.raises(ValueError, match="without its final chunk"):
+        asyncio.run(_read_stream(_lines(lines)))
+
+
 def test_unreadable_line_names_the_line():
     """A format change should say what arrived, not just that JSON failed."""
     with pytest.raises(ValueError, match="not json"):

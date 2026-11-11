@@ -106,6 +106,8 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
     connection is tolerated once the final chunk (the one carrying a
     ``finish_reason``) has arrived. A drop before that means the report is
     incomplete, and the error is raised rather than returning a partial report.
+    The same holds for a stream that ends cleanly without its final chunk --
+    a proxy closing gracefully, say -- which raises too.
     """
     state = _StreamState()
     try:
@@ -118,6 +120,11 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
             f"Perplexity stream ended abruptly after the final chunk "
             f"(finish_reason={state.finish_reason!r}, {len(state.content)} characters); "
             f"keeping the report ({e})"
+        )
+    if state.finish_reason is None:
+        raise ValueError(
+            f"Perplexity stream ended after {len(state.content)} characters without "
+            f"its final chunk; the report is incomplete"
         )
     return state
 

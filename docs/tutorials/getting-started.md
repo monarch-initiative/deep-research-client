@@ -40,7 +40,7 @@ uv add deep-research-client
 ```bash
 git clone https://github.com/ai4curation/deep-research-client
 cd deep-research-client
-uv sync
+uv sync --extra edison  # the extra adds the Edison (Falcon) provider
 ```
 
 ## Configure Your API Keys

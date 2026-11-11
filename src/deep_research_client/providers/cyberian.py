@@ -35,6 +35,9 @@ class CyberianProvider(ResearchProvider):
     that performs iterative research, citation management, and synthesis.
     """
 
+    #: Nothing to run is an install problem, not a missing key.
+    unavailable_error = ProviderNotInstalledError
+
     def __init__(self, config: ProviderConfig, params: Optional[CyberianParams] = None):
         """Initialize Cyberian provider.
 
@@ -155,8 +158,7 @@ class CyberianProvider(ResearchProvider):
         logger.info(f"Starting Cyberian research workflow (agent: {self.agent_type})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
-        if not self.is_available():
-            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        self.require_available()
 
         if self.params.tooluniverse:
             await asyncio.to_thread(self.params.tooluniverse.prepare, self.name)

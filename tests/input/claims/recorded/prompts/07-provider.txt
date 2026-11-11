@@ -1,0 +1,13 @@
+Section: Loeys-Dietz syndrome > Vascular disease
+
+TEXT:
+<<<
+
+
+Aortic aneurysms in Loeys-Dietz syndrome dissect at smaller diameters than in
+Marfan syndrome [2](https://pubmed.ncbi.nlm.nih.gov/16928994/), so surgery is
+recommended earlier. Arterial tortuosity, e.g. of the head and neck vessels, is
+a hallmark of the disorder.[3]
+
+
+>>>

@@ -18,6 +18,7 @@ from deep_research_client import cli as cli_module
 from deep_research_client.client import DeepResearchClient
 from deep_research_client.exceptions import (
     FALLBACK_WORTHY_ERRORS,
+    NoProvidersConfiguredError,
     ProviderAuthError,
     ProviderBillingError,
     ProviderNotConfiguredError,
@@ -208,7 +209,7 @@ def test_the_mocks_quota_failure_has_the_shape_a_real_one_has():
     """
     from deep_research_client.providers import claude_code
 
-    real = claude_code._classify_cli_failure(
+    real = claude_code.classify_cli_failure(
         "claude_code", "Usage limit reached. Your limit will reset at 3pm."
     )
     assert isinstance(real, ProviderQuotaError)
@@ -622,14 +623,19 @@ def test_nothing_is_cached_when_every_provider_fails(tmp_path):
     assert list(tmp_path.glob("*.json")) == []
 
 
-def test_no_providers_at_all_is_still_a_plain_error():
-    """An empty registry reports itself the same way it always did."""
+def test_no_providers_at_all_is_a_configuration_error():
+    """An empty registry is not configured, with or without a fallback.
+
+    Keeps the old text, so callers written before it was typed keep matching
+    it. That it is still a ValueError is pinned once, for the whole hierarchy,
+    in test_provider_errors.
+    """
     client = DeepResearchClient(
         cache_config=CacheConfig(enabled=False),
         provider_configs={PRIMARY: ProviderConfig(name=PRIMARY)},
     )
     client.registry._providers.clear()
-    with pytest.raises(ValueError, match="No research providers available"):
+    with pytest.raises(NoProvidersConfiguredError, match="No research providers available"):
         client.research("q", fallback=True)
 
 
@@ -1267,6 +1273,10 @@ def test_cli_reports_the_trail_on_a_successful_fallback(tmp_path, monkeypatch):
     # the other, which is what the de-duplication was for.
     assert "not the provider first tried" in result.output
     assert "Providers tried:" in result.output
+    # About the run, not the report: a redirect of stdout must not carry it
+    # (issue #68). Continuation lines carry no prefix of their own.
+    assert "Warning: Providers tried:" in result.stderr
+    assert "Providers tried" not in result.stdout
     assert f"{BACKUP}: produced the report" in result.output
     # The console keeps the provider's own words; the report does not.
     assert "simulated billing failure" in result.output
@@ -1490,6 +1500,9 @@ def test_cli_shows_the_trail_when_every_candidate_fails(tmp_path, monkeypatch):
     assert result.exit_code == 1
     assert "Providers tried:" in result.output
     assert PRIMARY in result.output and BACKUP in result.output
+    # A continuation of the error above it, so unprefixed and on stderr too.
+    assert "\nProviders tried:" in result.stderr
+    assert "Providers tried" not in result.stdout
     assert not output.exists()
 
 
@@ -1523,11 +1536,9 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     sequence while claiming to pin the right one. Membership is the half that
     can be derived honestly, and is the half that actually drifted.
     """
-    import importlib
     import re
 
-    from deep_research_client.cli import PROVIDER_STUB_HINTS
-    from deep_research_client.client import PROVIDER_CLASS_PATHS
+    from deep_research_client.client import PROVIDER_CLASS_PATHS, load_provider_class
 
     doc = (
         pathlib.Path(__file__).resolve().parents[1]
@@ -1538,11 +1549,11 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     documented = {name.strip() for name in listed.group(1).split(",")}
 
     eligible = set()
-    for name, (module_name, class_name) in PROVIDER_CLASS_PATHS.items():
-        provider_class = getattr(importlib.import_module(module_name), class_name)
+    for name in PROVIDER_CLASS_PATHS:
+        provider_class = load_provider_class(name)
         # `_plan_providers` filters the automatic route by produces_real_reports,
         # and a stub can never be available to reach it in the first place.
-        if provider_class.produces_real_reports and name not in PROVIDER_STUB_HINTS:
+        if provider_class.produces_real_reports and not provider_class.stub_reason:
             eligible.add(name)
 
     assert documented == eligible, (

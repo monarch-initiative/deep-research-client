@@ -1,0 +1,62 @@
+# Shaped like a dismech kb/disorders file (the fields the dismech loader
+# reads); the content is written for these tests, not copied from dismech.
+name: Marfan syndrome
+description: A heritable connective tissue disorder caused by FBN1 variants.
+disease_term:
+  preferred_term: Marfan syndrome
+  term:
+    id: MONDO:0007947
+    label: Marfan syndrome
+pathophysiology:
+  - name: FBN1 variants
+    description: >-
+      Pathogenic FBN1 variants produce defective fibrillin-1, weakening
+      elastic fibers in connective tissue.
+    gene:
+      preferred_term: FBN1
+      term:
+        id: HGNC:3603
+        label: FBN1
+    biological_processes:
+      - preferred_term: elastic fiber assembly
+        term:
+          id: GO:0048251
+          label: elastic fiber assembly
+    evidence:
+      - reference: PMID:1852208
+        supports: SUPPORT
+        snippet: Marfan syndrome is caused by mutations in the fibrillin gene.
+phenotypes:
+  - not a record, skipped but still counted in the path index
+  - name: Aortic root dilation
+    description: Progressive dilation of the aortic root.
+    phenotype_term:
+      preferred_term: Dilatation of the aortic root
+      term:
+        id: HP:0002616
+        label: Aortic root aneurysm
+    evidence:
+      - reference: PMID:20591885
+  - name: Ectopia lentis
+    phenotype_term:
+      preferred_term: Ectopia lentis
+      term:
+        id: HP:0001083
+        label: Ectopia lentis
+treatments:
+  - name: Beta-blockers
+    description: Beta-blockers slow the rate of aortic root dilation.
+    treatment_term:
+      preferred_term: beta-adrenergic antagonist therapy
+      term:
+        id: MAXO:0000766
+        label: beta-adrenergic antagonist therapy
+    evidence:
+      - reference: PMID:8166794
+inheritance:
+  - name: Autosomal dominant
+    inheritance_term:
+      preferred_term: Autosomal dominant inheritance
+      term:
+        id: HP:0000006
+        label: Autosomal dominant inheritance

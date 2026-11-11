@@ -1,21 +1,37 @@
-"""Edison Scientific provider (formerly FutureHouse Falcon)."""
+"""Edison Scientific provider (formerly FutureHouse Falcon).
+
+``edison_client`` is imported where it is used, not at module scope. It pulls
+in aviary and litellm -- seconds of imports, and litellm fetches a price list
+over the network on import -- and this module is imported just to read the
+class's declared credential whenever the CLI lists providers (issue #70).
+Tests that substitute the client patch ``edison_client.EdisonClient``.
+
+``edison_client`` is also optional to install: it ships in the ``edison``
+extra (``deep-research-client[edison]``), so a base install never pulls in
+that stack (issue #92). Without it the provider still loads and says what to
+install, rather than failing on an import.
+"""
+
+from __future__ import annotations
 
 import asyncio
 import base64
+import importlib.util
 import json
 import logging
 import mimetypes
 import re
+import time
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Sequence, TypedDict, cast
 from uuid import UUID
 
-from edison_client import EdisonClient, JobNames
-from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
-from edison_client.models.data_storage_methods import RawFetchResponse
-
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError, classify_exception
+from ..exceptions import (
+    ProviderNotConfiguredError,
+    ProviderNotInstalledError,
+    classify_exception,
+)
 from ..models import (
     ProviderConfig,
     ProviderHealth,
@@ -27,12 +43,92 @@ from ..provider_params import FalconParams
 from ..model_cards import ProviderModelCards, create_falcon_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
+if TYPE_CHECKING:
+    from edison_client import EdisonClient
+    from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+    from edison_client.models.data_storage_methods import RawFetchResponse
+
 logger = logging.getLogger(__name__)
 
 
 _DATA_URL_PREFIX = "data:"
+
+
+class EdisonTaskTimeoutError(TimeoutError):
+    """An Edison task did not finish within the provider's timeout.
+
+    Its own type so that only our deadline cancels the task. Since Python 3.10
+    ``socket.timeout`` is ``TimeoutError`` too, and a network timeout means we
+    lost contact with the job, not that we gave up on it.
+    """
+
+
+#: How long to wait for an Edison task when ``ProviderConfig.timeout`` is unset.
+#: Matches edison-client's own ``DEFAULT_AGENT_TIMEOUT``.
+DEFAULT_TASK_TIMEOUT_SECONDS = 2400
+#: Seconds between status checks. Matches ``EdisonClient.DEFAULT_POLLING_TIME``.
+TASK_POLL_INTERVAL_SECONDS = 5
+#: What to run to get ``edison_client``, for the sentence saying it is missing.
+EDISON_INSTALL_HINT = "pip install 'deep-research-client[edison]'"
 type EdisonTaskResponse = PQATaskResponse | TaskResponseVerbose
 type EdisonResponse = Sequence[EdisonTaskResponse]
+
+
+def edison_client_installed() -> bool:
+    """Whether the optional ``edison_client`` package can be imported.
+
+    Asks the import system where the package is rather than importing it, so
+    the answer costs nothing even where the package is installed.
+
+    Returns:
+        True when ``edison_client`` is installed
+
+    >>> isinstance(edison_client_installed(), bool)
+    True
+    """
+    return importlib.util.find_spec("edison_client") is not None
+
+
+def _without_echoed_question(formatted_answer: str, query: str | None) -> str:
+    r"""Drop the question paper-qa restates at the top of its formatted answer.
+
+    paper-qa builds ``formatted_answer`` as ``f"Question: {question}\n\n{answer}"``
+    plus references. The question is the whole prompt we sent, which the
+    report already carries under ``## Question``, so keeping the echo put every
+    templated prompt in the file twice -- and on a failed run, where the answer
+    is one paragraph, the echo was most of the file (issue #52).
+
+    Removed only on an exact match with what was sent. Anything else is left
+    alone, so a change to Edison's format costs a duplicate, never the answer.
+
+    Args:
+        formatted_answer: Edison's formatted answer.
+        query: The query the task was sent with.
+
+    Returns:
+        The answer and its references, without the restated question.
+
+    >>> _without_echoed_question("Question: Why?\n\nBecause.\n\nReferences\n\n1. X", "Why?")
+    'Because.\n\nReferences\n\n1. X'
+    >>> _without_echoed_question("Question: Why not?\n\nBecause.", "Why?")
+    'Question: Why not?\n\nBecause.'
+    >>> _without_echoed_question("Because.", None)
+    'Because.'
+    """
+    if query is None:
+        return formatted_answer
+    echo = f"Question: {query}\n\n"
+    if formatted_answer.startswith(echo):
+        return formatted_answer[len(echo):]
+    if formatted_answer.startswith("Question: "):
+        # The shape is there but the text differs -- whitespace normalised
+        # upstream, say. Left alone, as documented, but visible under -v so a
+        # returning duplicate can be traced to this rather than rediscovered.
+        logger.debug(
+            "Edison's answer restates a question that does not match the query "
+            "sent, so it was kept; the report will show the prompt twice"
+        )
+    return formatted_answer
 
 
 class _ImageMessageGroup(TypedDict):
@@ -62,6 +158,43 @@ class FalconProvider(ResearchProvider):
         """Get default model."""
         return "Edison Scientific Literature"
 
+    def is_available(self) -> bool:
+        """Check for both an API key and the optional Edison client package."""
+        return super().is_available() and edison_client_installed()
+
+    def unavailable_reason(self) -> str:
+        """Say what is missing: the key, the Edison client package, or both.
+
+        Both are named when both are missing, so whoever fixes one is not
+        surprised by the other on the next run.
+
+        Returns:
+            Human-readable explanation suitable for an error message
+        """
+        if not self.config.enabled or edison_client_installed():
+            return super().unavailable_reason()
+        not_installed = (
+            "the Edison client is not installed "
+            f"(install it with `{EDISON_INSTALL_HINT}`)"
+        )
+        if self.config.api_key is None:
+            return f"{super().unavailable_reason()}; {not_installed}"
+        return not_installed
+
+    def require_available(self) -> None:
+        """Raise the error that says what is missing, if anything is.
+
+        Raises:
+            ProviderNotInstalledError: If ``edison_client`` is not installed.
+            ProviderNotConfiguredError: If the provider is disabled or has no key.
+        """
+        installed = edison_client_installed()
+        if installed and super().is_available():
+            return
+        if self.config.enabled and not installed:
+            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+
     @classmethod
     def model_cards(cls) -> ProviderModelCards:
         """Get model cards for Falcon provider."""
@@ -72,8 +205,9 @@ class FalconProvider(ResearchProvider):
         logger.info(f"Starting Edison research query (model: {self.model})")
         logger.debug(f"Query: {query[:100]}{'...' if len(query) > 100 else ''}")
 
-        if not self.is_available():
-            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+        self.require_available()
+
+        from edison_client import EdisonClient, JobNames
 
         # EdisonClient authenticates in its constructor, so a rejected key
         # fails here rather than on the first call.
@@ -104,7 +238,26 @@ class FalconProvider(ResearchProvider):
 
         try:
             logger.debug("Making API request to Edison")
-            response = self._coerce_response(client.run_tasks_until_done(task_data, verbose=True))
+            task_id = client.create_task(task_data)
+            logger.info(f"Submitted Edison task {task_id}")
+            try:
+                task = await self._wait_for_task(client, task_id)
+            except (EdisonTaskTimeoutError, KeyboardInterrupt, asyncio.CancelledError):
+                # We chose to stop waiting, so stop the job too: otherwise
+                # Edison keeps running -- and billing -- it for nobody.
+                self._cancel_task(client, task_id)
+                raise
+            except Exception:
+                # We lost track of the job, which is not the same as giving up
+                # on it. Over a 40-minute wait one failed status check would
+                # otherwise throw away a run that is likely to finish, so leave
+                # it running and say how to collect it.
+                logger.warning(
+                    f"Lost track of Edison task {task_id}; it is still running. "
+                    f"Collect it later with: deep-research-client edison-trajectory {task_id}"
+                )
+                raise
+            response = self._coerce_response([task])
             logger.info("Edison API request completed successfully")
             return self._result_from_response(client, response, query)
         except Exception as e:
@@ -121,6 +274,66 @@ class FalconProvider(ResearchProvider):
             # A long-lived caller doing repeated runs would otherwise leak a
             # session per run, including on the failure path.
             client.close()
+
+    async def _wait_for_task(self, client: EdisonClient, task_id: str) -> TaskResponseVerbose:
+        """Poll an Edison task until it reaches a terminal state.
+
+        edison-client's ``run_tasks_until_done`` submits and waits in one call,
+        never hands back the task id, and on timeout returns the unfinished task
+        instead of raising. Waiting here keeps the id in hand for cancelling.
+
+        Args:
+            client: The Edison client that submitted the task.
+            task_id: The id ``create_task`` returned.
+
+        Returns:
+            The finished task as a verbose response.
+
+        Raises:
+            EdisonTaskTimeoutError: When the task is still running after the timeout.
+        """
+        from edison_client.models.rest import ExecutionStatus
+
+        # The SDK is synchronous. Each call runs in a worker thread so that
+        # other providers running alongside this one are not held up.
+        timeout = self.config.timeout or DEFAULT_TASK_TIMEOUT_SECONDS
+        deadline = time.monotonic() + timeout
+        while True:
+            status = (await asyncio.to_thread(client.get_task, task_id, lite=True)).status
+            if ExecutionStatus(status).is_terminal_state():
+                break
+            if time.monotonic() >= deadline:
+                raise EdisonTaskTimeoutError(f"Edison task {task_id} did not finish within {timeout}s")
+            await asyncio.sleep(TASK_POLL_INTERVAL_SECONDS)
+        return cast("TaskResponseVerbose", await asyncio.to_thread(client.get_task, task_id, verbose=True))
+
+    def _cancel_task(self, client: EdisonClient, task_id: str) -> None:
+        """Ask Edison to stop a task we are no longer waiting for.
+
+        Synchronous on purpose, unlike the polling: it runs while a
+        cancellation is propagating, when awaiting anything would be cut short.
+
+        Called while another exception is propagating, so a failure to cancel
+        is logged rather than raised: raising here would replace the reason the
+        wait ended with a less useful one.
+
+        Args:
+            client: The Edison client that submitted the task.
+            task_id: The task to cancel.
+        """
+        try:
+            cancelled = client.cancel_task(task_id)
+        except Exception as e:
+            logger.warning(
+                f"Could not cancel Edison task {task_id}; it may still be running and billing: {e}"
+            )
+            return
+        if cancelled:
+            logger.warning(f"Cancelled Edison task {task_id}")
+        else:
+            # cancel_task returns False when the task was not in progress,
+            # e.g. still queued or already finished.
+            logger.warning(f"Edison task {task_id} was not cancelled; check it on the Edison dashboard")
 
     async def check_health(self) -> ProviderHealth:
         """Probe Edison with a cheap authenticated call.
@@ -140,6 +353,8 @@ class FalconProvider(ResearchProvider):
                 reachable=False,
                 detail=self.unavailable_reason(),
             )
+
+        from edison_client import EdisonClient
 
         client = None
         try:
@@ -168,8 +383,9 @@ class FalconProvider(ResearchProvider):
 
     def retrieve_trajectory(self, trajectory_id: str) -> ResearchResult:
         """Retrieve an existing Edison trajectory and preserve its artifacts."""
-        if not self.is_available():
-            raise ProviderNotConfiguredError(self.name, self.unavailable_reason())
+        self.require_available()
+
+        from edison_client import EdisonClient
 
         client = EdisonClient(api_key=self.config.api_key)
         logger.info(f"Retrieving Edison trajectory {trajectory_id}")
@@ -208,10 +424,50 @@ class FalconProvider(ResearchProvider):
             artifacts=artifacts,
             provider=self.name,
             query=query,
+            answer_successful=self._answer_successful(response),
         )
+
+    def _answer_successful(self, response: EdisonResponse) -> Optional[bool]:
+        """Read whether Edison's agent says it answered the question.
+
+        paper-qa's ``has_successful_answer`` is True when the agent was sure of
+        its answer, False when it was not, and None when it never completed.
+        After a finished run, None and False both mean the text is not a
+        report -- the case in issue #52, where retrieval found no papers and
+        the "answer" explains why there is none.
+
+        A verbose frame that lacks the key entirely says nothing either way,
+        so that is None: reading a format change as a failed run would mark
+        every report failed.
+
+        The non-verbose ``PQATaskResponse`` is passed through as it is, None
+        included, because it cannot draw that distinction: its validator
+        assigns ``answer.get("has_successful_answer")`` unconditionally, so a
+        missing key and an explicit None arrive identical. Treating that None
+        as a failure would be the false alarm the verbose path avoids. Falcon
+        requests verbose responses for every run, so this path is reached only
+        by a caller handing in a non-verbose response.
+
+        Args:
+            response: The validated Edison response.
+
+        Returns:
+            True or False when Edison says, None when it does not.
+        """
+        from edison_client.models.app import TaskResponseVerbose
+
+        task_response = response[0]
+        if isinstance(task_response, TaskResponseVerbose):
+            answer = self._get_verbose_answer(task_response)
+            if "has_successful_answer" not in answer:
+                return None
+            return answer["has_successful_answer"] is True
+        return task_response.has_successful_answer
 
     def _coerce_response(self, response: Sequence[Any]) -> EdisonResponse:
         """Validate Edison client responses against the shapes this provider supports."""
+        from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+
         if not response:
             raise ValueError("Unexpected Edison response structure: empty response")
 
@@ -231,6 +487,8 @@ class FalconProvider(ResearchProvider):
         verbose=True, it returns TaskResponseVerbose objects and the answer must
         be read from the final environment frame.
         """
+        from edison_client.models.app import PQATaskResponse, TaskResponseVerbose
+
         if not isinstance(response, list) or len(response) == 0:
             raise ValueError(f"Unexpected Edison response structure: {type(response)}")
 
@@ -239,7 +497,7 @@ class FalconProvider(ResearchProvider):
         if isinstance(task_response, TaskResponseVerbose):
             answer = self._get_verbose_answer(task_response)
             if formatted_answer := answer.get("formatted_answer"):
-                return str(formatted_answer)
+                return _without_echoed_question(str(formatted_answer), task_response.query)
             if plain_answer := answer.get("answer"):
                 return str(plain_answer)
             raise ValueError(
@@ -254,7 +512,7 @@ class FalconProvider(ResearchProvider):
 
         # Prefer formatted_answer as it includes references
         if task_response.formatted_answer:
-            return task_response.formatted_answer
+            return _without_echoed_question(task_response.formatted_answer, task_response.query)
         elif task_response.answer:
             return task_response.answer
         else:
@@ -316,6 +574,8 @@ class FalconProvider(ResearchProvider):
 
     def _extract_artifacts(self, client: Any, response: EdisonResponse) -> list[ResearchArtifact]:
         """Fetch artifacts listed in the final Edison environment frame."""
+        from edison_client.models.app import TaskResponseVerbose
+
         if not response:
             return []
 
@@ -337,7 +597,6 @@ class FalconProvider(ResearchProvider):
         for item in output_data:
             storage_id = self._get_data_storage_id(item)
             if storage_id is None:
-                logger.debug(f"Skipping Edison artifact without entry_id: {item}")
                 continue
             if str(storage_id) in used_storage_ids:
                 continue
@@ -567,16 +826,31 @@ class FalconProvider(ResearchProvider):
                 yield from self._walk_values(nested_value)
 
     def _get_data_storage_id(self, item: dict[str, Any]) -> UUID | None:
-        """Extract a data-storage UUID from an Edison output_data item."""
+        """Extract a data-storage UUID from an Edison output_data item.
+
+        An id that is not a UUID is skipped with a warning rather than raised.
+        By the time artifacts are extracted the run has finished and been
+        paid for, so one unreadable artifact must not cost the answer and the
+        other artifacts. edison-client 0.16 accepts short string aliases here
+        too (issue #85); once we are on it, such an id can be passed through.
+
+        Args:
+            item: One entry of a task's ``output_data``.
+
+        Returns:
+            The storage UUID, or None when the item has no usable id.
+        """
         raw_id = item.get("entry_id") or item.get("data_storage_id") or item.get("id")
         if raw_id is None:
+            logger.debug(f"Skipping Edison artifact without entry_id: {item}")
             return None
 
-        id_text = str(raw_id)
-        if id_text.startswith("data_entry:"):
-            id_text = id_text.removeprefix("data_entry:")
-
-        return UUID(id_text)
+        id_text = str(raw_id).removeprefix("data_entry:")
+        try:
+            return UUID(id_text)
+        except ValueError:
+            logger.warning(f"Skipping Edison artifact whose storage id is not a UUID: {item}")
+            return None
 
     def _artifacts_from_fetch_response(
         self,
@@ -586,6 +860,8 @@ class FalconProvider(ResearchProvider):
         used_filenames: set[str],
     ) -> list[ResearchArtifact]:
         """Convert an Edison data-storage fetch result into research artifacts."""
+        from edison_client.models.data_storage_methods import RawFetchResponse
+
         if fetched is None:
             return []
 

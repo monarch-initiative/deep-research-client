@@ -77,7 +77,7 @@ def test_eval_load_rejects_a_degenerate_task_before_anything_is_spent(tmp_path):
     assert result.exit_code == 1
     # Reported, not raised: a malformed eval set is this command's expected
     # output, and its neighbours report bad input the same way.
-    assert "no usable distractors" in result.stdout
+    assert "no usable distractors" in result.stderr
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
@@ -89,7 +89,8 @@ def test_eval_load_rejects_a_degenerate_task_before_anything_is_spent(tmp_path):
 def test_eval_run_requires_an_arm():
     result = runner.invoke(app, ["eval", "run", str(EVAL_INPUT / "example_evalset.yaml")])
     assert result.exit_code == 1
-    assert "--arm" in result.stdout
+    assert "Error: Nothing to run: pass --arm" in result.stderr
+    assert result.stdout == "", "an error that ends the run produces nothing"
 
 
 def test_eval_run_rejects_duplicate_arm_ids():
@@ -98,7 +99,7 @@ def test_eval_run_rejects_duplicate_arm_ids():
         "--arm", "x=mock", "--arm", "x=mock",
     ])
     assert result.exit_code == 1
-    assert "unique" in result.stdout
+    assert "unique" in result.stderr
 
 
 def test_eval_run_dry_run_calls_no_provider(tmp_path):
@@ -801,7 +802,7 @@ def test_eval_run_rejects_an_unknown_task_id(tmp_path):
         "--output-dir", str(tmp_path / "run"),
     ])
     assert result.exit_code == 1
-    assert "no_such_task" in result.stdout
+    assert "no_such_task" in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -817,8 +818,8 @@ def test_eval_score_names_the_shapes_it_actually_found(tmp_path):
 
     result = runner.invoke(app, ["eval", "score", str(report), "--source", str(path)])
     assert result.exit_code == 1
-    assert "SHORT_ANSWER" in result.stdout
-    assert "not scored by this client" in result.stdout
+    assert "SHORT_ANSWER" in result.stderr
+    assert "not scored by this client" in result.stderr
 
 
 def test_eval_score_points_multiple_choice_sets_at_the_right_command(tmp_path):
@@ -829,7 +830,7 @@ def test_eval_score_points_multiple_choice_sets_at_the_right_command(tmp_path):
 
     result = runner.invoke(app, ["eval", "score", str(report), "--source", str(path)])
     assert result.exit_code == 1
-    assert "eval run --grade" in result.stdout
+    assert "eval run --grade" in result.stderr
 
 
 @pytest.mark.parametrize("command", ["run", "score"])
@@ -849,9 +850,9 @@ def test_every_command_reports_a_malformed_eval_set_the_same_way(tmp_path, comma
     )
     result = runner.invoke(app, args)
     assert result.exit_code == 1
-    assert "Could not load the eval set" in result.stdout
+    assert "Could not load the eval set" in result.stderr
     # Named, because the errors underneath carry a row number and not a file.
-    assert str(path) in result.stdout
+    assert str(path) in result.stderr
 
 
 def test_eval_load_reports_the_number_of_options_actually_asked(tmp_path):
@@ -895,8 +896,8 @@ def test_eval_load_reports_too_many_options_as_a_message(tmp_path):
                   f"    distractors: [{distractors}]\n")
     result = runner.invoke(app, ["eval", "load", str(path)])
     assert result.exit_code == 1
-    assert "Could not load the eval set" in result.stdout
-    assert "26 letters" in result.stdout
+    assert "Could not load the eval set" in result.stderr
+    assert "26 letters" in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -912,7 +913,7 @@ def test_eval_fetch_refuses_an_empty_subset_argument(arg):
     """
     result = runner.invoke(app, ["eval", "fetch", arg])
     assert result.exit_code == 1
-    assert "No subset named" in result.stdout
+    assert "No subset named" in result.stderr
 
 
 @pytest.mark.parametrize("exc,expected", [
@@ -942,7 +943,7 @@ def test_eval_fetch_reports_expected_failures_rather_than_raising(monkeypatch, e
 
     result = runner.invoke(app, ["eval", "fetch", "LitQA2"])
     assert result.exit_code == 1
-    assert expected in result.stdout
+    assert expected in result.stderr
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
@@ -983,7 +984,10 @@ def test_eval_fetch_says_a_multimodal_subset_has_no_path_to_a_run(monkeypatch):
 
     result = runner.invoke(app, ["eval", "fetch", "FigQA"])
     assert result.exit_code == 0
-    assert "no path from this download to a run" in result.stdout
+    assert "no path from this download to a run" in result.stderr
+    # The warning is about the run; the fetched rows are the product.
+    assert "no path" not in result.stdout
+    assert "FigQA: 1 rows" in result.stdout
 
 
 def test_the_score_hint_names_a_path_that_exists(tmp_path):
@@ -1240,7 +1244,7 @@ def test_eval_score_without_an_api_key_offers_a_remedy_that_works(tmp_path, monk
     refused = runner.invoke(app, [
         "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
     assert refused.exit_code == 1
-    assert "--no-fact --no-recall --no-race" in refused.stdout
+    assert "--no-fact --no-recall --no-race" in refused.stderr, "an error, so on stderr (#68)"
     assert refused.exception is None or isinstance(refused.exception, SystemExit)
 
     # With it: the intrinsic scores the message promised.
@@ -1444,9 +1448,11 @@ def test_the_keyless_refusal_names_every_way_out(tmp_path, monkeypatch):
         "eval", "score", str(report), "--source", str(path), "--task-id", "r1"])
 
     assert result.exit_code == 1
-    assert "--llm-api-key-env" in result.stdout
-    assert "--llm-base-url" in result.stdout
-    assert "--no-fact --no-recall --no-race" in result.stdout
+    # The refusal ends the run, so it is on stderr (#68).
+    assert "Error:" in result.stderr
+    assert "--llm-api-key-env" in result.stderr
+    assert "--llm-base-url" in result.stderr
+    assert "--no-fact --no-recall --no-race" in result.stderr
 
 
 def test_the_fact_line_says_what_it_could_not_judge(tmp_path, monkeypatch):
@@ -1522,9 +1528,11 @@ def test_a_placeholder_key_is_announced_rather_than_sent_silently(tmp_path, monk
         "--llm-base-url", "https://llm.corp.example/v1",
         "--no-fact", "--no-recall", "--no-intrinsic"])
 
-    assert result.exit_code == 0, result.stdout
-    assert "placeholder key" in result.stdout
-    assert "answer 401" in result.stdout
+    assert result.exit_code == 0, result.output
+    # A warning about the run, so on stderr with the rest (#68).
+    assert "Warning:" in result.stderr and "placeholder key" in result.stderr
+    assert "answer 401" in result.stderr
+    assert "placeholder key" not in result.stdout
 
 
 def test_the_docs_do_not_claim_the_skip_is_narrower_than_it_is(tmp_path):

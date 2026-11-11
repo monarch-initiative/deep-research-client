@@ -1,0 +1,6 @@
+Field: sections[0].text
+
+TEXT:
+<<<
+Marfan syndrome is caused by pathogenic variants in FBN1 and is inherited in an autosomal dominant pattern.
+>>>

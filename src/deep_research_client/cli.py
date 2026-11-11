@@ -6,11 +6,11 @@ from dataclasses import dataclass
 import asyncio
 import logging
 import os
-import re
+import shutil
 import typer
 from pathlib import Path
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -23,11 +23,11 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
     )
 
-from .client import PROVIDER_CLASS_PATHS, DeepResearchClient
+from .exceptions import ProviderError
+from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
 from .processing import ResearchProcessor
 from .model_cards import (
     PROVIDER_MODEL_CARDS,
-    DEEPER_MED_ARXIV_ID,
     ModelCard,
     get_provider_model_cards,
     find_models_by_cost,
@@ -75,26 +75,21 @@ logger = logging.getLogger("deep_research_client")
 app = typer.Typer(
     help="deep-research-client: Wrapper for multiple deep research tools")
 
-PROVIDER_CREDENTIAL_HINTS = {
-    "openai": ("OPENAI_API_KEY", "OpenAI Deep Research"),
-    "falcon": ("EDISON_API_KEY", "Edison Scientific"),
-    "asta": ("ASTA_API_KEY", "Asta"),
-    "perplexity": ("PERPLEXITY_API_KEY", "Perplexity AI"),
-    "consensus": ("CONSENSUS_API_KEY", "Consensus"),
-    "openscientist": ("OPENSCIENTIST_API_KEY", "OpenScientist"),
-    "tooluniverse": ("TOOLUNIVERSE_API_KEY", "ToolUniverse underlying LLM"),
-    "claude_code": ("the `claude` CLI on PATH", "Claude Code"),
-    "mock": ("ENABLE_MOCK_PROVIDER=true", "Mock provider"),
-}
+def _stub_hints() -> dict[str, str]:
+    """Providers registered as stubs, with the reason each one is.
 
-# Providers registered as stubs: the upstream system has no public API yet, so
-# they are not merely missing credentials and cannot be enabled by the user.
-# Keyed by provider name, valued by a short reason shown in `providers` output.
-PROVIDER_STUB_HINTS = {
-    "deeper_med": (
-        f"DeepER-Med - no public API released yet (arXiv:{DEEPER_MED_ARXIV_ID})"
-    ),
-}
+    The upstream system has no public API yet, so these are not merely
+    missing credentials and cannot be enabled by the user. Read from each
+    class's ``stub_reason`` rather than kept as a table here (issue #70).
+
+    Returns:
+        Provider name -> short reason shown in `providers` output
+    """
+    return {
+        name: provider_class.stub_reason
+        for name in PROVIDER_CLASS_PATHS
+        if (provider_class := load_provider_class(name)).stub_reason
+    }
 
 
 def setup_logging(verbosity: int) -> None:
@@ -133,6 +128,55 @@ def setup_logging(verbosity: int) -> None:
     if verbosity >= 2:
         logger.debug(
             f"Logging configured at {logging.getLevelName(level)} level")
+
+
+# Output channels -- one rule for every command (issue #68):
+#
+# - stdout carries what the command produces: whatever a user would redirect
+#   to a file. Research markdown, listings, health reports, JSON. A report
+#   stays whole on stdout, including the lines inside it about failures.
+# - stderr carries messages about this run: an error that ends it, a warning
+#   about an option it ignored, the providers a fallback tried. These go
+#   through `_error` and `_warn`, never the logger, so they show at the default
+#   verbosity, and a test can tell them apart from the product through
+#   `CliRunner`'s separate `result.stderr`.
+# - The logger is for `-v` tracing only: progress, what was chosen, where a
+#   file was written.
+#
+# Before this, the stream a message landed on depended on the code path: the
+# same `Unknown provider` went to stdout from `providers --check` and to stderr
+# from `providers`, and anything logged was invisible to `caplog` once the
+# callback's `basicConfig(force=True)` had replaced its handler.
+
+
+def _stderr(line: str) -> None:
+    """Write one line about this run to stderr, whatever the log level.
+
+    For a continuation of an ``_error`` or ``_warn`` -- a hint, a list of valid
+    names -- which would read wrongly with a second prefix.
+
+    Args:
+        line: The text to write.
+    """
+    typer.echo(line, err=True)
+
+
+def _error(message: str) -> None:
+    """Tell the user why this run is about to stop.
+
+    Args:
+        message: What went wrong, without an ``Error:`` prefix.
+    """
+    _stderr(f"Error: {message}")
+
+
+def _warn(message: str) -> None:
+    """Tell the user something about this run that does not stop it.
+
+    Args:
+        message: What to know, without a ``Warning:`` prefix.
+    """
+    _stderr(f"Warning: {message}")
 
 
 def _collect_noop_research_option_warnings(
@@ -280,15 +324,34 @@ def _write_result_artifacts(result: ResearchResult, output: Path) -> None:
         artifact.path = artifact_path.relative_to(output.parent).as_posix()
 
 
-def _echo_no_providers_message() -> None:
+def _exit_provider_unavailable(client: DeepResearchClient, provider: str) -> NoReturn:
+    """Stop the run, saying what the named provider is missing.
+
+    Args:
+        client: Client that knows why the provider cannot run.
+        provider: Canonical name of a known provider.
+
+    Raises:
+        typer.Exit: Always, with exit code 1.
+    """
+    _error(f"Provider '{provider}' not available: {client.unregistered_reason(provider)}")
+    raise typer.Exit(1)
+
+
+def _echo_no_providers_message(client: DeepResearchClient, err: bool = False) -> None:
     """Tell the user nothing is configured, and what to set.
 
-    A function rather than two inline calls so a test can assert which stream
-    it lands on: driving this through CliRunner cannot show that, because the
-    pinned click merges stdout and stderr into one buffer.
+    The heading and its list always share a stream: split, a redirect keeps
+    the list and loses the sentence saying what it is for. Which stream
+    depends on the caller. For `providers` the list is the answer, so stdout;
+    for `research` it is why the run stopped, so stderr.
+
+    Args:
+        client: Client whose providers decide which keys are worth offering.
+        err: Write to stderr rather than stdout.
     """
-    typer.echo("No research providers available. Please set API keys:")
-    _echo_credential_hints(_settable_credential_hints())
+    typer.echo("No research providers available. Please set API keys:", err=err)
+    _echo_credential_hints(_credential_hints_to_offer(client), err=err)
 
 
 def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
@@ -315,13 +378,14 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
         client: Client to ask what is available and why the rest is not.
     """
     available = set(client.get_available_providers())
-    settable = set(_settable_credential_hints())
+    settable = set(_credential_hints_to_offer(client))
+    stubs = _stub_hints()
     other = [
         name
         for name in PROVIDER_CLASS_PATHS
         if name not in available
         and name not in settable
-        and name not in PROVIDER_STUB_HINTS
+        and name not in stubs
     ]
     if not other:
         return
@@ -331,42 +395,122 @@ def _echo_other_unavailable_hints(client: DeepResearchClient) -> None:
         typer.echo(f"  - {name}: {client.unregistered_reason(name)}")
 
 
-#: A credential hint that names an environment variable, rather than something
-#: else the provider needs (a binary on PATH, an installed package).
-_ENV_VAR_HINT = re.compile(r"^[A-Z][A-Z0-9_]*(=\S+)?$")
-
-
 def _settable_credential_hints() -> list[str]:
-    """Providers a user can enable by setting an environment variable.
+    """Providers a user can enable by exporting an API key.
 
-    Under a heading that says "set API keys", a CLI on PATH and a test double
-    are not answers. Those entries exist for the `providers` listing, which
-    describes what each provider needs rather than telling anyone to set it.
+    Read from each class's ``credential_env_var`` rather than kept as a table
+    here (issue #70). That is also what keeps the list honest: a provider that
+    needs a binary on PATH, an optional install or an opt-in flag declares no
+    credential variable, so it can never appear under "set API keys". Those
+    providers are described under "Other unavailable providers" instead.
 
     Returns:
-        Provider names whose hint is a variable the reader can export
+        Provider names, in registry order, whose credential is a variable
     """
     return [
         name
-        for name, (requirement, _) in PROVIDER_CREDENTIAL_HINTS.items()
-        if _ENV_VAR_HINT.match(requirement) and name != "mock"
+        for name in PROVIDER_CLASS_PATHS
+        if load_provider_class(name).credential_env_var
     ]
 
 
-def _echo_credential_hints(provider_names: list[str]) -> None:
-    """Print credential hints for providers by canonical provider name."""
+def _credential_hints_to_offer(client: DeepResearchClient) -> list[str]:
+    """Keyed providers that setting their key would enable.
+
+    Leaves out those whose key is set: the available ones, and those that
+    still cannot run -- falcon without the ``edison`` extra, for one
+    (issue #92). Telling a reader to set a key they have set hides the real
+    fix, so those are described under "Other unavailable providers" instead,
+    with their own reason.
+
+    Args:
+        client: Client holding the providers registered from the environment.
+
+    Returns:
+        Provider names, in registry order, whose missing key is the fix
+    """
+    # Providers register only once their key is set, so an unregistered one
+    # is exactly one whose key would help; a registered one is either
+    # available or missing something other than its key.
+    return [
+        name
+        for name in _settable_credential_hints()
+        if client.registry.get_provider(name) is None
+    ]
+
+
+def _echo_credential_hints(provider_names: list[str], err: bool = False) -> None:
+    """Print credential hints for providers by canonical provider name.
+
+    Args:
+        provider_names: Providers to print a hint for.
+        err: Write to stderr rather than stdout, to stay with a heading there.
+    """
     for provider_name in provider_names:
-        env_var, label = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        typer.echo(f"  - {env_var} for {label}")
+        provider_class = load_provider_class(provider_name)
+        label = provider_class.credential_label or provider_name
+        typer.echo(f"  - {provider_class.credential_env_var} for {label}", err=err)
 
 
 def _echo_stub_hints() -> None:
     """Print the stub providers, which no credential can enable."""
-    if not PROVIDER_STUB_HINTS:
+    stubs = _stub_hints()
+    if not stubs:
         return
     typer.echo("\nStub providers (not yet callable):")
-    for provider_name, reason in PROVIDER_STUB_HINTS.items():
+    for provider_name, reason in stubs.items():
         typer.echo(f"  - {provider_name}: {reason}")
+
+
+#: Exit code for a run that wrote its output, but whose provider says it could
+#: not answer. Distinct from 1 (nothing was produced) and from 2 and 3
+#: (validation), so a script can tell "no report" from "a bad report".
+EXIT_UNSUCCESSFUL_ANSWER = 4
+
+
+def _exit_if_unsuccessful(result: ResearchResult) -> None:
+    """End a run whose provider could not answer, after its output is written.
+
+    The output is still written, since a long paid run's drafts and artifacts
+    are worth keeping, but the exit code is not 0: a pipeline that checks only
+    the exit status must not file this as a report (issue #52).
+
+    Args:
+        result: The result just written or printed.
+
+    Raises:
+        typer.Exit: With EXIT_UNSUCCESSFUL_ANSWER, when the provider says it
+            could not answer.
+    """
+    if result.answer_successful is not False:
+        return
+    # A provider that has to infer the failure (claude_code, issue #101) says
+    # what it saw; one that is told (falcon) has nothing more to add.
+    reason = (result.run_metadata or {}).get("unsuccessful_reason")
+    _warn(
+        f"{result.provider} could not answer this question. The output is its "
+        f"response, not a finished report (answer_status: unsuccessful)."
+        + (f" Reason: {reason}." if reason else "")
+    )
+    raise typer.Exit(EXIT_UNSUCCESSFUL_ANSWER)
+
+
+def _report_unknown_provider(provider: str) -> None:
+    """Tell the user a provider name is not one, and list the names that are.
+
+    Shared by both branches of `providers`, which used to send the same
+    sentence to two different streams depending on whether --check was given.
+
+    The callers reject a name by checking `PROVIDER_PARAMS_REGISTRY`, while
+    this lists `PROVIDER_CLASS_PATHS` -- the list the CLI help already shows.
+    The two only agree because `test_capabilities` asserts their key sets are
+    equal; drift there would reject a name this then lists as known.
+
+    Args:
+        provider: The name the user gave.
+    """
+    _error(f"Unknown provider: {provider}")
+    _stderr(f"Known providers: {_registered_providers()}")
 
 
 def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) -> None:
@@ -389,7 +533,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # absent one is usually an unset key rather than a typo. Saying
             # "unknown" here would send the reader hunting for a spelling
             # mistake instead of exporting a variable.
-            if provider in PROVIDER_PARAMS_REGISTRY or provider in PROVIDER_CREDENTIAL_HINTS:
+            if provider in PROVIDER_PARAMS_REGISTRY:
                 typer.echo("Provider health:")
                 unconfigured = ProviderHealth(
                     provider=provider,
@@ -399,7 +543,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
                 )
                 typer.echo(f"  {unconfigured.summary()}")
             else:
-                typer.echo(f"Unknown provider: {provider}")
+                _report_unknown_provider(provider)
             raise typer.Exit(1)
         targets = [target]
     else:
@@ -420,7 +564,7 @@ def _check_provider_health(client: DeepResearchClient, provider: Optional[str]) 
             # answer, rendered claude_code's binary through a formatter built
             # for variables, and left biomni and cyberian in no section at all
             # -- in the command a reader runs precisely because nothing works.
-            _echo_credential_hints(_settable_credential_hints())
+            _echo_credential_hints(_credential_hints_to_offer(client))
             _echo_other_unavailable_hints(client)
             _echo_stub_hints()
             raise typer.Exit(1)
@@ -468,7 +612,7 @@ def _build_reference_validator(
     from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
 
     if not validator_is_available():
-        logger.error(INSTALL_HINT)
+        _error(INSTALL_HINT)
         raise typer.Exit(1)
 
     kwargs: dict = {
@@ -497,7 +641,7 @@ def _build_term_validator(
     from .validation import DEFAULT_ADAPTER, TERM_INSTALL_HINT, TermValidator, term_validator_is_available
 
     if not term_validator_is_available():
-        logger.error(TERM_INSTALL_HINT)
+        _error(TERM_INSTALL_HINT)
         raise typer.Exit(1)
 
     return TermValidator(
@@ -512,7 +656,11 @@ def _build_term_validator(
 
 
 def _echo_term_validation_summary(report: "TermValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a term validation report."""
+    """Summarise a term validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_terms:
         logger.info("No ontology term identifiers found to validate")
         return
@@ -526,15 +674,15 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_terms_failed:
-        logger.warning(
+        _warn(
             "Every term failed to resolve, which usually means the ontology service "
             "could not be reached rather than a report full of invented identifiers"
         )
     for check in report.confabulated_terms:
-        logger.warning("Unresolved term: %s (%s)", check.term_id, check.message)
+        _warn(f"Unresolved term: {check.term_id} ({check.message})")
     for check in report.obsolete_terms:
         replacement = f", replaced by {check.replaced_by}" if check.replaced_by else ""
-        logger.warning("Obsolete term: %s%s", check.term_id, replacement)
+        _warn(f"Obsolete term: {check.term_id}{replacement}")
     if report.labels_checked:
         logger.info(
             "Checked %d labels: %d match the term, %d name a different one",
@@ -543,12 +691,8 @@ def _echo_term_validation_summary(report: "TermValidationReport") -> None:
             len(report.mislabelled_terms),
         )
     for check in report.mislabelled_terms:
-        logger.warning(
-            "%s is %r, but the report calls it %s",
-            check.term_id,
-            check.ontology_label,
-            ", ".join(repr(label) for label in check.reported_labels or []),
-        )
+        reported = ", ".join(repr(label) for label in check.reported_labels or [])
+        _warn(f"{check.term_id} is {check.ontology_label!r}, but the report calls it {reported}")
     if report.unresolvable_prefixes:
         logger.info(
             "No resolver covers these prefixes, so their terms were not checked: %s",
@@ -597,7 +741,11 @@ def _refresh_validation_frontmatter(
 
 
 def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
-    """Log a one-line-per-outcome summary of a reference validation report."""
+    """Summarise a reference validation report, one line per outcome.
+
+    Counts are `-v` tracing; each finding is a warning on stderr, since it is
+    about this run's input and must stay out of a report printed to stdout.
+    """
     if not report.checked_references:
         logger.info("No PMID or DOI references found to validate")
         return
@@ -610,12 +758,12 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
         report.unverifiable_count,
     )
     if report.all_references_failed:
-        logger.warning(
+        _warn(
             "Every reference failed to resolve, which usually means a network or "
             "rate-limit problem rather than a report full of fabrications"
         )
     for check in report.confabulated_references:
-        logger.warning("Unresolved reference: %s (%s)", check.reference_id, check.message)
+        _warn(f"Unresolved reference: {check.reference_id} ({check.message})")
     if report.quote_checks:
         logger.info(
             "Checked %d quoted claims: %d found in the cited source, %d not",
@@ -624,9 +772,7 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             len(report.unsupported_quotes),
         )
     for quote_check in report.unsupported_quotes:
-        logger.warning(
-            "Quote not found in %s: %r", quote_check.reference_id, quote_check.quote[:120]
-        )
+        _warn(f"Quote not found in {quote_check.reference_id}: {quote_check.quote[:120]!r}")
     if report.unchecked_quotes:
         logger.info(
             "%d quoted claims had nothing to check against", len(report.unchecked_quotes)
@@ -638,10 +784,9 @@ def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
             report.on_topic_count,
         )
     for check in report.off_topic_references:
-        logger.warning(
-            "Reference %s resolves but looks off topic: %s",
-            check.reference_id,
-            check.title or "(no title)",
+        _warn(
+            f"Reference {check.reference_id} resolves but looks off topic: "
+            f"{check.title or '(no title)'}"
         )
 
 
@@ -787,24 +932,23 @@ def research(
     # Load query from file when requested
     if input_file:
         if template:
-            logger.error("Cannot combine --input-file with --template")
+            _error("Cannot combine --input-file with --template")
             raise typer.Exit(1)
         if query:
-            logger.error(
-                "Provide the query either as an argument or via --input-file, not both")
+            _error("Provide the query either as an argument or via --input-file, not both")
             raise typer.Exit(1)
 
         try:
             file_content = input_file.read_text(encoding='utf-8').strip()
         except FileNotFoundError:
-            logger.error(f"Input file not found: {input_file}")
+            _error(f"Input file not found: {input_file}")
             raise typer.Exit(1)
         except OSError as exc:
-            logger.error(f"Unable to read input file {input_file}: {exc}")
+            _error(f"Unable to read input file {input_file}: {exc}")
             raise typer.Exit(1)
 
         if not file_content:
-            logger.error(f"Input file {input_file} is empty")
+            _error(f"Input file {input_file} is empty")
             raise typer.Exit(1)
 
         # Assign stripped content to query so the rest of the pipeline works unchanged
@@ -819,9 +963,9 @@ def research(
             is_valid, error_msg = processor.validate_template_variables(
                 template, var)
             if not is_valid:
-                logger.error(f"Template error: {error_msg}")
+                _error(f"Template error: {error_msg}")
                 if error_msg and "requires variables" in error_msg:
-                    logger.error("Use --var key=value for each variable")
+                    _stderr("Use --var key=value for each variable")
                 raise typer.Exit(1)
 
             # Process the template
@@ -835,11 +979,11 @@ def research(
                 logger.info(f"Variables: {var_str}")
 
         except (FileNotFoundError, ValueError) as e:
-            logger.error(f"Template error: {e}")
+            _error(f"Template error: {e}")
             raise typer.Exit(1)
 
     elif not query:
-        logger.error("Either provide a query or use --template")
+        _error("Either provide a query or use --template")
         raise typer.Exit(1)
 
     # Parse provider parameters if provided
@@ -854,7 +998,7 @@ def research(
                 provider_params[key.strip()] = value.strip()
             logger.debug(f"Parsed provider parameters: {provider_params}")
         except ValueError as e:
-            logger.error(f"Error parsing parameters: {e}")
+            _error(f"Could not parse --param: {e}")
             raise typer.Exit(1)
 
     # Setup cache configuration
@@ -879,7 +1023,7 @@ def research(
     # --use-cborg is a shortcut for CBORG configuration
     if effective_options.use_cborg:
         if effective_options.base_url:
-            logger.warning("--use-cborg overrides --base-url")
+            _warn("--use-cborg overrides --base-url")
         proxy_base_url = "https://api.cborg.lbl.gov"
         # Default to CBORG_API_KEY if no specific env var is provided
         if not proxy_api_key_env:
@@ -900,8 +1044,7 @@ def research(
         if proxy_api_key_env:
             api_key = os.getenv(proxy_api_key_env)
             if not api_key:
-                logger.error(
-                    f"Environment variable {proxy_api_key_env} not set")
+                _error(f"Environment variable {proxy_api_key_env} not set")
                 raise typer.Exit(1)
             logger.debug(f"Using API key from {proxy_api_key_env}")
         else:
@@ -924,17 +1067,21 @@ def research(
     client = DeepResearchClient(
         cache_config=cache_config, provider_configs=provider_configs)
 
-    # Check if any providers are available
-    available_providers = client.get_available_providers()
-    if not available_providers:
-        _echo_no_providers_message()
-        raise typer.Exit(1)
-
     # An explicit list is an ordering instruction, so it replaces the
     # automatic one rather than adding to it.
     fallback_request: Union[bool, List[str]] = (
         list(fallback_provider) if fallback_provider else fallback
     )
+
+    # Check if any providers are available
+    available_providers = client.get_available_providers()
+    if not available_providers:
+        # A provider named on its own has a fix of its own, which the list of
+        # keys to set would bury -- or leave out, for an install.
+        if provider and not fallback_request and client.knows_provider(provider):
+            _exit_provider_unavailable(client, provider)
+        _echo_no_providers_message(client, err=True)
+        raise typer.Exit(1)
 
     # Show available providers
     if provider:
@@ -946,17 +1093,20 @@ def research(
             # unconfigured -- which is the error 89e5840 rejected in the other
             # direction. The client answers the distinction; asking it here is
             # what keeps the two surfaces from drifting.
-            if not fallback_request or not client.knows_provider(provider):
-                logger.error(
+            if not client.knows_provider(provider):
+                _error(
                     f"Provider '{provider}' not available. Available: {', '.join(available_providers)}")
                 raise typer.Exit(1)
+            if not fallback_request:
+                # A known name needs the fix, not the list of other names.
+                _exit_provider_unavailable(client, provider)
             # "Not configured" is one of the failures a fallback exists to
             # handle, and the client treats it as one. Ending the run here
             # would make the CLI refuse what the library allows, and would
             # drop the provider from the trail the report is supposed to
             # carry. If nothing else can take the work either, the client
             # raises and the run still fails -- with every attempt recorded.
-            logger.warning(
+            _warn(
                 f"Provider '{provider}' is not configured; continuing because a fallback was requested"
             )
         else:
@@ -966,7 +1116,7 @@ def research(
         logger.info(f"Using: {available_providers[0]}")
 
     for warning in effective_options.warnings:
-        logger.warning(warning)
+        _warn(warning)
 
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
@@ -997,7 +1147,7 @@ def research(
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-references")
+                _warn(f"{flag_name} has no effect without --validate-references")
 
     if not validate_terms:
         unused_term_flags: tuple[tuple[str, object, object], ...] = (
@@ -1011,10 +1161,10 @@ def research(
         )
         for flag_name, flag_value, default in unused_term_flags:
             if flag_value != default:
-                logger.warning(f"{flag_name} has no effect without --validate-terms")
+                _warn(f"{flag_name} has no effect without --validate-terms")
 
     if not validate_references and not validate_terms and fail_on_unresolved:
-        logger.warning(
+        _warn(
             "--fail-on-unresolved has no effect without --validate-references "
             "or --validate-terms"
         )
@@ -1025,14 +1175,14 @@ def research(
         from .validation import INSTALL_HINT, validator_is_available
 
         if not validator_is_available():
-            logger.error(INSTALL_HINT)
+            _error(INSTALL_HINT)
             raise typer.Exit(1)
 
     if validate_terms:
         from .validation import TERM_INSTALL_HINT, term_validator_is_available
 
         if not term_validator_is_available():
-            logger.error(TERM_INSTALL_HINT)
+            _error(TERM_INSTALL_HINT)
             raise typer.Exit(1)
 
     logger.info("Researching...")
@@ -1061,9 +1211,12 @@ def research(
         # adds is the trail, so that is all it prints. render_trail owns the
         # console-versus-report split that used to be argued here.
         if result.fell_back:
-            logger.warning(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(result.provider_attempts),
+            # One warning, so only its first line carries the prefix; the
+            # trail beneath reads as its body, as the failure path's does
+            # under its error. Prefixing each line would split it into many.
+            _warn(
+                "Providers tried:\n"
+                + ProviderAttempt.render_trail(result.provider_attempts)
             )
 
         # Determine if we're separating citations
@@ -1114,7 +1267,7 @@ def research(
                 typer.echo(output_content)
 
     except ValueError as exc:
-        logger.error(f"Error: {exc}")
+        _error(str(exc))
         # The trail is on the error whenever the run ended on a failure it
         # could not follow -- which is not only the last candidate, since a
         # 429 or an unclassified error ends the run wherever it lands. Without
@@ -1133,15 +1286,18 @@ def research(
             # failure that ended the run, so the repetition is the lesser
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
-            logger.error(
-                "Providers tried:\n%s",
-                ProviderAttempt.render_trail(attempts),
-            )
+            _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
         raise typer.Exit(1)
     except OSError as exc:
-        logger.error(f"Filesystem error: {exc}")
+        _error(f"Filesystem error: {exc}")
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    # Before validation, not after it: the provider's explanation of why it
+    # could not answer has nothing worth validating, the lookups would cost
+    # network calls, and a validation failure (exit 3) would otherwise mask
+    # the more fundamental one.
+    _exit_if_unsuccessful(result)
 
     if not validate_references and not validate_terms:
         return
@@ -1168,7 +1324,7 @@ def research(
             # urllib raises OSError subclasses for network failures. The report is
             # already saved, so report the real cause rather than letting it surface
             # as a filesystem error.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1193,7 +1349,7 @@ def research(
         except (OSError, ValueError) + lookup_error_types() as exc:
             # The report is already saved, so an unreachable ontology service
             # costs the term section, not the research.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
 
@@ -1211,7 +1367,7 @@ def research(
         except OSError as exc:
             # The report without its validation sections is already on disk, so
             # this loses the sections, not the research.
-            logger.error(f"Could not add the validation section to {output}: {exc}")
+            _error(f"Could not add the validation section to {output}: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
@@ -1224,10 +1380,10 @@ def research(
     if not fail_on_unresolved:
         return
     if validation_report is not None and validation_report.has_confabulations:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
     if term_report is not None and term_report.has_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
 
 
@@ -1292,17 +1448,17 @@ def validate_references_command(
     from .validation import VALIDATION_SECTION_HEADING, render_with_sections, split_validation_sections
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_reference_validator(
@@ -1338,7 +1494,7 @@ def validate_references_command(
             # OSError covers network failures (urllib raises subclasses of it);
             # ValueError covers a malformed cached record. Neither should reach
             # the user as a traceback when every neighbouring path exits cleanly.
-            logger.error(f"Reference validation failed: {exc}")
+            _error(f"Reference validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_validation_summary(report)
@@ -1370,7 +1526,7 @@ def validate_references_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1378,7 +1534,7 @@ def validate_references_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Reference validation found unresolved references or unsupported quotes")
+        _error("Reference validation found unresolved references or unsupported quotes")
         raise typer.Exit(2)
 
 
@@ -1445,17 +1601,17 @@ def validate_terms_command(
     )
 
     if not files:
-        logger.error("Provide at least one markdown file to validate")
+        _error("Provide at least one markdown file to validate")
         raise typer.Exit(1)
 
     if len(files) > 1 and (output or json_output):
-        logger.error("--output and --json require exactly one input file")
+        _error("--output and --json require exactly one input file")
         raise typer.Exit(1)
 
     missing = [f for f in files if not f.is_file()]
     if missing:
         for path in missing:
-            logger.error(f"File not found: {path}")
+            _error(f"File not found: {path}")
         raise typer.Exit(1)
 
     validator = _build_term_validator(
@@ -1490,7 +1646,7 @@ def validate_terms_command(
             # which it raises rather than reporting the term as absent. None of
             # them should reach the user as a traceback when every neighbouring
             # path exits cleanly.
-            logger.error(f"Term validation failed: {exc}")
+            _error(f"Term validation failed: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(3)
         _echo_term_validation_summary(report)
@@ -1522,7 +1678,7 @@ def validate_terms_command(
                 json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
                 logger.info(f"Validation report written to {json_output}")
         except OSError as exc:
-            logger.error(f"Filesystem error: {exc}")
+            _error(f"Filesystem error: {exc}")
             logger.debug("Exception details:", exc_info=True)
             raise typer.Exit(1)
 
@@ -1530,8 +1686,61 @@ def validate_terms_command(
             typer.echo(markdown_report)
 
     if fail_on_unresolved and any_problems:
-        logger.error("Term validation found unresolved or mislabelled terms")
+        _error("Term validation found unresolved or mislabelled terms")
         raise typer.Exit(2)
+
+
+def _emit_retrieved_result(
+    result: ResearchResult,
+    output: Optional[Path],
+    separate_citations: Optional[Path],
+) -> None:
+    """Write or print a report fetched from a provider by id.
+
+    Shared by the commands that retrieve an existing run rather than start one.
+
+    Args:
+        result: The retrieved report.
+        output: File to write it to, or None to print it.
+        separate_citations: Where to put the citations on their own, if anywhere.
+    """
+    processor = ResearchProcessor()
+    should_separate_citations = separate_citations is not None
+
+    if output:
+        _write_result_artifacts(result, output)
+
+    output_content = processor.format_research_result(
+        result,
+        separate_citations=should_separate_citations,
+    )
+
+    if output:
+        output.write_text(output_content, encoding="utf-8")
+        logger.info(f"Result saved to: {output}")
+
+        if should_separate_citations and result.citations:
+            if isinstance(separate_citations, Path):
+                citations_output = separate_citations
+            else:
+                citations_output = output.with_suffix('.citations.md')
+
+            citations_content = processor.format_citations_only(result)
+            citations_output.write_text(citations_content, encoding="utf-8")
+            logger.info(f"Citations saved to: {citations_output}")
+
+        if result.citations:
+            logger.info(f"Found {len(result.citations)} citations")
+        if result.artifacts:
+            logger.info(f"Recovered {len(result.artifacts)} artifacts")
+    else:
+        typer.echo("\n" + "=" * 60)
+        typer.echo(output_content)
+        if should_separate_citations and result.citations:
+            typer.echo("\n" + "=" * 60)
+            typer.echo("CITATIONS:")
+            typer.echo("=" * 60)
+            typer.echo(processor.format_citations_only(result))
 
 
 @app.command()
@@ -1548,55 +1757,59 @@ def edison_trajectory(
 
     api_key = os.getenv("EDISON_API_KEY") or os.getenv("FUTUREHOUSE_API_KEY")
     if not api_key:
-        logger.error("EDISON_API_KEY is required to retrieve an Edison trajectory")
+        _error("EDISON_API_KEY is required to retrieve an Edison trajectory")
         raise typer.Exit(1)
 
-    processor = ResearchProcessor()
     provider = FalconProvider(ProviderConfig(name="falcon", api_key=api_key, enabled=True))
 
     try:
         result = provider.retrieve_trajectory(trajectory_id)
-        should_separate_citations = separate_citations is not None
-
-        if output:
-            _write_result_artifacts(result, output)
-
-        output_content = processor.format_research_result(
-            result,
-            separate_citations=should_separate_citations,
-        )
-
-        if output:
-            output.write_text(output_content, encoding="utf-8")
-            logger.info(f"Result saved to: {output}")
-
-            if should_separate_citations and result.citations:
-                if isinstance(separate_citations, Path):
-                    citations_output = separate_citations
-                else:
-                    citations_output = output.with_suffix('.citations.md')
-
-                citations_content = processor.format_citations_only(result)
-                citations_output.write_text(citations_content, encoding="utf-8")
-                logger.info(f"Citations saved to: {citations_output}")
-
-            if result.citations:
-                logger.info(f"Found {len(result.citations)} citations")
-            if result.artifacts:
-                logger.info(f"Recovered {len(result.artifacts)} artifacts")
-        else:
-            typer.echo("\n" + "=" * 60)
-            typer.echo(output_content)
-            if should_separate_citations and result.citations:
-                typer.echo("\n" + "=" * 60)
-                typer.echo("CITATIONS:")
-                typer.echo("=" * 60)
-                typer.echo(processor.format_citations_only(result))
-
+        _emit_retrieved_result(result, output, separate_citations)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        _error(str(e))
         logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
+
+    # Outside the try: typer.Exit is a RuntimeError, which the handler above
+    # would report as an error and turn into exit 1.
+    _exit_if_unsuccessful(result)
+
+
+@app.command()
+def toxindex_conversation(
+    conversation_id: Annotated[str, typer.Argument(help="Existing ToxIndex Sage conversation ID")],
+    output: Annotated[Optional[Path], typer.Option(
+        help="Output file path (prints to stdout if not provided)")] = None,
+    separate_citations: Annotated[Optional[Path], typer.Option(
+        "--separate-citations", help="Save citations to separate file (optional path, defaults to output.citations.md)")] = None,
+):
+    """Retrieve a finished ToxIndex Sage conversation as a report, by ID.
+
+    ToxIndex has no API route that submits a question yet, so ask Sage in the
+    ToxIndex app and fetch the answer here.
+    """
+    from .models import ProviderConfig
+    from .providers.toxindex import TOXINDEX_API_KEY_VAR, ToxIndexProvider
+
+    api_key = os.getenv(TOXINDEX_API_KEY_VAR)
+    if not api_key:
+        _error(f"{TOXINDEX_API_KEY_VAR} is required to retrieve a ToxIndex conversation")
+        raise typer.Exit(1)
+
+    provider = ToxIndexProvider(ProviderConfig(
+        name="toxindex", api_key=api_key, base_url=os.getenv("TOXINDEX_BASE_URL"),
+    ))
+
+    try:
+        result = asyncio.run(provider.retrieve_conversation(conversation_id))
+        _emit_retrieved_result(result, output, separate_citations)
+    except Exception as e:
+        _error(str(e))
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
+
+    # Outside the try, as in edison_trajectory: typer.Exit is a RuntimeError.
+    _exit_if_unsuccessful(result)
 
 
 class TranscriptStatsFormat(str, Enum):
@@ -1634,11 +1847,11 @@ def transcript_stats_command(
         # OSError covers an unreadable file as well as a missing one, matching
         # the --output path below; FileNotFoundError is one of its subclasses,
         # as json.JSONDecodeError is of ValueError.
-        logger.error(f"Could not read transcripts: {e}")
+        _error(f"Could not read transcripts: {e}")
         raise typer.Exit(1)
 
     if not stats.entries:
-        logger.warning("No transcript entries found in the given paths")
+        _warn("No transcript entries found in the given paths")
 
     if output_format is TranscriptStatsFormat.JSON:
         content = stats.model_dump_json(indent=2)
@@ -1653,7 +1866,7 @@ def transcript_stats_command(
         except OSError as e:
             # Match the command's other failure paths: a missing directory
             # exits 1 rather than raising a traceback at the user.
-            logger.error(f"Could not write {output}: {e}")
+            _error(f"Could not write {output}: {e}")
             raise typer.Exit(1)
         logger.info(f"Transcript summary saved to: {output}")
     else:
@@ -1720,10 +1933,9 @@ def providers(
 
     if check:
         if show_params:
-            # Echoed, not logged: every other line this path emits goes to
-            # stdout, and the CLI's logger does not propagate to handlers a
-            # caller (or a test) can see.
-            typer.echo("Note: --show-params has no effect with --check; ignoring it.")
+            # About this run, not part of the health report, so it stays out
+            # of a redirected report.
+            _warn("--show-params has no effect with --check; ignoring it.")
         _check_provider_health(client, provider)
         return
 
@@ -1732,18 +1944,20 @@ def providers(
     if provider:
         # Show details for specific provider
         if provider not in PROVIDER_PARAMS_REGISTRY:
-            logger.error(f"Unknown provider: {provider}")
-            logger.error(
-                f"Available providers: {', '.join(PROVIDER_PARAMS_REGISTRY.keys())}")
+            _report_unknown_provider(provider)
             raise typer.Exit(1)
 
+        # One provider, so ask its class directly rather than building the
+        # stub and credential lists for all of them.
+        provider_class = load_provider_class(provider)
+        is_stub = provider_class.stub_reason is not None
         is_available = provider in available
         if is_available:
             status = "Available"
-        elif provider in PROVIDER_STUB_HINTS:
+        elif is_stub:
             # A stub is not credential-blocked; no key would make it work.
             status = "Not available (stub - no upstream API yet)"
-        elif provider in _settable_credential_hints():
+        elif provider_class.credential_env_var:
             status = "Not available (missing API key)"
         else:
             # Not every hint is a credential: claude_code needs a binary and
@@ -1756,7 +1970,7 @@ def providers(
             # One helper for both paths, so the two cannot drift into two
             # answers for the same provider again. The label still varies:
             # nothing is "required" of a reader whose provider has no upstream.
-            label = "Status" if provider in PROVIDER_STUB_HINTS else "Required"
+            label = "Status" if is_stub else "Required"
             typer.echo(f"{label}: {client.unregistered_reason(provider)}")
 
         # Show parameters
@@ -1797,11 +2011,7 @@ def providers(
                         typer.echo(
                             f"    {field_name}: {field_info.description}")
 
-        missing_credential_providers = [
-            provider_name
-            for provider_name in _settable_credential_hints()
-            if provider_name not in available
-        ]
+        missing_credential_providers = _credential_hints_to_offer(client)
         if missing_credential_providers:
             typer.echo("\nUnavailable providers requiring credentials:")
             _echo_credential_hints(missing_credential_providers)
@@ -1809,7 +2019,7 @@ def providers(
     else:
         # One stream, so the heading and its lists stay together -- the failure
         # _echo_no_providers_message exists to prevent.
-        _echo_no_providers_message()
+        _echo_no_providers_message(client)
 
     # Common to both arms: what differs above is only what is said about
     # credentials.
@@ -2189,6 +2399,17 @@ def _generate_individual_pages(
     return count
 
 
+def _report_missing_browser_extra(missing: str) -> None:
+    """Tell the user the browser extra is missing, and how to install it.
+
+    Args:
+        missing: The module that failed to import.
+    """
+    _error(f"{missing} not installed. Install with:")
+    _stderr("  pip install deep-research-client[browser]")
+    _stderr("  # or: uv add deep-research-client[browser]")
+
+
 @app.command()
 def browse_cache(
     output_dir: Annotated[Path, typer.Argument(help="Output directory for browser files")],
@@ -2230,7 +2451,7 @@ def browse_cache(
     data = client.export_cache_for_browser(include_content=include_content)
 
     if not data:
-        logger.error("No cached files found to browse")
+        _error("No cached files found to browse")
         raise typer.Exit(1)
 
     logger.info(f"Found {len(data)} cached research entries")
@@ -2276,15 +2497,13 @@ def browse_cache(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser
@@ -2467,7 +2686,7 @@ def models(
             parsed = enum_class(raw_value.lower())
         except ValueError:
             # Names the flag the user typed, not the generated class behind it.
-            logger.error(
+            _error(
                 f"Invalid {flag} value '{raw_value}'. Use one of: "
                 f"{_vocabulary(enum_class)}")
             raise typer.Exit(1)
@@ -2478,7 +2697,7 @@ def models(
     if provider:
         cards = get_provider_model_cards(provider)
         if not cards:
-            logger.error(
+            _error(
                 f"Unknown provider, or no model cards for '{provider}'. "
                 f"Use one of: {_carded_providers()}")
             raise typer.Exit(1)
@@ -2647,17 +2866,17 @@ def browse_files(
                 all_files.append(source)
                 logger.info(f"Added file: {source}")
             else:
-                logger.warning(f"Skipping non-markdown file: {source}")
+                _warn(f"Skipping non-markdown file: {source}")
         elif source.is_dir():
             found = list(source.glob(pattern))
             logger.info(
                 f"Found {len(found)} files in {source} with pattern '{pattern}'")
             all_files.extend(found)
         else:
-            logger.warning(f"Source not found, skipping: {source}")
+            _warn(f"Source not found, skipping: {source}")
 
     if not all_files:
-        logger.error("No markdown files found")
+        _error("No markdown files found")
         raise typer.Exit(1)
 
     logger.info(f"Processing {len(all_files)} markdown files")
@@ -2706,15 +2925,13 @@ def browse_files(
     except ImportError as e:
         missing = str(e).split("'")[1] if "'" in str(
             e) else "linkml-browser or markdown"
-        logger.error(f"{missing} not installed. Install with:")
-        logger.error("  pip install deep-research-client[browser]")
-        logger.error("  # or: uv add deep-research-client[browser]")
+        _report_missing_browser_extra(missing)
         raise typer.Exit(1)
 
     # Check if output directory exists
     if output_dir.exists() and not force:
-        logger.error(f"Output directory exists: {output_dir}")
-        logger.error("Use --force to overwrite")
+        _error(f"Output directory exists: {output_dir}")
+        _stderr("Use --force to overwrite")
         raise typer.Exit(1)
 
     # Add href links to data for browser
@@ -2769,6 +2986,44 @@ def browse_files(
 #: Column width for the three rate columns of the `--grade` table. One
 #: place, so the header and both precision branches cannot drift apart.
 _RATE_WIDTH = 7
+
+def _openai_compatible_client(api_key_env: str, base_url: Optional[str]) -> Any:
+    """Build the OpenAI-compatible async client the LLM-backed commands use.
+
+    Shared by `eval score` and `claims extract`, which both call a model
+    through any OpenAI-compatible endpoint (OpenAI, CBORG, a local server).
+
+    A key is the default endpoint's requirement, not the caller's. A local
+    OpenAI-compatible server -- vLLM, Ollama, LM Studio -- accepts any string,
+    so with a custom base URL and no key a placeholder is sent that names
+    itself if it ever reaches a server that does check. Said aloud, because
+    the condition is "a custom base URL" while the thing it stands for is "an
+    endpoint that needs no key": the commonest custom base URL after localhost
+    is a corporate or cloud proxy, which does check, and silently sending a
+    placeholder there trades one warning for a 401 inside every call.
+
+    Args:
+        api_key_env: Environment variable holding the API key.
+        base_url: Custom endpoint, or None for the SDK's default.
+
+    Returns:
+        An ``openai.AsyncOpenAI`` client, or None when there is no key and no
+        custom endpoint -- the caller says what that costs it.
+    """
+    from openai import AsyncOpenAI
+
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key and base_url:
+        api_key = "not-required-by-this-endpoint"
+        _warn(
+            f"{api_key_env} is not set; sending a placeholder key "
+            f"because --llm-base-url was given. A local endpoint will "
+            f"accept it; an endpoint that checks keys will answer 401."
+        )
+    if not api_key:
+        return None
+    return AsyncOpenAI(api_key=api_key, base_url=base_url)
+
 
 eval_app = typer.Typer(help="Evaluate deep research tools against benchmark eval sets")
 app.add_typer(eval_app, name="eval")
@@ -2839,20 +3094,20 @@ def eval_fetch(
     # error, no sign the argument was blank. Refused here for the same reason
     # `LabBenchAdapter.load` refuses it.
     if not names:
-        typer.echo("No subset named.")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error("No subset named.")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     unknown = [n for n in names if n not in SUBSETS]
     if unknown:
-        typer.echo(f"Unknown subset(s): {', '.join(unknown)}")
-        typer.echo(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
+        _error(f"Unknown subset(s): {', '.join(unknown)}")
+        _stderr(f"Available: {', '.join(SUBSETS)}, or 'all' for every text-only subset.")
         raise typer.Exit(1)
 
     multimodal = [n for n in names if not SUBSETS[n][1]]
     if multimodal:
-        typer.echo(
-            f"NOTE: {', '.join(multimodal)} ask about figures or tables supplied as "
+        _warn(
+            f"{', '.join(multimodal)} ask about figures or tables supplied as "
             f"images. They will be cached, but `eval load` refuses them, so there is "
             f"no path from this download to a run."
         )
@@ -2875,10 +3130,10 @@ def eval_fetch(
     except ValueError as exc:
         # Upstream drift trips the row-count guard, which exists precisely so a
         # user finds out. Its siblings report that; this used to traceback.
-        typer.echo(f"Could not fetch the dataset: {exc}")
+        _error(f"Could not fetch the dataset: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset: {exc}")
+        _error(f"Could not reach the dataset: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -2902,10 +3157,10 @@ def _load_eval_set_or_exit(adapter: str, source: str) -> "EvalSet":
     try:
         return load_eval_set(adapter, source)
     except (ValueError, FileNotFoundError) as exc:
-        typer.echo(f"Could not load the eval set {source}: {exc}")
+        _error(f"Could not load the eval set {source}: {exc}")
         raise typer.Exit(1) from exc
     except httpx.HTTPError as exc:
-        typer.echo(f"Could not reach the dataset to load {source}: {exc}")
+        _error(f"Could not reach the dataset to load {source}: {exc}")
         raise typer.Exit(1) from exc
 
 
@@ -3069,7 +3324,7 @@ def eval_run(
     )
     from .evaluation.models import MCQScore
     if not arm and not arms_file:
-        typer.echo("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
+        _error("Nothing to run: pass --arm (repeatable) or --arms with a YAML file.")
         raise typer.Exit(1)
 
     arms: list = []
@@ -3080,7 +3335,7 @@ def eval_run(
 
     duplicate_ids = {arm_id for arm_id, n in Counter(a.id for a in arms).items() if n > 1}
     if duplicate_ids:
-        typer.echo(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
+        _error(f"Arm ids must be unique; repeated: {', '.join(sorted(duplicate_ids))}")
         raise typer.Exit(1)
 
     eval_set = _load_eval_set_or_exit(adapter, source)
@@ -3090,12 +3345,12 @@ def eval_run(
         tasks = [t for t in tasks if t.id in wanted]
         missing = wanted - {t.id for t in tasks}
         if missing:
-            typer.echo(f"No task with id(s): {', '.join(sorted(missing))}")
+            _error(f"No task with id(s): {', '.join(sorted(missing))}")
             raise typer.Exit(1)
     if limit is not None:
         tasks = tasks[:limit]
     if not tasks:
-        typer.echo("No tasks selected.")
+        _error("No tasks selected.")
         raise typer.Exit(1)
     eval_set.tasks = tasks
 
@@ -3452,7 +3707,6 @@ def eval_score(
     """
     import asyncio
     import json as json_mod
-    from openai import AsyncOpenAI
     from .evaluation.datamodel import AnswerType
     from .evaluation.runner import EvalConfig, parse_dr_output, score_output
 
@@ -3460,62 +3714,42 @@ def eval_score(
     tasks = [t for t in (eval_set.tasks or []) if t.answer_type == AnswerType.REPORT]
     if not tasks:
         present = sorted({t.answer_type for t in (eval_set.tasks or [])})
-        typer.echo(
+        _error(
             f"No report-shaped tasks in {eval_set.name}; it holds "
             f"{', '.join(present) or 'nothing'}."
         )
         if AnswerType.MULTIPLE_CHOICE in present:
-            typer.echo("  Multiple-choice sets are graded by `eval run --grade`, not here.")
+            _stderr("  Multiple-choice sets are graded by `eval run --grade`, not here.")
         if AnswerType.SHORT_ANSWER in present:
-            typer.echo("  Short-answer sets are not scored by this client at all yet.")
+            _stderr("  Short-answer sets are not scored by this client at all yet.")
         raise typer.Exit(1)
 
     if task_id:
         tasks = [t for t in tasks if t.id == task_id]
         if not tasks:
-            typer.echo(f"No task with id {task_id!r} in {eval_set.name}.")
+            _error(f"No task with id {task_id!r} in {eval_set.name}.")
             raise typer.Exit(1)
     elif len(tasks) > 1:
-        typer.echo(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
+        _error(f"{eval_set.name} has {len(tasks)} report tasks; pass --task-id to choose one:")
         for t in tasks[:20]:
-            typer.echo(f"  {t.id}")
+            _stderr(f"  {t.id}")
         raise typer.Exit(1)
 
     task = tasks[0]
     markdown_text = report.read_text(encoding="utf-8")
 
-    api_key = os.environ.get(llm_api_key_env, "")
     wants_judge = not (no_fact and no_recall and no_race)
 
     # Built only when a judge-backed scorer will actually run. AsyncOpenAI
     # raises OpenAIError on an empty key at *construction*, so building it
     # unconditionally made `--no-fact --no-recall --no-race` -- the remedy this
-    # command's own warning offers -- traceback before any scoring, leaving no
+    # command's own error offers -- traceback before any scoring, leaving no
     # way to get the intrinsic scores without a key at all.
     llm_client = None
     if wants_judge:
-        if not api_key and llm_base_url:
-            # A key is the default endpoint's requirement, not the judge's. A
-            # local OpenAI-compatible server -- vLLM, Ollama, LM Studio --
-            # accepts any string, and refusing here took away a configuration
-            # that worked before the construction was made lazy. The SDK still
-            # needs something non-empty, so it gets a placeholder that names
-            # itself if it ever reaches a server that does check.
-            #
-            # Said aloud, because the condition is "a custom base URL" while
-            # the thing it stands for is "an endpoint that needs no key". The
-            # commonest custom base URL after localhost is a corporate or
-            # cloud proxy, which does check -- and silently sending a
-            # placeholder there trades one pre-flight message for a 401 inside
-            # every judge call, after the report has been read.
-            api_key = "not-required-by-this-endpoint"
-            typer.echo(
-                f"{llm_api_key_env} is not set; sending a placeholder key "
-                f"because --llm-base-url was given. A local endpoint will "
-                f"accept it; an endpoint that checks keys will answer 401."
-            )
-        if not api_key:
-            typer.echo(
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
                 f"{llm_api_key_env} is not set, so the judge-backed scorers "
                 f"cannot run. Either set it (or point --llm-api-key-env at a "
                 f"variable that is set), pass --llm-base-url for a local "
@@ -3524,7 +3758,6 @@ def eval_score(
                 f"no API key."
             )
             raise typer.Exit(1)
-        llm_client = AsyncOpenAI(api_key=api_key, base_url=llm_base_url)
 
     config = EvalConfig(
         run_fact=not no_fact,
@@ -3734,6 +3967,190 @@ def eval_score(
             encoding="utf-8",
         )
         typer.echo(f"\nResults written to {output}")
+
+
+def _claims_backend_failure(error: ProviderError) -> str:
+    """What to tell the reader when the Claude Code backend fails, and what to try.
+
+    ``ProviderError.actionable_message`` suggests another ``--provider``,
+    which ``claims extract`` has no option for, so the advice here is its own.
+
+    Args:
+        error: A classified failure of the ``claude`` CLI.
+
+    Returns:
+        The diagnosis and the next steps that apply to ``claims extract``.
+
+    >>> from deep_research_client.exceptions import ProviderAuthError
+    >>> print(_claims_backend_failure(ProviderAuthError("claude_code", "Invalid API key. Please run /login")))
+    claude_code: Invalid API key. Please run /login -- the API key is missing, invalid, or lacks access to this endpoint. Try: `deep-research-client providers --check --provider claude_code`, or --llm-backend openai
+    """
+    return (
+        f"{error.provider}: {error.diagnosis}. Try: `deep-research-client providers "
+        f"--check --provider {error.provider}`, or --llm-backend openai"
+    )
+
+
+claims_app = typer.Typer(help="Extract the claims a source makes, with provenance")
+app.add_typer(claims_app, name="claims")
+
+
+@claims_app.command("extract")
+def claims_extract(
+    source: Annotated[Path, typer.Argument(
+        help="A markdown report, or a YAML/JSON document")],
+    source_format: Annotated[str, typer.Option(
+        "--format",
+        help="How to read the source: auto, markdown, dismech, gene-review, structured")] = "auto",
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the claim set here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
+    llm_backend: Annotated[str, typer.Option(
+        "--llm-backend",
+        help="How the model is called: openai (any OpenAI-compatible API) or "
+             "claude-code (the local Claude Code CLI, no API key)")] = "openai",
+    llm_model: Annotated[Optional[str], typer.Option(
+        "--llm-model",
+        help="Model that decomposes prose into claims (default gpt-4o-mini, "
+             "or sonnet with --llm-backend claude-code)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Model requests in flight at once")] = 4,
+    llm_max_tokens: Annotated[int, typer.Option(
+        "--llm-max-tokens", min=1,
+        help="Reply budget per section; a reply cut off at it is an error")] = 4096,
+    citations: Annotated[Optional[Path], typer.Option(
+        "--citations",
+        help="A report's separate citations file (research --separate-citations). "
+             "By default <report>.citations.md or <report>.md.citations.md, if present")] = None,
+):
+    """Extract the claims a source makes, without judging whether they are true.
+
+    A markdown report, or the prose fields of a generic YAML/JSON document, is
+    decomposed into atomic claims by a model; each claim keeps the passage that
+    states it, located in the source. Curated dismech and ai-gene-review files
+    map record by record with no model.
+
+    Examples:
+
+      deep-research-client claims extract report.md -o report.claims.json
+
+      deep-research-client claims extract report.md --llm-backend claude-code --llm-model opus
+
+      deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+    """
+    import json
+
+    import yaml
+
+    from .claims import SourceFormat, aextract_claims, needs_llm, resolve_format
+    from .claims.extract import find_citations_file
+    from .claims.models import ids_by_section
+    from .claims.llm import DEFAULT_MODEL
+
+    if not source.is_file():
+        _error(f"File not found: {source}")
+        raise typer.Exit(1)
+    try:
+        requested = SourceFormat(source_format)
+    except ValueError:
+        choices = ", ".join(f.value for f in SourceFormat)
+        _error(f"Cannot read {source} as {source_format!r}. Use one of: {choices}")
+        raise typer.Exit(1)
+    try:
+        fmt = resolve_format(source, requested)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        _error(f"Could not parse {source}: {exc}")
+        raise typer.Exit(1)
+
+    if citations is not None and not citations.is_file():
+        _error(f"Citations file not found: {citations}")
+        raise typer.Exit(1)
+    if citations is None and fmt == SourceFormat.MARKDOWN:
+        citations = find_citations_file(source)
+        if citations is not None:
+            logger.info(f"Resolving [n] markers through {citations}")
+
+    backends = ("openai", "claude-code")
+    if llm_backend not in backends:
+        _error(f"Unknown --llm-backend {llm_backend!r}. Use one of: {', '.join(backends)}")
+        raise typer.Exit(1)
+    if llm_backend == "claude-code" and llm_base_url:
+        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
+        raise typer.Exit(1)
+
+    llm_client: Any = None
+    model = llm_model or DEFAULT_MODEL
+    if needs_llm(fmt) and llm_backend == "claude-code":
+        from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
+
+        if shutil.which("claude") is None:
+            _error("--llm-backend claude-code needs the `claude` CLI on PATH, and it is not there.")
+            raise typer.Exit(1)
+        llm_client = ClaudeCodeChatClient()
+        model = llm_model or DEFAULT_CLAUDE_CODE_MODEL
+    elif needs_llm(fmt):
+        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
+        if llm_client is None:
+            _error(
+                f"{llm_api_key_env} is not set, and claims are extracted from "
+                f"{fmt.value} sources by a model. Set it (or point "
+                f"--llm-api-key-env at a variable that is set), or pass "
+                f"--llm-base-url for a local endpoint that needs no key, or "
+                f"--llm-backend claude-code to use a logged-in Claude Code."
+            )
+            raise typer.Exit(1)
+
+    import openai
+
+    try:
+        claims = asyncio.run(aextract_claims(
+            source, source_format=fmt, llm_client=llm_client,
+            model=model, concurrency=concurrency, max_tokens=llm_max_tokens,
+            citations_file=citations,
+        ))
+    except ProviderError as exc:
+        _error(f"Could not extract claims from {source}: {_claims_backend_failure(exc)}")
+        raise typer.Exit(1)
+    except (ValueError, openai.APIError) as exc:
+        _error(f"Could not extract claims from {source}: {exc}")
+        raise typer.Exit(1)
+
+    unanchored = claims.unanchored_claims
+    if unanchored:
+        near = sum(1 for c in unanchored if c.nearest_passage is not None)
+        _warn(
+            f"{len(unanchored)} of {len(claims.claim_list)} claims could not be "
+            f"found in the source; they are kept with anchor_status UNANCHORED "
+            f"and no span, and should not be taken as coming from it. "
+            f"{near} have a nearest_passage showing the closest text found."
+        )
+    conflicting = claims.cited_background_claims
+    if conflicting:
+        _warn(
+            f"{len(conflicting)} claims are marked as background knowledge but carry "
+            f"a citation ({ids_by_section(conflicting)}); either the basis or the "
+            f"citation the model attached to them is wrong."
+        )
+    logger.info(f"Extracted {len(claims.claim_list)} claims from {source}")
+
+    payload = claims.model_dump(mode="json", exclude_none=True)
+    if output is None:
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    if output.suffix.lower() in (".yaml", ".yml"):
+        rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    else:
+        rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    try:
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        _error(f"Could not write {output}: {exc}")
+        raise typer.Exit(1)
+    logger.info(f"Claims written to {output}")
 
 
 def main():

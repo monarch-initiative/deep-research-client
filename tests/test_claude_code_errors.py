@@ -19,7 +19,7 @@ from deep_research_client.exceptions import (
 from deep_research_client.models import ProviderConfig
 from deep_research_client.providers.claude_code import (
     ClaudeCodeProvider,
-    _classify_cli_failure,
+    classify_cli_failure,
 )
 
 
@@ -49,7 +49,7 @@ def _provider(executable: str = "claude") -> ClaudeCodeProvider:
 )
 def test_cli_wordings_map_to_types(text, expected):
     """Each CLI failure wording resolves to the type that implies the remedy."""
-    assert isinstance(_classify_cli_failure("claude_code", text), expected)
+    assert isinstance(classify_cli_failure("claude_code", text), expected)
 
 
 @pytest.mark.parametrize(
@@ -63,12 +63,12 @@ def test_cli_wordings_map_to_types(text, expected):
 )
 def test_unrecognised_output_is_left_alone(text):
     """Failures we cannot explain must not be given a confident wrong label."""
-    assert _classify_cli_failure("claude_code", text) is None
+    assert classify_cli_failure("claude_code", text) is None
 
 
 def test_usage_limit_is_not_retryable_and_reports_its_reset():
     """The quota case is the one that carries a bounded wait, so surface it."""
-    error = _classify_cli_failure(
+    error = classify_cli_failure(
         "claude_code", "Claude usage limit reached. Your limit will reset at 3pm (PST)."
     )
 
@@ -79,8 +79,8 @@ def test_usage_limit_is_not_retryable_and_reports_its_reset():
 
 def test_rate_limit_and_usage_limit_are_told_apart():
     """Both say "limit"; only one clears in seconds."""
-    quota = _classify_cli_failure("claude_code", "Claude usage limit reached")
-    overloaded = _classify_cli_failure("claude_code", "API Error 529: Overloaded")
+    quota = classify_cli_failure("claude_code", "Claude usage limit reached")
+    overloaded = classify_cli_failure("claude_code", "API Error 529: Overloaded")
 
     assert isinstance(quota, ProviderQuotaError)
     assert quota.retryable is False
@@ -254,9 +254,9 @@ def test_a_real_failure_on_stderr_is_still_caught(monkeypatch):
 )
 def test_terminal_result_text_reads_only_a_failing_terminal_event(stdout, expected):
     """Malformed or truncated streams must not throw on the failure path."""
-    from deep_research_client.providers.claude_code import _terminal_result_text
+    from deep_research_client.providers.claude_code import terminal_result_text
 
-    assert _terminal_result_text(stdout) == expected
+    assert terminal_result_text(stdout) == expected
 
 
 def test_a_successful_result_field_is_the_report_not_a_diagnosis(monkeypatch):
@@ -330,7 +330,7 @@ def test_a_long_stderr_does_not_become_the_whole_message():
     from deep_research_client.exceptions import MAX_DETAIL_CHARS
 
     noise = "at Object.<anonymous> (/usr/lib/node_modules/claude/cli.js:1:1)\n" * 50
-    error = _classify_cli_failure("claude_code", f"Claude usage limit reached\n{noise}")
+    error = classify_cli_failure("claude_code", f"Claude usage limit reached\n{noise}")
 
     assert error is not None
     assert len(error.detail) <= MAX_DETAIL_CHARS
@@ -378,7 +378,7 @@ def test_a_chatty_reset_message_does_not_push_its_own_reset_time_off():
     from deep_research_client.exceptions import MAX_DETAIL_CHARS
     from deep_research_client.models import ProviderHealth
 
-    error = _classify_cli_failure(
+    error = classify_cli_failure(
         "claude_code",
         "Claude usage limit reached, your limit will reset at 5pm Pacific Time; if you "
         "need capacity sooner consider upgrading to a higher tier or waiting for the "
@@ -419,15 +419,15 @@ def test_valid_json_of_the_wrong_shape_still_returns_a_record(stdout):
 )
 def test_the_capture_keeps_a_whole_time_and_nothing_more(text, expected):
     """A comma sits inside a time far more often than it ends a clause."""
-    error = _classify_cli_failure("claude_code", f"Claude usage limit reached, {text}")
+    error = classify_cli_failure("claude_code", f"Claude usage limit reached, {text}")
 
     assert error.resets_at == expected
 
 
 def test_a_stray_number_is_not_an_overload():
     """`529` is the one pattern that is a number, so it needs word boundaries."""
-    assert _classify_cli_failure("claude_code", "killed process 15290 unexpectedly") is None
-    assert _classify_cli_failure("claude_code", "API Error 529: Overloaded") is not None
+    assert classify_cli_failure("claude_code", "killed process 15290 unexpectedly") is None
+    assert classify_cli_failure("claude_code", "API Error 529: Overloaded") is not None
 
 
 def test_comma_joined_advice_is_accepted_noise_but_stays_bounded():
@@ -438,7 +438,7 @@ def test_comma_joined_advice_is_accepted_noise_but_stays_bounded():
     """
     from deep_research_client.exceptions import MAX_RESET_CHARS
 
-    error = _classify_cli_failure(
+    error = classify_cli_failure(
         "claude_code",
         "Claude usage limit reached, your limit will reset at 5pm Pacific Time, "
         "upgrade to a higher tier for more capacity",

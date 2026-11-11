@@ -1,0 +1,9 @@
+# A structured document with no curated-claim schema: its prose fields are
+# decomposed by the LLM extractor, each located by its path.
+name: Marfan syndrome notes
+id: note-1
+sections:
+  - title: Genetics
+    text: Marfan syndrome is caused by pathogenic variants in FBN1 and is inherited in an autosomal dominant pattern.
+  - title: Eyes
+    text: About 60 percent of affected people develop ectopia lentis.

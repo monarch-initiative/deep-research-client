@@ -1,0 +1,5 @@
+```json
+{"claims": []}
+```
+
+The text contains only metadata about the retrieval process itself (number of papers and snippets retrieved). It makes no claims about the subject matter (antiphospholipid syndrome pathophysiology) or any other domain. The statements are about the organization and scope of the report, which according to the rules should be skipped.

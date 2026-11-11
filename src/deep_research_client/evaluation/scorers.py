@@ -514,7 +514,7 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
     return top_level, salvage
 
 
-def _extract_json_object(text: str, key: str | None = None) -> dict | None:
+def extract_json_object(text: str, key: str | None = None) -> dict | None:
     """Extract a JSON object from text, handling nested braces.
 
     Every ``{...}`` object at the top level of the reply is a candidate; an
@@ -528,63 +528,63 @@ def _extract_json_object(text: str, key: str | None = None) -> dict | None:
     caller can quote what the judge actually said -- which is not a verdict,
     and every caller checks the key rather than the truthiness of the result.
 
-    >>> _extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
+    >>> extract_json_object('blah {"a": 1, "b": {"c": 2}} done')
     {'a': 1, 'b': {'c': 2}}
-    >>> _extract_json_object('no json here') is None
+    >>> extract_json_object('no json here') is None
     True
-    >>> _extract_json_object('{"supported": true, "explanation": "yes"}')
+    >>> extract_json_object('{"supported": true, "explanation": "yes"}')
     {'supported': True, 'explanation': 'yes'}
 
     The narrating judge, with and without the key:
 
-    >>> _extract_json_object('{"thinking": "hmm"} then {"supported": true}')
+    >>> extract_json_object('{"thinking": "hmm"} then {"supported": true}')
     {'thinking': 'hmm'}
-    >>> _extract_json_object('{"thinking": "hmm"} then {"supported": true}',
+    >>> extract_json_object('{"thinking": "hmm"} then {"supported": true}',
     ...                      key="supported")
     {'supported': True}
 
     A key inside a preamble does not outrank a top-level verdict:
 
-    >>> _extract_json_object('{"evidence": {"supported": false}} '
+    >>> extract_json_object('{"evidence": {"supported": false}} '
     ...                      '{"supported": true}', key="supported")
     {'supported': True}
 
     But a wrapper whose only content is the verdict is still read:
 
-    >>> _extract_json_object('{"response": {"supported": true}}', key="supported")
+    >>> extract_json_object('{"response": {"supported": true}}', key="supported")
     {'supported': True}
 
     An array is not a candidate and neither are its members, so a breakdown
     emitted as a list does not outrank the verdict after it:
 
-    >>> _extract_json_object('[{"criterion": "depth", "score": 2}] {"score": 4}',
+    >>> extract_json_object('[{"criterion": "depth", "score": 2}] {"score": 4}',
     ...                      key="score")
     {'score': 4}
 
     But a reply that is only an array still has its verdict found, through the
     descent rather than as a top-level candidate:
 
-    >>> _extract_json_object('[{"score": 3}]', key="score")
+    >>> extract_json_object('[{"score": 3}]', key="score")
     {'score': 3}
 
     A run that does not parse is skipped, and one nested inside it is still
     reachable:
 
-    >>> _extract_json_object('not json {oops} but {"supported": false}')
+    >>> extract_json_object('not json {oops} but {"supported": false}')
     {'supported': False}
-    >>> _extract_json_object('{oops {"supported": true}}', key="supported")
+    >>> extract_json_object('{oops {"supported": true}}', key="supported")
     {'supported': True}
 
     A brace inside a string value no longer truncates the object:
 
-    >>> _extract_json_object('{"explanation": "a } brace", "supported": true}',
+    >>> extract_json_object('{"explanation": "a } brace", "supported": true}',
     ...                      key="supported")["supported"]
     True
 
     When nothing carries the key, the first object found is returned, so the
     caller can quote the judge's actual reply rather than nothing:
 
-    >>> _extract_json_object('{"verdict": "yes"}', key="supported")
+    >>> extract_json_object('{"verdict": "yes"}', key="supported")
     {'verdict': 'yes'}
 
     History, below the rule and the examples because a reader needs those
@@ -764,7 +764,7 @@ async def score_fact(
             )
             try:
                 result_text = await _llm_judge(prompt, llm_client, model=model)
-                result = _extract_json_object(result_text, key="supported")
+                result = extract_json_object(result_text, key="supported")
                 if result and result.get("supported") is not None:
                     supported = result.get("supported")
                     explanation = result.get("explanation", "")
@@ -888,7 +888,7 @@ async def score_claim_recall(
         )
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
-            result = _extract_json_object(result_text, key="matched")
+            result = extract_json_object(result_text, key="matched")
             if result and result.get("matched") is not None:
                 matched = result.get("matched")
                 best_text = result.get("best_matching_text")
@@ -1040,7 +1040,7 @@ async def score_race(
         )
         try:
             result_text = await _llm_judge(prompt, llm_client, model=model)
-            result = _extract_json_object(result_text, key="score")
+            result = extract_json_object(result_text, key="score")
             raw = result.get("score") if result else None
             if result is not None and raw is not None and _in_scale(raw):
                 score = float(raw)

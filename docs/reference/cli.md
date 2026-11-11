@@ -322,6 +322,44 @@ deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 \
 
 ---
 
+### toxindex-conversation
+
+Retrieve a finished ToxIndex Sage conversation as a report. ToxIndex has no API
+route that submits a question yet, so ask Sage in the
+[ToxIndex app](https://platform.toxindex.com) and fetch the answer here.
+
+```bash
+deep-research-client toxindex-conversation [OPTIONS] CONVERSATION_ID
+```
+
+#### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `CONVERSATION_ID` | Existing Sage conversation ID, from the ToxIndex app URL |
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `--output PATH` | Output file path (prints to stdout if not provided) |
+| `--separate-citations PATH` | Save citations to a separate file |
+
+#### Notes
+
+- Requires `TOXINDEX_API_KEY`; `TOXINDEX_BASE_URL` overrides the API root.
+- Each citation is the ToxIndex tool call behind a `[tc-...]` tag in the answer.
+- Exits 1 if the conversation is unknown, still running, or did not end on an answer.
+
+#### Examples
+
+```bash
+deep-research-client toxindex-conversation 6c906ccf-a1e9-4dc7-820f-5d4626155e9f \
+  --output carbamate.md --separate-citations carbamate.citations.md
+```
+
+---
+
 ### transcript-stats
 
 Summarize what an agent did, from the transcripts saved alongside a run.
@@ -851,6 +889,51 @@ tell a keyless endpoint from one that checks keys, so it sends a placeholder and
 says so. A local server accepts it; a remote proxy that does check will answer
 401 on every judge call.
 
+### claims
+
+Extract the claims a source makes, with provenance, without judging whether
+they are true. See [Extract Claims](../how-to/extract-claims.md).
+
+#### claims extract
+
+```bash
+deep-research-client claims extract SOURCE [OPTIONS]
+```
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `SOURCE` | A markdown report, or a YAML/JSON document |
+| `--format TEXT` | `auto` (default), `markdown`, `dismech`, `gene-review` or `structured` |
+| `--output`, `-o PATH` | Write the claim set here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
+| `--llm-backend TEXT` | `openai` (default): any OpenAI-compatible API. `claude-code`: the local `claude` CLI, with no API key |
+| `--llm-model TEXT` | Model that decomposes prose into claims (default: `gpt-4o-mini`, or `sonnet` with `--llm-backend claude-code`) |
+| `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API, e.g. CBORG or a local server. `openai` backend only |
+| `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`). `openai` backend only |
+| `--concurrency INT` | Model requests in flight at once (default: 4) |
+| `--llm-max-tokens INT` | Reply budget per section (default: 4096). A reply cut off at it is an error |
+| `--citations PATH` | A report's separate citations file, from `research --separate-citations`. Default: `<report>.citations.md` or `<report>.md.citations.md` beside the report, if present |
+
+Markdown and generic YAML/JSON prose need a model; curated dismech and
+ai-gene-review files do not, and run with no key. `--llm-base-url` without a
+key sends a placeholder, as for `eval score`: a local server accepts it, and
+an endpoint that checks keys answers 401. `--llm-backend claude-code` needs
+`claude` on PATH and logged in; it cannot set temperature. See
+[Extract claims](../how-to/extract-claims.md#through-claude-code-with-no-api-key).
+
+```bash
+# A deep research report, via CBORG
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-base-url https://api.cborg.lbl.gov --llm-api-key-env CBORG_API_KEY \
+  --llm-model <a model your endpoint serves>
+
+# A deep research report, via a logged-in Claude Code
+deep-research-client claims extract report.md -o report.claims.json \
+  --llm-backend claude-code --llm-model opus
+
+# A curated dismech disease file: no model involved
+deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+```
+
 ---
 
 ## Environment Variables
@@ -864,12 +947,40 @@ says so. A local server accepts it; a remote proxy that does check will answer
 | `CONSENSUS_API_KEY` | Consensus | Consensus API key |
 | `CBORG_API_KEY` | CBORG | CBORG proxy API key |
 
+## Output Streams
+
+Every command follows one rule for where its output goes:
+
+| Stream | Carries | Examples |
+|--------|---------|----------|
+| stdout | What the command produces: whatever you would redirect to a file | Research markdown, `providers` listing, `providers --check` report, `models` listing, `transcript-stats --format json`, eval summaries |
+| stderr | Messages about this run, prefixed `Error:` or `Warning:` | An unknown provider, a missing input file, an option the chosen provider ignores, the providers a fallback tried, unresolved references |
+| stderr, with `-v` | Tracing: progress, what was chosen, where a file was written | `Using provider: mock`, `Result saved to: report.md` |
+
+So `deep-research-client research "..." > report.md` leaves only the report in
+`report.md`, and warnings stay on the terminal. A report is kept whole on
+stdout even when it describes failures: the `providers --check` health report
+lists broken providers on stdout, because that list is the answer you asked
+for.
+
+The line is drawn at whether there is a report to give. `providers --check
+--provider falcon` without `EDISON_API_KEY` still reports on falcon, so its
+`falcon: NOT CONFIGURED` line goes to stdout. `providers --check --provider
+flacon` names no provider at all, so there is nothing to report on: the
+`Error: Unknown provider` goes to stderr and a redirected file stays empty.
+
+Library code (the client and providers) still logs through Python's `logging`,
+which the CLI sends to stderr.
+
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Error (invalid options, API failure, etc.) |
+| 1 | Error (invalid options, API failure, etc.); nothing was produced |
+| 2 | `--fail-on-unresolved` and validation found unresolved references or terms |
+| 3 | Reference or term validation itself failed (e.g. a service was unreachable); the report was already written |
+| 4 | The output was written, but the provider reported it could not answer the question; the file is marked `answer_status: unsuccessful`, was not cached, and was not validated even if `--validate-references` / `--validate-terms` were given |
 
 ## Shell Completion
 

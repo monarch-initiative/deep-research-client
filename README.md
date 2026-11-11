@@ -4,7 +4,7 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist).
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
 
 ## Features
 
@@ -37,10 +37,14 @@ pip install "deep-research-client[validation]"
 # With ontology term validation (checks cited CURIEs are the terms they are named as)
 pip install "deep-research-client[terms]"
 
-# For development
+# With the Edison Scientific (Falcon) provider; its SDK brings LiteLLM, so it is
+# not part of the base install. `[falcon]` is an alias for the same extra.
+pip install "deep-research-client[edison]"
+
+# For development (the edison extra is needed for mypy and the Edison tests)
 git clone <repo-url>
 cd deep-research-client
-uv sync
+just install  # uv sync --group dev --extra edison
 ```
 
 ## Quick Start
@@ -51,7 +55,8 @@ uv sync
 # For OpenAI Deep Research
 export OPENAI_API_KEY="your-openai-key"
 
-# For Edison Scientific (formerly FutureHouse Falcon)
+# For Edison Scientific (formerly FutureHouse Falcon) - requires the edison extra
+pip install "deep-research-client[edison]"
 export EDISON_API_KEY="your-edison-key"
 
 # For Asta retrieval
@@ -91,6 +96,11 @@ export TOOLUNIVERSE_API_KEY="your-llm-key"  # falls back to OPENAI_API_KEY
 # Optional OpenAI-compatible endpoint:
 # export TOOLUNIVERSE_BASE_URL="https://your-server.example/v1"
 # Set DISABLE_TOOLUNIVERSE_PROVIDER=true to opt out of auto-detection.
+
+# For ToxIndex Sage (chemical safety / toxicology). A stub for research:
+# ToxIndex has no API route that submits a question yet, so the key only
+# verifies itself (`providers --check`) and retrieves finished conversations.
+export TOXINDEX_API_KEY="your-toxindex-key"
 ```
 
 Note: the Asta provider is retrieval-only and does not consume prompts verbatim. Markdown-heavy or template-style inputs are pre-processed into plain text before submission, and long inputs are truncated to the configured `query_char_limit` (500 characters by default).
@@ -112,6 +122,9 @@ deep-research-client research "Machine learning trends 2024" --output report.md
 
 # Retrieve an existing Edison trajectory by ID
 deep-research-client edison-trajectory 784d73d5-da42-402e-9701-6c5b44beab14 --output edison-report.md
+
+# Retrieve a finished ToxIndex Sage conversation by ID
+deep-research-client toxindex-conversation 6c906ccf-a1e9-4dc7-820f-5d4626155e9f --output tox-report.md
 
 # Summarize what an agent did, from its saved transcripts
 deep-research-client transcript-stats run_artifacts/provenance/
@@ -457,6 +470,8 @@ result = client.research(
 - **Security:** by default the agent is restricted to a read-only research toolset (`allowed_tools` = `["WebSearch", "WebFetch"]`), so even an untrusted query cannot edit files or run shell commands. Setting `skip_permissions=True` adds `--dangerously-skip-permissions`, which bypasses all permission checks and **makes `allowed_tools` a no-op** (all tools become available) — use it only in trusted, sandboxed environments.
 - **Reading local documents:** the default toolset is web-only and omits the `Read` tool. To research over files you supply (e.g. via `add_dirs`), add `Read` to `allowed_tools` explicitly: `allowed_tools=["WebSearch", "WebFetch", "Read"]`. It is left out by default because filesystem read access is unnecessary for web research and is a mild information-disclosure surface for untrusted queries.
 - **Empty-report guard (behavior change):** a report shorter than `min_report_chars` (default 200) now raises instead of writing a well-formed file containing no research. Runs that previously returned a short answer successfully will now fail — set `min_report_chars=0` if you expect short answers. This is an emptiness check, not a quality check.
+- **Refusals and from-memory answers are not reports:** a run that retrieved nothing (no web search, and no tool call that was allowed and not bookkeeping), whatever it cites, or that the model marked `**Incomplete report:**`, or that cites no source (URL, PMID or DOI) and reads as a refusal of the report (e.g. after a safety-classifier halt) is still written, but marked `answer_status: unsuccessful` with `run_metadata.unsuccessful_reason`, not cached, and the CLI exits 4.
+- **Retrieve first:** every run's system prompt (default or custom) gets a directive to retrieve sources before writing, cite each claim inline, state nothing it did not retrieve in the session, and, if it cannot finish, return a partial report opening with `**Incomplete report:**` instead of nothing. See docs/reference/providers.md, "What every run is told".
 - **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
@@ -1075,7 +1090,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Provider | Environment Variable | Model/Service | Strengths |
 |----------|---------------------|---------------|-----------|
 | OpenAI | `OPENAI_API_KEY` | o3-deep-research-2025-06-26 | Deep research, comprehensive reports |
-| Edison | `EDISON_API_KEY` | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
+| Edison | `EDISON_API_KEY` + `edison` extra | Edison Scientific Literature | Scientific literature focus, powered by PaperQA3; preserves output figures and files |
 | Perplexity | `PERPLEXITY_API_KEY` | sonar-deep-research | Real-time web search, recent sources |
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
@@ -1199,8 +1214,8 @@ just mypy
 # Format code
 just format
 
-# Install dependencies
-uv sync
+# Install dependencies, including the edison extra mypy needs
+just install
 
 # Run CLI locally
 uv run deep-research-client --help
@@ -1211,7 +1226,9 @@ uv run deep-research-client --help
 1. Create a new provider class in `src/deep_research_client/providers/`
 2. Inherit from `ResearchProvider`
 3. Implement the `research()` method
-4. Register in `client.py`
+4. Declare what it needs on the class (`credential_env_var` and friends; see
+   [Declaring what the provider needs](docs/reference/providers.md#declaring-what-the-provider-needs))
+5. Register in `client.py`
 
 Example:
 ```python
@@ -1314,6 +1331,10 @@ Claude will automatically:
 2. Select the appropriate provider and model
 3. Execute the research with proper caching
 4. Save results with citations and metadata
+
+Two more skills cover claim extraction: `extract-claims` runs `claims extract`
+on a report or a curated file, and `review-claim-set` audits and filters the
+claim set it produces. Install them the same way.
 
 See [.claude/skills/README.md](.claude/skills/README.md) for more details.
 

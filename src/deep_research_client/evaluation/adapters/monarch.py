@@ -141,10 +141,10 @@ def _parse_evidence(evidence_list: list[dict[str, Any]] | None) -> list[Evidence
 # ---------------------------------------------------------------------------
 
 
-def _extract_dismech_pathophysiology(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_dismech_pathophysiology(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract pathophysiology claims from a dismech disorder dict."""
     claims = []
-    for entry in data.get("pathophysiology", []):
+    for index, entry in enumerate(data.get("pathophysiology") or []):
         if not isinstance(entry, dict):
             continue
         terms: list[OntologyTerm] = []
@@ -165,82 +165,109 @@ def _extract_dismech_pathophysiology(data: dict[str, Any]) -> list[ReferenceClai
             if t:
                 terms.append(t)
 
-        claims.append(
+        claims.append((
+            f"pathophysiology[{index}]",
             ReferenceClaim(
                 category="pathophysiology",
                 name=entry.get("name", "unnamed"),
                 description=entry.get("description", ""),
                 ontology_terms=terms,
                 evidence=_parse_evidence(entry.get("evidence")),
-            )
-        )
+            ),
+        ))
     return claims
 
 
-def _extract_dismech_phenotypes(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_dismech_phenotypes(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract phenotype claims from a dismech disorder dict."""
     claims = []
-    for entry in data.get("phenotypes", []):
+    for index, entry in enumerate(data.get("phenotypes") or []):
         if not isinstance(entry, dict):
             continue
         terms: list[OntologyTerm] = []
         t = _parse_ontology_term(entry.get("phenotype_term", {}))
         if t:
             terms.append(t)
-        claims.append(
+        claims.append((
+            f"phenotypes[{index}]",
             ReferenceClaim(
                 category="phenotype",
                 name=entry.get("name", "unnamed"),
                 description=entry.get("description", ""),
                 ontology_terms=terms,
                 evidence=_parse_evidence(entry.get("evidence")),
-            )
-        )
+            ),
+        ))
     return claims
 
 
-def _extract_dismech_treatments(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_dismech_treatments(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract treatment claims from a dismech disorder dict."""
     claims = []
-    for entry in data.get("treatments", []):
+    for index, entry in enumerate(data.get("treatments") or []):
         if not isinstance(entry, dict):
             continue
         terms: list[OntologyTerm] = []
         t = _parse_ontology_term(entry.get("treatment_term", {}))
         if t:
             terms.append(t)
-        claims.append(
+        claims.append((
+            f"treatments[{index}]",
             ReferenceClaim(
                 category="treatment",
                 name=entry.get("name", "unnamed"),
                 description=entry.get("description", ""),
                 ontology_terms=terms,
                 evidence=_parse_evidence(entry.get("evidence")),
-            )
-        )
+            ),
+        ))
     return claims
 
 
-def _extract_dismech_inheritance(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_dismech_inheritance(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract inheritance/genetic claims from a dismech disorder dict."""
     claims = []
-    for entry in data.get("inheritance", []):
+    for index, entry in enumerate(data.get("inheritance") or []):
         if not isinstance(entry, dict):
             continue
         terms: list[OntologyTerm] = []
         t = _parse_ontology_term(entry.get("inheritance_term", {}))
         if t:
             terms.append(t)
-        claims.append(
+        claims.append((
+            f"inheritance[{index}]",
             ReferenceClaim(
                 category="genetic_factor",
                 name=entry.get("name", "unnamed"),
                 description=entry.get("description", ""),
                 ontology_terms=terms,
                 evidence=_parse_evidence(entry.get("evidence")),
-            )
-        )
+            ),
+        ))
     return claims
+
+
+def dismech_claims(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
+    """Every curated claim in a dismech disorder, with where it sits.
+
+    The path indexes the original list, counting entries that were skipped,
+    so it always points back at the record in the file.
+
+    Args:
+        data: A parsed dismech disorder YAML document.
+
+    Returns:
+        ``(path, claim)`` pairs, e.g. ``("phenotypes[0]", ...)``, in section order.
+
+    >>> [path for path, _ in dismech_claims({"phenotypes": ["bad", {"name": "Short stature"}]})]
+    ['phenotypes[1]']
+    """
+    return (
+        _extract_dismech_pathophysiology(data)
+        + _extract_dismech_phenotypes(data)
+        + _extract_dismech_treatments(data)
+        + _extract_dismech_inheritance(data)
+    )
 
 
 def load_dismech_entity(yaml_path: Path) -> GroundTruthEntity:
@@ -261,12 +288,7 @@ def load_dismech_entity(yaml_path: Path) -> GroundTruthEntity:
     term_data = disease_term.get("term", {}) if isinstance(disease_term, dict) else {}
     entity_id = term_data.get("id", data.get("name", yaml_path.stem))
 
-    claims = (
-        _extract_dismech_pathophysiology(data)
-        + _extract_dismech_phenotypes(data)
-        + _extract_dismech_treatments(data)
-        + _extract_dismech_inheritance(data)
-    )
+    claims = [claim for _, claim in dismech_claims(data)]
 
     return GroundTruthEntity(
         entity_id=entity_id,
@@ -306,10 +328,10 @@ def load_dismech_repo(kb_dir: Path) -> list[GroundTruthEntity]:
 # ---------------------------------------------------------------------------
 
 
-def _extract_gene_annotation_claims(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_gene_annotation_claims(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract claims from existing_annotations in ai-gene-review format."""
     claims = []
-    for ann in data.get("existing_annotations", []):
+    for index, ann in enumerate(data.get("existing_annotations") or []):
         if not isinstance(ann, dict):
             continue
         review = ann.get("review", {})
@@ -347,22 +369,23 @@ def _extract_gene_annotation_claims(data: dict[str, Any]) -> list[ReferenceClaim
         description = f"{summary} {reason}".strip() if summary or reason else ""
 
         term_label = term_data.get("label", "unknown") if isinstance(term_data, dict) else "unknown"
-        claims.append(
+        claims.append((
+            f"existing_annotations[{index}]",
             ReferenceClaim(
                 category="gene_function",
                 name=f"{term_label} ({action})",
                 description=description,
                 ontology_terms=terms,
                 evidence=evidence,
-            )
-        )
+            ),
+        ))
     return claims
 
 
-def _extract_gene_core_functions(data: dict[str, Any]) -> list[ReferenceClaim]:
+def _extract_gene_core_functions(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
     """Extract claims from core_functions in ai-gene-review format."""
     claims = []
-    for cf in data.get("core_functions", []):
+    for index, cf in enumerate(data.get("core_functions") or []):
         if not isinstance(cf, dict):
             continue
         mf = cf.get("molecular_function", "unnamed")
@@ -373,15 +396,32 @@ def _extract_gene_core_functions(data: dict[str, Any]) -> list[ReferenceClaim]:
                 terms.append(OntologyTerm(id=mf["id"], label=name))
         else:
             name = str(mf)
-        claims.append(
+        claims.append((
+            f"core_functions[{index}]",
             ReferenceClaim(
                 category="gene_function",
                 name=name,
                 description=cf.get("description", ""),
                 ontology_terms=terms,
-            )
-        )
+            ),
+        ))
     return claims
+
+
+def gene_review_claims(data: dict[str, Any]) -> list[tuple[str, ReferenceClaim]]:
+    """Every curated claim in an ai-gene-review file, with where it sits.
+
+    Args:
+        data: A parsed ``*-ai-review.yaml`` document.
+
+    Returns:
+        ``(path, claim)`` pairs, e.g. ``("core_functions[0]", ...)``; removed
+        annotations are skipped, as the loader skips them.
+
+    >>> [path for path, _ in gene_review_claims({"core_functions": [{"molecular_function": "kinase"}]})]
+    ['core_functions[0]']
+    """
+    return _extract_gene_annotation_claims(data) + _extract_gene_core_functions(data)
 
 
 def load_gene_review_entity(yaml_path: Path) -> GroundTruthEntity:
@@ -399,7 +439,7 @@ def load_gene_review_entity(yaml_path: Path) -> GroundTruthEntity:
     gene_symbol = data.get("gene_symbol", yaml_path.parent.name)
     uniprot_id = data.get("id", "")
 
-    claims = _extract_gene_annotation_claims(data) + _extract_gene_core_functions(data)
+    claims = [claim for _, claim in gene_review_claims(data)]
 
     return GroundTruthEntity(
         entity_id=uniprot_id or gene_symbol,

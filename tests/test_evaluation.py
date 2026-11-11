@@ -1230,10 +1230,10 @@ def test_a_reply_with_no_verdict_anywhere_is_still_unjudged():
 
     from deep_research_client.evaluation import scorers
 
-    assert scorers._extract_json_object('{"verdict": "yes"}', key="matched") == {
+    assert scorers.extract_json_object('{"verdict": "yes"}', key="matched") == {
         "verdict": "yes"
     }
-    assert scorers._extract_json_object("no json at all", key="matched") is None
+    assert scorers.extract_json_object("no json at all", key="matched") is None
 
 
 @pytest.mark.parametrize("raw,expect_score", [
@@ -1486,7 +1486,7 @@ def test_the_top_level_verdict_wins_over_one_buried_in_a_preamble(
     """
     from deep_research_client.evaluation import scorers
 
-    result = scorers._extract_json_object(reply, key="supported")
+    result = scorers.extract_json_object(reply, key="supported")
     assert result is not None, why
     assert result["supported"] is expected, why
 
@@ -1634,7 +1634,7 @@ def test_an_array_in_the_reply_does_not_outrank_the_verdict(reply, expected, why
     """
     from deep_research_client.evaluation import scorers
 
-    result = scorers._extract_json_object(reply, key="score")
+    result = scorers.extract_json_object(reply, key="score")
     assert result is not None, why
     assert result["score"] == expected, why
 
@@ -1679,10 +1679,10 @@ def test_an_array_is_never_returned_as_the_verdict(reply):
     """
     from deep_research_client.evaluation import scorers
 
-    result = scorers._extract_json_object(reply, key="score")
+    result = scorers.extract_json_object(reply, key="score")
     assert result is None or isinstance(result, dict)
-    assert scorers._extract_json_object(reply) is None or isinstance(
-        scorers._extract_json_object(reply), dict
+    assert scorers.extract_json_object(reply) is None or isinstance(
+        scorers.extract_json_object(reply), dict
     )
 
 
@@ -1725,7 +1725,7 @@ def test_a_malformed_container_does_not_answer_for_the_reply(reply, expected, wh
     """
     from deep_research_client.evaluation import scorers
 
-    result = scorers._extract_json_object(reply, key="supported")
+    result = scorers.extract_json_object(reply, key="supported")
     assert result is not None, why
     assert result["supported"] is expected, why
 
@@ -1814,7 +1814,7 @@ def test_a_mismatched_bracket_bounds_the_damage_rather_than_erasing_it(
     """
     from deep_research_client.evaluation import scorers
 
-    result = scorers._extract_json_object(reply, key=key)
+    result = scorers.extract_json_object(reply, key=key)
     assert result is not None, why
     assert result[key] == expected, why
 
@@ -1901,7 +1901,7 @@ def test_a_reply_of_unclosed_openers_is_read_rather_than_raising():
     from deep_research_client.evaluation import scorers
 
     reply = "{" * 2000 + '{"supported": true}'
-    result = scorers._extract_json_object(reply, key="supported")
+    result = scorers.extract_json_object(reply, key="supported")
 
     assert result == {"supported": True}
 
@@ -1918,7 +1918,7 @@ def test_a_readable_wrapper_beats_something_scavenged_from_an_unclosed_container
     from deep_research_client.evaluation import scorers
 
     reply = '{"wrapper": {"supported": true}} {"criteria": {"supported": false}'
-    result = scorers._extract_json_object(reply, key="supported")
+    result = scorers.extract_json_object(reply, key="supported")
 
     assert result == {"supported": True}, (
         "the wrapper is readable; the other object is inside a container that "
@@ -1941,7 +1941,7 @@ def test_a_mismatch_inside_a_later_closing_container_costs_the_verdict():
     """
     from deep_research_client.evaluation import scorers
 
-    assert scorers._extract_json_object(
+    assert scorers.extract_json_object(
         '{"breakdown": [1}, "supported": true}', key="supported"
     ) is None
 
@@ -1979,7 +1979,7 @@ def test_a_run_of_unclosed_openers_does_not_stall_the_scorer(monkeypatch):
     # no-closer bound -- this is the skip's own property, measured alone.
     # (The innermost `{}` is salvage, and the salvage tier takes it; what this
     # test is about is how the answer was reached, not what it is.)
-    scorers._extract_json_object("{" * 4000 + "}", key="score")
+    scorers.extract_json_object("{" * 4000 + "}", key="score")
     assert calls == 1, (
         f"the bound was measured {calls} times for 4000 openers; the "
         f"per-opener scan is quadratic again"
@@ -2013,12 +2013,12 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # through monkeypatch, so a failing assertion still restores the stdlib
     # rather than leaving every later test counting into a dead closure.
     monkeypatch.setattr(json.JSONDecoder, "raw_decode", counted)
-    assert scorers._extract_json_object("[" * 8000, key="score") is None
+    assert scorers.extract_json_object("[" * 8000, key="score") is None
     assert calls == 0, f"{calls} decode attempts on a reply with no closer"
     calls = 0
     # The bound rules out only openers that provably cannot close: a reply
     # that does close is still read.
-    assert scorers._extract_json_object('{"score": 4}', key="score") == {"score": 4}
+    assert scorers.extract_json_object('{"score": 4}', key="score") == {"score": 4}
     assert calls == 1
 
 
@@ -2109,7 +2109,7 @@ def test_a_reply_nested_deeper_than_the_stack_is_unreadable_not_an_error(
     """
     from deep_research_client.evaluation import scorers
 
-    assert scorers._extract_json_object(reply, key="score") == expected
+    assert scorers.extract_json_object(reply, key="score") == expected
 
 
 def test_a_repair_inside_an_unclosed_container_is_given_up_deliberately():
@@ -2128,9 +2128,9 @@ def test_a_repair_inside_an_unclosed_container_is_given_up_deliberately():
     """
     from deep_research_client.evaluation import scorers
 
-    assert scorers._extract_json_object('{oops {"x": 1,}', key="x") is None
+    assert scorers.extract_json_object('{oops {"x": 1,}', key="x") is None
     # The same object outside an unclosed container is still repaired.
-    assert scorers._extract_json_object('{"x": 1,}', key="x") == {"x": 1}
+    assert scorers.extract_json_object('{"x": 1,}', key="x") == {"x": 1}
 
 
 @pytest.mark.parametrize("scenario,body,expected_exists", [

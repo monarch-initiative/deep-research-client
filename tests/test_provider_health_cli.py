@@ -12,10 +12,10 @@ import typer
 from typer.testing import CliRunner
 
 from deep_research_client.cli import (
-    PROVIDER_CREDENTIAL_HINTS,
     _check_provider_health,
     _settable_credential_hints,
 )
+from deep_research_client.client import PROVIDER_CLASS_PATHS, load_provider_class
 from deep_research_client.models import ProviderHealth
 
 if TYPE_CHECKING:
@@ -171,48 +171,6 @@ def test_named_provider_is_the_only_one_probed(capsys):
     assert "b:" not in out
 
 
-@pytest.fixture
-def bare_machine(monkeypatch):
-    """Pin PATH and credentials so the explanations below do not depend on the box.
-
-    The CLI now asks the client, and the client asks the provider, so a runner
-    that happens to have `claude` or `agentapi` installed -- or `EDISON_API_KEY`
-    exported -- gets a different, equally correct sentence. A provider that is
-    actually usable is told so rather than told what it is missing, which is the
-    whole point of the client's availability guard. Fixing the environment is
-    what makes these assertions about wording rather than about the machine.
-
-    The variables are read out of the CLI's own hint table rather than listed
-    here, so a provider added to that table cannot leave a stale exception.
-    """
-    import shutil
-
-    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
-    for provider_name in _settable_credential_hints():
-        requirement, _ = PROVIDER_CREDENTIAL_HINTS[provider_name]
-        monkeypatch.delenv(requirement.split("=")[0], raising=False)
-    # Three gates the table cannot supply: the deprecated alias the client still
-    # accepts for falcon, the mock that `_settable_credential_hints` filters out
-    # by name, and biomni, which is gated on an import rather than a variable --
-    # so `uv sync --extra biomni` would otherwise register it.
-    monkeypatch.delenv("FUTUREHOUSE_API_KEY", raising=False)
-    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
-    monkeypatch.setenv("DISABLE_BIOMNI_PROVIDER", "true")
-
-    # Assert the state rather than trust the list: a fourth gate should fail
-    # here, naming what stayed available, not downstream as a missing heading.
-    # Only a variable or a PATH probe can be closed from here, so a future
-    # provider registered on a bare import with no opt-out will fail this --
-    # correctly, and the fix is to give that provider an opt-out variable.
-    from deep_research_client.client import DeepResearchClient
-    from deep_research_client.models import CacheConfig
-
-    still_up = DeepResearchClient(
-        cache_config=CacheConfig(enabled=False)
-    ).get_available_providers()
-    assert not still_up, f"bare_machine left {still_up} registered"
-
-
 def test_no_configured_providers_is_an_error(capsys, bare_machine):
     """Probing nothing is not the same as everything being fine."""
     with pytest.raises(typer.Exit) as excinfo:
@@ -279,12 +237,10 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
     `capsys` run covers the helper called directly, without the command around
     it.
 
-    `result.stdout` is the stream assertion. The pinned click (8.5.0) has no
-    `mix_stderr`: `result.stdout` is stdout alone and `result.output` is the
-    merged stream, so asserting on `.stdout` here does pin the stream, and a
-    message moved to stderr would fail it. Reach for `.output` only when the
-    text under test is a `logger.error`, as the sibling branch of this same
-    command is.
+    The pinned click (8.5.0) has no `mix_stderr`: `result.stdout` and
+    `result.stderr` are separate, so these pin the stream. An unknown name is
+    an error about this run, not part of a health report, so it goes to
+    stderr (issue #68).
     """
     from typer.testing import CliRunner
 
@@ -292,12 +248,40 @@ def test_a_genuine_typo_is_still_called_a_typo(capsys, bare_machine):
 
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--provider", "flacon"])
     assert result.exit_code == 1
-    assert "Unknown provider" in result.stdout, "the typo must actually be reported"
-    assert "NOT CONFIGURED" not in result.stdout
+    assert "Unknown provider: flacon" in result.stderr, "the typo must actually be reported"
+    assert "Unknown provider" not in result.stdout
+    assert "NOT CONFIGURED" not in result.output
 
     with pytest.raises(typer.Exit):
         _check_provider_health(_StubClient([_ok("claude_code")]), "flacon")
-    assert "Unknown provider" in capsys.readouterr().out, "and on stdout, not stderr"
+    assert "Unknown provider" in capsys.readouterr().err, "and on stderr, not stdout"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["providers", "--provider", "flacon"],
+        ["providers", "--check", "--provider", "flacon"],
+    ],
+    ids=["listing", "check"],
+)
+def test_an_unknown_provider_lands_on_one_stream_from_either_branch(args):
+    """Same command, same message, one destination (issue #68).
+
+    Before, --check echoed it to stdout and the listing logged it to stderr.
+    """
+    from typer.testing import CliRunner
+
+    import deep_research_client.cli as cli_module
+
+    result = CliRunner().invoke(cli_module.app, args)
+    assert result.exit_code == 1
+    # Library log lines (a provider noting a missing binary) share stderr, so
+    # find the message rather than assuming it comes first.
+    lines = result.stderr.splitlines()
+    at = lines.index("Error: Unknown provider: flacon")
+    assert lines[at + 1] == f"Known providers: {cli_module._registered_providers()}"
+    assert result.stdout == ""
 
 
 def test_an_unconfigured_provider_says_what_would_fix_it(capsys, bare_machine):
@@ -352,47 +336,64 @@ def test_show_params_with_check_says_it_does_nothing(monkeypatch):
     result = CliRunner().invoke(cli_module.app, ["providers", "--check", "--show-params"])
 
     assert result.exit_code == 0
-    assert "has no effect" in result.stdout
+    # About the invocation, not the report, so it stays out of a redirect.
+    assert "Warning: --show-params has no effect" in result.stderr
+    assert "has no effect" not in result.stdout
 
 
-def test_the_research_hint_list_keeps_its_heading(capsys, monkeypatch):
+def test_the_research_hint_list_keeps_its_heading(bare_machine):
     """A heading on one stream and its list on another is half a message.
 
     The list is indented variable names; without the sentence above it, a
-    redirected file says nothing about what they are for.
+    redirected file says nothing about what they are for. For `research` both
+    go to stderr: they explain why the run stopped, and are not the report a
+    user would redirect (issue #68).
     """
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
-    assert "Please set API keys" in result.stdout, "the real command must emit it"
-
-    # And on stdout specifically. CliRunner cannot show that -- this click
-    # merges the two streams into one buffer -- so the helper is called direct.
-    cli_module._echo_no_providers_message()
-    captured = capsys.readouterr().out
-
-    assert "Please set API keys" in captured
-    heading_at = captured.index("Please set API keys")
-    assert captured.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+    assert result.exit_code == 1
+    assert "Please set API keys" in result.stderr, "the real command must emit it"
+    heading_at = result.stderr.index("Please set API keys")
+    assert result.stderr.index("OPENAI_API_KEY") > heading_at, "the list must follow its heading"
+    assert "API_KEY" not in result.stdout, "and none of it may leak into stdout"
 
 
-def test_the_key_list_offers_only_things_a_user_can_set(monkeypatch):
+@pytest.mark.parametrize("err", [False, True])
+def test_the_no_providers_heading_and_list_share_a_stream(capsys, bare_machine, err):
+    """Whichever stream the caller picks, the heading and its list both go there."""
+    import deep_research_client.cli as cli_module
+
+    from deep_research_client.client import DeepResearchClient
+    from deep_research_client.models import CacheConfig
+
+    cli_module._echo_no_providers_message(
+        DeepResearchClient(cache_config=CacheConfig(enabled=False)), err=err
+    )
+    captured = capsys.readouterr()
+    chosen, other = (captured.err, captured.out) if err else (captured.out, captured.err)
+
+    assert chosen.index("OPENAI_API_KEY") > chosen.index("Please set API keys")
+    assert other == ""
+
+
+def test_the_key_list_offers_only_things_a_user_can_set(bare_machine):
     """A CLI on PATH and a test double are not answers to "set API keys"."""
     import deep_research_client.cli as cli_module
 
-    monkeypatch.setattr(
-        cli_module.DeepResearchClient, "get_available_providers", lambda self: []
-    )
+    # bare_machine leaves nothing available for real; faking only the list
+    # would leave a key set on the machine registered behind it.
 
     result = CliRunner().invoke(cli_module.app, ["research", "what causes scurvy"])
 
-    assert "ENABLE_MOCK_PROVIDER" not in result.stdout, "a mock is not research"
-    assert "CLI on PATH" not in result.stdout, "not something you set"
-    assert "EDISON_API_KEY" in result.stdout
+    # .output is both streams: this test is about which hints are offered, and
+    # the stream they land on is pinned by the test above.
+    assert "ENABLE_MOCK_PROVIDER" not in result.output, "a mock is not research"
+    assert "CLI on PATH" not in result.output, "not something you set"
+    assert "EDISON_API_KEY" in result.output
 
 
 def test_the_cli_calls_a_method_the_client_actually_has():
@@ -440,12 +441,10 @@ def _sections_by_provider(output: str) -> dict[str, list[str]]:
     Returns:
         Provider name to the headings under which it appeared
     """
-    # Only settable hints are ever printed as credential lines. Mapping the rest
-    # would invent keys from their prose -- claude_code's "the `claude` CLI on
-    # PATH" registers "the" -- and attribute any future line starting "- the" to
-    # a provider that is not in that section at all.
+    # Only keyed providers are ever printed as credential lines, so only their
+    # variables identify a provider; every other line names it directly.
     owner_of = {
-        PROVIDER_CREDENTIAL_HINTS[name][0].split("=")[0]: name
+        load_provider_class(name).credential_env_var: name
         for name in _settable_credential_hints()
     }
     seen: dict[str, list[str]] = {}
@@ -503,3 +502,32 @@ def test_every_provider_lands_in_exactly_one_section(
             f"{name} is explained under {sections[name]} -- twice, and so "
             f"possibly with two different answers"
         )
+
+
+#: What the client and base class say when a provider declares nothing about
+#: what it needs. Each is true, and none tells a reader what to do.
+_GENERIC_ABSENCE = (
+    "is not registered in this environment",
+    "is not configured",
+    "is not available",
+)
+
+
+@pytest.mark.parametrize("name", list(PROVIDER_CLASS_PATHS))
+def test_every_provider_says_what_it_needs_on_a_bare_machine(bare_machine, name):
+    """The class declarations must cover every provider, or #70 is half done.
+
+    A provider gated at registration (an opt-out, an opt-in flag, a probed
+    binary) that forgot `registration_requirement`, or a keyed one that forgot
+    `credential_env_var`, falls through to one of the generic sentences above.
+    Derived from the registry, so a provider added later is covered too.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    client = DeepResearchClient()
+    assert name not in client.get_available_providers(), "the fixture should leave nothing usable"
+
+    reason = client.unregistered_reason(name)
+    assert not any(generic in reason for generic in _GENERIC_ABSENCE), (
+        f"{name} explains its absence only as {reason!r}; declare what it needs on the class"
+    )

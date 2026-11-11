@@ -751,6 +751,60 @@ def create_deeper_med_model_cards() -> ProviderModelCards:
     )
 
 
+def create_toxindex_model_cards() -> ProviderModelCards:
+    """Create model cards for ToxIndex Sage, a chemical safety agent (issue #98).
+
+    The provider is a stub for research -- ToxIndex has no route that submits
+    a question to Sage -- but finished conversations can be retrieved, so the
+    capabilities below are observed from those transcripts rather than taken
+    from marketing copy. Cost and speed are not measured.
+    """
+
+    sage = ModelCard(
+        name="sage",
+        display_name="ToxIndex Sage (stub)",
+        description=(
+            "Insilica's toxicology agent: answers chemical safety and hazard "
+            "questions over curated toxicology datasets (Kiln), a regulatory "
+            "document index (Crawler) and computational predictors (ToxJobs), "
+            "citing each claim to the tool call behind it. Domain-specific: "
+            "chemical safety and computational toxicology only. STUB: ToxIndex "
+            "has no API route that submits a question, so research() raises; "
+            "finished conversations can be retrieved."
+        ),
+        cost_level=CostLevel.LOW,
+        # One observed answer took about seven minutes, a clarifying question included.
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
+            # Runs SQL over datasets and structure-based toxicity predictors.
+            ResearchCapability.code_interpretation,
+        ],
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[ResearchResource.chemical_databases],
+        aliases=["toxindex", "toxindex-sage"],
+        pricing_notes="Free preview tier; paid plan limits are not published",
+        use_cases=[
+            "Chemical hazard and toxicity questions for a named substance",
+            "Exposure limits and regulatory reference values",
+            "Gap checks across curated toxicology datasets",
+        ],
+        limitations=[
+            "Stub: no API route submits a question, so this model cannot be invoked",
+            "Toxicology-specific; not a general literature research agent",
+            "Citations are ToxIndex tool calls (tc-... ids), not PMIDs or DOIs",
+            "Cost and speed are not measured",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="toxindex",
+        default_model="sage",
+        models={"sage": sage},
+    )
+
+
 # Registry of all provider model cards
 # NOTE: PROVIDER_MODEL_CARDS is defined at the end of this module, after every
 # card factory (including cyberian and biomni) has been declared, so all
@@ -1014,6 +1068,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "openscientist": create_openscientist_model_cards(),
     "claude_code": create_claude_code_model_cards(),
     "deeper_med": create_deeper_med_model_cards(),
+    "toxindex": create_toxindex_model_cards(),
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
     "tooluniverse": create_tooluniverse_model_cards(),

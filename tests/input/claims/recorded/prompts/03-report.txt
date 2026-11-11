@@ -1,0 +1,10 @@
+Section: Marfan syndrome > Management
+
+TEXT:
+<<<
+
+
+Beta-blockers may slow aortic root growth [3].
+
+
+>>>

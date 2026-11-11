@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 name = "deep_research_client"
 description = "Wrapper for multiple deep research tools"
 authors = [
-  {name = "My Name", email = "my-name@my-org.org"},
+  {name = "Chris Mungall", email = "cjmungall@lbl.gov"},
+  {name = "J. Harry Caufield", email = "jhc@lbl.gov"},
 ]
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
@@ -18,9 +19,6 @@ dependencies = [
   "typer >= 0.9.0",
   "pydantic >= 2.0.0",
   "openai >= 2.0.0",
-  "edison-client >= 0.11.0",
-  "ldp >= 0.45.1",
-  "fhlmi >= 0.45.1",
   "httpx>=0.28.1",
   "aiofiles >= 23.0.0",
   "pyyaml >= 6.0",
@@ -33,6 +31,20 @@ dependencies = [
 cyberian = [
     "cyberian>=0.2.2",
 ]
+# The Edison (formerly Falcon) provider's SDK brings aviary, ldp, fhlmi and,
+# through them, LiteLLM. Kept out of the base install so users of other
+# providers neither install that stack nor inherit its version constraints
+# (issue #92). ldp and fhlmi are not imported here; their floors keep the
+# resolver off releases older than what edison-client 0.11 was tested with.
+edison = [
+    "edison-client >= 0.11.0",
+    "ldp >= 0.45.1",
+    "fhlmi >= 0.45.1",
+]
+# Alias matching the provider's name in the CLI.
+falcon = [
+    "deep_research_client[edison]",
+]
 # Biomni is a heavy optional provider (local biomedical agent + a large external
 # software environment and ~11GB data lake), so it is not part of the base
 # install. Biomni 0.0.8 under-declares the Python packages needed even to import
@@ -43,6 +55,9 @@ biomni = [
     "pandas>=2.0",
     "langchain-openai>=0.3.28",
     "langchain-anthropic>=0.3.18",
+    # Imported by biomni.utils but not declared; it arrived through the Edison
+    # stack until that became the edison extra (#92).
+    "tqdm>=4.0",
 ]
 validation = [
     "linkml-reference-validator>=0.2.1",
@@ -109,6 +124,7 @@ include = [
   "src/deep_research_client/templates/*.j2",
   "src/deep_research_client/schema/*.yaml",
   "src/deep_research_client/validation/*.yaml",
+  "src/deep_research_client/claims/*.yaml",
 ]
 
 [tool.hatch.version]
@@ -132,6 +148,7 @@ extend-exclude = [
   "src/deep_research_client/validation/datamodel.py",
   "src/deep_research_client/validation/term_datamodel.py",
   "src/deep_research_client/evaluation/datamodel.py",
+  "src/deep_research_client/claims/datamodel.py",
 ]
 
 # Ref.: https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
@@ -151,6 +168,7 @@ skip = [
   "src/deep_research_client/validation/datamodel.py",
   "src/deep_research_client/validation/term_datamodel.py",
   "src/deep_research_client/evaluation/datamodel.py",
+  "src/deep_research_client/claims/datamodel.py",
 ]
 
 # Reminder: words have to be lowercased for the ignore-words-list

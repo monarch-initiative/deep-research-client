@@ -9,7 +9,13 @@ from unittest.mock import patch
 
 import pytest
 
-from deep_research_client import DeepResearchClient, ResearchResult, ProviderConfig, CacheConfig
+from deep_research_client import (
+    CacheConfig,
+    DeepResearchClient,
+    ProviderConfig,
+    ProviderNotConfiguredError,
+    ResearchResult,
+)
 from deep_research_client.providers import ResearchProvider
 
 
@@ -273,7 +279,9 @@ def test_research_no_providers():
     with patch.dict(os.environ, {}, clear=True):
         client = DeepResearchClient(cache_config=cache_config)
 
-        with pytest.raises(ValueError, match="No research providers available"):
+        # The documented catch-all for an unusable provider must cover
+        # "nothing is configured at all" too, not only a named provider.
+        with pytest.raises(ProviderNotConfiguredError, match="No research providers available"):
             client.research("test query")
 
 

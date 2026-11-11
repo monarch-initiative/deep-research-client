@@ -33,6 +33,8 @@ that may not exist in an older installed release.
    it before starting. An explicit deep-research request with an established
    provider/budget does not need another confirmation. Keep credentials in the
    environment or the provider's supported configuration; never print keys.
+   Falcon also needs the `edison` extra, e.g.
+   `uvx --from "deep-research-client[edison]" deep-research-client ...`.
 
 ## Run and preserve the result
 

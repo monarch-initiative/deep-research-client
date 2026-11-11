@@ -201,8 +201,11 @@ Otherwise → f-string
 
 1. Create `src/deep_research_client/providers/newprovider.py`
 2. Implement `ResearchProvider` interface
-3. Add model cards in `model_cards.py`
-4. Register in `client.py`
+3. Declare what it needs on the class -- `credential_env_var`,
+   `registration_requirement` or `stub_reason`; the CLI and client read these
+   instead of keeping tables of their own (see the providers reference)
+4. Add model cards in `model_cards.py`
+5. Register in `client.py`
 
 ### Provider Interface
 

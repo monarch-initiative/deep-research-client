@@ -251,6 +251,16 @@ class MockParams(BaseProviderParams):
         default=None,
         description="Custom response text instead of default"
     )
+    unsuccessful_answer: bool = Field(
+        default=False,
+        description=(
+            "Return a response the provider marks as not an answer, the way "
+            "falcon does when retrieval finds nothing. Lets the unsuccessful-"
+            "answer handling (warning, frontmatter, no caching, exit code) be "
+            "exercised without a real failed run. Replaces the whole response, "
+            "so custom_response and answer_policy have no effect while it is set."
+        ),
+    )
     answer_policy: Literal["none", "first", "last", "echo"] = Field(
         default="none",
         description=(
@@ -421,6 +431,14 @@ class DeeperMedParams(BaseProviderParams):
     (arXiv:2604.15456) is not publicly callable, so its tunable surface is
     unknown; only the inherited base fields are accepted. Fields will be added
     here once an API is published.
+    """
+
+
+class ToxIndexParams(BaseProviderParams):
+    """Parameters specific to the ToxIndex provider stub.
+
+    None yet: ToxIndex has no route that submits a question to Sage, so there
+    is nothing to tune. Fields will be added once one ships.
     """
 
 
@@ -686,6 +704,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "biomni": BiomniParams,
     "tooluniverse": ToolUniverseParams,
     "deeper_med": DeeperMedParams,
+    "toxindex": ToxIndexParams,
 }
 
 

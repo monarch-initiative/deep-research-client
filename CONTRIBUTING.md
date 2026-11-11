@@ -36,8 +36,8 @@ Please carefully read our [Code of Conduct](CODE_OF_CONDUCT.md).
 This project uses `uv` for dependency management. To get started:
 
 ```bash
-# Install dependencies
-uv sync --dev
+# Install dependencies (the edison extra is needed for mypy and the Edison tests)
+uv sync --dev --extra edison
 
 # Install the package in development mode
 uv pip install -e .

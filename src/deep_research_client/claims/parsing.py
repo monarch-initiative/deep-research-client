@@ -1,0 +1,620 @@
+"""Turn an extractor's reply into anchored claims.
+
+Kept apart from the call that produces the reply, so everything that decides
+what a claim *is* -- anchoring, citation resolution, entity handling -- is a
+pure function of text and can be tested on a recorded reply without a model.
+"""
+
+import re
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Optional, Sequence
+
+from ..evaluation.scorers import extract_json_object
+from ..validation.extraction import find_reference_ids
+from ..validation.term_extraction import is_ontology_curie
+from .anchoring import LINK_TARGET, NUMERIC_MARKER, locate_quote, nearest_passage
+from .models import (
+    AnchorStatus,
+    CitationHandle,
+    CitationScope,
+    Claim,
+    ClaimBasis,
+    ClaimTopic,
+    EntityMention,
+    TextSpan,
+    citation_status_for,
+)
+
+__all__ = [
+    "TextUnit",
+    "UnreadableReplyError",
+    "citation_window",
+    "claims_from_reply",
+    "resolve_citations",
+    "section_citation",
+]
+
+_URL = re.compile(r"https?://[^\s<>\]]+")
+
+#: A citation marker that is only a reference number, bracketed or not.
+_NUMBERED_MARKER = re.compile(r"^\[?\s*(\d+)\s*\]?$")
+
+
+class UnreadableReplyError(ValueError):
+    """An extractor reply that holds no readable claims list.
+
+    Raised rather than read as "no claims": a unit whose reply was cut off or
+    garbled would otherwise look like a unit that makes no claims, and the
+    claim set would look complete when it is not.
+    """
+
+
+@dataclass(frozen=True)
+class TextUnit:
+    """A stretch of source text sent to the extractor in one request.
+
+    Attributes:
+        text: The text that offsets index into: the whole report, or the
+            field's own text for prose inside a structured document.
+        start: Where the unit begins in ``text``.
+        end: Where it ends (exclusive).
+        section: Heading path of the unit, when the source has headings.
+        source_path: Path of the field, for prose inside a structured document.
+        bibliography: Numbered reference list entries by number, used to
+            resolve markers such as ``[3]``.
+        section_citation: The cited work the unit's section is headed by, if
+            any (see :func:`section_citation`). Every located claim in the
+            unit is attributed to it.
+        context: Text shown to the extractor before the unit to make it
+            readable, but not part of it: the header of a table the unit was
+            cut from. Nothing is quoted or anchored in it.
+        references: Every entry of the report's reference lists, numbered or
+            not, for resolving a marker by key or by author and year.
+
+    >>> TextUnit(text="abc", start=0, end=3).body
+    'abc'
+    """
+
+    text: str
+    start: int
+    end: int
+    section: Optional[str] = None
+    source_path: Optional[str] = None
+    bibliography: Mapping[int, str] = field(default_factory=dict)
+    section_citation: Optional[CitationHandle] = None
+    context: Optional[str] = None
+    references: tuple[str, ...] = ()
+
+    @property
+    def body(self) -> str:
+        """The unit's own text.
+
+        Returns:
+            ``text[start:end]``.
+        """
+        return self.text[self.start:self.end]
+
+
+#: A reported marker that cites one reference by number, in any form a model
+#: writes it: "[1]", "[ 1 ]", "1", or linked, "[1](https://...)", with the same
+#: link targets anchoring allows, one level of parentheses included.
+_ONE_NUMBER = re.compile(rf"^(?:\[\s*(\d+)\s*\]|(\d+))(?:{LINK_TARGET})?$")
+
+
+def _cited_number(marker: str) -> Optional[int]:
+    """The reference number a marker cites, if it cites exactly one by number.
+
+    >>> [_cited_number(m) for m in ["[1]", "[ 1 ]", "1", "[1](https://x.org/p)", "[1, 2]", "PMID:123"]]
+    [1, 1, 1, 1, None, None]
+    >>> _cited_number("[1](https://en.wikipedia.org/wiki/Foo_(bar))"), _cited_number("[1")
+    (1, None)
+    """
+    numbered = _ONE_NUMBER.match(marker.strip())
+    return int(numbered.group(1) or numbered.group(2)) if numbered else None
+
+
+def _cites(number: int, body: str) -> bool:
+    """Whether a numeric marker in the text cites a reference number.
+
+    Only brackets that hold nothing but numbers, commas and dashes are
+    markers, so "[Figure 3]" and a link label like "[3 cases](...)" are not.
+    A range cites every number in it.
+
+    >>> [n for n in range(1, 9) if _cites(n, "A [1]. B [2, 4-6]. C [Figure 3]. D [7 cases](https://x).")]
+    [1, 2, 4, 5, 6]
+    """
+    for match in re.finditer(NUMERIC_MARKER, body):
+        inside = match.group(0)[1:match.group(0).index("]")]
+        for part in re.split(r"\s*,\s*", inside.strip()):
+            bounds = [int(n) for n in re.split(r"\s*[–-]\s*", part)]
+            if bounds[0] <= number <= bounds[-1]:
+                return True
+    return False
+
+
+def _marker_present(marker: str, body: str) -> bool:
+    """Whether a citation marker the extractor reported appears in the unit.
+
+    A numbered marker is present when a numeric marker in the text cites that
+    number, alone, in a list, or within a range.
+
+    >>> _marker_present("[3]", "caused by FBN1 [2, 3].")
+    True
+    >>> _marker_present("[3]", "caused by FBN1 [2-5].")
+    True
+    >>> _marker_present("[3]", "as in [Figure 3].")
+    False
+    >>> _marker_present("PMID:123", "see PMID:123")
+    True
+    >>> _marker_present("[9]", "caused by FBN1 [2, 3].")
+    False
+    """
+    numbered = _NUMBERED_MARKER.match(marker.strip())
+    if numbered:
+        return _cites(int(numbered.group(1)), body)
+    return marker.strip() in body
+
+
+#: A citation key as Falcon writes them: surname, year, title words run
+#: together, as in "mustillo2023clinicalpracticeguidelines". It also matches
+#: accession-like tokens (NCT01234567, PMC4900471), which is why the key
+#: lookup runs only after find_reference_ids found nothing in the marker:
+#: keep that order, or an accession would be looked up as a key.
+_CITATION_KEY = re.compile(r"(?<![\w.])([^\W\d_]{2,}\d{4}[^\s(),;:]*)")
+
+#: An author-year citation: a surname, then a year, as in "Soster 2023" or
+#: "Mustillo et al., 2023".
+_AUTHOR_YEAR = re.compile(r"^\(?\s*([^\W\d_][^\W\d_'’-]+)\b.*?\b((?:19|20)\d{2})\b")
+
+
+def _identifier_from_references(marker: str, references: Sequence[str]) -> Optional[str]:
+    """The identifier a marker names through the report's reference entries.
+
+    A marker is matched by the citation key in it, or else by its first
+    author's surname and year. The identifier is taken only when every
+    matching entry that names one names the same one: an ambiguous surname
+    resolves to nothing rather than to a guess.
+
+    >>> refs = ["- Mustillo et al., 2023. J Clin Immunol. https://doi.org/10.1007/s10875-022-01418-y "
+    ...         "(mustillo2023clinicalpracticeguidelines pages 1-2)",
+    ...         "- Soster et al., 2023. Front Genet. https://doi.org/10.3389/fgene.2023.1146669"]
+    >>> _identifier_from_references("mustillo2023clinicalpracticeguidelines pages 16-17", refs)
+    'DOI:10.1007/s10875-022-01418-y'
+    >>> _identifier_from_references("Soster 2023", refs)
+    'DOI:10.3389/fgene.2023.1146669'
+    >>> _identifier_from_references("Biggs 2023", refs) is None
+    True
+
+    A surname is matched as a word, so a short one is not found inside
+    another ("Li" in "Clinical"):
+
+    >>> _identifier_from_references("Li 2020", ["- Clinical outcomes, 2020. https://doi.org/10.1016/j.cell.2020.01.001"]) is None
+    True
+    >>> _identifier_from_references("Li 2020", ["- Li et al., 2020. https://doi.org/10.1016/j.cell.2020.01.001"])
+    'DOI:10.1016/j.cell.2020.01.001'
+    """
+    key = _CITATION_KEY.search(marker)
+    if key is not None:
+        matching = [entry for entry in references if key.group(1).lower() in entry.lower()]
+    else:
+        author_year = _AUTHOR_YEAR.match(marker.strip())
+        if author_year is None:
+            return None
+        surname = re.compile(rf"\b{re.escape(author_year.group(1))}\b", re.IGNORECASE)
+        year = re.compile(rf"\b{author_year.group(2)}\b")
+        matching = [entry for entry in references if surname.search(entry) and year.search(entry)]
+    found = {ids[0].normalized_id for entry in matching if (ids := find_reference_ids(entry))}
+    return found.pop() if len(found) == 1 else None
+
+
+def resolve_citations(
+    markers: list[Any], body: str, bibliography: Mapping[int, str],
+    references: Sequence[str] = (),
+) -> list[CitationHandle]:
+    """Keep the citation markers that are really there, and resolve them.
+
+    Each is a citation of the claim's own sentence (scope SENTENCE).
+
+    A marker the extractor reports but the text does not contain is dropped:
+    a citation is a fact about the source, not something to take on trust.
+    A marker that names no identifier itself, or through its numbered entry,
+    is looked up in the report's reference entries by key or author and year.
+    One reference gives one handle: a later marker that resolves to an
+    identifier already kept (``[2]``, then its URL) is skipped.
+
+    Args:
+        markers: Markers as the extractor reported them.
+        body: The unit text the claim came from.
+        bibliography: Numbered reference entries, for resolving ``[n]``.
+        references: All reference entries, for resolving keys and author-year.
+
+    Returns:
+        One handle per distinct marker present, with a normalised identifier
+        and URL where the marker or its bibliography entry gives one.
+
+    >>> handles = resolve_citations(
+    ...     ["[2]", "[7]", "PMID:15241795"],
+    ...     "FBN1 variants [2] cause it (PMID:15241795).",
+    ...     {2: "Dietz HC. Nature. 1991. https://doi.org/10.1038/352337a0"},
+    ... )
+    >>> [(h.marker, h.reference_id, h.scope) for h in handles]
+    [('[2]', 'DOI:10.1038/352337a0', 'SENTENCE'), ('PMID:15241795', 'PMID:15241795', 'SENTENCE')]
+    >>> same = resolve_citations(
+    ...     ["[2]", "https://doi.org/10.1038/352337a0"],
+    ...     "FBN1 variants [2](https://doi.org/10.1038/352337a0) cause it.",
+    ...     {2: "Dietz HC. Nature. 1991. https://doi.org/10.1038/352337a0"},
+    ... )
+    >>> [h.marker for h in same]
+    ['[2]']
+    """
+    handles: list[CitationHandle] = []
+    seen: set[str] = set()
+    for raw in markers:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        marker = raw.strip()
+        if marker in seen or not _marker_present(marker, body):
+            continue
+        seen.add(marker)
+
+        numbered = _NUMBERED_MARKER.match(marker)
+        resolvable = marker
+        if numbered and int(numbered.group(1)) in bibliography:
+            resolvable = bibliography[int(numbered.group(1))]
+        elif numbered:
+            # No list entry, but the text may write it as a link, as in
+            # "[23799583](https://pubmed.ncbi.nlm.nih.gov/23799583/)".
+            linked = re.search(rf"\[\s*{numbered.group(1)}\s*\]({LINK_TARGET})", body)
+            if linked is not None:
+                resolvable = linked.group(1)[1:-1]
+        found = find_reference_ids(resolvable)
+        # Identifiers in the marker itself first; see _CITATION_KEY on why.
+        reference_id = (
+            found[0].normalized_id if found else _identifier_from_references(marker, references)
+        )
+        if reference_id is not None and reference_id in {h.reference_id for h in handles}:
+            continue
+        url = _URL.search(resolvable)
+        handles.append(CitationHandle(
+            marker=marker,
+            reference_id=reference_id,
+            url=url.group(0).rstrip(".,;)") if url else None,
+            scope=CitationScope.SENTENCE,
+        ))
+    return handles
+
+
+#: A heading that names a cited work: "[3] Title", as reports that list
+#: papers write them.
+_CITED_HEADING = re.compile(r"^\[(\d+)\]\s+\S")
+
+#: A metadata line giving the section's own work an identifier: "- PMID: 123",
+#: "DOI: 10.1/x". Only such lines are read, so an identifier the section's
+#: prose mentions in passing is not taken for the work's own.
+_IDENTIFIER_LINE = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?(?:PMID|PMCID|DOI)[ \t]*:.*$", re.IGNORECASE | re.MULTILINE)
+
+
+def section_citation(
+    heading: str, section_text: str, bibliography: Mapping[int, str],
+) -> Optional[CitationHandle]:
+    r"""The cited work a section is headed by, if its heading names one.
+
+    A report that lists papers gives each its own section, headed "[n] Title".
+    Everything in that section comes from work n, so it is a citation of every
+    claim in the section even where no sentence carries a marker. The work is
+    identified through its bibliography entry, or else through the section's
+    own PMID or DOI metadata lines.
+
+    Args:
+        heading: The heading's text, without the leading ``#``.
+        section_text: The section's own text, up to its first subheading.
+        bibliography: Numbered reference entries, for resolving ``[n]``.
+
+    Returns:
+        A handle with scope SECTION, or None when the heading names no work.
+
+    >>> body = "- Year: 2025\n- DOI: 10.1007/s10067-025-07811-3\n- PMID: 41258631\n- Summary: ..."
+    >>> handle = section_citation("[1] Avascular necrosis in APS", body,
+    ...                           {1: "Zankar R (2025). https://www.semanticscholar.org/paper/70595d"})
+    >>> handle.marker, handle.reference_id, handle.url, handle.scope
+    ('[1]', 'PMID:41258631', 'https://www.semanticscholar.org/paper/70595d', 'SECTION')
+    >>> section_citation("Genetics", body, {}) is None
+    True
+    """
+    numbered = _CITED_HEADING.match(heading.strip())
+    if not numbered:
+        return None
+    entry = bibliography.get(int(numbered.group(1)), "")
+    found = find_reference_ids(entry) or find_reference_ids(
+        "\n".join(m.group(0) for m in _IDENTIFIER_LINE.finditer(section_text))
+    )
+    url = _URL.search(entry)
+    return CitationHandle(
+        marker=f"[{numbered.group(1)}]",
+        reference_id=found[0].normalized_id if found else None,
+        url=url.group(0).rstrip(".,;)") if url else None,
+        scope=CitationScope.SECTION,
+    )
+
+
+#: Where a sentence, table row or list item ends: terminal punctuation
+#: followed by whitespace or the end of the text, or a line break that starts
+#: a new block. Numbered markers written
+#: after the full stop (".[1]" or ". [1]", as several providers write them)
+#: belong to the sentence before them, so the end runs on over them. The full
+#: stop of "et al.", "e.g." and the like is not a sentence end.
+#: Abbreviations whose full stop does not end a sentence. Checked case
+#: insensitively, each a separate fixed-width lookbehind.
+_ABBREVIATIONS = ("al", "e.g", "i.e", "vs", "fig", "figs", "approx", "cf", "ca", "resp")
+_NOT_ABBREVIATION = "".join(
+    rf"(?<!\b{re.escape(a)})(?<!\b{re.escape(a.capitalize())})" for a in _ABBREVIATIONS
+)
+
+#: A line break that starts a new block: a blank line, a table row, a heading,
+#: a block quote, or a list item. Any other line break is a hard wrap inside a
+#: paragraph, and a sentence runs on across it.
+_BLOCK_BREAK = r"\n(?=[ \t]*(?:$|\n|[|#>]|[*+-][ \t]|\d+[.)][ \t]))"
+
+#: Closing brackets and quotation marks a sentence can end inside: "(in
+#: adults.)" and "“A is B.”" end where they close.
+_CLOSERS = "[)\"'”’]*"
+
+_SENTENCE_END = re.compile(
+    rf"(?:[!?]|{_NOT_ABBREVIATION}\.){_CLOSERS}(?:\s*{NUMERIC_MARKER})*(?=\s|$)|{_BLOCK_BREAK}"
+)
+
+
+def citation_window(unit: TextUnit, span: TextSpan) -> str:
+    r"""The text a citation must appear in to count as attached to a claim.
+
+    That is the sentence (or table row) containing the claim's span, from the
+    previous sentence end to the next one after the span. A marker elsewhere in
+    the section may belong to a different claim, so the model's say-so is not
+    enough to attach it. A claim with no span gets no citations, since there is
+    no sentence to check against.
+
+    Args:
+        unit: The unit the claim came from.
+        span: The claim's located span.
+
+    Returns:
+        The window's text.
+
+    >>> text = "A is B [1]. C causes D, which causes E [2].\nF [3]."
+    >>> unit = TextUnit(text=text, start=0, end=len(text))
+    >>> citation_window(unit, TextSpan(start=12, end=23, text="C causes D,"))
+    ' C causes D, which causes E [2].'
+    """
+    # Searched over the whole unit, not the slice before the span: in a slice,
+    # "$" matches at the span's start, so a hard wrap or a decimal point just
+    # before it would read as a sentence end.
+    starts = [
+        m.end() for m in _SENTENCE_END.finditer(unit.text, unit.start, unit.end)
+        if m.end() <= span.start
+    ]
+    window_start = starts[-1] if starts else unit.start
+    # From the span's last character: a span that already ends its sentence
+    # (a normalised match runs on over the full stop) must not reach into the
+    # next one.
+    after = _SENTENCE_END.search(unit.text, max(span.start, span.end - 1), unit.end)
+    window_end = after.end() if after else unit.end
+    # Inside a quotation, the citation comes after the quotation closes,
+    # however many sentences it runs to: run on to that sentence's end.
+    closing = _quotation_close(unit, span)
+    if closing is not None and closing > window_end - 1:
+        # From just before the closing mark, so a full stop inside it counts.
+        after = _SENTENCE_END.search(unit.text, closing - 1, unit.end)
+        window_end = after.end() if after else unit.end
+    return unit.text[window_start:window_end]
+
+
+def _quotation_close(unit: TextUnit, span: TextSpan) -> Optional[int]:
+    """Where the quotation a span sits inside closes, if it is inside one.
+
+    Only the span's paragraph is read. Curly quotation marks are paired;
+    straight ones are counted, an odd number before the span meaning one is
+    open.
+
+    >>> text = 'He said: "A is B. C is D." [4]'
+    >>> unit = TextUnit(text=text, start=0, end=len(text))
+    >>> _quotation_close(unit, TextSpan(start=10, end=16, text="A is B")) == text.index('D."') + 2
+    True
+    >>> _quotation_close(unit, TextSpan(start=0, end=7, text="He said")) is None
+    True
+    """
+    paragraph_start = unit.text.rfind("\n\n", unit.start, span.start)
+    paragraph_start = unit.start if paragraph_start < 0 else paragraph_start
+    paragraph_end = unit.text.find("\n\n", span.end, unit.end)
+    paragraph_end = unit.end if paragraph_end < 0 else paragraph_end
+    before = unit.text[paragraph_start:span.start]
+    if before.count("\u201c") > before.count("\u201d"):
+        close = unit.text.find("\u201d", span.end, paragraph_end)
+    elif before.count('"') % 2 == 1:
+        close = unit.text.find('"', span.end, paragraph_end)
+    else:
+        return None
+    return close if close >= 0 else None
+
+
+def _mention(value: Any) -> Optional[EntityMention]:
+    """An entity mention from a reply value: a string, or ``{label, id}``.
+
+    A label that is itself an ontology CURIE is taken as grounded.
+
+    >>> _mention("MONDO:0007947")
+    EntityMention(label='MONDO:0007947', id='MONDO:0007947')
+    >>> _mention({"label": "FBN1", "id": "HGNC:3603"})
+    EntityMention(label='FBN1', id='HGNC:3603')
+    >>> _mention("") is None
+    True
+    """
+    if isinstance(value, Mapping):
+        label = value.get("label") or value.get("name")
+        grounded = value.get("id")
+    else:
+        label, grounded = value, None
+    if not isinstance(label, str) or not label.strip():
+        return None
+    label = label.strip()
+    if grounded is None and is_ontology_curie(label):
+        grounded = label
+    return EntityMention(label=label, id=grounded if isinstance(grounded, str) else None)
+
+
+def _text(value: Any) -> Optional[str]:
+    """A non-empty stripped string, or None."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _member(value: Any, enum: type[ClaimTopic] | type[ClaimBasis]) -> Any:
+    """The enum member a model's label names, or None if it names none.
+
+    Models write these as ``"secondary_source"``, ``"Secondary source"`` or
+    ``"SECONDARY-SOURCE"``; all mean the same member.
+
+    >>> _member("secondary source", ClaimBasis).value, _member("Work", ClaimTopic).value
+    ('SECONDARY_SOURCE', 'WORK')
+    >>> _member("hearsay", ClaimBasis) is None, _member(None, ClaimTopic) is None
+    (True, True)
+    """
+    text = _text(value)
+    if text is None:
+        return None
+    return enum.__members__.get(re.sub(r"[\s-]+", "_", text).upper())
+
+
+def claims_from_reply(reply: str, unit: TextUnit) -> list[Claim]:
+    """Build claims from an extractor's JSON reply about one unit.
+
+    Each claim's quote is located in the unit; one that cannot be found is
+    kept as UNANCHORED with no span. Claim ids are provisional (``u1``,
+    ``u2``...) and are renumbered across the whole source by the caller.
+
+    Args:
+        reply: The model's reply, expected to hold ``{"claims": [...]}``.
+        unit: The unit the reply is about.
+
+    Returns:
+        The claims, in reply order. ``{"claims": []}`` yields none.
+
+    Raises:
+        UnreadableReplyError: If the reply holds no ``claims`` list, for
+            example because it was cut off mid-object.
+
+    >>> text = "## Genetics\\nMarfan syndrome is caused by FBN1 variants [1].\\n"
+    >>> unit = TextUnit(text=text, start=12, end=len(text), section="Genetics")
+    >>> reply = '{"claims": [{"claim": "FBN1 variants cause Marfan syndrome.",'
+    >>> reply += ' "quote": "Marfan syndrome is caused by FBN1 variants",'
+    >>> reply += ' "subject": "FBN1 variants", "predicate": "causes",'
+    >>> reply += ' "object": "Marfan syndrome", "citations": ["[1]"]}]}'
+    >>> claim = claims_from_reply(reply, unit)[0]
+    >>> claim.anchor_status, claim.source_span.start, claim.section
+    ('EXACT', 12, 'Genetics')
+    >>> claim.subject.label, [c.marker for c in claim.citations], claim.citation_status
+    ('FBN1 variants', ['[1]'], 'CITED')
+    """
+    parsed = extract_json_object(reply, key="claims")
+    entries = parsed.get("claims") if isinstance(parsed, dict) else None
+    if not isinstance(entries, list):
+        where = unit.section or unit.source_path or "the source"
+        raise UnreadableReplyError(
+            f"The claim-extraction reply for {where} holds no readable claims list: "
+            f"{reply[:200]!r}"
+        )
+
+    claims: list[Claim] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        claim_text = _text(entry.get("claim"))
+        if claim_text is None:
+            continue
+
+        quote = _text(entry.get("quote"))
+        span, status = (
+            locate_quote(quote, unit.text, unit.start, unit.end)
+            if quote else (None, AnchorStatus.UNANCHORED)
+        )
+        negated = entry.get("negated")
+        entities = [m for m in (_mention(e) for e in entry.get("entities") or []) if m]
+        citations = resolve_citations(
+            entry.get("citations") or [],
+            citation_window(unit, span) if span is not None else "",
+            unit.bibliography,
+            unit.references,
+        )
+        # A section headed by a cited work attributes all of it to that work.
+        # Not for an unlocated claim, which may not come from the section, and
+        # not again when the sentence already cites the same work.
+        section = unit.section_citation
+        # Markers are compared by the number they cite, since a model writes
+        # the section's own "[1]" as "[1]", "[ 1 ]" or "[1](url)" alike. A
+        # section citation with no number (built by hand) matches none: None
+        # would otherwise equal every PMID or DOI marker's None.
+        section_number = _cited_number(section.marker) if section is not None else None
+
+        def repeats_section_marker(handle: CitationHandle) -> bool:
+            return section_number is not None and _cited_number(handle.marker) == section_number
+
+        if section is not None and section.reference_id is not None:
+            # A sentence that repeats the section's own marker cites the same
+            # work. Its bibliography entry may give no identifier (Asta's
+            # hold only a URL) while the section's own lines do.
+            filled = [
+                c.model_copy(update={"reference_id": section.reference_id, "url": c.url or section.url})
+                if repeats_section_marker(c) and c.reference_id is None else c
+                for c in citations
+            ]
+            # Filling one in may repeat an identifier the sentence also wrote.
+            seen: set[str] = set()
+            citations = []
+            for c in filled:
+                if c.reference_id is None or c.reference_id not in seen:
+                    citations.append(c)
+                if c.reference_id is not None:
+                    seen.add(c.reference_id)
+        if span is not None and section is not None and not any(
+            repeats_section_marker(c)
+            or (section.reference_id is not None and c.reference_id == section.reference_id)
+            for c in citations
+        ):
+            citations.append(section)
+        about = _member(entry.get("about"), ClaimTopic)
+        basis = _member(entry.get("basis"), ClaimBasis)
+        # Only a domain claim has a basis. So a basis with no readable "about"
+        # says the claim is about the domain, while one on a claim the model
+        # called a work claim means nothing and is not kept.
+        if about is None and basis is not None:
+            about = ClaimTopic.DOMAIN
+        if about != ClaimTopic.DOMAIN:
+            basis = None
+        # In a section headed by a cited work, the source presents every claim
+        # as that work's. That is structure, not judgement, so it is not left
+        # to the model, which does not always apply it.
+        if about == ClaimTopic.DOMAIN and span is not None and unit.section_citation is not None:
+            basis = ClaimBasis.SECONDARY_SOURCE
+        claims.append(Claim(
+            id=f"u{len(claims) + 1}",
+            claim_text=claim_text,
+            source_span=span,
+            source_path=unit.source_path,
+            anchor_status=status,
+            section=unit.section,
+            subject=_mention(entry.get("subject")),
+            predicate=_mention(entry.get("predicate")),
+            object=_mention(entry.get("object")),
+            negated=negated if isinstance(negated, bool) else None,
+            qualifier=_text(entry.get("qualifier")),
+            subject_qualifier=_text(entry.get("subject_qualifier")),
+            object_qualifier=_text(entry.get("object_qualifier")),
+            entities=entities or None,
+            citations=citations or None,
+            nearest_passage=(
+                nearest_passage(quote, unit.text, unit.start, unit.end)
+                if quote and status == AnchorStatus.UNANCHORED else None
+            ),
+            citation_status=citation_status_for(citations, status),
+            about=about,
+            basis=basis,
+        ))
+    return claims

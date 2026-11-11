@@ -1,0 +1,11 @@
+Section: Loeys-Dietz syndrome > Other features
+
+TEXT:
+<<<
+
+
+- Hypertelorism and bifid uvula or cleft palate are common.[1]
+- Unlike in Marfan syndrome, ectopia lentis is not a feature.[2]
+
+
+>>>

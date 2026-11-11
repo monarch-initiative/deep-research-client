@@ -10,7 +10,12 @@ from collections.abc import Sequence
 from typing import Any, Optional, Union
 
 from .cache import CacheManager
-from .exceptions import ProviderError, ProviderNotConfiguredError, is_fallback_worthy
+from .exceptions import (
+    NoProvidersConfiguredError,
+    ProviderError,
+    ProviderNotConfiguredError,
+    is_fallback_worthy,
+)
 from .models import (
     ResearchResult,
     ProviderAttempt,
@@ -35,29 +40,39 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
+    "toxindex": ("deep_research_client.providers.toxindex", "ToxIndexProvider"),
     "mock": ("deep_research_client.providers.mock", "MockProvider"),
 }
 
 
-#: Providers whose registration is gated on an environment variable rather than
-#: on the provider's own availability, so the provider cannot explain itself.
-REGISTRATION_GATES: dict[str, str] = {
-    # Phrased as requirements, not findings: absence from the registry has
-    # more than one cause (explicit provider_configs skip env detection
-    # entirely), so a sentence asserting *why* would sometimes be false.
-    "claude_code": (
-        "requires the local Claude Code CLI, with DISABLE_CLAUDE_CODE_PROVIDER unset"
-    ),
-    "biomni": (
-        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
-        "environment with deep-research-client[biomni]"
-    ),
-    "tooluniverse": (
-        "requires deep-research-client[tooluniverse] and an underlying LLM key "
-        "(TOOLUNIVERSE_API_KEY or OPENAI_API_KEY), with DISABLE_TOOLUNIVERSE_PROVIDER unset"
-    ),
-    "mock": "set ENABLE_MOCK_PROVIDER=true to enable the mock provider",
-}
+def load_provider_class(provider_name: str) -> type[ResearchProvider]:
+    """Import a provider's class by name, without constructing it.
+
+    The class is where a provider declares what it needs -- its credential,
+    its registration requirement, whether it is a stub -- so this is how the
+    CLI reads those facts instead of keeping its own copy (issue #70).
+    Provider modules import their optional dependencies lazily, so this is
+    safe without any extra installed.
+
+    Args:
+        provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
+
+    Returns:
+        The provider class.
+
+    Raises:
+        ValueError: If the name is not a provider.
+
+    >>> load_provider_class("falcon").credential_env_var
+    'EDISON_API_KEY'
+    """
+    class_path = PROVIDER_CLASS_PATHS.get(provider_name)
+    if class_path is None:
+        raise ValueError(f"Unknown provider: {provider_name}")
+
+    module_name, class_name = class_path
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
 
 
 class DeepResearchClient:
@@ -242,6 +257,19 @@ class DeepResearchClient:
         )
         self.registry.register(self._create_provider("deeper_med", deeper_med_config))
 
+        # ToxIndex is a stub too -- Sage has no submit route -- so it is also
+        # registered unconditionally and never available. The key is still
+        # passed along: it serves `providers --check` and conversation retrieval.
+        # The literal, not the module's constant: importing the module here
+        # would undo the lazy loading every other provider gets.
+        toxindex_config = ProviderConfig(
+            name="toxindex",
+            api_key=os.getenv("TOXINDEX_API_KEY"),
+            base_url=os.getenv("TOXINDEX_BASE_URL"),
+            enabled=True,
+        )
+        self.registry.register(self._create_provider("toxindex", toxindex_config))
+
         # Mock provider only if explicitly requested via environment
         if os.getenv("ENABLE_MOCK_PROVIDER", "").lower() in ("true", "1", "yes"):
             mock_config = ProviderConfig(
@@ -281,6 +309,12 @@ class DeepResearchClient:
         """
         if provider_name in self.get_available_providers():
             return f"'{provider_name}' is available"
+        # Registered but unavailable -- a key set for a provider whose optional
+        # package is missing, say. The registered instance has the key, so it
+        # can tell what is missing; a throwaway one would blame the key.
+        registered = self.registry.get_provider(provider_name)
+        if registered is not None:
+            return registered.unavailable_reason()
         return self._unregistered_reason(provider_name)
 
     def _unregistered_reason(self, provider_name: str) -> str:
@@ -288,11 +322,11 @@ class DeepResearchClient:
 
         Asks the provider class itself where it can answer, so the wording
         matches every other surface. But registration and availability are not
-        the same gate: the providers in REGISTRATION_GATES are held back by an
-        environment variable while considering themselves perfectly available,
-        and asking those why they are unavailable produces a confident wrong
-        answer -- telling a reader to install a CLI they already have, for
-        instance.
+        the same gate: a provider declaring ``registration_requirement`` can be
+        held back by an environment variable while considering itself
+        perfectly available, and asking it why it is unavailable produces a
+        confident wrong answer -- telling a reader to install a CLI they
+        already have, for instance.
 
         Args:
             provider_name: Canonical name of a provider in PROVIDER_CLASS_PATHS.
@@ -301,7 +335,7 @@ class DeepResearchClient:
             Human-readable explanation of what is missing
         """
         try:
-            provider_class = self._get_provider_class(provider_name)
+            provider_class = load_provider_class(provider_name)
             provider = provider_class(ProviderConfig(name=provider_name))
         except Exception:
             # A diagnostic path must not fail with a second, unrelated error.
@@ -311,9 +345,10 @@ class DeepResearchClient:
             return self._reason_from_class_attributes(provider_name)
 
         if provider.is_available():
-            # The class has nothing to explain: the gate is outside it.
-            return REGISTRATION_GATES.get(
-                provider_name, f"'{provider_name}' is not registered in this environment"
+            # The instance has nothing to explain: the gate is outside it.
+            return (
+                provider_class.registration_requirement
+                or f"'{provider_name}' is not registered in this environment"
             )
         return provider.unavailable_reason()
 
@@ -326,31 +361,20 @@ class DeepResearchClient:
         Returns:
             Human-readable explanation of what is missing
         """
-        gate = REGISTRATION_GATES.get(provider_name)
-        if gate:
-            return gate
-        paths = PROVIDER_CLASS_PATHS.get(provider_name)
-        if paths is None:
-            return f"'{provider_name}' is not configured"
-        module_name, class_name = paths
+        # Narrow on purpose: an unknown name (ValueError) or a module that
+        # cannot import (ImportError) still gets a sentence, but a renamed
+        # class or a broken module body fails loudly, as it does when the CLI
+        # reads the same attributes through load_provider_class.
         try:
-            provider_class = getattr(importlib.import_module(module_name), class_name)
-        except Exception:
+            provider_class = load_provider_class(provider_name)
+        except (ValueError, ImportError):
             return f"'{provider_name}' is not configured"
-        if provider_class.credential_env_var:
-            label = provider_class.credential_label or provider_name
-            return f"no {label} API key configured (set {provider_class.credential_env_var})"
-        return f"'{provider_name}' is not configured"
-
-    def _get_provider_class(self, provider_name: str) -> type[ResearchProvider]:
-        """Resolve a provider class only when it is actually needed."""
-        class_path = PROVIDER_CLASS_PATHS.get(provider_name)
-        if class_path is None:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-        module_name, class_name = class_path
-        module = importlib.import_module(module_name)
-        return getattr(module, class_name)
+        if provider_class.registration_requirement:
+            return provider_class.registration_requirement
+        return (
+            provider_class.missing_credential_reason(provider_name)
+            or f"'{provider_name}' is not configured"
+        )
 
     def _create_provider(
         self,
@@ -359,7 +383,7 @@ class DeepResearchClient:
         params: str | BaseProviderParams | None = None,
     ) -> ResearchProvider:
         """Instantiate a provider via the lazy class loader."""
-        provider_class = self._get_provider_class(provider_name)
+        provider_class = load_provider_class(provider_name)
         return provider_class(config, params)
 
     def _create_provider_with_params(self, provider_name: str, model: Optional[str] = None, provider_params: Optional[dict] = None) -> 'ResearchProvider':
@@ -522,7 +546,7 @@ class DeepResearchClient:
                 ordered.append(name)
 
         if not ordered:
-            raise ValueError("No research providers available")
+            raise NoProvidersConfiguredError()
 
         # A fallback was asked for and there is nobody to fall back to. The
         # run is about to behave exactly as it would with no flag at all, and
@@ -590,7 +614,8 @@ class DeepResearchClient:
             A provider instance configured for this run.
 
         Raises:
-            ProviderNotConfiguredError: If the provider is known but not set up.
+            ProviderNotConfiguredError: If the provider is known but not set up;
+                ProviderNotInstalledError where a package or binary is missing.
             ValueError: If the name is not a provider at all.
         """
         base_provider = self.registry.get_provider(provider_name)
@@ -603,10 +628,8 @@ class DeepResearchClient:
                     provider_name, self._unregistered_reason(provider_name)
                 )
             raise ValueError(f"Provider '{provider_name}' not found")
-        if not base_provider.is_available():
-            raise ProviderNotConfiguredError(
-                provider_name, base_provider.unavailable_reason()
-            )
+        # The provider picks the class: a missing package is not a missing key.
+        base_provider.require_available()
 
         # Create new instance with custom parameters if needed
         if provider_params or model:
@@ -758,9 +781,10 @@ class DeepResearchClient:
 
         Raises:
             ProviderNotConfiguredError: If a known provider is not set up, or
-                the requested provider has no credential configured
-            ValueError: If no providers are available, or the name is not a
-                provider at all
+                the requested provider has no credential configured. When no
+                provider was named and none is available, the subclass
+                NoProvidersConfiguredError.
+            ValueError: If the name is not a provider at all
         """
         return asyncio.run(
             self.aresearch(
@@ -968,10 +992,19 @@ class DeepResearchClient:
                 if params_dict:
                     result.provider_config['parameters'] = params_dict
 
-            # Cache the result
-            await self.cache.set(
-                query, candidate, result, effective_model, cache_provider_params
-            )
+            # Cache the result -- unless the provider says it could not answer.
+            # A cached non-answer would be served to every rerun of the same
+            # query, turning one failed retrieval into a permanent one (#52).
+            if result.answer_successful is not False:
+                await self.cache.set(
+                    query, candidate, result, effective_model, cache_provider_params
+                )
+            else:
+                logger.warning(
+                    "%s could not answer this query; the result is not cached, "
+                    "so a rerun will try again",
+                    candidate,
+                )
 
             # After caching, so that which providers this run tried never
             # becomes part of what a later run reads back.
@@ -979,8 +1012,10 @@ class DeepResearchClient:
             return result
 
         # Unreachable: _fallback_candidates never returns an empty list, and the
-        # last candidate re-raises rather than falling out of the loop.
-        raise ValueError("No research providers available")
+        # last candidate re-raises rather than falling out of the loop. Same
+        # type as the empty-list case it guards, so the one message in this
+        # client always arrives as the one class.
+        raise NoProvidersConfiguredError()
 
     def knows_provider(self, name: str) -> bool:
         """Report whether a name is a provider at all, configured or not.

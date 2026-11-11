@@ -321,6 +321,16 @@ class ResearchResult(BaseModel):
         ),
     )
 
+    answer_successful: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether the provider reported that it answered the question. False "
+            "means it returned something -- often an explanation of why it could "
+            "not answer -- that is not a finished report. None when the provider "
+            "does not say."
+        ),
+    )
+
     # Which provider actually did the work. ``provider`` above already names
     # the one that produced this report; these say what was *asked for* and
     # what was tried on the way, so a report produced by a fallback can never
@@ -400,6 +410,50 @@ class ResearchResult(BaseModel):
             attempt.frontmatter_entry() for attempt in self.provider_attempts
         ]
         return metadata
+
+    def answer_frontmatter(self) -> Dict[str, Any]:
+        """Render whether the provider answered, plus the citation count.
+
+        Here rather than in a formatter for the same reason as
+        :meth:`fallback_frontmatter`. Both keys exist so a script can tell a
+        failed run from a report by reading a field, rather than by noticing a
+        short body (issue #52). ``citation_count`` is always written: absent
+        reads as "not recorded", and zero is what a failed run needs to show.
+
+        Returns:
+            ``answer_status`` when the provider says, and ``citation_count``
+
+        >>> ResearchResult(markdown="x", provider="mock", query="q").answer_frontmatter()
+        {'citation_count': 0}
+        >>> ResearchResult(
+        ...     markdown="x", provider="falcon", query="q", answer_successful=False,
+        ... ).answer_frontmatter()
+        {'answer_status': 'unsuccessful', 'citation_count': 0}
+        """
+        metadata: Dict[str, Any] = {}
+        if self.answer_successful is not None:
+            metadata["answer_status"] = "successful" if self.answer_successful else "unsuccessful"
+        metadata["citation_count"] = len(self.citations)
+        return metadata
+
+    def answer_warning(self) -> Optional[str]:
+        """Say, above the provider's text, that it is not a finished report.
+
+        Returns:
+            A markdown blockquote when the provider says it could not answer,
+            otherwise None.
+
+        >>> print(ResearchResult(
+        ...     markdown="x", provider="falcon", query="q", answer_successful=False,
+        ... ).answer_warning())
+        > **Warning:** falcon reported that it could not answer this question. What follows is its response, not a finished report.
+        """
+        if self.answer_successful is not False:
+            return None
+        return (
+            f"> **Warning:** {self.provider} reported that it could not answer this "
+            f"question. What follows is its response, not a finished report."
+        )
 
 
 class ProviderConfig(BaseModel):

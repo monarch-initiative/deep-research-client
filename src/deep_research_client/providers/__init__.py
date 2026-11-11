@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional, Union, TYPE_CHECKING
 
+from ..exceptions import ProviderNotConfiguredError
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..model_cards import ProviderModelCards
 
@@ -17,8 +18,30 @@ class ResearchProvider(ABC):
     #: needs one. Set by subclasses so the base can name it in error messages.
     credential_env_var: ClassVar[Optional[str]] = None
 
-    #: Human-facing name for this provider's credential, e.g. "OpenAI".
+    #: Human-facing name for what this credential unlocks, as the CLI lists
+    #: it: ``- OPENAI_API_KEY for OpenAI Deep Research``.
     credential_label: ClassVar[Optional[str]] = None
+
+    #: Name of the account the key belongs to, for the sentence saying it is
+    #: missing: ``no OpenAI API key configured``. Needed only where the key
+    #: outlives the product -- an OpenAI key is not Deep-Research-specific --
+    #: so it defaults to :attr:`credential_label`.
+    credential_noun: ClassVar[Optional[str]] = None
+
+    #: What the client needs before it will *register* this provider, when
+    #: that is more than the provider's own :meth:`is_available` -- an opt-out
+    #: variable, an opt-in flag, a binary probed during auto-detection. Such a
+    #: provider can be absent from the registry while an instance of it would
+    #: report itself available, so it cannot explain the absence itself; this
+    #: sentence does. Phrased as a requirement, not a finding: absence has more
+    #: than one cause (explicit ``provider_configs`` skip auto-detection), so a
+    #: sentence asserting *why* would sometimes be false.
+    registration_requirement: ClassVar[Optional[str]] = None
+
+    #: Set on a provider that is registered only so it can be discovered: the
+    #: upstream system has no public API yet, so no credential, install or
+    #: flag would make it work. Names the system and where to read about it.
+    stub_reason: ClassVar[Optional[str]] = None
 
     #: Whether this provider's output is real research. False for a provider
     #: that fabricates its reports, which keeps it out of the *automatic*
@@ -84,6 +107,25 @@ class ResearchProvider(ABC):
         """Check if provider is available (has API key, etc.)."""
         return self.config.enabled and self.config.api_key is not None
 
+    #: What :meth:`require_available` raises. A provider whose missing piece
+    #: is a local binary or package sets ``ProviderNotInstalledError``, so a
+    #: caller can offer an install rather than ask for a key.
+    unavailable_error: ClassVar[type[ProviderNotConfiguredError]] = ProviderNotConfiguredError
+
+    def require_available(self) -> None:
+        """Raise the error that says what this provider is missing, if anything.
+
+        The client calls this as well as :meth:`research`, so one cause raises
+        one class whichever way the provider is reached. Override it where the
+        class depends on what is missing, as falcon and tooluniverse do.
+
+        Raises:
+            ProviderNotConfiguredError: Or the subclass in
+                :attr:`unavailable_error`, if the provider cannot run.
+        """
+        if not self.is_available():
+            raise self.unavailable_error(self.name, self.unavailable_reason())
+
     def unavailable_reason(self) -> str:
         """Explain why this provider is unavailable.
 
@@ -97,10 +139,28 @@ class ResearchProvider(ABC):
         """
         if not self.config.enabled:
             return f"Provider '{self.name}' is disabled"
-        if self.credential_env_var:
-            label = self.credential_label or self.name
-            return f"no {label} API key configured (set {self.credential_env_var})"
+        missing = self.missing_credential_reason(self.name)
+        if missing:
+            return missing
         return f"Provider '{self.name}' is not available"
+
+    @classmethod
+    def missing_credential_reason(cls, name: str) -> Optional[str]:
+        """Say which key is missing, for a provider that declares one.
+
+        A classmethod so the client can say it without an instance, when
+        constructing one is what failed.
+
+        Args:
+            name: The provider's name, used when it declares no noun or label.
+
+        Returns:
+            The sentence, or None for a provider that needs no key
+        """
+        if not cls.credential_env_var:
+            return None
+        noun = cls.credential_noun or cls.credential_label or name
+        return f"no {noun} API key configured (set {cls.credential_env_var})"
 
     async def check_health(self) -> ProviderHealth:
         """Probe whether this provider can actually take work right now.

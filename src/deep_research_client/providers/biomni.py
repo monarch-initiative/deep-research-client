@@ -176,6 +176,15 @@ class BiomniProvider(ResearchProvider):
     usual provider environment variables (e.g. ``ANTHROPIC_API_KEY``).
     """
 
+    #: Auto-detection honours an opt-out an instance cannot see.
+    registration_requirement = (
+        "requires DISABLE_BIOMNI_PROVIDER to be unset, plus an upstream Biomni "
+        "environment with deep-research-client[biomni]"
+    )
+
+    #: Nothing to run is an install problem, not a missing key.
+    unavailable_error = ProviderNotInstalledError
+
     def __init__(self, config: ProviderConfig, params: Optional[BiomniParams] = None):
         """Initialize the Biomni provider.
 
@@ -247,8 +256,7 @@ class BiomniProvider(ResearchProvider):
         # whether the optional package happens to be installed.
         if not query or not query.strip():
             raise ValueError("Research query must not be empty.")
-        if not self.is_available():
-            raise ProviderNotInstalledError(self.name, self.unavailable_reason())
+        self.require_available()
 
         start_time = datetime.now()
         if self.params.tooluniverse:

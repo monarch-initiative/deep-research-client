@@ -49,10 +49,18 @@ Best practice:
 We welcome PRs wrapping other tools (aka "providers"). When doing this:
 
 - [ ] add unit tests and integration tests
+- [ ] declare what the provider needs on its class (`credential_env_var` /
+      `credential_label`, or `registration_requirement`, or `stub_reason`);
+      the CLI and client derive their hints from these, so there is no table
+      to update. See docs/reference/providers.md, "Declaring what the provider
+      needs"
 - [ ] Ensure documented in docs/reference/providers.md as well as README
 - [ ] does not signifantly add to base install dependencies; if so make this an optional install (allowing e.g. `pip install deep-research-client[my-bespoke-provider]`)
 - [ ] import the optional dependency lazily, not at module scope. `just test`
       runs `pytest --doctest-modules src`, which imports every module under
       `src/`, so a top-level import of an extra breaks the default test command
       rather than only its own tests. See `providers/biomni.py` for the
-      `importlib.util` pattern.
+      `importlib.util` pattern. The same goes for a heavy SDK that is a base
+      dependency: the CLI imports every provider module to read its declared
+      requirements, so `providers` pays for any SDK imported at module scope
+      (see `providers/falcon.py`).

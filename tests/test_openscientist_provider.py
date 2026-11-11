@@ -479,6 +479,7 @@ class TestOpenScientistProvider:
         assert result.markdown == "# Report\n\nPMID: 12345678\n\nPMID: 23456789"
         assert result.citations == ["PMID:12345678", "PMID:23456789"]
         assert [artifact.filename for artifact in result.artifacts] == ["figure.png"]
+        assert result.run_metadata == {"job_id": "job-123"}
 
     async def test_research_timeout_cancels_job(self, monkeypatch):
         """Test timeout handling cancels the submitted job."""

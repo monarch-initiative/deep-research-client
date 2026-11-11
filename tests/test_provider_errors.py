@@ -4,11 +4,14 @@ Covers the failure mode from issue #65: a provider that is configured but
 cannot take work, reported as a timeout instead of as a billing failure.
 """
 
+import pickle
+
 import httpx
 import pytest
 
 from deep_research_client.client import DeepResearchClient
 from deep_research_client.exceptions import (
+    NoProvidersConfiguredError,
     ProviderAuthError,
     ProviderNotConfiguredError,
     ProviderBillingError,
@@ -188,8 +191,6 @@ def test_unconfigured_provider_reports_unreachable_without_probing():
 
 def test_provider_errors_survive_pickling():
     """These may cross a process boundary in a task queue; keep them rebuildable."""
-    import pickle
-
     from deep_research_client.exceptions import ProviderQuotaError
 
     billing = pickle.loads(pickle.dumps(ProviderBillingError("falcon", "no credits", 402)))
@@ -198,6 +199,12 @@ def test_provider_errors_survive_pickling():
 
     quota = pickle.loads(pickle.dumps(ProviderQuotaError("claude_code", "spent", resets_at="3pm")))
     assert quota.resets_at == "3pm"
+
+    # Its __init__ takes only the detail, so it needs its own __reduce__.
+    none_configured = NoProvidersConfiguredError()
+    rebuilt = pickle.loads(pickle.dumps(none_configured))
+    assert isinstance(rebuilt, NoProvidersConfiguredError)
+    assert str(rebuilt) == str(none_configured)
 
 
 def test_a_dead_end_in_the_retry_wrapper_does_not_abandon_the_search():
@@ -238,6 +245,7 @@ def test_not_configured_is_one_catchable_class():
     docs tell callers to write, so the export list is part of the contract.
     """
     from deep_research_client import (
+        NoProvidersConfiguredError,
         ProviderNotConfiguredError,
         ProviderNotInstalledError,
         extract_status_code,
@@ -246,7 +254,22 @@ def test_not_configured_is_one_catchable_class():
     assert extract_status_code is not None
 
     assert issubclass(ProviderNotInstalledError, ProviderNotConfiguredError)
+    assert issubclass(NoProvidersConfiguredError, ProviderNotConfiguredError)
     assert not issubclass(ProviderNotConfiguredError, ProviderAuthError)
+
+
+def test_no_providers_configured_reads_without_a_provider_name():
+    """With no provider to name, the message must not lead with an empty one.
+
+    It must still point at the next step: the listing that says what could be
+    configured, and the check that says what works.
+    """
+    message = str(NoProvidersConfiguredError())
+    assert not message.startswith(":")
+    assert message.startswith("No research providers available")
+    assert "`deep-research-client providers`" in message
+    assert "`deep-research-client providers --check`" in message
+    assert "--provider <other>" not in message
 
 
 def test_a_long_body_never_costs_the_remedy():
@@ -332,29 +355,77 @@ def test_every_keyed_provider_reports_a_missing_key_the_same_way(name, provider_
     assert provider.credential_env_var in str(excinfo.value)
 
 
+def test_the_cli_offers_exactly_the_keyed_providers_and_names_their_keys(capsys):
+    """The CLI reads each credential from the class, so there is nothing to drift.
+
+    Before issue #70 the CLI kept its own table, and a test compared the two.
+    What is left to pin is the reading itself: every keyed provider is offered,
+    nothing else is, and each line says the variable the class declares.
+    """
+    from deep_research_client import cli as cli_module
+
+    keyed = _keyed_provider_classes()
+    assert cli_module._settable_credential_hints() == [name for name, _ in keyed]
+
+    cli_module._echo_credential_hints([name for name, _ in keyed])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [
+        f"  - {cls.credential_env_var} for {cls.credential_label}" for _, cls in keyed
+    ]
+
+
 @pytest.mark.parametrize(
     "name,provider_class", _keyed_provider_classes(), ids=lambda v: v if isinstance(v, str) else None
 )
-def test_the_cli_hint_table_agrees_with_the_provider_it_describes(name, provider_class):
-    """Two places name each credential; they must not drift into two answers."""
-    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
+def test_the_missing_key_sentence_is_the_same_with_or_without_an_instance(name, provider_class):
+    """The client's no-instance fallback and the provider must say one thing.
 
-    assert name in PROVIDER_CREDENTIAL_HINTS, (
-        f"{name} needs an entry in PROVIDER_CREDENTIAL_HINTS so the CLI can name its key"
-    )
-    assert PROVIDER_CREDENTIAL_HINTS[name] == (
-        provider_class.credential_env_var,
-        provider_class.credential_label,
-    )
+    Both render through `missing_credential_reason`, so `credential_noun`
+    reaches the client's path too rather than only the instance's.
+    """
+    from deep_research_client.providers import ResearchProvider
+
+    instance = provider_class(ProviderConfig(name=name, api_key=None, enabled=True))
+    from_class = provider_class.missing_credential_reason(name)
+
+    assert from_class is not None and provider_class.credential_env_var in from_class
+    # tooluniverse overrides unavailable_reason to name its fallback variable
+    # too; every other keyed provider uses the base sentence as it is.
+    if provider_class.unavailable_reason is ResearchProvider.unavailable_reason:
+        assert instance.unavailable_reason() == from_class
 
 
-def test_the_hint_table_names_no_provider_that_no_longer_exists():
-    """The cross-check above runs one way; this closes the other direction."""
-    from deep_research_client.cli import PROVIDER_CREDENTIAL_HINTS
-    from deep_research_client.client import PROVIDER_CLASS_PATHS
+def _classes_declaring_both() -> list[tuple[str, type]]:
+    """Keyed providers that also declare a registration requirement.
 
-    stale = set(PROVIDER_CREDENTIAL_HINTS) - set(PROVIDER_CLASS_PATHS)
-    assert not stale, f"hint entries naming providers that no longer exist: {stale}"
+    Returns:
+        (name, class) pairs; tooluniverse today
+    """
+    return [
+        (name, cls) for name, cls in _keyed_provider_classes() if cls.registration_requirement
+    ]
+
+
+def test_some_provider_declares_both_a_key_and_a_registration_requirement():
+    """The precedence test below is derived; this keeps it from passing vacuously."""
+    assert _classes_declaring_both(), "no provider declares both; drop the precedence test"
+
+
+@pytest.mark.parametrize(
+    "name,provider_class", _classes_declaring_both(), ids=lambda v: v if isinstance(v, str) else None
+)
+def test_the_registration_requirement_wins_over_the_key_without_an_instance(name, provider_class):
+    """Without an instance, the fuller sentence is the one to show.
+
+    tooluniverse's registration requirement names the OPENAI_API_KEY fallback
+    and the opt-out variable; its key alone would send a reader who has
+    OPENAI_API_KEY set hunting for a second key.
+    """
+    from deep_research_client.client import DeepResearchClient
+
+    client = DeepResearchClient()
+
+    assert client._reason_from_class_attributes(name) == provider_class.registration_requirement
 
 
 def test_the_registry_actually_yields_keyed_providers():

@@ -1,12 +1,16 @@
-"""OpenAI Deep Research provider."""
+"""OpenAI Deep Research provider.
+
+The ``openai`` SDK is imported where it is used, not at module scope: this
+module is imported just to read the class's declared credential whenever the
+CLI lists providers, and the SDK import would add most of a second to that
+(issue #70). Tests that substitute the client patch ``openai.OpenAI``.
+"""
 
 import asyncio
 import logging
-from typing import List, Optional, Any, Dict, cast
+from typing import TYPE_CHECKING, List, Optional, Any, Dict, cast
 
 import httpx
-from openai import OpenAI
-from openai.types.responses import WebSearchPreviewToolParam
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -20,6 +24,9 @@ from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import OpenAIParams
 from ..model_cards import ProviderModelCards, create_openai_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
+
+if TYPE_CHECKING:
+    from openai.types.responses import WebSearchPreviewToolParam
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +64,8 @@ class OpenAIProvider(ResearchProvider):
     """Provider for OpenAI Deep Research API."""
 
     credential_label = "OpenAI Deep Research"
+    #: The key is the OpenAI account's, not Deep Research's own.
+    credential_noun = "OpenAI"
     credential_env_var = "OPENAI_API_KEY"
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):
@@ -104,6 +113,8 @@ class OpenAIProvider(ResearchProvider):
                 reachable=False,
                 detail=self.unavailable_reason(),
             )
+
+        from openai import OpenAI
 
         client_kwargs: Dict[str, Any] = {"api_key": self.config.api_key}
         if self.config.base_url:
@@ -162,6 +173,8 @@ class OpenAIProvider(ResearchProvider):
             client_kwargs["base_url"] = self.config.base_url
             logger.info(f"Using custom endpoint: {self.config.base_url}")
 
+        from openai import OpenAI
+
         client = OpenAI(**client_kwargs)
 
         # Use custom system prompt or default
@@ -194,7 +207,7 @@ class OpenAIProvider(ResearchProvider):
             response = client.responses.create(
                 model=self.model,
                 input=input_messages,
-                tools=[cast(WebSearchPreviewToolParam, web_search_tool)],
+                tools=[cast("WebSearchPreviewToolParam", web_search_tool)],
             )
             logger.info("OpenAI API request completed successfully")
 

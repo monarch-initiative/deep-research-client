@@ -191,7 +191,7 @@ def test_leading_think_block_is_stripped():
 
 
 def test_unclosed_think_block_is_left_alone():
-    """A stream cut off mid-reasoning should not silently become empty."""
+    """``_strip_think`` only removes a closed block; it leaves this for ``_report_from`` to reject."""
     assert _strip_think("<think>still planning") == "<think>still planning"
 
 

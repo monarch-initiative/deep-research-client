@@ -141,6 +141,17 @@ def test_final_chunk_other_than_stop_is_an_error(finish_reason, then):
         asyncio.run(_read_stream(lines))
 
 
+@pytest.mark.parametrize(
+    "error",
+    [{"message": "quota exceeded", "type": "insufficient_quota"}, "quota exceeded"],
+    ids=["object", "string"],
+)
+def test_error_event_is_raised_with_its_message(error):
+    """Not 'No response content received' -- the server said what went wrong."""
+    with pytest.raises(ValueError, match="error event: quota exceeded"):
+        _fold([_delta("# Rep"), _sse({"error": error})])
+
+
 def test_unreadable_line_names_the_line():
     """A format change should say what arrived, not just that JSON failed."""
     with pytest.raises(ValueError, match="not json"):

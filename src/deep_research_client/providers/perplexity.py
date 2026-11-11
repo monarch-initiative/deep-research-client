@@ -55,6 +55,14 @@ class _StreamState:
         >>> state.add_line('data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}')
         >>> state.finish_reason
         'stop'
+
+        An error the server sends as an event, after a 200 response, is raised
+        with its own message rather than ignored:
+
+        >>> _StreamState().add_line('data: {"error": {"message": "quota exceeded"}}')
+        Traceback (most recent call last):
+        ...
+        ValueError: Perplexity sent an error event: quota exceeded
         """
         if not line.startswith("data:"):
             return
@@ -65,6 +73,11 @@ class _StreamState:
             chunk = json.loads(body)
         except json.JSONDecodeError as e:
             raise ValueError(f"Unreadable Perplexity stream line: {body[:200]!r}") from e
+
+        error = chunk.get("error")
+        if error:
+            message = error.get("message", error) if isinstance(error, dict) else error
+            raise ValueError(f"Perplexity sent an error event: {str(message)[:200]}")
 
         # Citations and search results arrive on intermediate chunks, and the
         # final chunk does not always repeat them.

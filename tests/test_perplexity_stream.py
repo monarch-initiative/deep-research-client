@@ -19,8 +19,10 @@ from deep_research_client.provider_params import PerplexityParams
 from deep_research_client.providers.perplexity import (
     PerplexityProvider,
     _read_stream,
+    _report_from,
     _StreamState,
     _strip_think,
+    _titled_citations,
 )
 
 
@@ -29,11 +31,13 @@ def _sse(chunk: dict) -> str:
     return f"data: {json.dumps(chunk)}"
 
 
-def _delta(text: str, **extra) -> str:
-    return _sse({"choices": [{"delta": {"content": text}}], **extra})
+def _delta(text: str, finish_reason: str | None = None, **extra) -> str:
+    """Render a true-delta chunk carrying ``text``, optionally the final one."""
+    return _sse({"choices": [{"delta": {"content": text}, "finish_reason": finish_reason}], **extra})
 
 
 def _message(text: str, **extra) -> str:
+    """Render a cumulative chunk whose ``message.content`` is ``text``."""
     return _sse({"choices": [{"delta": {}, "message": {"content": text}}], **extra})
 
 
@@ -46,6 +50,7 @@ async def _lines(lines: List[str], then: Exception | None = None) -> AsyncIterat
 
 
 def _fold(lines: List[str]) -> _StreamState:
+    """Feed ``lines`` into a fresh stream state and return it."""
     state = _StreamState()
     for line in lines:
         state.add_line(line)
@@ -81,20 +86,64 @@ def test_citations_from_intermediate_chunks_are_kept():
     assert state.search_results == [{"url": "https://b.example", "title": "B"}]
 
 
-def test_reset_after_content_keeps_the_report():
+RESETS = [httpx.RemoteProtocolError("peer closed"), httpx.ReadError("reset")]
+
+
+@pytest.mark.parametrize("error", RESETS)
+def test_reset_after_the_final_chunk_keeps_the_report(error):
     """The server sometimes drops the connection right after the last chunk."""
-    lines = _lines([_delta("# Report")], then=httpx.RemoteProtocolError("peer closed"))
+    lines = _lines([_delta("# Rep"), _delta("ort", finish_reason="stop")], then=error)
 
     state = asyncio.run(_read_stream(lines))
 
     assert state.content == "# Report"
+    assert state.finish_reason == "stop"
 
 
-@pytest.mark.parametrize("error", [httpx.RemoteProtocolError("peer closed"), httpx.ReadError("reset")])
-def test_reset_before_content_is_still_an_error(error):
-    """Nothing arrived, so there is nothing to keep -- fail loudly."""
+@pytest.mark.parametrize("error", RESETS)
+@pytest.mark.parametrize(
+    "lines",
+    [[": keep-alive"], [_delta("# Rep")], [_delta("<think>planning the search")]],
+    ids=["before-content", "mid-report", "mid-reasoning"],
+)
+def test_reset_before_the_final_chunk_is_an_error(lines, error):
+    """Without a finish_reason the report is incomplete -- fail loudly, keep nothing."""
     with pytest.raises(type(error)):
-        asyncio.run(_read_stream(_lines([": keep-alive"], then=error)))
+        asyncio.run(_read_stream(_lines(lines, then=error)))
+
+
+def test_unreadable_line_names_the_line():
+    """A format change should say what arrived, not just that JSON failed."""
+    with pytest.raises(ValueError, match="not json"):
+        _fold(["data: {not json"])
+
+
+def test_search_result_titles_label_citations_in_citation_order():
+    """[n] markers number into citations, so its order wins; titles come from search results."""
+    citations = _titled_citations(
+        ["https://a.example", "https://b.example"],
+        [{"url": "https://b.example", "title": "B"}, {"url": "https://a.example", "title": "A"}],
+    )
+
+    assert citations == [
+        {"url": "https://a.example", "title": "A"},
+        {"url": "https://b.example", "title": "B"},
+    ]
+
+
+def test_extracted_citations_carry_search_result_titles():
+    """The titles reach the result's citation strings."""
+    provider = PerplexityProvider(ProviderConfig(name="perplexity", api_key="unused", enabled=True))
+    state = _fold([
+        _delta("# Report", citations=["https://a.example"],
+               search_results=[{"url": "https://a.example", "title": "A"}]),
+    ])
+
+    citations = provider._extract_citations(
+        state.content, {"citations": _titled_citations(state.citations, state.search_results)}
+    )
+
+    assert citations == ["A - https://a.example"]
 
 
 def test_leading_think_block_is_stripped():
@@ -104,6 +153,21 @@ def test_leading_think_block_is_stripped():
 def test_unclosed_think_block_is_left_alone():
     """A stream cut off mid-reasoning should not silently become empty."""
     assert _strip_think("<think>still planning") == "<think>still planning"
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["<think>still planning", "  <think>\nstill planning\n", "<think>planned</think>\n\n"],
+    ids=["unclosed", "unclosed-after-whitespace", "reasoning-only"],
+)
+def test_reasoning_without_a_report_is_an_error(content):
+    """The model's reasoning must never be returned as the report."""
+    with pytest.raises(ValueError, match="<think>"):
+        _report_from(content)
+
+
+def test_report_after_reasoning_is_returned():
+    assert _report_from("<think>planned</think>\n\n# Report\n") == "# Report\n"
 
 
 @pytest.mark.integration

@@ -27,6 +27,7 @@ class _StreamState:
     content: str = ""
     citations: List[Any] = field(default_factory=list)
     search_results: List[Any] = field(default_factory=list)
+    finish_reason: Optional[str] = None
 
     def add_line(self, line: str) -> None:
         """Fold one server-sent-event line into the state.
@@ -49,13 +50,21 @@ class _StreamState:
         >>> state.add_line("data: [DONE]")
         >>> state.content
         'Hello'
+        >>> state.finish_reason is None
+        True
+        >>> state.add_line('data: {"choices": [{"delta": {}, "finish_reason": "stop"}]}')
+        >>> state.finish_reason
+        'stop'
         """
         if not line.startswith("data:"):
             return
         body = line[len("data:"):].strip()
         if not body or body == "[DONE]":
             return
-        chunk = json.loads(body)
+        try:
+            chunk = json.loads(body)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Unreadable Perplexity stream line: {body[:200]!r}") from e
 
         # Citations and search results arrive on intermediate chunks, and the
         # final chunk does not always repeat them.
@@ -68,6 +77,8 @@ class _StreamState:
         if not choices:
             return
         choice = choices[0]
+        if choice.get("finish_reason"):
+            self.finish_reason = choice["finish_reason"]
         message = (choice.get("message") or {}).get("content")
         if message:
             if len(message) > len(self.content):
@@ -75,6 +86,11 @@ class _StreamState:
             return
         delta = (choice.get("delta") or {}).get("content")
         if delta:
+            # Deliberate trade-off: in a true-delta stream, a delta that happens
+            # to begin with all the text so far is read as cumulative and the
+            # earlier text is replaced. That needs the accumulated text to be a
+            # prefix of the next piece, which is only plausible in the first
+            # chunk or two (e.g. content "#" then delta "# Report").
             if self.content and delta.startswith(self.content):
                 self.content = delta
             else:
@@ -87,18 +103,21 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
     The body is never buffered whole: cumulative streams can run to hundreds
     of megabytes for a report of a few tens of kilobytes. The server sometimes
     resets the connection just after the report is complete, so a dropped
-    connection is tolerated once content has arrived.
+    connection is tolerated once the final chunk (the one carrying a
+    ``finish_reason``) has arrived. A drop before that means the report is
+    incomplete, and the error is raised rather than returning a partial report.
     """
     state = _StreamState()
     try:
         async for line in lines:
             state.add_line(line)
     except (httpx.RemoteProtocolError, httpx.ReadError) as e:
-        if not state.content:
+        if state.finish_reason is None:
             raise
         logger.warning(
-            f"Perplexity stream ended abruptly after {len(state.content)} characters; "
-            f"keeping what arrived ({e})"
+            f"Perplexity stream ended abruptly after the final chunk "
+            f"(finish_reason={state.finish_reason!r}, {len(state.content)} characters); "
+            f"keeping the report ({e})"
         )
     return state
 
@@ -112,6 +131,62 @@ def _strip_think(content: str) -> str:
     '# Report mentioning <think>tags</think>'
     """
     return _THINK_BLOCK.sub("", content, count=1)
+
+
+def _report_from(content: str) -> str:
+    """Turn streamed content into the report, refusing reasoning-only output.
+
+    A reasoning model writes a ``<think>`` block before the report. If the
+    stream stops inside that block (a token limit hit while reasoning, say),
+    or nothing follows it, there is no report, and returning the reasoning
+    as one would pass off an unfinished run as a finished one.
+
+    >>> _report_from("<think>plan</think>\\n# Report")
+    '# Report'
+    >>> _report_from("<think>still planning")
+    Traceback (most recent call last):
+    ...
+    ValueError: Perplexity response ended inside its <think> reasoning block; no report was written
+    >>> _report_from("<think>plan</think>\\n")
+    Traceback (most recent call last):
+    ...
+    ValueError: Perplexity response contained only a <think> reasoning block; no report was written
+    """
+    report = _strip_think(content)
+    if report.lstrip().startswith("<think>") and "</think>" not in report:
+        raise ValueError(
+            "Perplexity response ended inside its <think> reasoning block; no report was written"
+        )
+    if not report.strip():
+        raise ValueError(
+            "Perplexity response contained only a <think> reasoning block; no report was written"
+        )
+    return report
+
+
+def _titled_citations(citations: List[Any], search_results: List[Any]) -> List[Any]:
+    """Attach titles from ``search_results`` to the URLs in ``citations``.
+
+    ``citations`` keeps its order, because the report's ``[n]`` markers
+    number into it; ``search_results`` only supplies titles.
+
+    >>> _titled_citations(["https://a.example", "https://b.example"],
+    ...                   [{"url": "https://b.example", "title": "B"}])
+    ['https://a.example', {'url': 'https://b.example', 'title': 'B'}]
+    >>> _titled_citations([], [{"url": "https://b.example", "title": "B"}])
+    [{'url': 'https://b.example', 'title': 'B'}]
+    """
+    if not citations:
+        return list(search_results)
+    titles = {
+        r["url"]: r["title"]
+        for r in search_results
+        if isinstance(r, dict) and r.get("url") and r.get("title")
+    }
+    return [
+        {"url": c, "title": titles[c]} if isinstance(c, str) and c in titles else c
+        for c in citations
+    ]
 
 
 class PerplexityProvider(ResearchProvider):
@@ -196,7 +271,10 @@ class PerplexityProvider(ResearchProvider):
 
         try:
             logger.debug(f"Making streaming API request to Perplexity (model: {self.model})")
-            async with httpx.AsyncClient(timeout=self.config.timeout or 600) as client:
+            # The read timeout is the longest gap allowed between chunks; connect
+            # gets its own short limit so a bad network fails fast.
+            timeout = httpx.Timeout(self.config.timeout or 600, connect=30)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "POST",
                     self.api_url,
@@ -212,9 +290,9 @@ class PerplexityProvider(ResearchProvider):
 
             if not stream.content:
                 raise ValueError("No response content received from Perplexity")
-            markdown_content = _strip_think(stream.content)
+            markdown_content = _report_from(stream.content)
             logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
-            data = {"citations": stream.citations, "search_results": stream.search_results}
+            data = {"citations": _titled_citations(stream.citations, stream.search_results)}
 
             # Extract citations from the response (both from content and metadata)
             citations = self._extract_citations(markdown_content, data)
@@ -255,14 +333,6 @@ class PerplexityProvider(ResearchProvider):
                             citations.append(url)
                 elif isinstance(citation, str):
                     citations.append(citation)
-
-        # Also check for citations in message metadata
-        if response_data and "choices" in response_data:
-            for choice in response_data["choices"]:
-                if "message" in choice and "citations" in choice["message"]:
-                    for citation in choice["message"]["citations"]:
-                        if isinstance(citation, str):
-                            citations.append(citation)
 
         # Extract from content as fallback
         # Look for URLs

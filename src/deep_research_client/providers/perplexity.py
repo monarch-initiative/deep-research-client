@@ -9,7 +9,7 @@ from typing import AsyncIterator, List, Optional, Dict, Any
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError
+from ..exceptions import ProviderError, ProviderNotConfiguredError, ProviderTransientError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import PerplexityParams
 from ..model_cards import ProviderModelCards, create_perplexity_model_cards
@@ -107,7 +107,9 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
     ``finish_reason``) has arrived. A drop before that means the report is
     incomplete, and the error is raised rather than returning a partial report.
     The same holds for a stream that ends cleanly without its final chunk --
-    a proxy closing gracefully, say -- which raises too. A final chunk whose
+    a proxy closing gracefully, say -- which raises too. Both are raised as
+    :class:`ProviderTransientError`, since running the request again may well
+    succeed, and say how much had arrived. A final chunk whose
     ``finish_reason`` is anything but ``"stop"`` (``"length"`` when the model
     ran out of output tokens) also means the report was cut short.
     """
@@ -117,16 +119,21 @@ async def _read_stream(lines: AsyncIterator[str]) -> _StreamState:
             state.add_line(line)
     except (httpx.RemoteProtocolError, httpx.ReadError) as e:
         if state.finish_reason is None:
-            raise
+            raise ProviderTransientError(
+                "perplexity",
+                f"connection dropped after {len(state.content)} characters, "
+                f"before the final chunk ({e})",
+            ) from e
         logger.warning(
             f"Perplexity stream ended abruptly after the final chunk "
             f"(finish_reason={state.finish_reason!r}, {len(state.content)} characters); "
             f"keeping the report ({e})"
         )
     if state.finish_reason is None:
-        raise ValueError(
-            f"Perplexity stream ended after {len(state.content)} characters without "
-            f"its final chunk; the report is incomplete"
+        raise ProviderTransientError(
+            "perplexity",
+            f"stream ended after {len(state.content)} characters without its "
+            f"final chunk; the report is incomplete",
         )
     if state.finish_reason != "stop":
         raise ValueError(
@@ -323,6 +330,10 @@ class PerplexityProvider(ResearchProvider):
             logger.error(f"Perplexity API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Perplexity API HTTP error: {e.response.status_code} - {e.response.text}")
+        except ProviderError:
+            # Already typed (e.g. a dropped stream is transient); wrapping it in
+            # a bare ValueError would hide that from retry and fallback logic.
+            raise
         except Exception as e:
             logger.error(f"Perplexity API request failed: {e}")
             logger.debug("Error details:", exc_info=True)

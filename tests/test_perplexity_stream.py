@@ -14,6 +14,7 @@ from typing import AsyncIterator, List
 import httpx
 import pytest
 
+from deep_research_client.exceptions import ProviderTransientError
 from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import PerplexityParams
 from deep_research_client.providers.perplexity import (
@@ -107,9 +108,16 @@ def test_reset_after_the_final_chunk_keeps_the_report(error):
     ids=["before-content", "mid-report", "mid-reasoning"],
 )
 def test_reset_before_the_final_chunk_is_an_error(lines, error):
-    """Without a finish_reason the report is incomplete -- fail loudly, keep nothing."""
-    with pytest.raises(type(error)):
+    """Without a finish_reason the report is incomplete -- fail loudly, keep nothing.
+
+    It is transient (a retry may succeed), keeps the network error as its
+    cause, and says how far the stream got.
+    """
+    with pytest.raises(ProviderTransientError, match="connection dropped after") as raised:
         asyncio.run(_read_stream(_lines(lines, then=error)))
+
+    assert raised.value.retryable
+    assert raised.value.__cause__ is error
 
 
 @pytest.mark.parametrize(
@@ -119,7 +127,7 @@ def test_reset_before_the_final_chunk_is_an_error(lines, error):
 )
 def test_clean_end_without_the_final_chunk_is_an_error(lines):
     """A graceful close before the final chunk is as incomplete as a reset."""
-    with pytest.raises(ValueError, match="without its final chunk"):
+    with pytest.raises(ProviderTransientError, match="without its final chunk"):
         asyncio.run(_read_stream(_lines(lines)))
 
 

@@ -365,11 +365,11 @@ class PerplexityProvider(ResearchProvider):
             # ProviderTimeoutError reaches the CLI's timeout path instead. On a
             # streamed run this fires when the gap between chunks exceeds the
             # read timeout, which is what the timeout bounds.
-            timeout = self.config.timeout or _DEFAULT_READ_TIMEOUT
-            logger.error("Perplexity API timed out after %ss", timeout)
+            timeout_s = self.config.timeout or _DEFAULT_READ_TIMEOUT
+            logger.error("Perplexity API timed out after %ss", timeout_s)
             logger.debug("Error details:", exc_info=True)
             raise ProviderTimeoutError(
-                self.name, f"no response within {timeout}s ({type(e).__name__})"
+                self.name, f"no response within {timeout_s}s ({type(e).__name__})"
             ) from e
         except ProviderError:
             # Already typed (e.g. a dropped stream is transient); wrapping it in

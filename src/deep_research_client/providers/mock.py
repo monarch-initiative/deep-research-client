@@ -3,7 +3,7 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -125,7 +125,7 @@ class MockProvider(ResearchProvider):
 
     #: Honoured for real, so the client's timeout handling can be exercised
     #: without a network: a ``response_delay`` longer than the timeout fails.
-    timeout_meaning = (
+    timeout_meaning: ClassVar[Optional[str]] = (
         "the longest the simulated API delay (response_delay) may run before "
         "the run fails with TimeoutError"
     )

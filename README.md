@@ -138,6 +138,12 @@ deep-research-client research --template gene_research.md --var "gene=TP53" --va
 # Load the query text directly from a Markdown/text file
 deep-research-client research --input-file prompts/topic.md
 
+# Allow a long-running provider more time. What the timeout limits differs per
+# provider (Perplexity: gap between streamed chunks; Edison: the whole task);
+# see "Timeouts" in docs/reference/providers.md
+deep-research-client research "Statin myopathy mechanisms" --provider perplexity \
+  --model sonar-deep-research --timeout 1200
+
 # Use advanced Jinja2 template with conditionals
 deep-research-client research --template gene_advanced.md.j2 \
   --var "gene=BRCA1" \

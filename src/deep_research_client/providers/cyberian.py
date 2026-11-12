@@ -37,6 +37,9 @@ class CyberianProvider(ResearchProvider):
 
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
+    timeout_meaning = (
+        "how long cyberian waits for the agent to finish each workflow task (default 1800 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[CyberianParams] = None):
         """Initialize Cyberian provider.

@@ -67,6 +67,9 @@ class OpenAIProvider(ResearchProvider):
     #: The key is the OpenAI account's, not Deep Research's own.
     credential_noun = "OpenAI"
     credential_env_var = "OPENAI_API_KEY"
+    timeout_meaning = (
+        "the read timeout on each HTTP request to the API; Deep Research is one blocking request, so in practice how long to wait for the report (default 600 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):
         """Initialize OpenAI provider."""

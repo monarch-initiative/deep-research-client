@@ -87,6 +87,9 @@ class OpenScientistProvider(ResearchProvider):
 
     credential_label = "OpenScientist"
     credential_env_var = "OPENSCIENTIST_API_KEY"
+    timeout_meaning = (
+        "how long to wait for the job before cancelling it, unless the timeout provider parameter is also set, which wins (default 3600 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):
         effective_params = params or OpenScientistParams()

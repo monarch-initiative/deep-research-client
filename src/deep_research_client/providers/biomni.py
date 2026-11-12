@@ -184,6 +184,9 @@ class BiomniProvider(ResearchProvider):
 
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
+    timeout_meaning = (
+        "the agent's timeout_seconds, a limit on each generated code execution, not on the whole run; the timeout provider parameter wins when set (default 3600 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[BiomniParams] = None):
         """Initialize the Biomni provider.

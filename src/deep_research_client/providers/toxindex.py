@@ -278,6 +278,9 @@ class ToxIndexProvider(ResearchProvider):
 
     #: The key is real and checked, but nothing it unlocks runs research yet.
     stub_reason = f"ToxIndex - {_NO_SUBMIT_ROUTE}"
+    timeout_meaning = (
+        "the timeout on each HTTP request to the ToxIndex API (default 60 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ToxIndexParams] = None):
         """Initialize the provider.

@@ -143,6 +143,9 @@ class FalconProvider(ResearchProvider):
 
     credential_label = "Edison Scientific"
     credential_env_var = "EDISON_API_KEY"
+    timeout_meaning = (
+        "how long to wait for the Edison task before cancelling it and raising EdisonTaskTimeoutError (default 2400 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[FalconParams] = None):
         """Initialize Falcon provider."""

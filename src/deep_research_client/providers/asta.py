@@ -81,6 +81,9 @@ class AstaProvider(ResearchProvider):
 
     credential_label = "Asta"
     credential_env_var = "ASTA_API_KEY"
+    timeout_meaning = (
+        "the read timeout on each HTTP request to the Asta API (default 180 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[AstaParams] = None):
         """Initialize Asta provider."""

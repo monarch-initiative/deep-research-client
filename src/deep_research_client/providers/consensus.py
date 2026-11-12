@@ -31,6 +31,9 @@ class ConsensusProvider(ResearchProvider):
 
     credential_label = "Consensus"
     credential_env_var = "CONSENSUS_API_KEY"
+    timeout_meaning = (
+        "the read timeout on each HTTP request to the Consensus API (default 600 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ConsensusParams] = None):
         """Initialize Consensus provider."""

@@ -312,6 +312,9 @@ class ClaudeCodeProvider(ResearchProvider):
 
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
+    timeout_meaning = (
+        "how long the whole claude run may take before it is killed (default 1800 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ClaudeCodeParams] = None):
         """Initialize the Claude Code provider.

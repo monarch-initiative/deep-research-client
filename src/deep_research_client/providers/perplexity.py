@@ -21,6 +21,9 @@ class PerplexityProvider(ResearchProvider):
 
     credential_label = "Perplexity AI"
     credential_env_var = "PERPLEXITY_API_KEY"
+    timeout_meaning = (
+        "the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[PerplexityParams] = None):
         """Initialize Perplexity provider.

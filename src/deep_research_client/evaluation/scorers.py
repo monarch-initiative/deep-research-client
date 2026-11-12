@@ -335,6 +335,70 @@ def _without_trailing_commas(text: str) -> str:
     return "".join(out)
 
 
+# Deeper than any real verdict, shallower than any interpreter's parser budget.
+# CPython's JSON decoder descends one C-stack frame per nesting level, and the
+# depth it tolerates before RecursionError is build-dependent and has grown
+# across minor versions -- about 1,000 through 3.13, about 40,000 on 3.14. So
+# whether a deeply nested reply read or raised depended on the interpreter, not
+# the reply: the same 10,000-deep text that raised on 3.13 (and was mined to
+# None) parses on 3.14 and is returned whole. Bounding the depth here makes
+# "too deep to be a real verdict" a property of this function instead: past the
+# limit a container is treated as unreadable -- demoted to salvage and stepped
+# over -- on every interpreter.
+#
+# 5,000 sits above the judge's own reach (max_tokens is 2048, and the
+# shallowest nesting still spends a token a level, so a real reply cannot
+# approach it) and above the deepest readable test case (3,000), yet an order
+# of magnitude below every supported interpreter's parser budget, so the bound
+# decides rather than the interpreter.
+_MAX_JSON_DEPTH = 5000
+
+
+def _nesting_exceeds(text: str, start: int, limit: int) -> bool:
+    """Whether the container at ``text[start]`` ever nests deeper than ``limit``.
+
+    String-aware, like :func:`_balanced_span`: a bracket inside a string value
+    is not nesting. The scan stops at the character that first passes ``limit``
+    levels deep, or when the opening container closes, so it stays cheap on a
+    pathologically deep reply rather than walking its whole length.
+
+    >>> _nesting_exceeds('{"a": {"b": 1}}', 0, 5)
+    False
+    >>> _nesting_exceeds('[' * 10 + ']' * 10, 0, 5)
+    True
+    >>> _nesting_exceeds('{"note": "' + '[' * 10 + '"}', 0, 2)
+    False
+    """
+    depth = 0
+    opened = False
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        char = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "{[":
+            depth += 1
+            opened = True
+            if depth > limit:
+                return True
+        elif char in "}]":
+            depth -= 1
+            # The opening container closed; a sibling after it is a separate
+            # candidate the scan reaches on its own, so stop here.
+            if opened and depth <= 0:
+                return False
+    return False
+
+
 def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
     """Split a reply's JSON values into top-level ones and salvaged ones.
 
@@ -384,6 +448,16 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         if text[i] not in "{[":
             i += 1
             continue
+        if _nesting_exceeds(text, i, _MAX_JSON_DEPTH):
+            # Too deep to be a real verdict (see _MAX_JSON_DEPTH). Treat it the
+            # way the RecursionError branch below treats a reply the parser
+            # could not descend: unreadable, so everything here is salvage and
+            # the scan steps forward a character. Checked before raw_decode so
+            # the outcome is the interpreter's parser budget's business no
+            # longer -- the same text reads the same way on 3.13 and 3.14.
+            inside_unclosed = True
+            i += 1
+            continue
         try:
             parsed, end = decoder.raw_decode(text, i)
         except RecursionError:
@@ -407,23 +481,24 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # alternative was escaping as a scoring error, so this is recorded
             # rather than fixed.
             #
-            # Reached two ways, by two budgets an order of magnitude apart.
-            # From the top: ~10,000 levels of nesting, where `raw_decode`
-            # gives out. From inside the mine: ~999 Python frames down, where
-            # the recursion itself gives out, with a far shallower reply --
-            # which is what the brace-nest test case exercises, and where the
-            # forward walk below finds a value the mine could not reach.
+            # A safety net now, not the first line of defence: the explicit
+            # `_nesting_exceeds` check above demotes anything past
+            # `_MAX_JSON_DEPTH` before `raw_decode` runs, and that bound is well
+            # inside every supported interpreter's parser budget. So the top
+            # route reaches this only when an embedder has lowered
+            # `sys.setrecursionlimit` below the natural depth, making
+            # `raw_decode` give out first. The other route is unchanged and
+            # still live: from inside the mine, ~999 Python frames down, where
+            # the recursion itself gives out with a far shallower reply -- what
+            # the brace-nest test case exercises, and where the forward walk
+            # below finds a value the mine could not reach.
             #
-            # Bisected at 9,998 / 999 on CPython 3.12.3 and 9,999 / 999 on
-            # 3.13.12, the builds CI runs. Measurements of those builds, not
-            # properties of this function: the first is `Py_C_RECURSION_LIMIT`,
-            # which is platform- and build-dependent and has moved within a
-            # minor version before, and the second is `sys.getrecursionlimit()`,
-            # which any embedding caller can change. `requires-python` admits
-            # 3.14, which CI does not build. Nothing here depends on either
-            # number -- they are for a reader sizing a case. Two branches of one
-            # function, two limits an order of magnitude apart, and a case
-            # sized against the wrong one lands between them.
+            # Why the explicit bound exists at all: `raw_decode`'s own budget is
+            # `Py_C_RECURSION_LIMIT`, platform- and build-dependent, and it
+            # moved from ~10,000 (bisected at 9,998 on 3.12.3, 9,999 on 3.13.12)
+            # to ~40,000 on 3.14. Leaning on it made the same reply read on one
+            # interpreter and be mined to None on another. Nothing here depends
+            # on that number any more.
             inside_unclosed = True
             i += 1
             continue

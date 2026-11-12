@@ -350,11 +350,15 @@ def _without_trailing_commas(text: str) -> str:
 # limit a container is treated as unreadable -- demoted to salvage and stepped
 # over -- on every interpreter.
 #
-# 5,000 sits above the judge's own reach (max_tokens is 2048, and the
-# shallowest nesting still spends a token a level, so a real reply cannot
-# approach it) and above the deepest readable test case (3,000), yet an order
-# of magnitude below every supported interpreter's parser budget, so the bound
-# decides rather than the interpreter.
+# 5,000 sits above the deepest readable test case (3,000) yet an order of
+# magnitude below every supported interpreter's parser budget, so the bound
+# decides rather than the interpreter. It is also above what the judge is
+# likely to emit -- max_tokens is 2048 -- though that is a soft argument, not a
+# guarantee: tokens are not characters (a BPE tokenizer merges runs of
+# brackets), so 2048 tokens could in principle open more than 5,000 containers.
+# A container past the bound is mined for salvage and stepped over, so a verdict
+# beside or after it is still found; only a verdict that is itself nested past
+# the bound is lost, and a reply that deep is unlikely and not a real one.
 _MAX_JSON_DEPTH = 5000
 
 
@@ -441,6 +445,25 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         """Put a decoded value in the tier the scan is currently in."""
         (salvage if inside_unclosed else top_level).append(value)
 
+    def mine(inner: str) -> None:
+        """Fold a container's own values into salvage.
+
+        For a container readable in parts but not as a whole -- malformed past a
+        trailing comma, or nested past ``_MAX_JSON_DEPTH`` -- its contents may be
+        the only thing worth recovering, so they are mined and filed as salvage
+        (never top-level: whatever enclosed them was unreadable). The
+        ``RecursionError`` guard is because a malformed container nests as deeply
+        as the reply is long; it bottoms out in a nested frame's own ``json.loads``
+        handler, so catching it here changes no measured result but guards the
+        call at its own site.
+        """
+        try:
+            inner_top, inner_salvage = _decode_candidates(inner)
+        except RecursionError:
+            inner_top, inner_salvage = [], []
+        salvage.extend(inner_top)
+        salvage.extend(inner_salvage)
+
     # A container needs a closer to be complete, so an opener with none left
     # after it cannot begin one. A reply that simply runs out -- the shape
     # truncation produces -- has no closer at all, and this turns the whole
@@ -456,26 +479,35 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             i += 1
             continue
         if not inside_unclosed and _nesting_exceeds(text, i, _MAX_JSON_DEPTH):
-            # Too deep to be a real verdict (see _MAX_JSON_DEPTH). Treat it the
-            # way the RecursionError branch below treats a reply the parser
-            # could not descend: unreadable, so everything here is salvage and
-            # the scan steps forward a character. Checked before raw_decode so
-            # the outcome is the interpreter's parser budget's business no
-            # longer -- the same text reads the same way on 3.13 and 3.14.
+            # Too deep to be a real verdict (see _MAX_JSON_DEPTH). Unreadable as
+            # a whole, so it does not become a top-level candidate; checked
+            # before raw_decode so the outcome no longer depends on the
+            # interpreter's parser budget -- the same text reads the same way on
+            # 3.13 and 3.14.
             #
-            # Gated on `not inside_unclosed`, and that is not just an
-            # optimisation: once the scan is in salvage, the tier a value lands
-            # in no longer depends on its depth (everything here is salvage),
-            # and `raw_decode`'s own RecursionError handler still bounds the
-            # Python stack. Without the gate the check re-ran at every opener
-            # after a demotion, re-scanning up to the limit each time -- a run
-            # of braces went quadratic (`{`*12000 took ~3.4s where the
-            # no-closer bound had made it ~0.04s). What is left to the
-            # interpreter past this point is *which* salvage value comes back,
-            # not which tier it lands in -- the same trade the RecursionError
-            # branch already makes when it demotes a closed-but-deep preamble.
-            inside_unclosed = True
-            i += 1
+            # Gated on `not inside_unclosed`: once the scan is already in
+            # salvage, depth no longer changes which tier a value lands in, and
+            # re-checking at every opener made a run of braces quadratic
+            # (`{`*12000 took ~3.4s where the no-closer bound had made it ~0.04s).
+            span = _balanced_span(text, i)
+            if span is None:
+                # Never closes, so nothing after it can be top-level either:
+                # demote the rest, exactly as the RecursionError branch does.
+                inside_unclosed = True
+                i += 1
+                continue
+            # Closed but too deep. Mine it for salvage and step over it, rather
+            # than setting `inside_unclosed` for good -- so a genuine verdict
+            # *after* a deep preamble stays top-level, and a shallow decoy
+            # *inside* the preamble cannot outrank it (the outranking the
+            # tiering exists to prevent). The `{`-presence check keeps a deep
+            # run of pure brackets, which holds no object to recover, from being
+            # mined level by level; the mine only ever finds values inside an
+            # opener anyway, so skipping a brace-free slice loses nothing.
+            inner = text[i + 1 : span - 1]
+            if "{" in inner:
+                mine(inner)
+            i = span
             continue
         try:
             parsed, end = decoder.raw_decode(text, i)
@@ -578,27 +610,12 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
                 #
                 # The mine recurses, so it can reach the limit again -- and
                 # malformed containers nest as deeply as a reply is long, so
-                # that is caught rather than asserted away. Recovering from a
-                # RecursionError and immediately recursing is safe here: the
+                # that is caught rather than asserted away (the `mine` closure
+                # holds the RecursionError guard this relies on). Recovering from
+                # a RecursionError and immediately recursing is safe here: the
                 # interpreter's old fatal-error-on-overflow path is gone in
                 # 3.12, and `requires-python` is >=3.12.
-                try:
-                    inner_top, inner_salvage = _decode_candidates(
-                        text[i + 1 : span - 1]
-                    )
-                except RecursionError:
-                    # Not individually observable, and said out loud rather
-                    # than implied otherwise: the mine bottoms out at the
-                    # recursion limit inside a nested frame's `json.loads`,
-                    # which that frame's own handler above already catches, so
-                    # removing this one changes no measured result. Kept
-                    # because it guards the call at its own site -- the
-                    # recursion here is bounded only by how deeply malformed
-                    # containers nest, which is the reply's length over a
-                    # constant.
-                    inner_top, inner_salvage = [], []
-                salvage.extend(inner_top)
-                salvage.extend(inner_salvage)
+                mine(text[i + 1 : span - 1])
             else:
                 record(repaired)
             i = span

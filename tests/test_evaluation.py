@@ -2027,12 +2027,12 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # the no-closer bound rather than by a handler, which is the point.
     ("a run of openers deeper than the stack", "[" * 12000, None),
     # Bounded and closed, so the scan reaches the depth check at its opening
-    # bracket. `_nesting_exceeds` demotes it to salvage before `raw_decode` is
-    # tried -- and an array is not a candidate anyway, so nothing carries the
-    # key and the answer is None. Sized just past `_MAX_JSON_DEPTH` (5,000), the
-    # cheapest depth that still trips the bound: the demotion advances one
-    # character and the next opener re-measures, so cost grows with the overrun,
-    # and a deeper nest buys nothing but seconds.
+    # bracket. `_nesting_exceeds` demotes it before `raw_decode` is tried -- and
+    # an array is not a candidate anyway, so nothing carries the key and the
+    # answer is None. Sized just past `_MAX_JSON_DEPTH` (5,000), the cheapest
+    # depth that still trips the bound; it is not re-measured at later openers
+    # (the check is gated on `not inside_unclosed`), so a deeper nest only costs
+    # a longer one-time scan, not seconds.
     ("a bounded nest past the depth bound", "[" * 6000 + "]" * 6000, None),
     # Braces fail `raw_decode` immediately instead, so this goes to the mine.
     # The innermost `{}` comes back; an empty dict carries no verdict, so
@@ -2112,9 +2112,10 @@ def test_a_reply_nested_deeper_than_the_stack_is_unreadable_not_an_error(
     deep-but-readable wrapper).
 
     Every size here is the cheapest that still discriminates. The deep shapes
-    sit just past `_MAX_JSON_DEPTH` (5,000), itself well above the deepest a
-    real reply can reach -- `max_tokens` is 2048 -- so they are robustness for a
-    different endpoint or a different caller, not a reproduction of a seen reply.
+    sit just past `_MAX_JSON_DEPTH` (5,000), which is above what a judge capped
+    at `max_tokens` 2048 is likely to emit (a soft bound, not a guarantee:
+    tokens are not characters), so they are robustness for a different endpoint
+    or a different caller, not a reproduction of a seen reply.
     """
     from deep_research_client.evaluation import scorers
 
@@ -2169,7 +2170,8 @@ def test_the_depth_check_runs_once_not_once_per_opener(monkeypatch):
 
 def test_the_depth_bound_is_off_by_one_safe():
     """A nest exactly ``_MAX_JSON_DEPTH`` deep is within the bound; one deeper is
-    over it. Pins the ``depth > limit`` comparison against an off-by-one."""
+    over it. Pins the ``depth > limit`` comparison against an off-by-one, at the
+    check itself and at how the caller acts on it."""
     from deep_research_client.evaluation import scorers
 
     limit = scorers._MAX_JSON_DEPTH
@@ -2177,6 +2179,26 @@ def test_the_depth_bound_is_off_by_one_safe():
     one_over = "[" * (limit + 1) + "]" * (limit + 1)
     assert scorers._nesting_exceeds(at_limit, 0, limit) is False
     assert scorers._nesting_exceeds(one_over, 0, limit) is True
+    # The caller reads the at-limit nest as a top-level value and demotes the
+    # one deeper, so an off-by-one would move a verdict between tiers.
+    assert len(scorers._decode_candidates(at_limit)[0]) == 1
+    assert len(scorers._decode_candidates(one_over)[0]) == 0
+
+
+def test_a_verdict_after_a_deep_preamble_outranks_a_decoy_inside_it():
+    """A container past the bound is demoted to salvage and *stepped over*, not
+    left open, so a genuine verdict after it stays top-level.
+
+    Before the span-bounded demotion the deep preamble set `inside_unclosed` for
+    good, so the real verdict after it fell to salvage and a shallow decoy
+    before it won -- the wrong answer, and exactly the outranking the salvage
+    tiering exists to prevent.
+    """
+    from deep_research_client.evaluation import scorers
+
+    deep = "[" * 6000 + "]" * 6000
+    reply = '[{"score": 1}, ' + deep + '] {"score": 4}'
+    assert scorers.extract_json_object(reply, key="score") == {"score": 4}
 
 
 @pytest.mark.parametrize("scenario,body,expected_exists", [

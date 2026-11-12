@@ -58,6 +58,7 @@ __all__ = [
     "NoProvidersConfiguredError",
     "ProviderRateLimitError",
     "ProviderTransientError",
+    "ProviderTimeoutError",
     "truncate_detail",
     "FALLBACK_WORTHY_ERRORS",
     "is_fallback_worthy",
@@ -347,6 +348,36 @@ class ProviderTransientError(ProviderError):
 
     retryable = True
     remedy = "the provider reported a temporary server-side failure"
+
+
+class ProviderTimeoutError(ProviderError, TimeoutError):
+    """The provider did not finish within the time it was given.
+
+    A :class:`ProviderError`, so it carries the provider name and the fallback
+    trail and renders a capped, actionable message; and a
+    :class:`TimeoutError`, so the CLI can tell a run that ran out of time from
+    one that failed for any other reason and point the user at ``--timeout``.
+    Because it is both, the CLI's ``except TimeoutError`` must come before its
+    ``except ValueError`` (``ProviderError`` subclasses ``ValueError``).
+
+    Not in :data:`FALLBACK_WORTHY_ERRORS`: a timeout is the user's own deadline,
+    not evidence the provider cannot do the work, so switching providers would
+    not help and would be a silent change of who was asked. The remedy is a
+    longer ``--timeout``, which is why :meth:`is_fallback_worthy` leaves it to
+    propagate -- the same choice already made for Edison's own timeout.
+
+    `edison-client` raises its own :class:`~.providers.falcon.EdisonTaskTimeoutError`
+    (a bare ``TimeoutError``) so that only our deadline cancels the task; it is
+    unaffected and reaches the same CLI handler.
+
+    >>> err = ProviderTimeoutError("perplexity", "no response within 600s")
+    >>> isinstance(err, TimeoutError) and isinstance(err, ValueError)
+    True
+    >>> is_fallback_worthy(err)
+    False
+    """
+
+    remedy = "the run exceeded its timeout; allow more time with --timeout"
 
 
 #: Statuses we have a specific type for. Not all of them are terminal -- 429 is

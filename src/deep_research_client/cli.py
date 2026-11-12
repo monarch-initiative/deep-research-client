@@ -1282,6 +1282,25 @@ def research(
                 typer.echo("\n" + "="*60)
                 typer.echo(output_content)
 
+    except TimeoutError as exc:
+        # Before ValueError and OSError, both of which a provider timeout now
+        # subclasses: ProviderTimeoutError is a ProviderError (hence ValueError)
+        # so it carries the fallback trail, and a TimeoutError (hence OSError)
+        # so a run that ran out of time is reported as a timeout -- not, as
+        # OSError once did, a bare "Filesystem error: " with no detail. Edison's
+        # EdisonTaskTimeoutError and a plain asyncio wait_for land here too.
+        detail = f": {exc}" if str(exc) else ""
+        _error(
+            f"Research timed out{detail}. Use --timeout to allow longer; "
+            "what it limits depends on the provider (see docs/reference/providers.md)"
+        )
+        # A timeout is not fallback-worthy, so the trail is usually empty; shown
+        # when present for the same reason the ValueError handler shows it.
+        attempts = getattr(exc, "provider_attempts", ())
+        if attempts:
+            _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
     except ValueError as exc:
         _error(str(exc))
         # The trail is on the error whenever the run ended on a failure it
@@ -1303,17 +1322,6 @@ def research(
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
             _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
-        raise typer.Exit(1)
-    except TimeoutError as exc:
-        # Before OSError, which TimeoutError subclasses: without this a
-        # provider timeout (Edison's EdisonTaskTimeoutError, an asyncio
-        # wait_for) was reported as "Filesystem error: " with no detail.
-        detail = f": {exc}" if str(exc) else ""
-        _error(
-            f"Research timed out{detail}. Use --timeout to allow longer; "
-            "what it limits depends on the provider (see docs/reference/providers.md)"
-        )
-        logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
     except OSError as exc:
         _error(f"Filesystem error: {exc}")

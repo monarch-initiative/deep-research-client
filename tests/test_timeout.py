@@ -8,6 +8,7 @@ it -- so the client is exercised through its ordinary code path.
 import logging
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from deep_research_client.cli import app
@@ -16,9 +17,12 @@ from deep_research_client.client import (
     DeepResearchClient,
     load_provider_class,
 )
+from deep_research_client.exceptions import ProviderTimeoutError, is_fallback_worthy
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import MockParams
+from deep_research_client.providers.claude_code import ClaudeCodeProvider
 from deep_research_client.providers.mock import MockProvider
+from deep_research_client.providers.openscientist import OpenScientistProvider
 
 runner = CliRunner()
 
@@ -36,6 +40,16 @@ class UntimedProvider(MockProvider):
     """A provider that, like ToolUniverse, honours no caller-set timeout."""
 
     timeout_meaning = None
+
+
+class ParamTimeoutProvider(MockProvider):
+    """A provider whose ``timeout`` parameter overrides the config timeout.
+
+    Stands in for Biomni and OpenScientist, where passing both ``--timeout``
+    and ``--param timeout=`` is ambiguous and rejected.
+    """
+
+    timeout_param = "timeout"
 
 
 def _client(*extra: MockProvider, primary_config: ProviderConfig | None = None) -> DeepResearchClient:
@@ -57,26 +71,29 @@ def _client(*extra: MockProvider, primary_config: ProviderConfig | None = None) 
     return client
 
 
-@pytest.mark.parametrize(
-    "provider_name, honours_timeout",
-    [
-        ("openai", True),
-        ("falcon", True),
-        ("asta", True),
-        ("perplexity", True),
-        ("consensus", True),
-        ("cyberian", True),
-        ("openscientist", True),
-        ("claude_code", True),
-        ("biomni", True),
-        ("toxindex", True),
-        ("mock", True),
-        # Rejects a whole-run timeout outright; it has request_timeout instead.
-        ("tooluniverse", False),
-        # A stub with no upstream service, so there is nothing to time out.
-        ("deeper_med", False),
-    ],
-)
+# Whether each registered provider honours a caller-set timeout. One list, so
+# the parametrize below and the completeness check cannot drift, and adding a
+# provider forces an entry here. False = the provider refuses or has nothing to
+# time out (tooluniverse rejects a whole-run timeout and uses request_timeout
+# instead; deeper_med is a stub with no upstream service).
+TIMEOUT_TABLE: dict[str, bool] = {
+    "openai": True,
+    "falcon": True,
+    "asta": True,
+    "perplexity": True,
+    "consensus": True,
+    "cyberian": True,
+    "openscientist": True,
+    "claude_code": True,
+    "biomni": True,
+    "toxindex": True,
+    "mock": True,
+    "tooluniverse": False,
+    "deeper_med": False,
+}
+
+
+@pytest.mark.parametrize("provider_name, honours_timeout", TIMEOUT_TABLE.items())
 def test_each_provider_declares_what_its_timeout_limits(provider_name, honours_timeout):
     """Every provider says what the number means, or that it takes none."""
     meaning = load_provider_class(provider_name).timeout_meaning
@@ -86,13 +103,8 @@ def test_each_provider_declares_what_its_timeout_limits(provider_name, honours_t
 
 
 def test_every_registered_provider_is_in_the_declaration_table():
-    """A new provider must be added to the table above, not slip past it."""
-    table = {
-        "openai", "falcon", "asta", "perplexity", "consensus", "cyberian",
-        "openscientist", "claude_code", "biomni", "toxindex", "mock",
-        "tooluniverse", "deeper_med",
-    }
-    assert set(PROVIDER_CLASS_PATHS) == table
+    """A new provider must be added to TIMEOUT_TABLE, not slip past it."""
+    assert set(PROVIDER_CLASS_PATHS) == set(TIMEOUT_TABLE)
 
 
 def test_timeout_reaches_the_provider_and_the_report():
@@ -204,3 +216,108 @@ def test_cli_rejects_a_non_positive_timeout():
         env={"ENABLE_MOCK_PROVIDER": "true"},
     )
     assert result.exit_code == 2
+
+
+# --------------------------------------------------------------------------
+# ProviderTimeoutError: a timeout reaches the CLI's timeout path, not ValueError
+# --------------------------------------------------------------------------
+
+
+def test_provider_timeout_error_is_a_timeout_not_fallback_worthy():
+    """Both a TimeoutError (for the CLI) and a ValueError (to carry the trail),
+    and never a reason to switch provider."""
+    err = ProviderTimeoutError("mock", "no response within 600s")
+    assert isinstance(err, TimeoutError)
+    assert isinstance(err, ValueError)
+    assert not is_fallback_worthy(err)
+
+
+def test_timeout_error_type_reaches_the_cli_timeout_message():
+    """A provider that times out is reported as a timeout, pointing at --timeout.
+
+    The mock's ``error_type=timeout`` raises ProviderTimeoutError, which is both
+    a ValueError and a TimeoutError -- so this also pins that the CLI's
+    ``except TimeoutError`` sits before its ``except ValueError``.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "research", "What is CRISPR?", "--provider", "mock", "--no-cache",
+            "--param", "error_type=timeout",
+        ],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+    assert result.exit_code == 1
+    assert "Research timed out" in result.stderr
+    assert "--timeout" in result.stderr
+    assert "Filesystem error" not in result.stderr
+
+
+def test_cli_refuses_timeout_for_an_unsupported_provider_cleanly(monkeypatch):
+    """--timeout against a provider that honours none exits 1 with a clear error,
+    not a traceback."""
+    # Make the shipped mock declare that it honours no caller-set timeout, the
+    # way ToolUniverse does, so the CLI reaches the client's refusal path.
+    monkeypatch.setattr(MockProvider, "timeout_meaning", None)
+    result = runner.invoke(
+        app,
+        ["research", "What is CRISPR?", "--provider", "mock", "--no-cache", "--timeout", "5"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+    assert result.exit_code == 1
+    assert "does not support a caller-set timeout" in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_cli_v_logs_the_timeout_meaning():
+    """`-v` names what the number limits for the chosen provider."""
+    result = runner.invoke(
+        app,
+        ["-v", "research", "What is CRISPR?", "--provider", "mock", "--no-cache", "--timeout", "30"],
+        env={"ENABLE_MOCK_PROVIDER": "true"},
+    )
+    assert result.exit_code == 0, result.output
+    assert "Timeout 30s for mock" in result.output
+
+
+# --------------------------------------------------------------------------
+# Real providers wire ProviderConfig.timeout through (no network)
+# --------------------------------------------------------------------------
+
+
+def test_claude_code_passes_config_timeout_through():
+    """ClaudeCodeProvider uses ProviderConfig.timeout over its param default."""
+    provider = ClaudeCodeProvider(ProviderConfig(name="claude_code", timeout=7))
+    assert provider.timeout == 7
+
+
+def test_openscientist_config_timeout_reaches_its_param():
+    """OpenScientist copies ProviderConfig.timeout onto its validated params."""
+    provider = OpenScientistProvider(
+        ProviderConfig(name="openscientist", api_key="x", timeout=120)
+    )
+    assert provider.params.timeout == 120
+
+
+@pytest.mark.parametrize("bad", [10, 100000])
+def test_openscientist_out_of_range_config_timeout_fails_fast(bad):
+    """A --timeout outside OpenScientistParams' ge=60/le=7200 is rejected on
+    construction, not smuggled past validation by model_copy."""
+    with pytest.raises(ValidationError):
+        OpenScientistProvider(ProviderConfig(name="openscientist", api_key="x", timeout=bad))
+
+
+# --------------------------------------------------------------------------
+# Passing both --timeout and the overriding param is rejected
+# --------------------------------------------------------------------------
+
+
+def test_both_timeout_and_overriding_param_is_rejected():
+    """For a provider whose param wins, giving both would record a timeout that
+    did not apply, so the client refuses the combination."""
+    provider = ParamTimeoutProvider(ProviderConfig(name="untimed"), MockParams(response_delay=0.0))
+    client = _client(provider)
+    with pytest.raises(ValueError, match="ambiguous"):
+        client.research(
+            "q", provider="untimed", timeout=5, provider_params={"timeout": 10}
+        )

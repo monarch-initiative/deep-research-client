@@ -13,6 +13,7 @@ from ..exceptions import (
     ProviderNotConfiguredError,
     ProviderQuotaError,
     ProviderRateLimitError,
+    ProviderTimeoutError,
     ProviderTransientError,
 )
 from ..models import ResearchResult, ProviderConfig
@@ -38,6 +39,10 @@ _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = 
     "quota": (ProviderQuotaError, None, {"resets_at": "3pm, pool quota_pool_7f21"}),
     "rate_limit": (ProviderRateLimitError, 429, {}),
     "transient": (ProviderTransientError, 503, {}),
+    # A provider that ran out of time. Both a TimeoutError and a ValueError, so
+    # it exercises the CLI's timeout handler (which must sit before its
+    # ValueError handler). No status code: a timeout is not an HTTP status.
+    "timeout": (ProviderTimeoutError, None, {}),
     # Reproduces the error *type* rather than the path: a real
     # ProviderNotConfiguredError is raised while resolving a provider, before
     # any research call, so nothing outside this table raises one from here.

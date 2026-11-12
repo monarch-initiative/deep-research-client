@@ -11,7 +11,7 @@ from uuid import uuid4
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError
+from ..exceptions import ProviderNotConfiguredError, ProviderTimeoutError
 from ..model_cards import ProviderModelCards, create_asta_model_cards
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import AstaParams
@@ -19,6 +19,9 @@ from ..provider_params import AstaParams
 logger = logging.getLogger(__name__)
 
 ASTA_MCP_URL = "https://asta-tools.allen.ai/mcp/v1"
+#: Default read timeout when ``ProviderConfig.timeout`` is unset, named once so
+#: the HTTP client and ``timeout_meaning`` cannot drift.
+_DEFAULT_READ_TIMEOUT = 180
 MAX_COERCED_INT_ABS = (2 ** 63) - 1
 ASTA_REPORT_QUERY_MAX_CHARS = 120
 
@@ -82,7 +85,8 @@ class AstaProvider(ResearchProvider):
     credential_label = "Asta"
     credential_env_var = "ASTA_API_KEY"
     timeout_meaning = (
-        "the read timeout on each HTTP request to the Asta API (default 180 s)"
+        "the read timeout on each HTTP request to the Asta API "
+        f"(default {_DEFAULT_READ_TIMEOUT} s)"
     )
 
     def __init__(self, config: ProviderConfig, params: Optional[AstaParams] = None):
@@ -120,20 +124,29 @@ class AstaProvider(ResearchProvider):
             logger.debug("Query sanitized: %d -> %d chars",
                          len(query), len(search_query))
 
-        timeout_seconds = self.config.timeout or 180
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=30.0,
-                read=timeout_seconds,
-                write=30.0,
-                pool=30.0,
-            )
-        ) as http_client:
-            papers = await self._search_papers(http_client, search_query)
-            snippets = await self._search_snippets(
-                http_client, search_query, papers)
-            papers = await self._enrich_snippet_source_papers(http_client, papers, snippets)
-            papers = self._merge_snippet_source_papers(papers, snippets)
+        timeout_seconds = self.config.timeout or _DEFAULT_READ_TIMEOUT
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=30.0,
+                    read=timeout_seconds,
+                    write=30.0,
+                    pool=30.0,
+                )
+            ) as http_client:
+                papers = await self._search_papers(http_client, search_query)
+                snippets = await self._search_snippets(
+                    http_client, search_query, papers)
+                papers = await self._enrich_snippet_source_papers(http_client, papers, snippets)
+                papers = self._merge_snippet_source_papers(papers, snippets)
+        except httpx.TimeoutException as e:
+            # Reach the CLI's timeout path and name --timeout, rather than
+            # letting a bare httpx read timeout surface as an unclassified error.
+            logger.error("Asta retrieval timed out after %ss", timeout_seconds)
+            logger.debug("Error details:", exc_info=True)
+            raise ProviderTimeoutError(
+                self.name, f"no response within {timeout_seconds}s ({type(e).__name__})"
+            ) from e
 
         logger.info(
             "Asta retrieval completed with %s papers and %s snippets",

@@ -9,6 +9,7 @@ from . import ResearchProvider
 from ..exceptions import (
     MAX_DETAIL_CHARS,
     ProviderNotConfiguredError,
+    ProviderTimeoutError,
     classify_status,
     truncate_detail,
 )
@@ -17,6 +18,10 @@ from ..provider_params import ConsensusParams
 from ..model_cards import ProviderModelCards, create_consensus_model_cards
 
 logger = logging.getLogger(__name__)
+
+#: Default read timeout when ``ProviderConfig.timeout`` is unset, named once so
+#: the HTTP client, the log line and ``timeout_meaning`` cannot drift.
+_DEFAULT_READ_TIMEOUT = 600
 
 #: Consensus-specific wording for statuses the generic classifier can't know about.
 _CONSENSUS_STATUS_DETAIL = {
@@ -32,7 +37,8 @@ class ConsensusProvider(ResearchProvider):
     credential_label = "Consensus"
     credential_env_var = "CONSENSUS_API_KEY"
     timeout_meaning = (
-        "the read timeout on each HTTP request to the Consensus API (default 600 s)"
+        "the read timeout on each HTTP request to the Consensus API "
+        f"(default {_DEFAULT_READ_TIMEOUT} s)"
     )
 
     def __init__(self, config: ProviderConfig, params: Optional[ConsensusParams] = None):
@@ -66,12 +72,12 @@ class ConsensusProvider(ResearchProvider):
         http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 connect=30.0,
-                read=self.config.timeout or 600,
+                read=self.config.timeout or _DEFAULT_READ_TIMEOUT,
                 write=30.0,
                 pool=30.0,
             )
         )
-        logger.debug(f"HTTP client configured with timeout: {self.config.timeout or 600}s")
+        logger.debug(f"HTTP client configured with timeout: {self.config.timeout or _DEFAULT_READ_TIMEOUT}s")
 
         try:
             # Prepare headers for API authentication
@@ -128,6 +134,16 @@ class ConsensusProvider(ResearchProvider):
             if classified is not None:
                 raise classified from e
             raise ValueError(f"Consensus API error: {e.response.status_code} - {body}")
+        except httpx.TimeoutException as e:
+            # Before RequestError, which it subclasses: a timeout reaches the
+            # CLI's timeout path and names --timeout, rather than being one more
+            # "request failed" with an often-empty message.
+            timeout = self.config.timeout or _DEFAULT_READ_TIMEOUT
+            logger.error("Consensus API timed out after %ss", timeout)
+            logger.debug("Error details:", exc_info=True)
+            raise ProviderTimeoutError(
+                self.name, f"no response within {timeout}s ({type(e).__name__})"
+            ) from e
         except httpx.RequestError as e:
             logger.error(f"Consensus API request failed: {e}")
             logger.debug("Error details:", exc_info=True)

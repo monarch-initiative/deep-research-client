@@ -41,6 +41,7 @@ from ..exceptions import (
     ProviderError,
     ProviderNotInstalledError,
     ProviderQuotaError,
+    ProviderTimeoutError,
     ProviderTransientError,
 )
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
@@ -692,12 +693,14 @@ class ClaudeCodeProvider(ResearchProvider):
             await process.wait()
             # A spent usage allowance can stall a run rather than fail it, and
             # then it arrives here looking like slowness. Say so, so the reader
-            # checks the allowance before chasing latency.
-            raise ValueError(
-                f"Claude Code run timed out after {self.timeout}s. If this repeats, "
-                f"check the account with `deep-research-client providers --check "
-                f"--provider {self.name}` -- a spent usage limit can stall a run "
-                f"instead of failing it."
+            # checks the allowance before chasing latency. ProviderTimeoutError
+            # so the CLI reports it as a timeout and points at --timeout.
+            raise ProviderTimeoutError(
+                self.name,
+                f"the claude run did not finish within {self.timeout}s. If this "
+                f"repeats, check the account with `deep-research-client providers "
+                f"--check --provider {self.name}` -- a spent usage limit can stall "
+                f"a run instead of failing it",
             )
 
         # returncode is set once communicate() has returned.

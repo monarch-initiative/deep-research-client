@@ -16,7 +16,7 @@ from typing import List, Optional
 import yaml
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotInstalledError
+from ..exceptions import ProviderNotInstalledError, ProviderTimeoutError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import CyberianParams
 from ..model_cards import ProviderModelCards, create_cyberian_model_cards
@@ -38,7 +38,8 @@ class CyberianProvider(ResearchProvider):
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
     timeout_meaning = (
-        "how long cyberian waits for the agent to finish each workflow task (default 1800 s)"
+        "how long cyberian waits for the agent to finish each workflow task "
+        f"(default {CYBERIAN_DEFAULT_TIMEOUT} s)"
     )
 
     def __init__(self, config: ProviderConfig, params: Optional[CyberianParams] = None):
@@ -210,6 +211,16 @@ class CyberianProvider(ResearchProvider):
                     run_metadata=self.params.toolset_run_metadata() or None,
                 )
 
+            except TimeoutError as e:
+                # Before the generic handler, which would re-wrap it as a
+                # ValueError and lose the timeout. TaskRunner raises TimeoutError
+                # when the agent does not finish within the workflow timeout.
+                timeout = self.config.timeout or CYBERIAN_DEFAULT_TIMEOUT
+                logger.error("Cyberian workflow timed out after %ss", timeout)
+                logger.debug("Error details:", exc_info=True)
+                raise ProviderTimeoutError(
+                    self.name, f"the agent did not finish within {timeout}s"
+                ) from e
             except Exception as e:
                 logger.error(f"Cyberian workflow failed: {e}")
                 logger.debug("Error details:", exc_info=True)

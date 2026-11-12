@@ -39,10 +39,10 @@ and the value is recorded in the report's `provider_config.timeout`.
 | Edison (Falcon) | How long to wait for the task before cancelling it (`EdisonTaskTimeoutError`) | 2400 s |
 | Asta | Read timeout on each HTTP request | 180 s |
 | Consensus | Read timeout on each HTTP request | 600 s |
-| OpenScientist | How long to wait for the job before cancelling it. A `--param timeout=` wins over `--timeout` | 3600 s |
+| OpenScientist | How long to wait for the job before cancelling it. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | Cyberian | How long cyberian waits for the agent to finish each workflow task | 1800 s |
 | Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
-| Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. A `--param timeout=` wins over `--timeout` | 3600 s |
+| Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
 | ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
 | DeepER-Med | **Not supported**: stub, nothing runs | n/a |
@@ -52,7 +52,13 @@ Like `--model` and `--param`, `--timeout` applies to the provider you named
 only. If the run falls back to another provider, that one uses its own
 default, and a warning says so.
 
-Each row comes from the provider class's `timeout_meaning` attribute (see
+When a run does exceed its time, the provider raises `ProviderTimeoutError`
+(Edison raises its own `EdisonTaskTimeoutError`), and the CLI reports
+`Research timed out …` and points at `--timeout` rather than surfacing a raw
+transport error. A timeout never triggers fallback — the remedy is a longer
+timeout, not a different provider.
+
+Each row summarises the provider class's `timeout_meaning` attribute (see
 [Declaring what the provider needs](#declaring-what-the-provider-needs)).
 
 ## OpenAI Deep Research

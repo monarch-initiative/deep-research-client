@@ -32,7 +32,7 @@ from ..artifact_selection import (
     is_under_normalized_directory,
     normalize_member_path,
 )
-from ..exceptions import ProviderNotConfiguredError
+from ..exceptions import ProviderNotConfiguredError, ProviderTimeoutError
 from ..models import (
     ResearchArtifact,
     ResearchResult,
@@ -90,11 +90,22 @@ class OpenScientistProvider(ResearchProvider):
     timeout_meaning = (
         "how long to wait for the job before cancelling it, unless the timeout provider parameter is also set, which wins (default 3600 s)"
     )
+    #: OpenScientistParams.timeout wins over ProviderConfig.timeout (set in
+    #: __init__ only when the param was not given), so passing both --timeout
+    #: and --param timeout= is rejected.
+    timeout_param = "timeout"
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):
         effective_params = params or OpenScientistParams()
         if config.timeout is not None and "timeout" not in effective_params.model_fields_set:
-            effective_params = effective_params.model_copy(update={"timeout": config.timeout})
+            # model_validate, not model_copy(update=...): the latter skips
+            # validation, so a `--timeout` outside OpenScientistParams.timeout's
+            # ge=60/le=7200 bounds would reach the poller unchecked while the
+            # same value via `--param timeout=` is rejected. Re-validate so both
+            # paths fail fast the same way.
+            effective_params = OpenScientistParams.model_validate(
+                {**effective_params.model_dump(), "timeout": config.timeout}
+            )
 
         self.params = effective_params
         super().__init__(config, self.params.model)
@@ -159,9 +170,9 @@ class OpenScientistProvider(ResearchProvider):
                 # Cancel the job on timeout
                 logger.warning(f"Job {job_id} timed out after {timeout}s, cancelling...")
                 await self._cancel_job(client, job_id)
-                raise ValueError(
-                    f"OpenScientist job timed out after {timeout}s. "
-                    f"Job {job_id} has been cancelled."
+                raise ProviderTimeoutError(
+                    self.name,
+                    f"job did not finish within {timeout}s; job {job_id} has been cancelled",
                 )
 
             if final_status in ("failed", "cancelled"):

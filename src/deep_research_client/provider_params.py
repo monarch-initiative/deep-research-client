@@ -237,14 +237,15 @@ class MockParams(BaseProviderParams):
         description="Whether to simulate an error response"
     )
     error_type: Optional[
-        Literal["auth", "billing", "quota", "rate_limit", "transient", "not_configured"]
+        Literal["auth", "billing", "quota", "rate_limit", "transient", "not_configured", "timeout"]
     ] = Field(
         default=None,
         description=(
             "Simulate a specific typed provider failure instead of a generic "
             "error. Lets provider fallback be exercised without a real outage: "
             "auth/billing/quota/not_configured mean this provider cannot do the "
-            "work, while rate_limit/transient mean wait and retry the same one."
+            "work, while rate_limit/transient mean wait and retry the same one, "
+            "and timeout means the run exceeded its deadline (a TimeoutError)."
         ),
     )
     custom_response: Optional[str] = Field(

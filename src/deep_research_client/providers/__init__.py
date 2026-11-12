@@ -61,6 +61,14 @@ class ResearchProvider(ABC):
     #: number in the report metadata that limited nothing.
     timeout_meaning: ClassVar[Optional[str]] = None
 
+    #: Name of the provider parameter that, when set, takes precedence over
+    #: ``ProviderConfig.timeout`` -- so a caller who passes both ``--timeout``
+    #: and ``--param <name>=`` would have the ``--timeout`` recorded in the
+    #: report metadata while the param is what actually applied. The client
+    #: rejects that combination rather than record a limit that did not apply.
+    #: None where no param overrides the config timeout (the common case).
+    timeout_param: ClassVar[Optional[str]] = None
+
     def __init__(self, config: ProviderConfig, params_or_model: Optional[Union[str, "BaseProviderParams"]] = None):
         """Initialize provider with configuration.
 

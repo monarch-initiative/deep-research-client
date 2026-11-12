@@ -7,13 +7,17 @@ from typing import List, Optional, Dict, Any
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import ProviderNotConfiguredError
+from ..exceptions import ProviderNotConfiguredError, ProviderTimeoutError
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import PerplexityParams
 from ..model_cards import ProviderModelCards, create_perplexity_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+#: Default read timeout when ``ProviderConfig.timeout`` is unset, named once so
+#: the HTTP client, the timeout message and ``timeout_meaning`` cannot drift.
+_DEFAULT_READ_TIMEOUT = 600
 
 
 class PerplexityProvider(ResearchProvider):
@@ -22,7 +26,8 @@ class PerplexityProvider(ResearchProvider):
     credential_label = "Perplexity AI"
     credential_env_var = "PERPLEXITY_API_KEY"
     timeout_meaning = (
-        "the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"
+        "the longest gap allowed between streamed chunks, not a limit on the "
+        f"whole run (default {_DEFAULT_READ_TIMEOUT} s)"
     )
 
     def __init__(self, config: ProviderConfig, params: Optional[PerplexityParams] = None):
@@ -96,7 +101,7 @@ class PerplexityProvider(ResearchProvider):
 
         try:
             logger.debug(f"Making API request to Perplexity (model: {self.model})")
-            async with httpx.AsyncClient(timeout=self.config.timeout or 600) as client:
+            async with httpx.AsyncClient(timeout=self.config.timeout or _DEFAULT_READ_TIMEOUT) as client:
                 response = await client.post(
                     self.api_url,
                     json=payload,
@@ -130,6 +135,17 @@ class PerplexityProvider(ResearchProvider):
             logger.error(f"Perplexity API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Perplexity API HTTP error: {e.response.status_code} - {e.response.text}")
+        except httpx.TimeoutException as e:
+            # Before the generic handler, which would re-raise as a ValueError
+            # whose message is often empty (str(ReadTimeout) frequently is), so
+            # the user saw "Perplexity API error: " with nothing after it. A
+            # ProviderTimeoutError reaches the CLI's timeout path instead.
+            timeout = self.config.timeout or _DEFAULT_READ_TIMEOUT
+            logger.error("Perplexity API timed out after %ss", timeout)
+            logger.debug("Error details:", exc_info=True)
+            raise ProviderTimeoutError(
+                self.name, f"no response within {timeout}s ({type(e).__name__})"
+            ) from e
         except Exception as e:
             logger.error(f"Perplexity API request failed: {e}")
             logger.debug("Error details:", exc_info=True)

@@ -651,6 +651,24 @@ class DeepResearchClient:
                 f"Provider '{provider_name}' does not support a caller-set timeout"
             )
 
+        override_param = base_provider.timeout_param
+        if (
+            timeout is not None
+            and override_param is not None
+            and provider_params
+            and override_param in provider_params
+        ):
+            # For this provider the parameter wins over ProviderConfig.timeout,
+            # so recording the --timeout value while the param is what applied
+            # would be the misleading metadata the timeout handling avoids
+            # elsewhere. Refuse the ambiguous combination rather than pick one
+            # silently (issue surfaced in the #95 review).
+            raise ValueError(
+                f"Provider '{provider_name}' takes its timeout from the "
+                f"'{override_param}' parameter, which overrides --timeout. Passing "
+                f"both --timeout and --param {override_param}= is ambiguous; use one."
+            )
+
         # Create new instance with custom parameters if needed
         if provider_params or model or timeout is not None:
             return self._create_provider_with_params(

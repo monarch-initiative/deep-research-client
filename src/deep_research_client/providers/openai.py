@@ -18,12 +18,17 @@ from ..exceptions import (
     ProviderBillingError,
     ProviderError,
     ProviderNotConfiguredError,
+    ProviderTimeoutError,
     classify_exception,
 )
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import OpenAIParams
 from ..model_cards import ProviderModelCards, create_openai_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
+
+#: Default read timeout when ``ProviderConfig.timeout`` is unset, named once so
+#: the HTTP client and ``timeout_meaning`` cannot drift.
+_DEFAULT_READ_TIMEOUT = 600
 
 if TYPE_CHECKING:
     from openai.types.responses import WebSearchPreviewToolParam
@@ -51,6 +56,15 @@ def _classify_openai_error(provider: str, exc: BaseException) -> Optional[Provid
     Returns:
         A typed error to raise in its place, or None to leave the original alone.
     """
+    # A request timeout first: the SDK raises APITimeoutError with no HTTP
+    # status, so the status path below would miss it and the run would surface
+    # an unclassified error instead of reaching the CLI's timeout handler. The
+    # import is local because openai is an optional dependency, and this runs
+    # only from the provider's own except, where it is installed.
+    from openai import APITimeoutError
+
+    if isinstance(exc, APITimeoutError):
+        return ProviderTimeoutError(provider, getattr(exc, "message", None) or str(exc))
     code = getattr(exc, "code", None)
     error_class = _ERROR_CODE_TYPES.get(code) if isinstance(code, str) else None
     if error_class is not None:
@@ -68,7 +82,9 @@ class OpenAIProvider(ResearchProvider):
     credential_noun = "OpenAI"
     credential_env_var = "OPENAI_API_KEY"
     timeout_meaning = (
-        "the read timeout on each HTTP request to the API; Deep Research is one blocking request, so in practice how long to wait for the report (default 600 s)"
+        "the read timeout on each HTTP request to the API; Deep Research is one "
+        "blocking request, so in practice how long to wait for the report "
+        f"(default {_DEFAULT_READ_TIMEOUT} s)"
     )
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenAIParams] = None):
@@ -158,12 +174,12 @@ class OpenAIProvider(ResearchProvider):
         http_client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=30.0,
-                read=self.config.timeout or 600,
+                read=self.config.timeout or _DEFAULT_READ_TIMEOUT,
                 write=30.0,
                 pool=30.0,
             )
         )
-        logger.debug(f"HTTP client configured with timeout: {self.config.timeout or 600}s")
+        logger.debug(f"HTTP client configured with timeout: {self.config.timeout or _DEFAULT_READ_TIMEOUT}s")
 
         # Build OpenAI client kwargs
         client_kwargs: Dict[str, Any] = {

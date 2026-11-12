@@ -827,6 +827,8 @@ def research(
         help="Template variable as 'key=value' (can be used multiple times)")] = None,
     param: Annotated[Optional[List[str]], typer.Option(
         help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
+    timeout: Annotated[Optional[int], typer.Option(
+        "--timeout", min=1, help="Timeout in seconds for the chosen provider, replacing its default. What it limits differs per provider (a gap between streamed chunks, a whole-run deadline, a limit per code execution); the run logs which, and docs/reference/providers.md lists them. Not applied to a fallback provider")] = None,
     base_url: Annotated[Optional[str], typer.Option(
         "--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
     use_cborg: Annotated[bool, typer.Option(
@@ -896,6 +898,9 @@ def research(
 
       # Use provider-specific parameters
       deep-research-client research "Medical research" --provider perplexity --param reasoning_effort=high --param search_recency_filter=week
+
+      # Allow a long sonar-deep-research run to go quiet for up to 20 minutes
+      deep-research-client research "Statin myopathy mechanisms" --provider perplexity --model sonar-deep-research --timeout 1200
 
       # Let another provider take over if this one is out of credits
       deep-research-client research "Statins and myopathy" --provider falcon --fallback
@@ -1118,6 +1123,16 @@ def research(
     for warning in effective_options.warnings:
         _warn(warning)
 
+    # The same number means different things to different providers, so say
+    # which one this run gets. A provider that honours no timeout is refused
+    # by the client, whose message the ValueError handler below prints.
+    if timeout is not None and effective_options.provider_hint:
+        meaning = load_provider_class(effective_options.provider_hint).timeout_meaning
+        if meaning:
+            logger.info(
+                f"Timeout {timeout}s for {effective_options.provider_hint}: {meaning}"
+            )
+
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
     if title or abstract or keyword or author or contributor:
@@ -1198,6 +1213,7 @@ def research(
             provider_params,
             metadata,
             fallback_request,
+            timeout,
         )
 
         # Show cache status
@@ -1287,6 +1303,17 @@ def research(
             # cost -- unlike the success path, where the duplicated sentence
             # carried nothing the trail did not.
             _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
+        raise typer.Exit(1)
+    except TimeoutError as exc:
+        # Before OSError, which TimeoutError subclasses: without this a
+        # provider timeout (Edison's EdisonTaskTimeoutError, an asyncio
+        # wait_for) was reported as "Filesystem error: " with no detail.
+        detail = f": {exc}" if str(exc) else ""
+        _error(
+            f"Research timed out{detail}. Use --timeout to allow longer; "
+            "what it limits depends on the provider (see docs/reference/providers.md)"
+        )
+        logger.debug("Exception details:", exc_info=True)
         raise typer.Exit(1)
     except OSError as exc:
         _error(f"Filesystem error: {exc}")

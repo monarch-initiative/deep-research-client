@@ -40,28 +40,35 @@ Users can override to use comprehensive mode if needed for publication-quality a
 # At least one is required:
 export PERPLEXITY_API_KEY="your-perplexity-key"   # Recommended for speed
 export OPENAI_API_KEY="your-openai-key"           # For comprehensive analysis
-export FUTUREHOUSE_API_KEY="your-futurehouse-key" # For scientific literature
+export EDISON_API_KEY="your-edison-key"           # For Falcon (also needs the edison extra)
 ```
 
 ## Basic Usage
+
+Examples use `uvx deep-research-client`, which works from any directory; in a
+DRC checkout, `uv run deep-research-client` also works. Replace `SKILL_DIR`
+with the directory containing this `SKILL.md`, which holds the bundled
+`examples/enrichment_template.md`.
 
 ### Using the Template (Recommended)
 
 ```bash
 # Quick enrichment analysis
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=APOH APP COL3A1 VEGFA THBD" \
   --var "organism=human" \
+  --var "context=none specified" \
   --provider perplexity \
   --model sonar-deep-research \
   --output enrichment_results.md
 
 # Comprehensive analysis (slower, more detailed)
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=APOH APP COL3A1 VEGFA THBD" \
   --var "organism=human" \
+  --var "context=none specified" \
   --provider openai \
   --output enrichment_detailed.md
 ```
@@ -69,7 +76,7 @@ uv run deep-research-client research \
 ### Direct Query (No Template)
 
 ```bash
-uv run deep-research-client research \
+uvx deep-research-client research \
   "Perform gene set enrichment analysis on: APOH APP COL3A1 VEGFA THBD. Identify common pathways, biological processes, and disease associations." \
   --provider perplexity \
   --model sonar-deep-research \
@@ -82,7 +89,7 @@ The enrichment template accepts:
 
 - `{geneset}` - **Space-separated** list of gene symbols (e.g., "APOH APP VEGFA")
 - `{organism}` - Organism name (e.g., "human", "mouse", "rat")
-- `{context}` - Optional: Study context (e.g., "upregulated in heart disease", "differentially expressed in cancer")
+- `{context}` - Study context (e.g., "upregulated in heart disease", "differentially expressed in cancer"). DRC requires every template variable, so pass `--var "context=none specified"` when there is no study context
 
 ## Workflow
 
@@ -130,30 +137,31 @@ Cancer-related tumor suppressors for testing.
 
 ### Quick exploratory enrichment
 ```bash
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
+  --var "context=none specified" \
   --provider perplexity \
   --model sonar-pro
 ```
 
 ### Context-specific enrichment
 ```bash
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
-  --var "context=upregulated in diabetic cardiomyopathy" \
-  --var "focus=cardiac remodeling pathways"
+  --var "context=upregulated in diabetic cardiomyopathy; focus on cardiac remodeling pathways"
 ```
 
 ### Comprehensive publication-quality
 ```bash
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=GENE1 GENE2 GENE3" \
   --var "organism=human" \
+  --var "context=none specified" \
   --provider openai
 ```
 
@@ -190,10 +198,11 @@ print(f"--var \"geneset={geneset}\"")
 cut -f1 significant_genes.txt | tr '\n' ' ' > geneset.txt
 
 # Use in template
-uv run deep-research-client research \
-  --template .claude/skills/gene-set-enrichment/examples/enrichment_template.md \
+uvx deep-research-client research \
+  --template SKILL_DIR/examples/enrichment_template.md \
   --var "geneset=$(cat geneset.txt)" \
-  --var "organism=human"
+  --var "organism=human" \
+  --var "context=none specified"
 ```
 
 ## Comparison with Traditional Tools

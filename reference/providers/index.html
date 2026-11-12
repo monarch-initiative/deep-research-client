@@ -2837,6 +2837,7 @@ params = PerplexityParams(
 <li><strong>Speed</strong>: Seconds to minutes</li>
 <li><strong>Context Window</strong>: 100K-200K tokens</li>
 <li><strong>Capabilities</strong>: Real-time web search, recent data</li>
+<li><strong>Streaming</strong>: responses are streamed, so a <code>sonar-deep-research</code> run that takes 5–8 minutes is not cut off by a proxy that closes idle connections (Claude Code cloud sessions do this at about 300 s). <code>ProviderConfig.timeout</code> (600 s by default) is the longest gap allowed between streamed chunks, not a cap on the whole run. A leading <code>&lt;think&gt;…&lt;/think&gt;</code> block is removed from the report. A connection drop is tolerated only after the final chunk has arrived; a drop part-way through, or a response that is only reasoning, raises an error rather than returning a partial report.</li>
 </ul>
 <hr />
 <h2 id="edison-scientific-falcon">Edison Scientific (Falcon)</h2>

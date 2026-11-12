@@ -2026,13 +2026,14 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # A judge cut off mid-array is the ordinary way to reach this. Answered by
     # the no-closer bound rather than by a handler, which is the point.
     ("a run of openers deeper than the stack", "[" * 12000, None),
-    # Bounded, so the scan enters `raw_decode` -- which descends one frame per
-    # bracket and raises. The only case that ESCAPES when the main loop's
-    # handler is removed; the brace case below notices too, by answering
-    # None instead. A closed nest rather than `"[" * 10000 + "]"`: that
-    # shape discriminates the same handler and costs five seconds to this
-    # one's six milliseconds, because it retries at every opener.
-    ("a bounded nest deeper than the stack", "[" * 10000 + "]" * 10000, None),
+    # Bounded and closed, so the scan reaches the depth check at its opening
+    # bracket. `_nesting_exceeds` demotes it to salvage before `raw_decode` is
+    # tried -- and an array is not a candidate anyway, so nothing carries the
+    # key and the answer is None. Sized just past `_MAX_JSON_DEPTH` (5,000), the
+    # cheapest depth that still trips the bound: the demotion advances one
+    # character and the next opener re-measures, so cost grows with the overrun,
+    # and a deeper nest buys nothing but seconds.
+    ("a bounded nest past the depth bound", "[" * 6000 + "]" * 6000, None),
     # Braces fail `raw_decode` immediately instead, so this goes to the mine.
     # The innermost `{}` comes back; an empty dict carries no verdict, so
     # every caller reads it the way it reads None.
@@ -2052,10 +2053,12 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # Two things follow. The answer does not depend on either budget -- it is
     # `{}` at every `sys.setrecursionlimit` from 150 to 3,000 and on both
     # interpreters CI builds (3.12.3, 3.13.12) -- because wherever the mine
-    # bottoms out, the forward walk starts there. And this case DISCRIMINATES
-    # the main-loop handler: remove it and the answer is None. The bracket
-    # case above is the only one that *escapes* without that handler, which
-    # is not the same as being the only one that notices.
+    # bottoms out, the forward walk starts there. And this case still
+    # DISCRIMINATES the main-loop RecursionError handler: at 1,200 levels it is
+    # far below `_MAX_JSON_DEPTH`, so the depth bound never fires here and the
+    # mine reaches that handler by exhausting Python frames the old way. Remove
+    # the handler and the answer is None. (The bracket case above no longer
+    # leans on it -- the depth bound answers that one first.)
     #
     # The 998 was counted frame-free (a module-global incremented inside
     # `_decode_candidates`). A wrapper spends a frame per level, halves the
@@ -2066,18 +2069,18 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # only when every handler is removed, so it pins the set rather than any
     # one of them.
     ("a malformed bounded nest", "{oops" * 1200 + "}" * 1200, None),
-    # A SHALLOW trailing comma the repair fixes, with a deep value behind it:
-    # `raw_decode` fails without descending, so the depth is met by
-    # `json.loads` on the repaired text. This is the only shape that reaches
-    # that handler, which is why the claim that it was unreachable alone was
-    # wrong.
-    ("a repaired container whose value is deeper than the stack",
-     '{"a": [1,], "b": ' + "[" * 10000 + "]" * 10000 + "}", None),
-    # The same, with a readable verdict in another branch of that container.
-    # Discarding the container whole -- which is what this handler used to do
-    # -- threw the verdict away with the depth; mining it does not.
-    ("a verdict in a readable branch of a too-deep container",
-     '{"a": [1,], "verdict": {"score": 4}, "b": ' + "[" * 10000 + "]" * 10000 + "}",
+    # A trailing comma with a deep value behind it. `_nesting_exceeds` measures
+    # the whole object from its opening brace, so the deep `b` trips the bound
+    # before the trailing comma can send it down the repair path at all. Once
+    # the container is unreadable nothing here carries the key, so None.
+    ("a repaired container whose value is past the depth bound",
+     '{"a": [1,], "b": ' + "[" * 6000 + "]" * 6000 + "}", None),
+    # The same, with a readable verdict in another branch. The bound demotes the
+    # container, but the scan walks forward through it rather than discarding it,
+    # so the shallow `{"score": 4}` is read and filed as salvage -- and the
+    # salvage tier returns it. Discarding the container whole would lose it.
+    ("a verdict in a readable branch of a container past the depth bound",
+     '{"a": [1,], "verdict": {"score": 4}, "b": ' + "[" * 6000 + "]" * 6000 + "}",
      {"score": 4}),
     # Read successfully and then descended: the verdict is still found, and
     # the descent is where the deep reply broke last.
@@ -2087,25 +2090,31 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
 def test_a_reply_nested_deeper_than_the_stack_is_unreadable_not_an_error(
     scenario, reply, expected,
 ):
-    """`RecursionError` is not a `JSONDecodeError`, so it escaped the extractor.
+    """A reply nested past the depth bound is unreadable, not an error.
 
-    The three callers wrap in `except Exception`, so a reply nested past the
-    stack was recorded as a scoring error -- an unjudged measurement reported
-    as a failure, which is exactly what removing the recursion from the scan
-    was for. Returning None instead lets the regex fallback have its turn.
+    `RecursionError` is not a `JSONDecodeError`, so a reply nested deeper than
+    the parser descends once escaped the extractor entirely, and the callers'
+    bare `except Exception` recorded it as a scoring error -- an unjudged
+    measurement reported as a failure. Returning None (or salvage) instead lets
+    the regex fallback have its turn.
 
-    Parametrized because the depth broke *four* recursive consumers, not one:
-    `raw_decode`, the trailing-comma repair, the mine that recurses into a
-    malformed container, and `_nested_with_key`'s descent over the value after
-    it was read. A fix for any one of them leaves the rest, and the last is
-    reached only once decoding has already succeeded.
+    The depth at which the parser gave out was the interpreter's, not the
+    reply's -- about 10,000 on CPython 3.13, about 40,000 on 3.14 -- so the same
+    reply read on one build and was mined to None on another. `scorers` now
+    bounds the depth itself at `_MAX_JSON_DEPTH`, so these cases answer the same
+    way on every interpreter; the deep ones are sized just past that bound.
 
-    Every size here is the cheapest that still discriminates, measured: the
-    set runs in about a second where the first version of it took nine, and
-    every case was checked against removing each handler in turn. The two
-    10,000-character shapes are deeper than this client's own judge can
-    return -- `max_tokens` is 2048 -- so they are robustness for a different
-    endpoint or a different caller, not a reproduction of a seen reply.
+    Still parametrized because the depth reaches more than one place: the
+    explicit bound (the deep closed containers here), the mine's own recursion
+    into a malformed container (the brace nest, which stays well below the bound
+    and exhausts Python frames the old way), the no-closer bound (a run of
+    openers), and `_nested_with_key`'s walk over a value once it is read (the
+    deep-but-readable wrapper).
+
+    Every size here is the cheapest that still discriminates. The deep shapes
+    sit just past `_MAX_JSON_DEPTH` (5,000), itself well above the deepest a
+    real reply can reach -- `max_tokens` is 2048 -- so they are robustness for a
+    different endpoint or a different caller, not a reproduction of a seen reply.
     """
     from deep_research_client.evaluation import scorers
 

@@ -2030,9 +2030,9 @@ def test_a_reply_with_no_closer_at_all_is_not_scanned_once_per_opener(monkeypatc
     # bracket. `_nesting_exceeds` demotes it before `raw_decode` is tried -- and
     # an array is not a candidate anyway, so nothing carries the key and the
     # answer is None. Sized just past `_MAX_JSON_DEPTH` (5,000), the cheapest
-    # depth that still trips the bound; it is not re-measured at later openers
-    # (the check is gated on `not inside_unclosed`), so a deeper nest only costs
-    # a longer one-time scan, not seconds.
+    # depth that still trips the bound. It is a brace-free run, so it is demoted
+    # and stepped over without being mined (nothing to recover), and not
+    # re-measured at later openers (the check is gated on `not inside_unclosed`).
     ("a bounded nest past the depth bound", "[" * 6000 + "]" * 6000, None),
     # Braces fail `raw_decode` immediately instead, so this goes to the mine.
     # The innermost `{}` comes back; an empty dict carries no verdict, so
@@ -2199,6 +2199,32 @@ def test_a_verdict_after_a_deep_preamble_outranks_a_decoy_inside_it():
     deep = "[" * 6000 + "]" * 6000
     reply = '[{"score": 1}, ' + deep + '] {"score": 4}'
     assert scorers.extract_json_object(reply, key="score") == {"score": 4}
+
+
+def test_a_deep_container_with_a_brace_inside_is_mined_one_level(monkeypatch):
+    """A `{` buried in an over-deep container must not drive the mine level by
+    level into the recursion limit.
+
+    The span-bounded demotion mines a demoted container, but only one level: a
+    sub-container inside it that is also past the bound is stepped over. Without
+    that, a single `{` thousands of levels down made `_decode_candidates` recurse
+    ~333 times (until RecursionError), O(n) per level, recovering nothing.
+    """
+    from deep_research_client.evaluation import scorers
+
+    calls = 0
+    real = scorers._decode_candidates
+
+    def counted(text: str, mine_deep: bool = True) -> tuple[Any, Any]:
+        nonlocal calls
+        calls += 1
+        return real(text, mine_deep)
+
+    monkeypatch.setattr(scorers, "_decode_candidates", counted)
+    # `{}` at the bottom of a 6,000-deep array: demoted, mined one level, and
+    # the deeper nest stepped over -- a handful of calls, not hundreds.
+    scorers.extract_json_object("[" * 6000 + "{}" + "]" * 6000, key="score")
+    assert calls <= 3, f"mine recursed {calls} times; expected one level"
 
 
 @pytest.mark.parametrize("scenario,body,expected_exists", [

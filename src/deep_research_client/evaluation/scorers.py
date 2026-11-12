@@ -357,8 +357,10 @@ def _without_trailing_commas(text: str) -> str:
 # guarantee: tokens are not characters (a BPE tokenizer merges runs of
 # brackets), so 2048 tokens could in principle open more than 5,000 containers.
 # A container past the bound is mined for salvage and stepped over, so a verdict
-# beside or after it is still found; only a verdict that is itself nested past
-# the bound is lost, and a reply that deep is unlikely and not a real one.
+# beside or after it is still found; what is lost is a verdict inside a container
+# that nests past the bound, however shallow the verdict itself -- the
+# container's own keys are not an object once its outer brackets are stripped.
+# A reply that deep is unlikely and not a real one.
 _MAX_JSON_DEPTH = 5000
 
 
@@ -410,7 +412,7 @@ def _nesting_exceeds(text: str, start: int, limit: int) -> bool:
     return False
 
 
-def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
+def _decode_candidates(text: str, mine_deep: bool = True) -> tuple[list[Any], list[Any]]:
     """Split a reply's JSON values into top-level ones and salvaged ones.
 
     A value is top-level when the scan reached it without being inside a
@@ -445,20 +447,27 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         """Put a decoded value in the tier the scan is currently in."""
         (salvage if inside_unclosed else top_level).append(value)
 
-    def mine(inner: str) -> None:
+    def mine(inner: str, mine_deep: bool = True) -> None:
         """Fold a container's own values into salvage.
 
         For a container readable in parts but not as a whole -- malformed past a
         trailing comma, or nested past ``_MAX_JSON_DEPTH`` -- its contents may be
         the only thing worth recovering, so they are mined and filed as salvage
-        (never top-level: whatever enclosed them was unreadable). The
-        ``RecursionError`` guard is because a malformed container nests as deeply
-        as the reply is long; it bottoms out in a nested frame's own ``json.loads``
-        handler, so catching it here changes no measured result but guards the
-        call at its own site.
+        (never top-level: whatever enclosed them was unreadable).
+
+        ``mine_deep`` is passed straight through to the recursive scan. The depth
+        branch calls this with ``mine_deep=False`` so a container demoted for
+        depth is mined one level only -- a deeper sub-container inside it is
+        stepped over, not mined again, which is what keeps a `{` buried deep from
+        driving the scan level by level into the recursion limit. The malformed
+        path leaves it at the default, since a malformed container nests only as
+        deeply as the reply is long and its mine bottoms out in a nested frame's
+        own ``json.loads`` handler. The ``RecursionError`` guard is a belt for
+        that call site; with the one-level depth mine it is not reached from the
+        depth path.
         """
         try:
-            inner_top, inner_salvage = _decode_candidates(inner)
+            inner_top, inner_salvage = _decode_candidates(inner, mine_deep)
         except RecursionError:
             inner_top, inner_salvage = [], []
         salvage.extend(inner_top)
@@ -500,13 +509,20 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
             # than setting `inside_unclosed` for good -- so a genuine verdict
             # *after* a deep preamble stays top-level, and a shallow decoy
             # *inside* the preamble cannot outrank it (the outranking the
-            # tiering exists to prevent). The `{`-presence check keeps a deep
-            # run of pure brackets, which holds no object to recover, from being
-            # mined level by level; the mine only ever finds values inside an
-            # opener anyway, so skipping a brace-free slice loses nothing.
+            # tiering exists to prevent).
+            #
+            # Mined one level only (`mine_deep=False`): a sub-container inside
+            # this one that is itself past the bound is stepped over, not mined
+            # again. Without that, a `{` buried deep made the mine re-trip the
+            # bound at every level and recurse ~333 frames into the recursion
+            # limit, O(n) each level, recovering nothing -- the mine helps only
+            # for an object near the top of the container, which is the decoy
+            # shape. The `{`-presence check skips a brace-free slice, which holds
+            # no object to recover; and `mine_deep` gates re-entry, so a nested
+            # demotion here (where `mine_deep` is already False) does neither.
             inner = text[i + 1 : span - 1]
-            if "{" in inner:
-                mine(inner)
+            if mine_deep and "{" in inner:
+                mine(inner, mine_deep=False)
             i = span
             continue
         try:

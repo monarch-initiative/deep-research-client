@@ -338,10 +338,14 @@ def _without_trailing_commas(text: str) -> str:
 # Deeper than any real verdict, shallower than any interpreter's parser budget.
 # CPython's JSON decoder descends one C-stack frame per nesting level, and the
 # depth it tolerates before RecursionError is build-dependent and has grown
-# across minor versions -- about 1,000 through 3.13, about 40,000 on 3.14. So
-# whether a deeply nested reply read or raised depended on the interpreter, not
-# the reply: the same 10,000-deep text that raised on 3.13 (and was mined to
-# None) parses on 3.14 and is returned whole. Bounding the depth here makes
+# across minor versions -- about 10,000 through 3.13 (bisected at 9,998 on
+# 3.12.3 and 9,999 on 3.13.12), about 40,000 on 3.14. (That is the C-stack
+# budget raw_decode runs into, a separate limit from the ~1,000-frame
+# sys.getrecursionlimit the Python-level mine hits -- the two are an order of
+# magnitude apart, which is the confusion the RecursionError comment warns
+# about.) So whether a deeply nested reply read or raised depended on the
+# interpreter, not the reply: the same 10,000-deep text that raised on 3.13
+# (and was mined to None) parses on 3.14 and is returned whole. Bounding here makes
 # "too deep to be a real verdict" a property of this function instead: past the
 # limit a container is treated as unreadable -- demoted to salvage and stepped
 # over -- on every interpreter.
@@ -357,10 +361,13 @@ _MAX_JSON_DEPTH = 5000
 def _nesting_exceeds(text: str, start: int, limit: int) -> bool:
     """Whether the container at ``text[start]`` ever nests deeper than ``limit``.
 
-    String-aware, like :func:`_balanced_span`: a bracket inside a string value
-    is not nesting. The scan stops at the character that first passes ``limit``
-    levels deep, or when the opening container closes, so it stays cheap on a
-    pathologically deep reply rather than walking its whole length.
+    ``text[start]`` must be an opener; the sole caller only reaches this with
+    one. String-aware, like :func:`_balanced_span`: a bracket inside a string
+    value is not nesting. A single call is cheap on a pathologically deep reply
+    -- it returns at the character that first passes ``limit`` levels deep, or
+    when the opening container closes, not at the end of the text. The caller
+    runs it once per top-level candidate, not once per opener (see the guard in
+    :func:`_decode_candidates`), so the loop that calls it stays cheap too.
 
     >>> _nesting_exceeds('{"a": {"b": 1}}', 0, 5)
     False
@@ -370,7 +377,6 @@ def _nesting_exceeds(text: str, start: int, limit: int) -> bool:
     False
     """
     depth = 0
-    opened = False
     in_string = False
     escaped = False
     for i in range(start, len(text)):
@@ -387,14 +393,15 @@ def _nesting_exceeds(text: str, start: int, limit: int) -> bool:
             in_string = True
         elif char in "{[":
             depth += 1
-            opened = True
             if depth > limit:
                 return True
         elif char in "}]":
             depth -= 1
-            # The opening container closed; a sibling after it is a separate
-            # candidate the scan reaches on its own, so stop here.
-            if opened and depth <= 0:
+            # Back to zero means the opener at ``start`` just closed; a sibling
+            # after it is a separate candidate the scan reaches on its own. The
+            # precondition (start is an opener, so depth reached 1 first) is what
+            # keeps this from firing before the container has opened.
+            if depth == 0:
                 return False
     return False
 
@@ -448,13 +455,25 @@ def _decode_candidates(text: str) -> tuple[list[Any], list[Any]]:
         if text[i] not in "{[":
             i += 1
             continue
-        if _nesting_exceeds(text, i, _MAX_JSON_DEPTH):
+        if not inside_unclosed and _nesting_exceeds(text, i, _MAX_JSON_DEPTH):
             # Too deep to be a real verdict (see _MAX_JSON_DEPTH). Treat it the
             # way the RecursionError branch below treats a reply the parser
             # could not descend: unreadable, so everything here is salvage and
             # the scan steps forward a character. Checked before raw_decode so
             # the outcome is the interpreter's parser budget's business no
             # longer -- the same text reads the same way on 3.13 and 3.14.
+            #
+            # Gated on `not inside_unclosed`, and that is not just an
+            # optimisation: once the scan is in salvage, the tier a value lands
+            # in no longer depends on its depth (everything here is salvage),
+            # and `raw_decode`'s own RecursionError handler still bounds the
+            # Python stack. Without the gate the check re-ran at every opener
+            # after a demotion, re-scanning up to the limit each time -- a run
+            # of braces went quadratic (`{`*12000 took ~3.4s where the
+            # no-closer bound had made it ~0.04s). What is left to the
+            # interpreter past this point is *which* salvage value comes back,
+            # not which tier it lands in -- the same trade the RecursionError
+            # branch already makes when it demotes a closed-but-deep preamble.
             inside_unclosed = True
             i += 1
             continue

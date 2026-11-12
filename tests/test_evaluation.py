@@ -2142,6 +2142,43 @@ def test_a_repair_inside_an_unclosed_container_is_given_up_deliberately():
     assert scorers.extract_json_object('{"x": 1,}', key="x") == {"x": 1}
 
 
+def test_the_depth_check_runs_once_not_once_per_opener(monkeypatch):
+    """The bound is checked per top-level candidate, not per opener.
+
+    Without the `not inside_unclosed` guard the check re-ran at every `{` after
+    the first demotion, each one re-scanning up to the limit -- a run of braces
+    went from ~0.04s to ~3.4s. Once the scan is inside an unreadable container
+    everything there is salvage whatever its depth, so one check is enough.
+    """
+    from deep_research_client.evaluation import scorers
+
+    calls = 0
+    real = scorers._nesting_exceeds
+
+    def counted(text: str, start: int, limit: int) -> bool:
+        nonlocal calls
+        calls += 1
+        return real(text, start, limit)
+
+    monkeypatch.setattr(scorers, "_nesting_exceeds", counted)
+    # A run of braces far past the bound, with one stray closer: demoted at the
+    # first brace, and not re-checked at any of the ~12,000 openers after it.
+    scorers.extract_json_object("{" * 12000 + "}", key="score")
+    assert calls == 1, f"depth checked {calls} times, expected once"
+
+
+def test_the_depth_bound_is_off_by_one_safe():
+    """A nest exactly ``_MAX_JSON_DEPTH`` deep is within the bound; one deeper is
+    over it. Pins the ``depth > limit`` comparison against an off-by-one."""
+    from deep_research_client.evaluation import scorers
+
+    limit = scorers._MAX_JSON_DEPTH
+    at_limit = "[" * limit + "]" * limit
+    one_over = "[" * (limit + 1) + "]" * (limit + 1)
+    assert scorers._nesting_exceeds(at_limit, 0, limit) is False
+    assert scorers._nesting_exceeds(one_over, 0, limit) is True
+
+
 @pytest.mark.parametrize("scenario,body,expected_exists", [
     # The registry answered: this paper does not exist.
     ("fabricated pmid",

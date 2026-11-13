@@ -696,14 +696,15 @@ def create_antigravity_model_cards() -> ProviderModelCards:
         cost_level=CostLevel.MEDIUM,
         time_estimate=TimeEstimate.SLOW,
         capabilities=[
+            # No code_interpretation: the provider is read-only by default and
+            # shell/code tools are soft-denied unless skip_permissions is set.
             ResearchCapability.web_search,
             ResearchCapability.citation_tracking,
-            ResearchCapability.code_interpretation,
             ResearchCapability.evidence_synthesis,
         ],
         archetype=ProviderArchetype.agentic_researcher,
         resources=[ResearchResource.general_web],
-        aliases=["antigravity", "agy", "default", "gemini-4-carbon"],
+        aliases=["antigravity", "agy", "default", "antigravity-default"],
         pricing_notes=(
             "Billing and authentication are handled by the local Antigravity "
             "installation (public preview is free for individuals); no separate "

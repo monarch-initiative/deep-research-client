@@ -631,10 +631,12 @@ class AntigravityParams(BaseProviderParams):
     )
     print_timeout: Optional[str] = Field(
         default=None,
+        pattern=r"^\d+[smh]?$",
         description=(
-            "Value for agy's --print-timeout (e.g. '15m'). None uses agy's "
-            "default of no limit, so the outer `timeout` governs instead; a "
-            "too-short cap truncates a long agentic run mid-report."
+            "Value for agy's --print-timeout, digits with an optional s/m/h "
+            "suffix (e.g. '15m', '900s', '0'). None uses agy's default of no "
+            "limit, so the outer `timeout` governs instead; a too-short cap "
+            "truncates a long agentic run mid-report."
         )
     )
     settings_override: Optional[str] = Field(

@@ -60,12 +60,16 @@ from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# The tools ``agy`` exposes that actually retrieve something, for the from-memory
-# guard. ``agy``'s tool surface is large and open-ended (~60 tools, many of them
-# browser-control or bookkeeping), so retrieval is classified positively -- a
-# small known set -- rather than by denylist. These are the read-only tools a
-# research run legitimately uses; everything else (writes, shell, subagents,
-# task management) does not count as retrieval.
+# The tools ``agy`` exposes that pull in *outside* content, for the from-memory
+# guard. ``agy``'s tool surface is large and open-ended (~60 tools), so
+# retrieval is classified positively -- a small known set -- rather than by
+# denylist. The set is deliberately narrow: only tools that fetch external
+# sources count, because the guard exists to catch a report that was never
+# grounded in fetched material. Local/workspace reads (``list_dir``,
+# ``view_file``, ``grep_search``, ``find_by_name``), browser *navigation* and
+# bookkeeping (``list_browser_pages``, ``capture_browser_screenshot``,
+# ``browser_scroll_dom``) are excluded: an agent that lists its workspace once
+# and then writes from memory must still be flagged.
 _RETRIEVAL_TOOLS = frozenset(
     {
         "search_web",
@@ -73,15 +77,7 @@ _RETRIEVAL_TOOLS = frozenset(
         "open_browser_url",
         "read_browser_page",
         "browser_get_dom",
-        "browser_scroll_dom",
-        "capture_browser_screenshot",
-        "list_browser_pages",
         "read_resource",
-        "list_resources",
-        "grep_search",
-        "view_file",
-        "list_dir",
-        "find_by_name",
         "call_mcp_tool",
     }
 )
@@ -96,14 +92,23 @@ _RETRIEVAL_TOOLS = frozenset(
 # the default here (and the model card) if agy's recommended model moves on.
 DEFAULT_MODEL = "gemini-4-carbon-medium"
 
+# Upper bound on the composed prompt, which agy takes as one argv entry. Linux
+# caps a single argument at MAX_ARG_STRLEN (128 KiB, including the trailing
+# NUL); we refuse at that size with a clear error instead of letting exec fail
+# with "Argument list too long".
+_MAX_PROMPT_BYTES = 128 * 1024
+
 # Aliases that mean "use the provider default" rather than a concrete ``agy``
 # slug. They resolve to :data:`DEFAULT_MODEL`, not to agy's opaque default.
+# ``antigravity-default`` is kept so anyone who pinned the old sentinel still
+# resolves to the current default. Bare family names like ``gemini-4-carbon``
+# are deliberately absent: a caller must name a full slug (with its effort
+# suffix) from ``agy models``, so we never silently pick an effort tier.
 _DEFAULT_MODEL_ALIASES = {
     "antigravity",
     "agy",
     "default",
     "antigravity-default",
-    "gemini-4-carbon",
 }
 
 # ``agy`` writes a machine-readable failure line to stderr, e.g.
@@ -136,7 +141,8 @@ _TEXT_ERROR_PATTERNS: list[tuple[tuple[str, ...], type[ProviderError]]] = [
     (("resource exhausted", "quota", "usage limit", "rate limit",
       "too many requests"), ProviderQuotaError),
     (("overloaded", "service unavailable", "temporarily unavailable",
-      "try again later", "503"), ProviderTransientError),
+      "try again later", "http 503", "status 503", "503 service"),
+     ProviderTransientError),
 ]
 
 # Statuses the terminal ``result`` event reports for a run that produced a
@@ -421,11 +427,18 @@ class AntigravityProvider(CLIAgentResearchProvider):
                 reachable=False,
                 detail="`agy models` returned no models; the install may not be logged in",
             )
+        # The default model is hard-coded; if agy has retired it, a default run
+        # will fail. The probe already has the live list, so say so here.
+        slugs = {line.split("\t", 1)[0].strip() for line in model_lines}
+        stale = "" if DEFAULT_MODEL in slugs else (
+            f"; WARNING: default model {DEFAULT_MODEL!r} is not in this list, "
+            "so default runs may fail -- set an explicit model"
+        )
         return ProviderHealth(
             provider=self.name,
             configured=True,
             reachable=True,
-            detail=f"logged in; {len(model_lines)} models available",
+            detail=f"logged in; {len(model_lines)} models available{stale}",
         )
 
     def _resolve_cli_model(self) -> str:
@@ -466,7 +479,25 @@ class AntigravityProvider(CLIAgentResearchProvider):
 
         Returns:
             The argument list to pass to ``asyncio.create_subprocess_exec``.
+
+        Raises:
+            ValueError: If the composed prompt is too large to pass as a single
+                argument (see :data:`_MAX_PROMPT_BYTES`).
         """
+        # The prompt rides in a single argv entry (agy has no stdin prompt mode
+        # in text format), and the kernel caps one argument at MAX_ARG_STRLEN
+        # (128 KiB on Linux). A long custom system_prompt or template-expanded
+        # query could exceed it; fail with a clear message rather than agy's
+        # opaque "Argument list too long".
+        prompt_bytes = len(prompt.encode("utf-8"))
+        if prompt_bytes >= _MAX_PROMPT_BYTES:
+            raise ValueError(
+                f"The composed prompt is {prompt_bytes} bytes, at or above the "
+                f"{_MAX_PROMPT_BYTES}-byte limit for a single command-line "
+                "argument. Shorten the query or system_prompt. (agy has no stdin "
+                "prompt mode for text input, so the prompt must be an argument.)"
+            )
+
         command: List[str] = [
             self.agy_executable,
             "-p",
@@ -484,9 +515,9 @@ class AntigravityProvider(CLIAgentResearchProvider):
             # or skill expansion.
             command.append("--disable-slash-commands")
 
-        cli_model = self._resolve_cli_model()
-        if cli_model:
-            command.extend(["--model", cli_model])
+        # Always explicit (never agy's opaque default): _resolve_cli_model
+        # returns a concrete slug, so provenance names the model that ran.
+        command.extend(["--model", self._resolve_cli_model()])
 
         if self.params.effort:
             command.extend(["--effort", self.params.effort])
@@ -533,20 +564,33 @@ class AntigravityProvider(CLIAgentResearchProvider):
 
         stdout, stderr, returncode = await self._run_process(command)
 
-        response, result, tool_uses, init_model = self._parse_stream(stdout)
-        status = result.get("status")
+        # Classify a failure before the strict parse. A run that failed at
+        # startup (not logged in, bad --model or --settings, a network error)
+        # can exit non-zero with an ``AGY_ERROR`` line on stderr and an empty or
+        # truncated stream; letting _parse_stream raise its generic error first
+        # would lose the typed ProviderAuthError/ProviderQuotaError and its
+        # actionable message. Read the terminal result event without raising
+        # (mirrors how claude_code classifies on returncode before parsing).
+        terminal = self._terminal_result(stdout)
+        status = terminal.get("status") if terminal else None
+        result_error = terminal.get("error") if terminal else None
 
         if returncode != 0 or (status and status != _SUCCESS_STATUS):
-            classified = classify_agy_failure(
-                self.name, stderr, status, result.get("error")
-            )
+            classified = classify_agy_failure(self.name, stderr, status, result_error)
             if classified is not None:
                 logger.error(classified.actionable_message())
                 raise classified
-            detail = result.get("error") or stderr.strip() or f"status {status}"
+            detail = (
+                result_error or stderr.strip()
+                or (f"status {status}" if status else f"exit code {returncode}")
+            )
             raise ValueError(
                 f"agy run failed (status={status}, exit={returncode}): {detail}"
             )
+
+        # Success: parse the full stream. A malformed stream on an otherwise
+        # successful run legitimately raises here.
+        response, result, tool_uses, init_model = self._parse_stream(stdout)
 
         markdown = response.strip()
         self._check_report_length(markdown, self.params.min_report_chars)
@@ -569,7 +613,10 @@ class AntigravityProvider(CLIAgentResearchProvider):
                 "Antigravity did not produce a report: %s", unsuccessful_reason
             )
 
-        model_label = init_model or self.model
+        # Prefer the model the run reported; else the slug we actually forwarded
+        # (not self.model, whose case-sensitive card resolution would echo a raw
+        # alias like "ANTIGRAVITY" instead of the model that ran).
+        model_label = init_model or self._resolve_cli_model()
 
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
@@ -593,6 +640,39 @@ class AntigravityProvider(CLIAgentResearchProvider):
             duration_seconds=duration,
             answer_successful=False if unsuccessful_reason else None,
         )
+
+    @staticmethod
+    def _terminal_result(stdout: str) -> Optional[dict]:
+        """Return the terminal ``result`` event's payload, or None, without raising.
+
+        A tolerant counterpart to :meth:`_parse_stream`, used to classify a
+        failure before the strict parse runs: on a failed run the stream may be
+        empty or truncated, and that must not turn into a generic parse error.
+        Malformed lines are skipped; the last ``result`` event wins.
+
+        >>> AntigravityProvider._terminal_result(
+        ...     '{"event":"init"}\\n{"event":"result","result":{"status":"ERROR"}}'
+        ... )
+        {'status': 'ERROR'}
+        >>> AntigravityProvider._terminal_result("not json at all") is None
+        True
+        >>> AntigravityProvider._terminal_result("") is None
+        True
+        """
+        found: Optional[dict] = None
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict) and event.get("event") == "result":
+                payload = event.get("result")
+                if isinstance(payload, dict):
+                    found = payload
+        return found
 
     @staticmethod
     def _parse_stream(stdout: str) -> ParsedAgyStream:

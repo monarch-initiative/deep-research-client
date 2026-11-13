@@ -95,9 +95,12 @@ _SOURCE_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# How a run that declined to write the report talks about it. Only consulted
-# when the text cites nothing, so a sourced report that merely discusses
-# classifiers is never read as a refusal.
+# How a run that declined to write the report talks about it (issue #101: the
+# reply once saved as a "report" was "I'm not going to regenerate that
+# comprehensive from-memory research narrative -- the previous attempt was
+# halted by a safety classifier"). Only consulted when the text cites nothing,
+# so a sourced report that merely discusses classifiers is never read as a
+# refusal.
 #
 # A refusal verb counts only when its object, within a few words of the same
 # clause, is the report itself: "I cannot provide a definitive answer" is
@@ -106,7 +109,9 @@ _SOURCE_ID_PATTERN = re.compile(
 # so the gap between verb and noun is spaces only: never a comma, . ; : ! ? or
 # a newline. Markdown emphasis around a word ("the **report**") is allowed. The
 # noun must stand alone, so "research-backed" is a modifier, not the object.
-# Both apostrophes, because models write the curly one.
+# Bare "halted by" is not a marker either, since "the outbreak was halted by
+# vector control" is ordinary epidemiology. Both apostrophes, because models
+# write the curly one.
 _REFUSAL_TAIL = (
     r" (?:regenerate|reproduce|produce|write|provide)\b"
     r"(?:[ \t]+[*_]{0,2}[\w'’-]+[*_]{0,2}){0,5}?[ \t]+[*_]{0,2}"
@@ -256,22 +261,28 @@ class CLIAgentResearchProvider(ResearchProvider):
 
         A one-shot agent CLI exits 0 and reports success whatever the model
         wrote, so a refusal or a from-memory answer would otherwise be written
-        out as a valid report. Three shapes are recognised, checked in order:
+        out as a valid report (issue #101). Three shapes are recognised, checked
+        in order:
 
         - no retrieval call and no web search at all: nothing was retrieved, so
-          whatever the text says was written from memory. This holds even when
-          the text cites URLs, PMIDs or DOIs: with nothing fetched, those came
-          from memory too, and may be hallucinated;
+          whatever the text says was written from memory (issue #102). This
+          holds even when the text cites URLs, PMIDs or DOIs: with nothing
+          fetched, those came from memory too, and may be hallucinated;
         - a line of the report begins with ``INCOMPLETE_REPORT_MARKER``, in any
           markdown spelling: the model said, as the directive asks, that it
-          could not finish. Its sourced findings are kept, but it is not a
-          finished report. Any line counts, so a run that writes the marker and
-          then recovers is still flagged: the conservative way to be wrong;
+          could not finish (issue #103). Its sourced findings are kept, but it
+          is not a finished report. Any line counts, so a run that writes the
+          marker and then recovers is still flagged: the conservative way to be
+          wrong;
         - refusal phrasing aimed at the report itself, in a text that cites
           nothing (no URL, PMID or DOI): the model declined, typically after an
           output safety classifier stopped its first attempt. A cited source
           overrides the phrasing, since judging a sourced report's quality is
           not this check's job.
+
+        The text alone cannot prove the model refused, which is why the phrasing
+        counts only alongside the missing sources, and why the result is marked
+        unsuccessful (output kept, exit code 4) rather than raised.
 
         Args:
             markdown: The assembled report text.
@@ -303,6 +314,34 @@ class CLIAgentResearchProvider(ResearchProvider):
         ... )
         'no retrieval calls or web searches: the text, and any sources it cites, was written from memory, not researched'
         >>> CLIAgentResearchProvider._unsuccessful_reason("Researched, uncited.", [], 4, 0) is None
+        True
+
+        Hedging, disclaimers and ordinary prose in a researched report are not
+        refusals, and a PMID is a source:
+
+        >>> CLIAgentResearchProvider._unsuccessful_reason(
+        ...     "I cannot provide a definitive answer. The outbreak was halted by vector control.",
+        ...     [], retrieval_calls=5, web_search_requests=3,
+        ... ) is None
+        True
+        >>> CLIAgentResearchProvider._unsuccessful_reason(
+        ...     "I cannot provide medical advice. This report summarizes the literature.",
+        ...     [], retrieval_calls=5, web_search_requests=0,
+        ... ) is None
+        True
+        >>> CLIAgentResearchProvider._unsuccessful_reason(
+        ...     "I cannot provide treatment recommendations, but this report summarizes it.",
+        ...     [], retrieval_calls=5, web_search_requests=0,
+        ... ) is None
+        True
+        >>> CLIAgentResearchProvider._unsuccessful_reason(
+        ...     "I won't write the **report**.", [], retrieval_calls=1, web_search_requests=0,
+        ... )
+        'the model declined to write the report, and it cites no sources'
+        >>> CLIAgentResearchProvider._unsuccessful_reason(
+        ...     "Elongation is halted by a safety classifier-like checkpoint (PMID: 12345).",
+        ...     [], retrieval_calls=2, web_search_requests=0,
+        ... ) is None
         True
         """
         if retrieval_calls == 0 and web_search_requests == 0:

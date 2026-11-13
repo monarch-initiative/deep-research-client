@@ -663,11 +663,18 @@ so for a trusted query in a sandbox). One consequence: a soft-denied *final*
 action can leave a successful run with an empty response — `min_report_chars`
 catches that and fails the run rather than caching an empty report.
 
+Two caller-controlled escape hatches can also undo the read-only stance:
+`skip_permissions=True` (adds `--dangerously-skip-permissions`) and
+`settings_override` / `extra_args` (which can pass a permissive `--settings`
+policy or other flags). They are intended for trusted, caller-controlled use;
+do not combine them with an untrusted query.
+
 ### Characteristics
 
 - **Cost**: Handled by your Antigravity account (public preview is free for individuals)
 - **Speed**: Slow (agentic, multi-step; a run can issue many web searches)
-- **Capabilities**: Web search, citation tracking, code interpretation
+- **Capabilities**: Web search, citation tracking, evidence synthesis (read-only
+  by default, so no code interpretation unless `skip_permissions=True`)
 - **Auth**: None required by this client; relies on local Antigravity
 
 ### Limitations
@@ -678,6 +685,9 @@ catches that and fails the run rather than caching an empty report.
 - Non-deterministic results
 - No token-free auth-status subcommand exists; health is probed with
   `agy models`, which makes a network call but spends no model tokens
+- The prompt is passed as a single command-line argument (agy has no stdin
+  prompt mode for text input), so a very large `system_prompt` or query is
+  capped at 128 KiB and rejected with a clear error before the run starts
 
 ---
 

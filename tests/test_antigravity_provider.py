@@ -9,6 +9,7 @@ import asyncio
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from deep_research_client.exceptions import (
     ProviderAuthError,
@@ -36,10 +37,11 @@ def _stream(*, response: str, status: str = "SUCCESS", tools=(), model="gemini-3
     Each tool is emitted as an ACTIVE then a DONE event sharing a step_index,
     the way the real CLI does, so the parser's deduplication is exercised.
     """
-    lines = [json.dumps({"event": "init", "init": {
-        "cwd": "/x", "model": model, "permission_mode": "request-review",
-        "tools": ["search_web", "read_url_content", "write_file"],
-    }})]
+    init = {"cwd": "/x", "permission_mode": "request-review",
+            "tools": ["search_web", "read_url_content", "write_file"]}
+    if model is not None:  # a default (no --model) run reports no model
+        init["model"] = model
+    lines = [json.dumps({"event": "init", "init": init})]
     lines.append(json.dumps({"event": "step_update", "step_update": {
         "step_type": "user_input", "step_index": 0, "state": "DONE"}}))
     for i, tool in enumerate(tools, start=1):
@@ -127,7 +129,7 @@ def test_build_command_forwards_options():
     assert cmd[-1] == "--sandbox"
 
 
-@pytest.mark.parametrize("alias", ["antigravity", "agy", "default", "ANTIGRAVITY", "gemini-4-carbon", None])
+@pytest.mark.parametrize("alias", ["antigravity", "agy", "default", "antigravity-default", "ANTIGRAVITY", None])
 def test_default_aliases_resolve_to_the_default_model(alias):
     """An unset model or a provider-default alias resolves to a concrete slug,
     never None, so agy is never left to its own opaque default."""
@@ -135,9 +137,12 @@ def test_default_aliases_resolve_to_the_default_model(alias):
     assert provider._resolve_cli_model() == DEFAULT_MODEL
 
 
-def test_real_model_slug_is_forwarded():
-    provider = _provider(AntigravityParams(model="gemini-3.1-pro-high"))
-    assert provider._resolve_cli_model() == "gemini-3.1-pro-high"
+@pytest.mark.parametrize("slug", ["gemini-3.1-pro-high", "gemini-4-carbon", "gemini-4-carbon-high"])
+def test_real_model_slug_is_forwarded(slug):
+    """A concrete slug (including a bare family name, which is NOT a default
+    alias) is forwarded verbatim, so agy decides whether it is valid."""
+    provider = _provider(AntigravityParams(model=slug))
+    assert provider._resolve_cli_model() == slug
 
 
 def test_default_model_is_a_concrete_gemini_4_carbon_slug():
@@ -159,6 +164,20 @@ def test_compose_prompt_includes_directive_and_task():
     ("search_web", True),
     ("read_url_content", True),
     ("open_browser_url", True),
+    ("read_browser_page", True),
+    ("browser_get_dom", True),
+    ("read_resource", True),
+    ("call_mcp_tool", True),
+    # Local/workspace reads and browser navigation/bookkeeping must NOT count,
+    # or a run that lists its workspace once then writes from memory slips the
+    # from-memory guard.
+    ("list_dir", False),
+    ("view_file", False),
+    ("grep_search", False),
+    ("find_by_name", False),
+    ("list_resources", False),
+    ("list_browser_pages", False),
+    ("capture_browser_screenshot", False),
     ("write_file", False),
     ("run_command", False),
     ("finish", False),
@@ -287,3 +306,73 @@ def test_research_from_memory_is_flagged_unsuccessful(monkeypatch):
 def test_research_empty_query_raises():
     with pytest.raises(ValueError, match="must not be empty"):
         asyncio.run(_provider().research("   "))
+
+
+def test_research_classifies_startup_failure_with_empty_stdout(monkeypatch):
+    """A non-zero exit with empty stdout and an AGY_ERROR line on stderr must
+    yield the typed error, not a generic parse error: classification runs
+    before the strict _parse_stream (regression for the PR #110 review bug)."""
+    provider = _provider()
+    _patch_run(
+        monkeypatch, provider, stdout="",
+        stderr='AGY_ERROR: {"status":"UNAUTHENTICATED","short_error":"log in first"}',
+        returncode=1,
+    )
+    with pytest.raises(ProviderAuthError):
+        asyncio.run(provider.research("anything"))
+
+
+@pytest.mark.parametrize(
+    "alias", ["antigravity", "agy", "default", "antigravity-default", "ANTIGRAVITY", None]
+)
+def test_research_records_the_forwarded_model_for_default_aliases(monkeypatch, alias):
+    """When agy reports no model (a default run), result.model is the concrete
+    slug we forwarded -- never the raw alias the caller typed."""
+    provider = _provider(AntigravityParams(model=alias))
+    stdout = _stream(
+        response="A cited research report. " * 20 + "https://example.org/evidence",
+        tools=("search_web",), model=None,  # default run: agy names no model
+    )
+    _patch_run(monkeypatch, provider, stdout=stdout)
+    result = asyncio.run(provider.research("q"))
+    assert result.model == DEFAULT_MODEL
+
+
+def test_build_command_rejects_an_oversized_prompt():
+    huge = "x" * (128 * 1024)
+    with pytest.raises(ValueError, match="single command-line argument"):
+        _provider()._build_command(huge)
+
+
+@pytest.mark.parametrize("good", ["15m", "900s", "2h", "0"])
+def test_print_timeout_accepts_well_formed_values(good):
+    assert AntigravityParams(print_timeout=good).print_timeout == good
+
+
+@pytest.mark.parametrize("bad", ["soon", "15 m", "m15", "-5s", "1.5h"])
+def test_print_timeout_rejects_malformed_values(bad):
+    with pytest.raises(ValidationError):
+        AntigravityParams(print_timeout=bad)
+
+
+def test_parse_stream_counts_a_tool_step_without_step_index():
+    """A tool step lacking step_index falls back to being counted directly."""
+    lines = [
+        json.dumps({"event": "init", "init": {"model": "m", "tools": []}}),
+        json.dumps({"event": "step_update", "step_update": {
+            "step_type": "tool", "tool_name": "search_web", "state": "ACTIVE"}}),
+        json.dumps({"event": "result", "result": {"status": "SUCCESS", "response": "x"}}),
+    ]
+    parsed = AntigravityProvider._parse_stream("\n".join(lines))
+    assert parsed.tool_uses == ["search_web"]
+
+
+def test_extract_run_metadata_tolerates_missing_fields():
+    assert AntigravityProvider._extract_run_metadata({"status": "SUCCESS"}, None) == {
+        "status": "SUCCESS"}
+    md = AntigravityProvider._extract_run_metadata(
+        {"num_turns": 2, "usage": {"total_tokens": 5}}, "gemini-x")
+    assert md["model"] == "gemini-x"
+    assert md["num_turns"] == 2
+    assert md["usage"]["total_tokens"] == 5
+    assert "conversation_id" not in md  # absent fields are simply omitted

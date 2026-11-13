@@ -379,6 +379,23 @@ class ProviderTimeoutError(ProviderError, TimeoutError):
 
     remedy = "the run exceeded its timeout; allow more time with --timeout"
 
+    def actionable_message(self) -> str:
+        """Render the next step without suggesting a different provider.
+
+        The base's advice -- re-run with another provider -- contradicts this
+        class's whole reason for being: a timeout is the caller's own deadline,
+        so another provider would not help (see the class docstring). The one
+        remedy, a longer ``--timeout``, is already in :attr:`diagnosis`, so the
+        message names it exactly once and never points at ``--provider``.
+
+        Returns:
+            The provider and its diagnosis, with no provider-switch suffix.
+
+        >>> print(ProviderTimeoutError("perplexity", "no response within 600s").actionable_message())
+        perplexity: no response within 600s -- the run exceeded its timeout; allow more time with --timeout
+        """
+        return f"{self.provider}: {self.diagnosis}"
+
 
 #: Statuses we have a specific type for. Not all of them are terminal -- 429 is
 #: retryable -- but each one implies a different remedy.

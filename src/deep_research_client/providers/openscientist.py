@@ -51,6 +51,11 @@ IN_PROGRESS_STATUSES = {"pending", "queued", "running", "generating_report", "aw
 # Default base URL if not overridden
 DEFAULT_BASE_URL = "https://www.openscientist.io"
 
+# Default job-wait deadline, in seconds. Mirrors OpenScientistParams.timeout's
+# own default; named here so the declared timeout_meaning cannot drift from it,
+# the way BIOMNI_DEFAULT_TIMEOUT serves providers/biomni.py.
+OPENSCIENTIST_DEFAULT_TIMEOUT = 3600
+
 
 # Artifact selection lives in ``artifact_selection`` so it is configurable and
 # reusable. Only the noise rules are still referenced here, by the report-picking
@@ -88,11 +93,14 @@ class OpenScientistProvider(ResearchProvider):
     credential_label = "OpenScientist"
     credential_env_var = "OPENSCIENTIST_API_KEY"
     timeout_meaning = (
-        "how long to wait for the job before cancelling it, unless the timeout provider parameter is also set, which wins (default 3600 s)"
+        "how long to wait for the job before cancelling it (default "
+        f"{OPENSCIENTIST_DEFAULT_TIMEOUT} s); the timeout provider parameter "
+        "sets the same limit, so passing both --timeout and --param timeout= "
+        "is rejected"
     )
-    #: OpenScientistParams.timeout wins over ProviderConfig.timeout (set in
-    #: __init__ only when the param was not given), so passing both --timeout
-    #: and --param timeout= is rejected.
+    #: OpenScientistParams.timeout sets the same deadline as ProviderConfig.timeout
+    #: (honoured in __init__ only when the param was not given), so passing both
+    #: --timeout and --param timeout= is ambiguous and rejected.
     timeout_param = "timeout"
 
     def __init__(self, config: ProviderConfig, params: Optional[OpenScientistParams] = None):

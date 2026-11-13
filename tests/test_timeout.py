@@ -6,6 +6,7 @@ it -- so the client is exercised through its ordinary code path.
 """
 
 import logging
+from typing import Optional
 
 import pytest
 from pydantic import ValidationError
@@ -105,6 +106,25 @@ def test_each_provider_declares_what_its_timeout_limits(provider_name, honours_t
 def test_every_registered_provider_is_in_the_declaration_table():
     """A new provider must be added to TIMEOUT_TABLE, not slip past it."""
     assert set(PROVIDER_CLASS_PATHS) == set(TIMEOUT_TABLE)
+
+
+# Which providers expose a ``timeout`` provider-parameter that sets the same
+# limit as ``--timeout`` -- so giving both is ambiguous and rejected. Only
+# these two; every other provider must declare no ``timeout_param`` (None).
+# Pinning it here means removing ``timeout_param = "timeout"`` from a provider,
+# or adding a stray one elsewhere, fails this test instead of silently letting
+# ``--timeout`` and ``--param timeout=`` through together.
+TIMEOUT_PARAM_TABLE: dict[str, Optional[str]] = {
+    "biomni": "timeout",
+    "openscientist": "timeout",
+}
+
+
+@pytest.mark.parametrize("provider_name", sorted(PROVIDER_CLASS_PATHS))
+def test_each_provider_declares_its_real_timeout_param(provider_name):
+    """Each provider's declared ``timeout_param`` matches the table exactly."""
+    expected = TIMEOUT_PARAM_TABLE.get(provider_name)
+    assert load_provider_class(provider_name).timeout_param == expected
 
 
 def test_timeout_reaches_the_provider_and_the_report():
@@ -251,6 +271,13 @@ def test_timeout_error_type_reaches_the_cli_timeout_message():
     assert "Research timed out" in result.stderr
     assert "--timeout" in result.stderr
     assert "Filesystem error" not in result.stderr
+    # ProviderTimeoutError names --timeout in its own remedy, so the CLI must
+    # not append a second hint: the user should see it exactly once.
+    assert result.stderr.count("--timeout") == 1
+    # And no provider-switch suggestion, which would contradict the reason a
+    # timeout is deliberately not fallback-worthy (another provider cannot beat
+    # the caller's own deadline).
+    assert "re-run with --provider" not in result.stderr
 
 
 def test_cli_refuses_timeout_for_an_unsupported_provider_cleanly(monkeypatch):

@@ -1289,11 +1289,18 @@ def research(
         # so a run that ran out of time is reported as a timeout -- not, as
         # OSError once did, a bare "Filesystem error: " with no detail. Edison's
         # EdisonTaskTimeoutError and a plain asyncio wait_for land here too.
-        detail = f": {exc}" if str(exc) else ""
-        _error(
-            f"Research timed out{detail}. Use --timeout to allow longer; "
-            "what it limits depends on the provider (see docs/reference/providers.md)"
+        exc_text = str(exc)
+        detail = f": {exc_text}" if exc_text else ""
+        # A ProviderTimeoutError already names --timeout in its own remedy, so
+        # appending the generic hint would print --timeout twice. Add the hint
+        # only for a bare TimeoutError (Edison's EdisonTaskTimeoutError or an
+        # asyncio wait_for), whose text carries no such pointer. Either way
+        # --timeout ends up in the line exactly once.
+        hint = "" if "--timeout" in exc_text else (
+            " Use --timeout to allow longer; what it limits depends on the "
+            "provider (see docs/reference/providers.md)"
         )
+        _error(f"Research timed out{detail}.{hint}")
         # A timeout is not fallback-worthy, so the trail is usually empty; shown
         # when present for the same reason the ValueError handler shows it.
         attempts = getattr(exc, "provider_attempts", ())

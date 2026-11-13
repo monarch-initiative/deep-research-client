@@ -186,11 +186,13 @@ class BiomniProvider(ResearchProvider):
     unavailable_error = ProviderNotInstalledError
     timeout_meaning = (
         "the agent's timeout_seconds, a limit on each generated code execution, "
-        "not on the whole run; the timeout provider parameter wins when set "
-        f"(default {BIOMNI_DEFAULT_TIMEOUT} s)"
+        "not on the whole run (default "
+        f"{BIOMNI_DEFAULT_TIMEOUT} s); the timeout provider parameter sets the "
+        "same limit, so passing both --timeout and --param timeout= is rejected"
     )
-    #: BiomniParams.timeout wins over ProviderConfig.timeout (see research()),
-    #: so passing both --timeout and --param timeout= is rejected.
+    #: BiomniParams.timeout sets the same per-execution limit as
+    #: ProviderConfig.timeout (see research()), so passing both --timeout and
+    #: --param timeout= is ambiguous and rejected.
     timeout_param = "timeout"
 
     def __init__(self, config: ProviderConfig, params: Optional[BiomniParams] = None):

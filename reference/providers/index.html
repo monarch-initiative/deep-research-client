@@ -801,6 +801,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Timeouts
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#openai-deep-research" class="md-nav__link">
     <span class="md-ellipsis">
       OpenAI Deep Research
@@ -1848,6 +1857,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#timeouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      Timeouts
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#openai-deep-research" class="md-nav__link">
     <span class="md-ellipsis">
       OpenAI Deep Research
@@ -2739,6 +2757,99 @@
 <p>See <a href="../capabilities/">Capabilities, Resources &amp; Archetypes</a> for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.</p>
+<h2 id="timeouts">Timeouts</h2>
+<p><code>deep-research-client research --timeout SECONDS</code> (or <code>timeout=</code> on
+<code>DeepResearchClient.research()</code>) replaces the chosen provider's
+<code>ProviderConfig.timeout</code> for one run. <strong>The same number limits different
+things for different providers</strong>, so check the row for yours before picking
+one. The run logs the meaning for the provider it uses (visible with <code>-v</code>),
+and the value is recorded in the report's <code>provider_config.timeout</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>What <code>--timeout</code> limits</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI</td>
+<td>Read timeout on each HTTP request. Deep Research is one blocking request, so in practice how long to wait for the report</td>
+<td>600 s</td>
+</tr>
+<tr>
+<td>Perplexity</td>
+<td>Longest gap between streamed chunks, not the whole run</td>
+<td>600 s</td>
+</tr>
+<tr>
+<td>Edison (Falcon)</td>
+<td>How long to wait for the task before cancelling it (<code>EdisonTaskTimeoutError</code>)</td>
+<td>2400 s</td>
+</tr>
+<tr>
+<td>Asta</td>
+<td>Read timeout on each HTTP request</td>
+<td>180 s</td>
+</tr>
+<tr>
+<td>Consensus</td>
+<td>Read timeout on each HTTP request</td>
+<td>600 s</td>
+</tr>
+<tr>
+<td>OpenScientist</td>
+<td>How long to wait for the job before cancelling it. The <code>timeout</code> provider parameter overrides the config timeout, so passing both <code>--timeout</code> and <code>--param timeout=</code> is rejected</td>
+<td>3600 s</td>
+</tr>
+<tr>
+<td>Cyberian</td>
+<td>How long cyberian waits for the agent to finish each workflow task</td>
+<td>1800 s</td>
+</tr>
+<tr>
+<td>Claude Code</td>
+<td>How long the whole <code>claude</code> run may take before it is killed</td>
+<td>1800 s</td>
+</tr>
+<tr>
+<td>Biomni</td>
+<td>The agent's <code>timeout_seconds</code>: a limit on each generated code execution, not the run. The <code>timeout</code> provider parameter overrides the config timeout, so passing both <code>--timeout</code> and <code>--param timeout=</code> is rejected</td>
+<td>3600 s</td>
+</tr>
+<tr>
+<td>ToxIndex</td>
+<td>Timeout on each HTTP request (retrieval and <code>providers --check</code>; research is a stub)</td>
+<td>60 s</td>
+</tr>
+<tr>
+<td>ToolUniverse</td>
+<td><strong>Not supported</strong>: refused. Use <code>--param request_timeout=</code> for each LLM request</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>DeepER-Med</td>
+<td><strong>Not supported</strong>: stub, nothing runs</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>Mock</td>
+<td>Longest the simulated delay (<code>response_delay</code>) may run before <code>TimeoutError</code></td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p>Like <code>--model</code> and <code>--param</code>, <code>--timeout</code> applies to the provider you named
+only. If the run falls back to another provider, that one uses its own
+default, and a warning says so.</p>
+<p>When a run does exceed its time, the provider raises <code>ProviderTimeoutError</code>
+(Edison raises its own <code>EdisonTaskTimeoutError</code>), and the CLI reports
+<code>Research timed out …</code> and points at <code>--timeout</code> rather than surfacing a raw
+transport error. A timeout never triggers fallback — the remedy is a longer
+timeout, not a different provider.</p>
+<p>Each row summarises the provider class's <code>timeout_meaning</code> attribute (see
+<a href="#declaring-what-the-provider-needs">Declaring what the provider needs</a>).</p>
 <h2 id="openai-deep-research">OpenAI Deep Research</h2>
 <h3 id="setup">Setup</h3>
 <pre><code class="language-bash">export OPENAI_API_KEY=&quot;your-key&quot;
@@ -4004,6 +4115,11 @@ rather than keeping their own tables:</p>
 <td><code>stub_reason</code></td>
 <td>There is no upstream API yet, so nothing the user sets would help</td>
 <td><code>"DeepER-Med - no public API released yet (arXiv:…)"</code></td>
+</tr>
+<tr>
+<td><code>timeout_meaning</code></td>
+<td>The provider honours <code>ProviderConfig.timeout</code>: say what it limits, as a phrase completing "the timeout is …". Leave it <code>None</code> and the client refuses <code>--timeout</code> for the provider. Add a row to <a href="#timeouts">Timeouts</a> too</td>
+<td><code>"the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"</code></td>
 </tr>
 </tbody>
 </table>

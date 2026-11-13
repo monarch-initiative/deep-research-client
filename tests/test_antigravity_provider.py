@@ -304,8 +304,12 @@ def test_research_from_memory_is_flagged_unsuccessful(monkeypatch):
 
 
 def test_research_empty_query_raises():
+    # Use a trivially-available executable ("true" is always on PATH) so the
+    # empty-query guard is reached without depending on `agy` being installed;
+    # otherwise require_available() raises first in CI, where agy is absent.
+    provider = _provider(AntigravityParams(agy_executable="true"))
     with pytest.raises(ValueError, match="must not be empty"):
-        asyncio.run(_provider().research("   "))
+        asyncio.run(provider.research("   "))
 
 
 def test_research_classifies_startup_failure_with_empty_stdout(monkeypatch):

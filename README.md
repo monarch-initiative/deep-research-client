@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, Google Antigravity, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), and Biomni (biomedical co-scientist)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Google Antigravity (local CLI), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -80,6 +80,10 @@ pip install deep-research-client[cyberian]
 # For Claude Code - just install the `claude` CLI and have it authenticated.
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+
+# For Google Antigravity - install the `agy` CLI and authenticate it once.
+# Auto-detected when `agy` is on PATH; no separate API key needed.
+# Set DISABLE_ANTIGRAVITY_PROVIDER=true to opt out of auto-detection.
 
 # For Biomni (biomedical co-scientist), first provision an upstream Biomni
 # conda environment: https://github.com/snap-stanford/Biomni/tree/main/biomni_env
@@ -479,6 +483,41 @@ result = client.research(
 - **Refusals and from-memory answers are not reports:** a run that retrieved nothing (no web search, and no tool call that was allowed and not bookkeeping), whatever it cites, or that the model marked `**Incomplete report:**`, or that cites no source (URL, PMID or DOI) and reads as a refusal of the report (e.g. after a safety-classifier halt) is still written, but marked `answer_status: unsuccessful` with `run_metadata.unsuccessful_reason`, not cached, and the CLI exits 4.
 - **Retrieve first:** every run's system prompt (default or custom) gets a directive to retrieve sources before writing, cite each claim inline, state nothing it did not retrieve in the session, and, if it cannot finish, return a partial report opening with `**Incomplete report:**` instead of nothing. See docs/reference/providers.md, "What every run is told".
 - **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
+
+#### Google Antigravity-Specific Parameters (Local CLI)
+
+Google Antigravity is a local command-line tool (the `agy` binary), like Claude Code rather than an HTTP API. This provider runs `agy` in headless ("print") mode and lets its own agentic tools (`search_web`, `read_url_content`, a browser family) carry out the research on a Gemini model. See `docs/reference/providers.md` for the full writeup.
+
+```python
+from deep_research_client.provider_params import AntigravityParams
+
+params = AntigravityParams(
+    model="gemini-3.8-flash-medium",  # optional; forwarded to `agy --model` (see `agy models`)
+    effort="high",                    # optional --effort (low|medium|high|xhigh|max)
+    skip_permissions=False,           # default; True bypasses the read-only default (see below)
+    disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
+    print_timeout=None,               # default: agy's own no-limit; the outer `timeout` governs
+    settings_override=None,           # escape hatch: raw JSON for `agy --settings`
+    add_dirs=["/data/papers"],        # optional --add-dir entries
+    working_dir=None,                 # optional cwd for the run
+    min_report_chars=200,             # fail loudly on an implausibly short report (0 disables)
+    extra_args=["--sandbox"],         # escape hatch for unmodeled flags
+)
+
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="antigravity",
+    provider_params=params
+)
+```
+
+**Notes:**
+- No API key required — auth/billing is handled by your local Antigravity installation (authenticate once with an interactive `agy` session).
+- Auto-detected whenever `agy` is on PATH; set `DISABLE_ANTIGRAVITY_PROVIDER=true` to opt out.
+- **Security:** `agy` has no tool-allowlist flag, but its default headless permission mode runs read-only retrieval freely while soft-denying file/shell mutation, so even an untrusted query cannot edit files or run shell commands out of the box. Setting `skip_permissions=True` adds `--dangerously-skip-permissions` (all tools allowed) — use it only in trusted, sandboxed environments.
+- **No system-prompt flag:** the system prompt plus the retrieve-first / inline-report directive are prepended to the prompt text (same directive as Claude Code), ahead of the research task.
+- **Empty-report guard:** a soft-denied final tool can leave a successful run with an empty response; a report shorter than `min_report_chars` (default 200) raises rather than caching an empty file.
+- **Refusals and from-memory answers are not reports:** a run that called no retrieval tool (`search_web`, `read_url_content`, browser reads, …), or marked `**Incomplete report:**`, or that cites no source and reads as a refusal, is written but marked `answer_status: unsuccessful`, not cached, and the CLI exits 4.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 

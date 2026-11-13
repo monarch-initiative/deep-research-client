@@ -37,6 +37,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "antigravity": ("deep_research_client.providers.antigravity", "AntigravityProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
@@ -244,6 +245,25 @@ class DeepResearchClient:
                 timeout=1800,  # 30 minutes for long-running agentic research
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
+
+        # Antigravity provider - available whenever the `agy` CLI is on PATH.
+        # No API key required; auth/billing is handled by the local install.
+        # Set DISABLE_ANTIGRAVITY_PROVIDER=true to opt out of auto-detection.
+        #
+        # As with claude_code, auto-detection probes the default "agy" executable
+        # rather than constructing the provider, to keep env setup import-light;
+        # a custom agy_executable is honored only via an explicit provider_config.
+        if (
+            os.getenv("DISABLE_ANTIGRAVITY_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and shutil.which("agy") is not None
+        ):
+            antigravity_config = ProviderConfig(
+                name="antigravity",
+                api_key=None,  # Not required for Antigravity
+                enabled=True,
+                timeout=1800,  # 30 minutes for long-running agentic research
+            )
+            self.registry.register(self._create_provider("antigravity", antigravity_config))
 
         # DeepER-Med is a stub with no upstream endpoint. It is registered
         # unconditionally and needs no credentials: is_available() is always False,
@@ -473,6 +493,8 @@ class DeepResearchClient:
         # stale cache entries from shadowing current live results.
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
+        elif provider_name == "antigravity":
+            effective_params["_cache_version"] = "agy-v1"
         elif provider_name == "tooluniverse":
             effective_params = create_provider_params(
                 provider_name, provider_params=provider_params,

@@ -9,13 +9,24 @@ from typing import AsyncIterator, List, Optional, Dict, Any
 import httpx
 
 from . import ResearchProvider
-from ..exceptions import ProviderError, ProviderNotConfiguredError, ProviderTransientError
+from ..exceptions import (
+    ProviderError,
+    ProviderNotConfiguredError,
+    ProviderTimeoutError,
+    ProviderTransientError,
+)
 from ..models import ResearchResult, ProviderConfig
 from ..provider_params import PerplexityParams
 from ..model_cards import ProviderModelCards, create_perplexity_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
+
+#: Default read timeout when ``ProviderConfig.timeout`` is unset, named once so
+#: the HTTP client, the timeout message and ``timeout_meaning`` cannot drift.
+#: The request is streamed (see research), so it bounds the gap between chunks,
+#: not the whole run.
+_DEFAULT_READ_TIMEOUT = 600
 
 _THINK_BLOCK = re.compile(r"\A\s*<think>.*?</think>\s*", re.DOTALL)
 
@@ -228,6 +239,10 @@ class PerplexityProvider(ResearchProvider):
 
     credential_label = "Perplexity AI"
     credential_env_var = "PERPLEXITY_API_KEY"
+    timeout_meaning = (
+        "the longest gap allowed between streamed chunks, not a limit on the "
+        f"whole run (default {_DEFAULT_READ_TIMEOUT} s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[PerplexityParams] = None):
         """Initialize Perplexity provider.
@@ -307,7 +322,7 @@ class PerplexityProvider(ResearchProvider):
             logger.debug(f"Making streaming API request to Perplexity (model: {self.model})")
             # The read timeout is the longest gap allowed between chunks; connect
             # gets its own short limit so a bad network fails fast.
-            timeout = httpx.Timeout(self.config.timeout or 600, connect=30)
+            timeout = httpx.Timeout(self.config.timeout or _DEFAULT_READ_TIMEOUT, connect=30)
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
                     "POST",
@@ -343,6 +358,19 @@ class PerplexityProvider(ResearchProvider):
             logger.error(f"Perplexity API HTTP error: {e.response.status_code}")
             logger.debug("Error details:", exc_info=True)
             raise ValueError(f"Perplexity API HTTP error: {e.response.status_code} - {e.response.text}")
+        except httpx.TimeoutException as e:
+            # Before the generic handler, which would re-raise as a ValueError
+            # whose message is often empty (str(ReadTimeout) frequently is), so
+            # the user saw "Perplexity API error: " with nothing after it. A
+            # ProviderTimeoutError reaches the CLI's timeout path instead. On a
+            # streamed run this fires when the gap between chunks exceeds the
+            # read timeout, which is what the timeout bounds.
+            timeout_s = self.config.timeout or _DEFAULT_READ_TIMEOUT
+            logger.error("Perplexity API timed out after %ss", timeout_s)
+            logger.debug("Error details:", exc_info=True)
+            raise ProviderTimeoutError(
+                self.name, f"no response within {timeout_s}s ({type(e).__name__})"
+            ) from e
         except ProviderError:
             # Already typed (e.g. a dropped stream is transient); wrapping it in
             # a bare ValueError would hide that from retry and fallback logic.

@@ -552,7 +552,10 @@ async def test_research_allows_short_report_when_guard_disabled(tmp_path):
 
 @pytest.mark.asyncio
 async def test_research_raises_on_timeout(tmp_path):
-    """A run that exceeds the timeout is killed and surfaces as a ValueError."""
+    """A run that exceeds the timeout is killed and surfaces as a
+    ProviderTimeoutError, so the CLI reports it as a timeout."""
+    from deep_research_client.exceptions import ProviderTimeoutError
+
     script = tmp_path / "slowclaude"
     script.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
     script.chmod(0o755)
@@ -560,7 +563,7 @@ async def test_research_raises_on_timeout(tmp_path):
     provider = ClaudeCodeProvider(
         config, ClaudeCodeParams(claude_executable=str(script))
     )
-    with pytest.raises(ValueError, match="timed out"):
+    with pytest.raises(ProviderTimeoutError, match="did not finish within"):
         await provider.research("anything")
 
 

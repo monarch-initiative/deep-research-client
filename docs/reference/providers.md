@@ -23,6 +23,44 @@ See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.
 
+## Timeouts
+
+`deep-research-client research --timeout SECONDS` (or `timeout=` on
+`DeepResearchClient.research()`) replaces the chosen provider's
+`ProviderConfig.timeout` for one run. **The same number limits different
+things for different providers**, so check the row for yours before picking
+one. The run logs the meaning for the provider it uses (visible with `-v`),
+and the value is recorded in the report's `provider_config.timeout`.
+
+| Provider | What `--timeout` limits | Default |
+|----------|-------------------------|---------|
+| OpenAI | Read timeout on each HTTP request. Deep Research is one blocking request, so in practice how long to wait for the report | 600 s |
+| Perplexity | Longest gap between streamed chunks, not the whole run | 600 s |
+| Edison (Falcon) | How long to wait for the task before cancelling it (`EdisonTaskTimeoutError`) | 2400 s |
+| Asta | Read timeout on each HTTP request | 180 s |
+| Consensus | Read timeout on each HTTP request | 600 s |
+| OpenScientist | How long to wait for the job before cancelling it. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| Cyberian | How long cyberian waits for the agent to finish each workflow task | 1800 s |
+| Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
+| Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
+| ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
+| DeepER-Med | **Not supported**: stub, nothing runs | n/a |
+| Mock | Longest the simulated delay (`response_delay`) may run before `TimeoutError` | none |
+
+Like `--model` and `--param`, `--timeout` applies to the provider you named
+only. If the run falls back to another provider, that one uses its own
+default, and a warning says so.
+
+When a run does exceed its time, the provider raises `ProviderTimeoutError`
+(Edison raises its own `EdisonTaskTimeoutError`), and the CLI reports
+`Research timed out …` and points at `--timeout` rather than surfacing a raw
+transport error. A timeout never triggers fallback — the remedy is a longer
+timeout, not a different provider.
+
+Each row summarises the provider class's `timeout_meaning` attribute (see
+[Declaring what the provider needs](#declaring-what-the-provider-needs)).
+
 ## OpenAI Deep Research
 
 ### Setup
@@ -1250,6 +1288,7 @@ rather than keeping their own tables:
 | `credential_noun` | The key belongs to a wider account than the label names (defaults to the label) | `"OpenAI"` → `no OpenAI API key configured` |
 | `registration_requirement` | The client can hold the provider back while an instance would call itself available: an opt-out variable, an opt-in flag, a binary probed during auto-detection | `"set ENABLE_MOCK_PROVIDER=true to enable the mock provider"` |
 | `stub_reason` | There is no upstream API yet, so nothing the user sets would help | `"DeepER-Med - no public API released yet (arXiv:…)"` |
+| `timeout_meaning` | The provider honours `ProviderConfig.timeout`: say what it limits, as a phrase completing "the timeout is …". Leave it `None` and the client refuses `--timeout` for the provider. Add a row to [Timeouts](#timeouts) too | `"the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"` |
 
 Anything subtler (a missing binary, a missing optional package) belongs in an
 `unavailable_reason()` override, as `claude_code`, `cyberian` and `biomni` do.

@@ -51,6 +51,24 @@ class ResearchProvider(ABC):
     #: not a stand-in nobody asked for.
     produces_real_reports: ClassVar[bool] = True
 
+    #: What ``ProviderConfig.timeout`` limits for this provider, as a phrase
+    #: that completes "the timeout is ...". The same number means different
+    #: things to different providers -- a gap between streamed chunks, a
+    #: whole-run deadline, a limit per generated code execution -- so each
+    #: provider says which, and the CLI repeats it back when ``--timeout`` is
+    #: given (issue #95). None means the provider does not honour a timeout
+    #: set by the caller, and the client refuses one rather than recording a
+    #: number in the report metadata that limited nothing.
+    timeout_meaning: ClassVar[Optional[str]] = None
+
+    #: Name of the provider parameter that, when set, takes precedence over
+    #: ``ProviderConfig.timeout`` -- so a caller who passes both ``--timeout``
+    #: and ``--param <name>=`` would have the ``--timeout`` recorded in the
+    #: report metadata while the param is what actually applied. The client
+    #: rejects that combination rather than record a limit that did not apply.
+    #: None where no param overrides the config timeout (the common case).
+    timeout_param: ClassVar[Optional[str]] = None
+
     def __init__(self, config: ProviderConfig, params_or_model: Optional[Union[str, "BaseProviderParams"]] = None):
         """Initialize provider with configuration.
 

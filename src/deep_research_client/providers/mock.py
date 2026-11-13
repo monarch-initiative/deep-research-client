@@ -3,7 +3,7 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -13,6 +13,7 @@ from ..exceptions import (
     ProviderNotConfiguredError,
     ProviderQuotaError,
     ProviderRateLimitError,
+    ProviderTimeoutError,
     ProviderTransientError,
 )
 from ..models import ResearchResult, ProviderConfig
@@ -38,6 +39,10 @@ _SIMULATED_ERRORS: dict[str, tuple[type[ProviderError], Optional[int], dict]] = 
     "quota": (ProviderQuotaError, None, {"resets_at": "3pm, pool quota_pool_7f21"}),
     "rate_limit": (ProviderRateLimitError, 429, {}),
     "transient": (ProviderTransientError, 503, {}),
+    # A provider that ran out of time. Both a TimeoutError and a ValueError, so
+    # it exercises the CLI's timeout handler (which must sit before its
+    # ValueError handler). No status code: a timeout is not an HTTP status.
+    "timeout": (ProviderTimeoutError, None, {}),
     # Reproduces the error *type* rather than the path: a real
     # ProviderNotConfiguredError is raised while resolving a provider, before
     # any research call, so nothing outside this table raises one from here.
@@ -118,6 +123,13 @@ class MockProvider(ResearchProvider):
     #: Always available once built, so only the opt-in flag keeps it out.
     registration_requirement = "set ENABLE_MOCK_PROVIDER=true to enable the mock provider"
 
+    #: Honoured for real, so the client's timeout handling can be exercised
+    #: without a network: a ``response_delay`` longer than the timeout fails.
+    timeout_meaning: ClassVar[Optional[str]] = (
+        "the longest the simulated API delay (response_delay) may run before "
+        "the run fails with TimeoutError"
+    )
+
     def __init__(self, config: ProviderConfig, params: Optional[MockParams] = None):
         """Initialize Mock provider.
 
@@ -151,9 +163,13 @@ class MockProvider(ResearchProvider):
                 (auth/billing/quota/not_configured) or its refusal to fall back
                 (rate_limit/transient) without a real outage.
             ValueError: If include_error parameter is True
+            TimeoutError: If ProviderConfig.timeout is shorter than response_delay
         """
-        # Simulate API delay
-        await asyncio.sleep(self.params.response_delay)
+        # Simulate API delay, bounded the way a real provider's request is.
+        # wait_for with None waits indefinitely, which is the unset case.
+        await asyncio.wait_for(
+            asyncio.sleep(self.params.response_delay), timeout=self.config.timeout
+        )
 
         # Simulate error if requested. The typed failure is checked first: it
         # says more than the generic one, so where a caller asked for both,

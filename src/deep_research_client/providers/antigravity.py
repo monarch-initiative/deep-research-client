@@ -86,15 +86,24 @@ _RETRIEVAL_TOOLS = frozenset(
     }
 )
 
-# Aliases that select the provider's own default model card rather than a real
-# ``gemini-*`` slug. When the user "selects" one of these we let the local
-# ``agy`` installation pick its own default model instead of forwarding
-# ``--model``.
-_DEFAULT_MODEL_SENTINELS = {
-    "antigravity-default",
+# The model a run uses when the caller names none. ``agy``'s own default is
+# opaque -- it is whatever the CLI was last configured to use, is absent from
+# the run's output (init event, result event), its settings file and
+# ``agy models``, and so cannot be read back -- which left a default run's
+# provenance showing only a meaningless placeholder. This provider therefore
+# never relies on it: it always forwards an explicit ``--model``, defaulting to
+# this slug, so the report always records the model that actually ran. Change
+# the default here (and the model card) if agy's recommended model moves on.
+DEFAULT_MODEL = "gemini-4-carbon-medium"
+
+# Aliases that mean "use the provider default" rather than a concrete ``agy``
+# slug. They resolve to :data:`DEFAULT_MODEL`, not to agy's opaque default.
+_DEFAULT_MODEL_ALIASES = {
     "antigravity",
     "agy",
     "default",
+    "antigravity-default",
+    "gemini-4-carbon",
 }
 
 # ``agy`` writes a machine-readable failure line to stderr, e.g.
@@ -276,8 +285,13 @@ class AntigravityProvider(CLIAgentResearchProvider):
         return name in cls._RETRIEVAL_TOOLS
 
     def get_default_model(self) -> str:
-        """Get the default model identifier for this provider."""
-        return "antigravity-default"
+        """Get the default model identifier for this provider.
+
+        A concrete ``agy`` slug, never a placeholder: the provider always sends
+        an explicit ``--model`` (see :data:`DEFAULT_MODEL`), so provenance names
+        the model that ran rather than agy's unreadable default.
+        """
+        return DEFAULT_MODEL
 
     @classmethod
     def model_cards(cls) -> ProviderModelCards:
@@ -414,19 +428,18 @@ class AntigravityProvider(CLIAgentResearchProvider):
             detail=f"logged in; {len(model_lines)} models available",
         )
 
-    def _resolve_cli_model(self) -> Optional[str]:
-        """Resolve the raw ``--model`` value to forward to the CLI, if any.
+    def _resolve_cli_model(self) -> str:
+        """Resolve the concrete ``--model`` slug to forward to the CLI.
 
-        We forward the user's raw model slug (e.g. ``gemini-3.8-flash-medium``)
-        rather than the resolved model-card name. Provider-internal default
-        aliases resolve to ``None`` so the local ``agy`` installation picks its
-        own default model.
+        Always a concrete slug, never ``None``: an unset model or a
+        provider-default alias resolves to :data:`DEFAULT_MODEL`, and any other
+        value is forwarded as the user's raw slug (e.g.
+        ``gemini-3.8-flash-medium``). This is what keeps agy from falling back
+        to its own opaque default, so the report records the model that ran.
         """
-        raw_model = self.params.model
-        if not raw_model:
-            return None
-        if raw_model.strip().lower() in _DEFAULT_MODEL_SENTINELS:
-            return None
+        raw_model = (self.params.model or "").strip()
+        if not raw_model or raw_model.lower() in _DEFAULT_MODEL_ALIASES:
+            return DEFAULT_MODEL
         return raw_model
 
     def _compose_prompt(self, query: str) -> str:

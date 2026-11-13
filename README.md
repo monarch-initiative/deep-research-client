@@ -492,7 +492,7 @@ Google Antigravity is a local command-line tool (the `agy` binary), like Claude 
 from deep_research_client.provider_params import AntigravityParams
 
 params = AntigravityParams(
-    model="gemini-3.8-flash-medium",  # optional; forwarded to `agy --model` (see `agy models`)
+    model="gemini-3.8-flash-medium",  # optional; defaults to gemini-4-carbon-medium (see `agy models`)
     effort="high",                    # optional --effort (low|medium|high|xhigh|max)
     skip_permissions=False,           # default; True bypasses the read-only default (see below)
     disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
@@ -514,6 +514,7 @@ result = client.research(
 **Notes:**
 - No API key required — auth/billing is handled by your local Antigravity installation (authenticate once with an interactive `agy` session).
 - Auto-detected whenever `agy` is on PATH; set `DISABLE_ANTIGRAVITY_PROVIDER=true` to opt out.
+- **Model is always explicit:** `agy`'s own default model is opaque (it is not reported in the run output, its settings file, or `agy models`), so the provider never relies on it — it always forwards `--model`, defaulting to `gemini-4-carbon-medium`. The report's provenance therefore always names the model that actually ran. Pass any other slug from `agy models` via `model=`.
 - **Security:** `agy` has no tool-allowlist flag, but its default headless permission mode runs read-only retrieval freely while soft-denying file/shell mutation, so even an untrusted query cannot edit files or run shell commands out of the box. Setting `skip_permissions=True` adds `--dangerously-skip-permissions` (all tools allowed) — use it only in trusted, sandboxed environments.
 - **No system-prompt flag:** the system prompt plus the retrieve-first / inline-report directive are prepended to the prompt text (same directive as Claude Code), ahead of the research task.
 - **Empty-report guard:** a soft-denied final tool can leave a successful run with an empty response; a report shorter than `min_report_chars` (default 200) raises rather than caching an empty file.

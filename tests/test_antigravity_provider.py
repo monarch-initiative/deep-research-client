@@ -20,6 +20,7 @@ from deep_research_client.models import ProviderConfig
 from deep_research_client.provider_params import AntigravityParams
 from deep_research_client.providers.antigravity import (
     AntigravityProvider,
+    DEFAULT_MODEL,
     classify_agy_failure,
     parse_agy_error,
 )
@@ -103,7 +104,10 @@ def test_build_command_defaults():
     assert cmd[:5] == ["agy", "-p", "PROMPT", "--output-format", "stream-json"]
     assert "--disable-slash-commands" in cmd
     assert "--dangerously-skip-permissions" not in cmd
-    assert "--model" not in cmd  # default sentinel -> let agy choose
+    # The model is always forwarded explicitly (never agy's opaque default), so
+    # provenance records what ran.
+    i = cmd.index("--model")
+    assert cmd[i:i + 2] == ["--model", DEFAULT_MODEL]
 
 
 def test_build_command_forwards_options():
@@ -123,15 +127,22 @@ def test_build_command_forwards_options():
     assert cmd[-1] == "--sandbox"
 
 
-@pytest.mark.parametrize("sentinel", ["antigravity", "agy", "default", "ANTIGRAVITY"])
-def test_default_sentinels_do_not_forward_model(sentinel):
-    provider = _provider(AntigravityParams(model=sentinel))
-    assert provider._resolve_cli_model() is None
+@pytest.mark.parametrize("alias", ["antigravity", "agy", "default", "ANTIGRAVITY", "gemini-4-carbon", None])
+def test_default_aliases_resolve_to_the_default_model(alias):
+    """An unset model or a provider-default alias resolves to a concrete slug,
+    never None, so agy is never left to its own opaque default."""
+    provider = _provider(AntigravityParams(model=alias))
+    assert provider._resolve_cli_model() == DEFAULT_MODEL
 
 
 def test_real_model_slug_is_forwarded():
     provider = _provider(AntigravityParams(model="gemini-3.1-pro-high"))
     assert provider._resolve_cli_model() == "gemini-3.1-pro-high"
+
+
+def test_default_model_is_a_concrete_gemini_4_carbon_slug():
+    assert DEFAULT_MODEL == "gemini-4-carbon-medium"
+    assert AntigravityProvider(ProviderConfig(name="antigravity")).get_default_model() == DEFAULT_MODEL
 
 
 def test_compose_prompt_includes_directive_and_task():

@@ -617,7 +617,7 @@ The provider is auto-detected whenever `agy` is found on PATH. Set
 from deep_research_client.provider_params import AntigravityParams
 
 params = AntigravityParams(
-    model="gemini-3.8-flash-medium",  # optional; forwarded to `agy --model` (see `agy models`)
+    model="gemini-3.8-flash-medium",  # optional; defaults to gemini-4-carbon-medium (see `agy models`)
     effort="high",                    # optional --effort (low|medium|high|xhigh|max)
     skip_permissions=False,           # default; True bypasses the read-only default (see below)
     disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
@@ -639,6 +639,17 @@ Claude Code provider uses: do the work in this run, retrieve before writing and
 cite each claim inline, and — if the run can't finish — return a partial report
 whose first line begins `**Incomplete report:**`, which marks the run
 unsuccessful. As with Claude Code, the directive is not part of the cache key.
+
+### The model is always explicit
+
+`agy`'s own default model is opaque: it is whatever the CLI was last configured
+to use, and it is reported nowhere the provider can read it — not in the run's
+`init`/`result` events, not in `~/.gemini/antigravity-cli/settings.json`, and
+not in `agy models`. A default run therefore used to record only a meaningless
+placeholder for its model. To keep provenance honest, the provider never relies
+on agy's default: it **always forwards an explicit `--model`**, defaulting to
+`gemini-4-carbon-medium`, so the report records the model that actually ran.
+Pass any other slug from `agy models` via the `model` parameter.
 
 ### Permissions and the read-only default
 

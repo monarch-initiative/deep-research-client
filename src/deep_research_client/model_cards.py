@@ -682,14 +682,16 @@ def create_antigravity_model_cards() -> ProviderModelCards:
     """Create model cards for the Google Antigravity research provider."""
 
     default = ModelCard(
-        name="antigravity-default",
-        display_name="Antigravity (account default model)",
+        name="gemini-4-carbon-medium",
+        display_name="Gemini 4 Carbon (Medium) via Antigravity",
         description=(
             "Runs the local Google Antigravity CLI (agy) in non-interactive "
             "mode, letting its agentic tools (web search, URL fetch, browser) "
             "drive a multi-step research process that yields a cited markdown "
-            "report. Uses whichever Gemini model the local agy installation "
-            "defaults to."
+            "report. Defaults to Gemini 4 Carbon at medium reasoning effort and "
+            "always forwards an explicit model, so the report records exactly "
+            "what ran; pass any other slug from `agy models` via the model "
+            "parameter."
         ),
         cost_level=CostLevel.MEDIUM,
         time_estimate=TimeEstimate.SLOW,
@@ -701,7 +703,7 @@ def create_antigravity_model_cards() -> ProviderModelCards:
         ],
         archetype=ProviderArchetype.agentic_researcher,
         resources=[ResearchResource.general_web],
-        aliases=["antigravity", "agy", "default"],
+        aliases=["antigravity", "agy", "default", "gemini-4-carbon"],
         pricing_notes=(
             "Billing and authentication are handled by the local Antigravity "
             "installation (public preview is free for individuals); no separate "
@@ -721,9 +723,9 @@ def create_antigravity_model_cards() -> ProviderModelCards:
 
     return ProviderModelCards(
         provider_name="antigravity",
-        default_model="antigravity-default",
+        default_model="gemini-4-carbon-medium",
         models={
-            "antigravity-default": default,
+            "gemini-4-carbon-medium": default,
         },
     )
 

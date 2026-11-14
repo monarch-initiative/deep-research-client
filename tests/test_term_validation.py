@@ -1427,6 +1427,106 @@ def test_the_breaker_still_resolves_cached_terms(monkeypatch, tmp_path):
     assert len(report.service_unreachable_terms) == _CIRCUIT_BREAKER_THRESHOLD
 
 
+def test_pass_two_uses_the_cache_after_the_breaker_trips(monkeypatch, tmp_path):
+    """Issue #111 re-review 2: after the breaker trips, pass two (synonyms /
+    replacement) must also avoid the dead live service, or a cached term with a
+    variant label pays a full network timeout -- the cost the breaker removes."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    CACHED = "HP:0001332"
+    live_pass2 = {"n": 0}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+        def get_adapter(self, prefix):  # a pass-two lookup reaching the live service
+            live_pass2["n"] += 1
+            raise ServiceUnavailable("down")
+
+    class CacheOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Dystonia" if curie == CACHED else None
+
+        def is_obsolete(self, curie):
+            return False
+
+        def get_adapter(self, prefix):
+            return None  # no synonyms offline, and no network
+
+    def build(offline=False):
+        return CacheOntology() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    terms.append(FoundTerm(term_id=CACHED, prefix="HP", labels=("Chorea",)))
+    report = validator.validate_terms(terms)
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id[CACHED].status == TermStatus.VERIFIED  # resolved from the cache
+    assert live_pass2["n"] == 0  # pass two never touched the live service after the trip
+
+
+def test_an_offline_lookup_that_raises_is_tolerated(monkeypatch, tmp_path):
+    """If the offline resolver raises instead of returning None for an uncached
+    term, the post-trip term is still marked unreachable, not aborted."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    class RaisingCache:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("offline resolver refused")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    def build(offline=False):
+        return RaisingCache() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD + 1)]
+    report = validator.validate_terms(terms)  # must not raise
+
+    assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
+    assert len(report.service_unreachable_terms) == len(terms)
+
+
 def test_a_replacement_outage_on_an_obsolete_term_does_not_abort(monkeypatch, tmp_path):
     """An obsolete term whose replacement lookup goes unreachable stays OBSOLETE
     with no replacement, rather than aborting the run."""

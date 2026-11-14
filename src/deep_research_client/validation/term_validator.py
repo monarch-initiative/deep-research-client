@@ -231,7 +231,18 @@ class TermValidator:
                 # even when the breaker tripped.
                 if offline_fallback is None:
                     offline_fallback = self._build_ontology_access(offline=True)
-                cached = offline_fallback.get_label(term.term_id)
+                try:
+                    cached = offline_fallback.get_label(term.term_id)
+                except lookup_errors as exc:
+                    # Offline resolution is cache-only and should return None for
+                    # an uncached term, not raise; but if a resolver instead
+                    # reports "offline, not cached" as unavailable, treat it as
+                    # unreachable rather than letting it abort the run post-trip.
+                    logger.warning(
+                        "Offline cache lookup failed for %s: %s", term.term_id, exc
+                    )
+                    unreachable.add(term.term_id)
+                    continue
                 if cached is not None:
                     resolved[term.term_id] = cached
                     try:
@@ -241,6 +252,9 @@ class TermValidator:
                     except lookup_errors:
                         obsolete_unknown.add(term.term_id)
                 else:
+                    # A cache miss reads as unreachable, not NOT_FOUND: None here
+                    # means "not cached", not "known absent", so erring to
+                    # unreachable avoids a false fabrication claim during an outage.
                     unreachable.add(term.term_id)
                 continue
             logger.info("Resolving term %d/%d: %s", index, len(terms), term.term_id)
@@ -280,10 +294,20 @@ class TermValidator:
         configured_prefixes = set(getattr(ontology, "oak_config", {}) or {})
         expected = _known_ontology_prefixes() | resolvable_prefixes | configured_prefixes
 
-        # Pass two: classify, now that each prefix's resolvability is known.
+        # Pass two: classify, now that each prefix's resolvability is known. Once
+        # the breaker tripped, the live service is presumed down, so pass two's
+        # own lookups (synonyms in _compare, replacements in _replacement_for) go
+        # through the cache-only accessor too -- otherwise each cached term with a
+        # variant label, or an obsolete one, would pay a full network timeout
+        # against a dead service, the very cost the breaker exists to remove.
+        pass_two_ontology = ontology
+        if tripped:
+            if offline_fallback is None:
+                offline_fallback = self._build_ontology_access(offline=True)
+            pass_two_ontology = offline_fallback
         results = _LookupResults(resolved, obsolete, unreachable, obsolete_unknown)
         checks = [
-            self._check_term(term, ontology, results, skipped, expected)
+            self._check_term(term, pass_two_ontology, results, skipped, expected)
             for term in terms
         ]
         unresolvable_prefixes = list(

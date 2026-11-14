@@ -38,6 +38,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "cyberian": ("deep_research_client.providers.cyberian", "CyberianProvider"),
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
+    "antigravity": ("deep_research_client.providers.antigravity", "AntigravityProvider"),
     "claude_managed": ("deep_research_client.providers.claude_managed", "ClaudeManagedProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
@@ -247,6 +248,24 @@ class DeepResearchClient:
             )
             self.registry.register(self._create_provider("claude_code", claude_code_config))
 
+        # Antigravity provider - available whenever the `agy` CLI is on PATH.
+        # No API key required; auth/billing is handled by the local install.
+        # Set DISABLE_ANTIGRAVITY_PROVIDER=true to opt out of auto-detection.
+        #
+        # As with claude_code, auto-detection probes the default "agy" executable
+        # rather than constructing the provider, to keep env setup import-light;
+        # a custom agy_executable is honored only via an explicit provider_config.
+        if (
+            os.getenv("DISABLE_ANTIGRAVITY_PROVIDER", "").lower() not in ("true", "1", "yes")
+            and shutil.which("agy") is not None
+        ):
+            antigravity_config = ProviderConfig(
+                name="antigravity",
+                api_key=None,  # Not required for Antigravity
+                enabled=True,
+                timeout=1800,  # 30 minutes for long-running agentic research
+            )
+            self.registry.register(self._create_provider("antigravity", antigravity_config))
         # Claude Managed Agents - runs the deep-research workflow in an
         # Anthropic-hosted sandbox, billed to the Anthropic API key.
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -399,13 +418,21 @@ class DeepResearchClient:
         provider_class = load_provider_class(provider_name)
         return provider_class(config, params)
 
-    def _create_provider_with_params(self, provider_name: str, model: Optional[str] = None, provider_params: Optional[dict] = None) -> 'ResearchProvider':
+    def _create_provider_with_params(
+        self,
+        provider_name: str,
+        model: Optional[str] = None,
+        provider_params: Optional[dict] = None,
+        timeout: Optional[int] = None,
+    ) -> 'ResearchProvider':
         """Create a provider instance with custom parameters.
 
         Args:
             provider_name: Name of the provider to create
             model: Model to use (overrides default)
             provider_params: Provider-specific parameters
+            timeout: Replaces ``ProviderConfig.timeout`` on a copy of the
+                registered config, so the registered provider keeps its own.
 
         Returns:
             Provider instance with custom parameters
@@ -419,6 +446,8 @@ class DeepResearchClient:
             raise ValueError(f"Provider '{provider_name}' not found")
 
         config = base_provider.config
+        if timeout is not None:
+            config = config.model_copy(update={"timeout": timeout})
 
         # Create validated parameters using Pydantic models
         params = create_provider_params(provider_name, model, provider_params)
@@ -476,6 +505,8 @@ class DeepResearchClient:
         # stale cache entries from shadowing current live results.
         elif provider_name == "claude_code":
             effective_params["_cache_version"] = "inline-report-v1"
+        elif provider_name == "antigravity":
+            effective_params["_cache_version"] = "agy-v1"
         # The team's prompts and rubric decide what a claude_managed run
         # produces, and they change without any parameter changing, so their
         # content is part of the key.
@@ -624,6 +655,7 @@ class DeepResearchClient:
         provider_name: str,
         model: Optional[str],
         provider_params: Optional[dict],
+        timeout: Optional[int] = None,
     ) -> ResearchProvider:
         """Resolve one candidate into a provider instance ready to be called.
 
@@ -631,6 +663,7 @@ class DeepResearchClient:
             provider_name: Name of the provider to prepare.
             model: Model override, if the caller gave one.
             provider_params: Provider-specific parameters, if any.
+            timeout: ``ProviderConfig.timeout`` override, if the caller gave one.
 
         Returns:
             A provider instance configured for this run.
@@ -638,7 +671,8 @@ class DeepResearchClient:
         Raises:
             ProviderNotConfiguredError: If the provider is known but not set up;
                 ProviderNotInstalledError where a package or binary is missing.
-            ValueError: If the name is not a provider at all.
+            ValueError: If the name is not a provider at all, or a timeout was
+                given to a provider that does not honour one.
         """
         base_provider = self.registry.get_provider(provider_name)
         if not base_provider:
@@ -653,10 +687,35 @@ class DeepResearchClient:
         # The provider picks the class: a missing package is not a missing key.
         base_provider.require_available()
 
+        if timeout is not None and base_provider.timeout_meaning is None:
+            # Recording the number in the report metadata would claim a limit
+            # nothing enforced, so the run is refused instead (issue #95).
+            raise ValueError(
+                f"Provider '{provider_name}' does not support a caller-set timeout"
+            )
+
+        override_param = base_provider.timeout_param
+        if (
+            timeout is not None
+            and override_param is not None
+            and provider_params
+            and override_param in provider_params
+        ):
+            # For this provider the parameter wins over ProviderConfig.timeout,
+            # so recording the --timeout value while the param is what applied
+            # would be the misleading metadata the timeout handling avoids
+            # elsewhere. Refuse the ambiguous combination rather than pick one
+            # silently (issue surfaced in the #95 review).
+            raise ValueError(
+                f"Provider '{provider_name}' takes its timeout from the "
+                f"'{override_param}' parameter, which overrides --timeout. Passing "
+                f"both --timeout and --param {override_param}= is ambiguous; use one."
+            )
+
         # Create new instance with custom parameters if needed
-        if provider_params or model:
+        if provider_params or model or timeout is not None:
             return self._create_provider_with_params(
-                provider_name, model, provider_params or {}
+                provider_name, model, provider_params or {}, timeout
             )
         return base_provider
 
@@ -668,6 +727,7 @@ class DeepResearchClient:
         model: Optional[str],
         provider_params: Optional[dict],
         overridden_provider: str,
+        timeout: Optional[int] = None,
     ) -> None:
         """Say which provider is taking over, and what is being dropped to do it.
 
@@ -681,6 +741,7 @@ class DeepResearchClient:
                 to. Not the same as ``failed_provider`` past the first hop,
                 where the provider that just failed had no overrides either --
                 and a message about provenance must not assert otherwise.
+            timeout: Timeout override the caller asked for, if any.
         """
         logger.warning(
             "Provider %s cannot do this run: %s. Falling back to %s",
@@ -688,7 +749,11 @@ class DeepResearchClient:
         )
         dropped = [
             label
-            for label, value in (("--model", model), ("--param", provider_params))
+            for label, value in (
+                ("--model", model),
+                ("--param", provider_params),
+                ("--timeout", timeout),
+            )
             if value
         ]
         if dropped:
@@ -781,6 +846,7 @@ class DeepResearchClient:
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
+        timeout: Optional[int] = None,
         ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Perform research on the given query.
@@ -798,6 +864,11 @@ class DeepResearchClient:
                 order, excluding providers that do not do real research. A
                 list -- or a bare string, for one -- names them explicitly, in
                 preference order, and replaces the automatic ordering.
+            timeout: Seconds, replacing the provider's ``ProviderConfig.timeout``
+                for this run. What it limits differs per provider -- see each
+                provider's ``timeout_meaning``. Like ``model`` and
+                ``provider_params`` it applies to the named provider only; a
+                fallback runs on its own default.
             ontologies: Ontologies the report should cite terms from. Their
                 prefixes are named in a section appended to the query, which
                 asks for CURIEs from those ontologies only. None (the default)
@@ -811,7 +882,8 @@ class DeepResearchClient:
                 the requested provider has no credential configured. When no
                 provider was named and none is available, the subclass
                 NoProvidersConfiguredError.
-            ValueError: If the name is not a provider at all
+            ValueError: If the name is not a provider at all, the timeout is not
+                positive, or the provider does not honour a timeout
         """
         return asyncio.run(
             self.aresearch(
@@ -822,6 +894,7 @@ class DeepResearchClient:
                 provider_params,
                 metadata,
                 fallback,
+                timeout,
                 ontologies,
             )
         )
@@ -835,6 +908,7 @@ class DeepResearchClient:
         provider_params: Optional[dict] = None,
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
+        timeout: Optional[int] = None,
         ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Async version of research method.
@@ -850,6 +924,9 @@ class DeepResearchClient:
         result -- whether it exhausted the candidates or stopped at a failure
         that did not justify trying the next.
         """
+        if timeout is not None and timeout <= 0:
+            raise ValueError(f"timeout must be a positive number of seconds, got {timeout}")
+
         start_time = datetime.now()
         start_timestamp = time.time()
 
@@ -921,10 +998,11 @@ class DeepResearchClient:
             first = position == 0
             effective_model = model if first else None
             effective_params = provider_params if first else None
+            effective_timeout = timeout if first else None
 
             try:
                 research_provider = self._prepare_provider(
-                    candidate, effective_model, effective_params
+                    candidate, effective_model, effective_params, effective_timeout
                 )
             except Exception as exc:
                 if last or not is_fallback_worthy(exc):
@@ -953,7 +1031,7 @@ class DeepResearchClient:
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
-                    provider_params, candidates[0],
+                    provider_params, candidates[0], timeout,
                 )
                 continue
 
@@ -980,7 +1058,7 @@ class DeepResearchClient:
                 failed.append(ProviderAttempt.from_exception(candidate, exc))
                 self._warn_falling_back(
                     candidate, candidates[position + 1], exc, model,
-                    provider_params, candidates[0],
+                    provider_params, candidates[0], timeout,
                 )
                 continue
 

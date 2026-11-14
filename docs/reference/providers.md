@@ -15,6 +15,7 @@ Complete reference for all supported research providers.
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
 | Claude Managed Agents | `ANTHROPIC_API_KEY` | Hosted research team; quotes traceable to retrieved evidence, checked by a grader | Very slow |
+| Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
@@ -23,6 +24,46 @@ Complete reference for all supported research providers.
 See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.
+
+## Timeouts
+
+`deep-research-client research --timeout SECONDS` (or `timeout=` on
+`DeepResearchClient.research()`) replaces the chosen provider's
+`ProviderConfig.timeout` for one run. **The same number limits different
+things for different providers**, so check the row for yours before picking
+one. The run logs the meaning for the provider it uses (visible with `-v`),
+and the value is recorded in the report's `provider_config.timeout`.
+
+| Provider | What `--timeout` limits | Default |
+|----------|-------------------------|---------|
+| OpenAI | Read timeout on each HTTP request. Deep Research is one blocking request, so in practice how long to wait for the report | 600 s |
+| Perplexity | Longest gap between streamed chunks, not the whole run | 600 s |
+| Edison (Falcon) | How long to wait for the task before cancelling it (`EdisonTaskTimeoutError`) | 2400 s |
+| Asta | Read timeout on each HTTP request | 180 s |
+| Consensus | Read timeout on each HTTP request | 600 s |
+| OpenScientist | How long to wait for the job before cancelling it. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| Cyberian | How long cyberian waits for the agent to finish each workflow task | 1800 s |
+| Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
+| Claude Managed Agents | How long the session may run, repair turns included, before it is interrupted and its outputs collected. A session that does not settle after the interrupt raises a timeout naming the session, which `--param session_id=` can collect later | 3600 s |
+| Antigravity | How long the whole `agy` run may take before it is killed. `agy`'s own `--print-timeout` is left at its default of no limit, so this outer kill governs; set `print_timeout` to pass one through | 1800 s |
+| Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
+| ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
+| DeepER-Med | **Not supported**: stub, nothing runs | n/a |
+| Mock | Longest the simulated delay (`response_delay`) may run before `TimeoutError` | none |
+
+Like `--model` and `--param`, `--timeout` applies to the provider you named
+only. If the run falls back to another provider, that one uses its own
+default, and a warning says so.
+
+When a run does exceed its time, the provider raises `ProviderTimeoutError`
+(Edison raises its own `EdisonTaskTimeoutError`), and the CLI reports
+`Research timed out …` and points at `--timeout` rather than surfacing a raw
+transport error. A timeout never triggers fallback — the remedy is a longer
+timeout, not a different provider.
+
+Each row summarises the provider class's `timeout_meaning` attribute (see
+[Declaring what the provider needs](#declaring-what-the-provider-needs)).
 
 ## OpenAI Deep Research
 
@@ -103,6 +144,7 @@ params = PerplexityParams(
 - **Speed**: Seconds to minutes
 - **Context Window**: 100K-200K tokens
 - **Capabilities**: Real-time web search, recent data
+- **Streaming**: responses are streamed, so a `sonar-deep-research` run that takes 5–8 minutes is not cut off by a proxy that closes idle connections (Claude Code cloud sessions do this at about 300 s). `ProviderConfig.timeout` (600 s by default) is the longest gap allowed between streamed chunks, not a cap on the whole run. A leading `<think>…</think>` block is removed from the report. A connection drop is tolerated only after the final chunk has arrived; a drop part-way through, or a response that is only reasoning, raises an error rather than returning a partial report.
 
 ---
 
@@ -796,6 +838,116 @@ must then fall within `allowed_hosts`, or session creation fails.
 - Workflow runs count against your Messages API rate limits for each model;
   a wide fan-out on a low tier can be throttled
 - Non-deterministic results
+
+---
+
+## Antigravity
+
+[Google Antigravity](https://antigravity.google/) is a local agentic
+command-line tool (the `agy` binary), like Claude Code rather than an HTTP API.
+Antigravity ships no dedicated "deep research" product, but its headless
+("print") mode is a close structural twin of Claude Code's: this provider shells
+out to `agy -p`, lets its own agentic tools (`search_web`, `read_url_content`, a
+browser family) carry out the research on a Gemini model, and returns a cited
+markdown report. See [#109](https://github.com/monarch-initiative/deep-research-client/issues/109).
+
+Output is read as a `stream-json` event stream. Unlike Claude Code, the finished
+report is taken from the terminal `result` event's `response` field (the full
+turn output); the stream is read for the tool tally (the "did it actually
+retrieve?" check) and provenance (`usage`, `num_turns`, `conversation_id`).
+Streamed text deltas are not relied on, as they are absent in practice.
+
+### Setup
+
+No API key is needed — authentication and billing are handled by your local
+Antigravity installation. Authenticate once with an interactive `agy` session,
+then make sure the CLI is on your PATH:
+
+```bash
+agy --version   # should succeed
+agy models      # should list models (confirms you are logged in)
+```
+
+The provider is auto-detected whenever `agy` is found on PATH. Set
+`DISABLE_ANTIGRAVITY_PROVIDER=true` to opt out of auto-detection.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import AntigravityParams
+
+params = AntigravityParams(
+    model="gemini-3.8-flash-medium",  # optional; defaults to gemini-4-carbon-medium (see `agy models`)
+    effort="high",                    # optional --effort (low|medium|high|xhigh|max)
+    skip_permissions=False,           # default; True bypasses the read-only default (see below)
+    disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
+    print_timeout=None,               # default: agy's own no-limit; set e.g. "15m" to pass one through
+    settings_override=None,           # escape hatch: raw JSON for `agy --settings`
+    add_dirs=["/data/papers"],        # optional --add-dir entries
+    working_dir="/tmp/research",      # optional cwd for the run
+    min_report_chars=200,             # fail on an implausibly short report (0 disables)
+    extra_args=["--sandbox"],         # escape hatch for unmodeled flags
+)
+```
+
+### What every run is told
+
+`agy` has no system-prompt flag, so whatever `system_prompt` you pass (or the
+default research prompt) plus a fixed inline-report directive are **prepended to
+the prompt text** ahead of the research task. The directive is the same one the
+Claude Code provider uses: do the work in this run, retrieve before writing and
+cite each claim inline, and — if the run can't finish — return a partial report
+whose first line begins `**Incomplete report:**`, which marks the run
+unsuccessful. As with Claude Code, the directive is not part of the cache key.
+
+### The model is always explicit
+
+`agy`'s own default model is opaque: it is whatever the CLI was last configured
+to use, and it is reported nowhere the provider can read it — not in the run's
+`init`/`result` events, not in `~/.gemini/antigravity-cli/settings.json`, and
+not in `agy models`. A default run therefore used to record only a meaningless
+placeholder for its model. To keep provenance honest, the provider never relies
+on agy's default: it **always forwards an explicit `--model`**, defaulting to
+`gemini-4-carbon-medium`, so the report records the model that actually ran.
+Pass any other slug from `agy models` via the `model` parameter.
+
+### Permissions and the read-only default
+
+`agy` has no `--allowedTools` flag. Instead, its default headless permission
+mode (`request-review`) runs read-only retrieval tools freely while
+*soft-denying* mutating ones (file writes, shell): the denied call is skipped, a
+notice is printed to stderr, and the run still exits 0. So the out-of-the-box
+behaviour is already read-only, and this provider never passes
+`--dangerously-skip-permissions` unless you set `skip_permissions=True` (only do
+so for a trusted query in a sandbox). One consequence: a soft-denied *final*
+action can leave a successful run with an empty response — `min_report_chars`
+catches that and fails the run rather than caching an empty report.
+
+Two caller-controlled escape hatches can also undo the read-only stance:
+`skip_permissions=True` (adds `--dangerously-skip-permissions`) and
+`settings_override` / `extra_args` (which can pass a permissive `--settings`
+policy or other flags). They are intended for trusted, caller-controlled use;
+do not combine them with an untrusted query.
+
+### Characteristics
+
+- **Cost**: Handled by your Antigravity account (public preview is free for individuals)
+- **Speed**: Slow (agentic, multi-step; a run can issue many web searches)
+- **Capabilities**: Web search, citation tracking, evidence synthesis (read-only
+  by default, so no code interpretation unless `skip_permissions=True`)
+- **Auth**: None required by this client; relies on local Antigravity
+
+### Limitations
+
+- Requires the `agy` CLI installed and authenticated locally
+- Read-only by default (web search/fetch/browser); mutation is soft-denied.
+  Enable `skip_permissions` only in a sandbox for tasks that need more
+- Non-deterministic results
+- No token-free auth-status subcommand exists; health is probed with
+  `agy models`, which makes a network call but spends no model tokens
+- The prompt is passed as a single command-line argument (agy has no stdin
+  prompt mode for text input), so a very large `system_prompt` or query is
+  capped at 128 KiB and rejected with a clear error before the run starts
 
 ---
 
@@ -1508,6 +1660,7 @@ rather than keeping their own tables:
 | `credential_noun` | The key belongs to a wider account than the label names (defaults to the label) | `"OpenAI"` → `no OpenAI API key configured` |
 | `registration_requirement` | The client can hold the provider back while an instance would call itself available: an opt-out variable, an opt-in flag, a binary probed during auto-detection | `"set ENABLE_MOCK_PROVIDER=true to enable the mock provider"` |
 | `stub_reason` | There is no upstream API yet, so nothing the user sets would help | `"DeepER-Med - no public API released yet (arXiv:…)"` |
+| `timeout_meaning` | The provider honours `ProviderConfig.timeout`: say what it limits, as a phrase completing "the timeout is …". Leave it `None` and the client refuses `--timeout` for the provider. Add a row to [Timeouts](#timeouts) too | `"the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"` |
 
 Anything subtler (a missing binary, a missing optional package) belongs in an
 `unavailable_reason()` override, as `claude_code`, `cyberian` and `biomni` do.

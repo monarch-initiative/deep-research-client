@@ -237,14 +237,15 @@ class MockParams(BaseProviderParams):
         description="Whether to simulate an error response"
     )
     error_type: Optional[
-        Literal["auth", "billing", "quota", "rate_limit", "transient", "not_configured"]
+        Literal["auth", "billing", "quota", "rate_limit", "transient", "not_configured", "timeout"]
     ] = Field(
         default=None,
         description=(
             "Simulate a specific typed provider failure instead of a generic "
             "error. Lets provider fallback be exercised without a real outage: "
             "auth/billing/quota/not_configured mean this provider cannot do the "
-            "work, while rate_limit/transient mean wait and retry the same one."
+            "work, while rate_limit/transient mean wait and retry the same one, "
+            "and timeout means the run exceeded its deadline (a TimeoutError)."
         ),
     )
     custom_response: Optional[str] = Field(
@@ -703,6 +704,103 @@ class ClaudeManagedParams(ArtifactSelectionParams):
     )
 
 
+class AntigravityParams(BaseProviderParams):
+    """Parameters specific to the Google Antigravity research provider.
+
+    Antigravity is invoked as a local command-line tool (the ``agy`` binary)
+    in non-interactive "print" mode, letting its agentic tools (``search_web``,
+    ``read_url_content``, a browser family) perform the research. No tool
+    allowlist flag exists: ``agy``'s default headless permission mode already
+    runs read-only retrieval freely while soft-denying file/shell mutation, so
+    the out-of-the-box behaviour is read-only without any flag.
+    """
+
+    agy_executable: str = Field(
+        default="agy",
+        description="Path or name of the Antigravity (agy) executable to invoke"
+    )
+    skip_permissions: bool = Field(
+        default=False,
+        description=(
+            "Pass --dangerously-skip-permissions, which auto-approves ALL tool "
+            "requests (file writes, shell, etc.). SECURITY: this overrides the "
+            "read-only default, under which agy soft-denies mutating tools in "
+            "headless mode. Leave False unless running a trusted query in a "
+            "sandboxed environment."
+        )
+    )
+    disable_slash_commands: bool = Field(
+        default=True,
+        description=(
+            "Pass --disable-slash-commands so a (possibly untrusted) query "
+            "cannot trigger slash-command or skill expansion in print mode."
+        )
+    )
+    effort: Optional[Literal["low", "medium", "high", "xhigh", "max"]] = Field(
+        default=None,
+        description=(
+            "Reasoning effort passed via --effort. Which levels a model accepts "
+            "depends on the model; None lets agy use its default."
+        )
+    )
+    print_timeout: Optional[str] = Field(
+        default=None,
+        pattern=r"^\d+[smh]?$",
+        description=(
+            "Value for agy's --print-timeout, digits with an optional s/m/h "
+            "suffix (e.g. '15m', '900s', '0'). None uses agy's default of no "
+            "limit, so the outer `timeout` governs instead; a too-short cap "
+            "truncates a long agentic run mid-report."
+        )
+    )
+    settings_override: Optional[str] = Field(
+        default=None,
+        description=(
+            "Raw JSON passed to agy's --settings (session-only settings.json "
+            "keys, never saved). Escape hatch for pinning an explicit tool "
+            "permission policy; the default read-only behaviour needs none."
+        )
+    )
+    add_dirs: List[str] = Field(
+        default_factory=list,
+        description="Additional directories to add to the agy workspace (--add-dir)"
+    )
+    working_dir: Optional[str] = Field(
+        default=None,
+        description="Working directory in which to run the agy process (defaults to current dir)"
+    )
+    timeout: int = Field(
+        default=1800,
+        ge=1,
+        description=(
+            "Maximum seconds to wait for the agy run before killing it. "
+            "Overridden by ProviderConfig.timeout when that is set."
+        )
+    )
+    health_probe_timeout: int = Field(
+        default=30,
+        ge=1,
+        description="Seconds to wait for the `agy models` health probe to answer"
+    )
+    min_report_chars: int = Field(
+        default=200,
+        ge=0,
+        description=(
+            "Minimum plausible length, in characters, of the returned report. A "
+            "shorter result raises rather than writing a well-formed file with no "
+            "research in it (a soft-denied final tool can leave an empty but "
+            "successful run). Set to 0 to disable when short answers are expected."
+        )
+    )
+    extra_args: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra command-line arguments appended verbatim to the agy invocation. "
+            "Escape hatch for flags not otherwise modeled."
+        )
+    )
+
+
 class BiomniParams(ToolUniverseMixin, BaseProviderParams):
     """Parameters specific to the Biomni biomedical co-scientist provider.
 
@@ -816,6 +914,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
     "claude_managed": ClaudeManagedParams,
+    "antigravity": AntigravityParams,
     "biomni": BiomniParams,
     "tooluniverse": ToolUniverseParams,
     "deeper_med": DeeperMedParams,

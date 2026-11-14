@@ -53,6 +53,9 @@ TOXINDEX_DEFAULT_BASE_URL = "https://platform.toxindex.com/v1"
 #: Where the key comes from. Deliberately not the class's ``credential_env_var``:
 #: that declares a key which makes research work, and this one cannot yet.
 TOXINDEX_API_KEY_VAR = "TOXINDEX_API_KEY"
+#: Default per-request timeout when ``ProviderConfig.timeout`` is unset, named
+#: once so the HTTP client and ``timeout_meaning`` cannot drift.
+TOXINDEX_DEFAULT_TIMEOUT = 60
 
 #: The only conversation backend the API knows; every agent route requires it.
 SAGE_BACKEND = "sage-agent"
@@ -278,6 +281,10 @@ class ToxIndexProvider(ResearchProvider):
 
     #: The key is real and checked, but nothing it unlocks runs research yet.
     stub_reason = f"ToxIndex - {_NO_SUBMIT_ROUTE}"
+    timeout_meaning = (
+        "the timeout on each HTTP request to the ToxIndex API "
+        f"(default {TOXINDEX_DEFAULT_TIMEOUT} s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ToxIndexParams] = None):
         """Initialize the provider.
@@ -333,7 +340,7 @@ class ToxIndexProvider(ResearchProvider):
         return httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self.config.api_key}", **HARNESS_HEADERS},
-            timeout=self.config.timeout or 60,
+            timeout=self.config.timeout or TOXINDEX_DEFAULT_TIMEOUT,
         )
 
     @staticmethod

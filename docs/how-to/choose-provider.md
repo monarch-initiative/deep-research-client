@@ -161,7 +161,7 @@ providers would make those records wrong. So you have to ask for it.
 which is a fixed sequence filtered down to whichever you have configured — not
 a preference ranking, and not dependent on how your environment is set up:
 
-    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code, claude_managed
+    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code, claude_managed, antigravity
 
 Most candidates are a paid account, and `biomni` is not: it is a local agent
 that executes generated code and may pull down a multi-gigabyte data lake the

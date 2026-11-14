@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, Claude Managed Agents, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, Claude Managed Agents, Google Antigravity, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Claude Managed Agents (hosted sandbox), and Biomni (biomedical co-scientist)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Claude Managed Agents (hosted sandbox), Google Antigravity (local CLI), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -84,6 +84,10 @@ pip install deep-research-client[cyberian]
 # For Claude Managed Agents (a coordinator, retriever and writer team in an Anthropic-hosted sandbox)
 export ANTHROPIC_API_KEY="sk-ant-..."
 
+# For Google Antigravity - install the `agy` CLI and authenticate it once.
+# Auto-detected when `agy` is on PATH; no separate API key needed.
+# Set DISABLE_ANTIGRAVITY_PROVIDER=true to opt out of auto-detection.
+
 # For Biomni (biomedical co-scientist), first provision an upstream Biomni
 # conda environment: https://github.com/snap-stanford/Biomni/tree/main/biomni_env
 # Then, inside that environment, install the client and its core Python runtime:
@@ -140,6 +144,12 @@ deep-research-client research --template gene_research.md --var "gene=TP53" --va
 
 # Load the query text directly from a Markdown/text file
 deep-research-client research --input-file prompts/topic.md
+
+# Allow a long-running provider more time. What the timeout limits differs per
+# provider (Perplexity: gap between streamed chunks; Edison: the whole task);
+# see "Timeouts" in docs/reference/providers.md
+deep-research-client research "Statin myopathy mechanisms" --provider perplexity \
+  --model sonar-deep-research --timeout 1200
 
 # Use advanced Jinja2 template with conditionals
 deep-research-client research --template gene_advanced.md.j2 \
@@ -505,6 +515,43 @@ result = client.research(
 - `run_metadata` also records the session ID, the grader's verdict and explanation, and usage. Sessions are kept by default (`delete_session=False`) so their event history can be inspected.
 - A run stopped by the cost cap, a refusal or the timeout is still written, but marked `answer_status: unsuccessful`.
 - See docs/reference/providers.md, "Claude Managed Agents", for the evidence file format and the networking trade-off.
+
+#### Google Antigravity-Specific Parameters (Local CLI)
+
+Google Antigravity is a local command-line tool (the `agy` binary), like Claude Code rather than an HTTP API. This provider runs `agy` in headless ("print") mode and lets its own agentic tools (`search_web`, `read_url_content`, a browser family) carry out the research on a Gemini model. See `docs/reference/providers.md` for the full writeup.
+
+```python
+from deep_research_client.provider_params import AntigravityParams
+
+params = AntigravityParams(
+    model="gemini-3.8-flash-medium",  # optional; defaults to gemini-4-carbon-medium (see `agy models`)
+    effort="high",                    # optional --effort (low|medium|high|xhigh|max)
+    skip_permissions=False,           # default; True bypasses the read-only default (see below)
+    disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
+    print_timeout=None,               # default: agy's own no-limit; the outer `timeout` governs
+    settings_override=None,           # escape hatch: raw JSON for `agy --settings`
+    add_dirs=["/data/papers"],        # optional --add-dir entries
+    working_dir=None,                 # optional cwd for the run
+    min_report_chars=200,             # fail loudly on an implausibly short report (0 disables)
+    extra_args=["--sandbox"],         # escape hatch for unmodeled flags
+)
+
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="antigravity",
+    provider_params=params
+)
+```
+
+**Notes:**
+- No API key required — auth/billing is handled by your local Antigravity installation (authenticate once with an interactive `agy` session).
+- Auto-detected whenever `agy` is on PATH; set `DISABLE_ANTIGRAVITY_PROVIDER=true` to opt out.
+- **Model is always explicit:** `agy`'s own default model is opaque (it is not reported in the run output, its settings file, or `agy models`), so the provider never relies on it — it always forwards `--model`, defaulting to `gemini-4-carbon-medium`. The report's provenance therefore always names the model that actually ran. Pass any other slug from `agy models` via `model=`.
+- **Security:** `agy` has no tool-allowlist flag, but its default headless permission mode runs read-only retrieval freely while soft-denying file/shell mutation, so even an untrusted query cannot edit files or run shell commands out of the box. Setting `skip_permissions=True` adds `--dangerously-skip-permissions` (all tools allowed) — use it only in trusted, sandboxed environments. The `settings_override` and `extra_args` escape hatches can likewise undo the read-only stance (e.g. a permissive `--settings` policy); they are for trusted, caller-controlled use, not untrusted queries.
+- **Prompt size:** the prompt is passed as one command-line argument (agy has no stdin prompt mode for text input), so a `system_prompt` + query over 128 KiB is rejected with a clear error rather than failing opaquely at exec.
+- **No system-prompt flag:** the system prompt plus the retrieve-first / inline-report directive are prepended to the prompt text (same directive as Claude Code), ahead of the research task.
+- **Empty-report guard:** a soft-denied final tool can leave a successful run with an empty response; a report shorter than `min_report_chars` (default 200) raises rather than caching an empty file.
+- **Refusals and from-memory answers are not reports:** a run that called no retrieval tool (`search_web`, `read_url_content`, browser reads, …), or marked `**Incomplete report:**`, or that cites no source and reads as a refusal, is written but marked `answer_status: unsuccessful`, not cached, and the CLI exits 4.
 
 #### OpenScientist-Specific Parameters (Autonomous Research)
 
@@ -1305,17 +1352,36 @@ The following providers were researched but not yet implemented:
 
 These providers could be added based on user demand and API availability. Contributions welcome!
 
-## Claude Code Skill
+## Agent Skills
 
-This repository includes a Claude Code skill that makes it easy to use deep-research-client directly from Claude Code.
+This repository includes [run-deep-research](.claude/skills/run-deep-research/SKILL.md)
+and [gene-set-enrichment](.claude/skills/gene-set-enrichment/SKILL.md) skills.
+They provide agent instructions; install DRC and configure the chosen provider
+separately using the instructions above.
 
 ### Installation
 
-To use the skill:
+Use the [skills CLI](https://skills.sh/) (requires Node.js) to preview the skills
+before selecting one:
+
+```bash
+npx skills add monarch-initiative/deep-research-client --list
+npx skills add monarch-initiative/deep-research-client --skill run-deep-research
+```
+
+Installation defaults to the current project. Use `-a codex` or
+`-a claude-code` to choose an agent; add `-g` for user-wide installation:
+
+```bash
+npx skills add monarch-initiative/deep-research-client --skill run-deep-research -a codex -g
+```
+
+For Claude Code, manual copying from a checkout also remains available:
 
 ```bash
 # Copy to your local Claude skills directory
 cp -r .claude/skills/run-deep-research ~/.claude/skills/
+cp -r .claude/skills/gene-set-enrichment ~/.claude/skills/
 
 # Or use it project-wide (already available in this repo)
 # Claude Code will auto-detect skills in .claude/skills/
@@ -1324,7 +1390,7 @@ cp -r .claude/skills/run-deep-research ~/.claude/skills/
 ### Features
 
 The skill provides:
-- **Guided research workflow**: Automatically asks about speed vs depth preferences
+- **Guided research workflow**: Uses your requested depth and clarifies unresolved cost/depth choices
 - **Provider selection**: Helps choose the right provider and model for your needs
 - **Template support**: Easy access to research templates for common patterns
 - **Smart defaults**: Leverages caching and best practices automatically
@@ -1340,7 +1406,8 @@ Once installed, simply ask Claude to research topics:
 ```
 
 Claude will automatically:
-1. Ask whether you want a fast/light or comprehensive/slow approach
+
+1. Use your requested approach, clarifying depth and cost only when needed
 2. Select the appropriate provider and model
 3. Execute the research with proper caching
 4. Save results with citations and metadata

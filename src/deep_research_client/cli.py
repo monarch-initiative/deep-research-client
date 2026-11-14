@@ -838,6 +838,8 @@ def research(
         help="Template variable as 'key=value' (can be used multiple times)")] = None,
     param: Annotated[Optional[List[str]], typer.Option(
         help="Provider-specific parameter as 'key=value' (can be used multiple times)")] = None,
+    timeout: Annotated[Optional[int], typer.Option(
+        "--timeout", min=1, help="Timeout in seconds for the chosen provider, replacing its default. What it limits differs per provider (a gap between streamed chunks, a whole-run deadline, a limit per code execution); the run logs which, and docs/reference/providers.md lists them. Not applied to a fallback provider")] = None,
     base_url: Annotated[Optional[str], typer.Option(
         "--base-url", help="Custom base URL for API endpoint (for proxies or OpenAI-compatible services)")] = None,
     use_cborg: Annotated[bool, typer.Option(
@@ -909,6 +911,9 @@ def research(
 
       # Use provider-specific parameters
       deep-research-client research "Medical research" --provider perplexity --param reasoning_effort=high --param search_recency_filter=week
+
+      # Allow a long sonar-deep-research run to go quiet for up to 20 minutes
+      deep-research-client research "Statin myopathy mechanisms" --provider perplexity --model sonar-deep-research --timeout 1200
 
       # Let another provider take over if this one is out of credits
       deep-research-client research "Statins and myopathy" --provider falcon --fallback
@@ -1131,6 +1136,16 @@ def research(
     for warning in effective_options.warnings:
         _warn(warning)
 
+    # The same number means different things to different providers, so say
+    # which one this run gets. A provider that honours no timeout is refused
+    # by the client, whose message the ValueError handler below prints.
+    if timeout is not None and effective_options.provider_hint:
+        meaning = load_provider_class(effective_options.provider_hint).timeout_meaning
+        if meaning:
+            logger.info(
+                f"Timeout {timeout}s for {effective_options.provider_hint}: {meaning}"
+            )
+
     # Build publication metadata if any provided
     metadata: Optional[dict] = None
     if title or abstract or keyword or author or contributor:
@@ -1224,6 +1239,7 @@ def research(
             provider_params,
             metadata,
             fallback_request,
+            timeout,
             ontologies,
         )
 
@@ -1293,6 +1309,32 @@ def research(
                 typer.echo("\n" + "="*60)
                 typer.echo(output_content)
 
+    except TimeoutError as exc:
+        # Before ValueError and OSError, both of which a provider timeout now
+        # subclasses: ProviderTimeoutError is a ProviderError (hence ValueError)
+        # so it carries the fallback trail, and a TimeoutError (hence OSError)
+        # so a run that ran out of time is reported as a timeout -- not, as
+        # OSError once did, a bare "Filesystem error: " with no detail. Edison's
+        # EdisonTaskTimeoutError and a plain asyncio wait_for land here too.
+        exc_text = str(exc)
+        detail = f": {exc_text}" if exc_text else ""
+        # A ProviderTimeoutError already names --timeout in its own remedy, so
+        # appending the generic hint would print --timeout twice. Add the hint
+        # only for a bare TimeoutError (Edison's EdisonTaskTimeoutError or an
+        # asyncio wait_for), whose text carries no such pointer. Either way
+        # --timeout ends up in the line exactly once.
+        hint = "" if "--timeout" in exc_text else (
+            " Use --timeout to allow longer; what it limits depends on the "
+            "provider (see docs/reference/providers.md)"
+        )
+        _error(f"Research timed out{detail}.{hint}")
+        # A timeout is not fallback-worthy, so the trail is usually empty; shown
+        # when present for the same reason the ValueError handler shows it.
+        attempts = getattr(exc, "provider_attempts", ())
+        if attempts:
+            _stderr("Providers tried:\n" + ProviderAttempt.render_trail(attempts))
+        logger.debug("Exception details:", exc_info=True)
+        raise typer.Exit(1)
     except ValueError as exc:
         _error(str(exc))
         # The trail is on the error whenever the run ended on a failure it

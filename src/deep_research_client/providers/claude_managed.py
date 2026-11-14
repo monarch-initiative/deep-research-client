@@ -54,6 +54,7 @@ from ..exceptions import (
     ProviderBillingError,
     ProviderError,
     ProviderRateLimitError,
+    ProviderTimeoutError,
     ProviderTransientError,
     classify_exception,
 )
@@ -691,7 +692,7 @@ def missing_report_message(session_id: str, trail: SessionTrail, outputs: List[s
     if trail.stop_reason == "budget_reached":
         hint = "; raise max_cost_usd, or set it to None"
     elif trail.outcome_result == "interrupted":
-        hint = "; raise timeout"
+        hint = "; allow more time with --timeout"
     elif trail.stop_reason == "refusal":
         category = f" in category {trail.refusal_category}" if trail.refusal_category else ""
         hint = f"; a safety classifier refused the session's output{category}"
@@ -746,11 +747,16 @@ def run_metadata_for(session: Any, trail: SessionTrail, retriever_model: str, wr
 
 
 class ClaudeManagedProvider(ResearchProvider):
-    """Provider that runs a coordinator and retriever team on Claude Managed Agents."""
+    """Provider that runs a coordinator, retriever and writer team on Claude Managed Agents."""
 
     credential_env_var = "ANTHROPIC_API_KEY"
     credential_label = "Claude Managed Agents"
     credential_noun = "Anthropic"
+    timeout_meaning = (
+        "how long the session may run, repair turns included, before it is "
+        "interrupted and its outputs collected "
+        f"(default {ClaudeManagedParams.model_fields['timeout'].default} s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ClaudeManagedParams] = None):
         """Initialize the provider.
@@ -972,8 +978,8 @@ class ClaudeManagedProvider(ResearchProvider):
 
         Raises:
             ProviderError: If the session stopped in a way that leaves nothing
-                to collect (see :func:`session_failure`), or did not settle
-                after an interrupt.
+                to collect (see :func:`session_failure`).
+            ProviderTimeoutError: If it did not settle after an interrupt.
         """
         from anthropic import APIConnectionError
 
@@ -999,9 +1005,7 @@ class ClaudeManagedProvider(ResearchProvider):
                 logger.warning("Lost contact with session %s (%s); will retry", session_id, exc)
             if time.monotonic() > deadline:
                 if interrupted:
-                    # Not TimeoutError: that is an OSError, which the CLI reports
-                    # as a filesystem problem.
-                    raise ProviderError(
+                    raise ProviderTimeoutError(
                         self.name,
                         f"session {session_id} did not settle {_INTERRUPT_GRACE_SECONDS}s "
                         f"after being interrupted; collect it later with "

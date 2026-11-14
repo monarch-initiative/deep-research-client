@@ -4,11 +4,11 @@
 
 # deep-research-client
 
-A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, Google Antigravity, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
+A simple Python wrapper for multiple deep research tools including OpenAI Deep Research, Edison Scientific (formerly FutureHouse Falcon), Asta scientific corpus retrieval, Perplexity AI, Consensus Academic Search, Cyberian agent-based research, OpenScientist autonomous research, Claude Code, Claude Managed Agents, Google Antigravity, and Biomni (biomedical co-scientist), plus retrieval of ToxIndex Sage (chemical safety) conversations.
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Google Antigravity (local CLI), and Biomni (biomedical co-scientist)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Claude Managed Agents (hosted sandbox), Google Antigravity (local CLI), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -31,10 +31,10 @@ uvx deep-research-client research "What is CRISPR?"
 # Or add to a uv project
 uv add deep-research-client
 
-# With reference validation (checks cited identifiers actually exist)
-pip install "deep-research-client[validation]"
+# Reference validation (checks cited identifiers exist and quotes are real) is
+# part of the base install and runs on every research call.
 
-# With ontology term validation (checks cited CURIEs are the terms they are named as)
+# With ontology terms: asked for and checked only when you pass --ontology-config
 pip install "deep-research-client[terms]"
 
 # With the Edison Scientific (Falcon) provider; its SDK brings LiteLLM, so it is
@@ -80,6 +80,9 @@ pip install deep-research-client[cyberian]
 # For Claude Code - just install the `claude` CLI and have it authenticated.
 # Auto-detected when `claude` is on PATH; no separate API key needed.
 # Set DISABLE_CLAUDE_CODE_PROVIDER=true to opt out of auto-detection.
+
+# For Claude Managed Agents (a coordinator, retriever and writer team in an Anthropic-hosted sandbox)
+export ANTHROPIC_API_KEY="sk-ant-..."
 
 # For Google Antigravity - install the `agy` CLI and authenticate it once.
 # Auto-detected when `agy` is on PATH; no separate API key needed.
@@ -171,20 +174,20 @@ deep-research-client models --provider perplexity --detailed
 deep-research-client list-cache   # Show cached files
 deep-research-client clear-cache  # Remove all cache
 
-# Check that cited identifiers exist and quotes are real (needs the `validation` extra)
-deep-research-client research "Statins and myopathy" --output report.md --validate-references
+# Cited identifiers and quotes are checked by default (--no-validate-references to skip)
+deep-research-client research "Statins and myopathy" --output report.md
 deep-research-client validate-references report.md --fail-on-unresolved
 
-# Check that cited ontology terms are the terms the report names them as (needs the `terms` extra)
-deep-research-client research "Marfan syndrome surveillance" --output report.md --validate-terms
-deep-research-client validate-terms report.md --fail-on-unresolved
+# Ask for ontology terms from your chosen ontologies, and check them (needs the `terms` extra)
+deep-research-client research "Marfan syndrome surveillance" --output report.md --ontology-config ontologies.yaml
+deep-research-client validate-terms report.md --ontology-config ontologies.yaml --fail-on-unresolved
 ```
 
 You can provide the research question directly as a positional argument, read it from a file with `--input-file`, or generate it from a template (`--template`). These modes are mutually exclusive to keep intent clear.
 
 ### Reference Validation
 
-Deep research tools confabulate citations. With the `validation` extra installed, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference.
+Deep research tools confabulate citations. By default, every PMID, DOI, PMC accession and GEO accession in a report is resolved against PubMed, Crossref, DataCite and Entrez, and any quote written as `"quoted text" (PMID:12345678)` is checked against the title, abstract and full text of that reference.
 
 Resolving is not the same as being relevant, so each resolved record is also weighed against the report's own vocabulary - which catches the citation that is real, quotable and about an entirely different subject:
 
@@ -483,6 +486,35 @@ result = client.research(
 - **Refusals and from-memory answers are not reports:** a run that retrieved nothing (no web search, and no tool call that was allowed and not bookkeeping), whatever it cites, or that the model marked `**Incomplete report:**`, or that cites no source (URL, PMID or DOI) and reads as a refusal of the report (e.g. after a safety-classifier halt) is still written, but marked `answer_status: unsuccessful` with `run_metadata.unsuccessful_reason`, not cached, and the CLI exits 4.
 - **Retrieve first:** every run's system prompt (default or custom) gets a directive to retrieve sources before writing, cite each claim inline, state nothing it did not retrieve in the session, and, if it cannot finish, return a partial report opening with `**Incomplete report:**` instead of nothing. See docs/reference/providers.md, "What every run is told".
 - **Full-response capture:** every assistant message forms the report, so narration between tool calls appears alongside the research, and `citation_count` includes URLs mentioned in that narration.
+
+#### Claude Managed Agents-Specific Parameters (Hosted Sandbox)
+
+This provider runs a research team in an Anthropic-hosted sandbox through [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview). A coordinator (Opus) plans the review and fans sub-questions out to retriever agents (Haiku), which save each source's text verbatim as an evidence file plus a findings card of quoted findings. Section writers (Sonnet) write the report from the cards, citing by identifier (`PMID:5568449`) and quoting word for word, and the coordinator assembles it. A separate grader checks that citations support their sentences and sends the team back until a rubric is met.
+
+```python
+from deep_research_client.provider_params import ClaudeManagedParams
+
+params = ClaudeManagedParams(
+    model="opus",                        # coordinator; or "sonnet", or any Claude model ID
+    retriever_model="claude-haiku-5-5",  # retrievers, which do most of the reading
+    writer_model="claude-sonnet-5-5",    # section writers
+    max_iterations=5,                    # grader revision cycles, 1-20
+    max_cost_usd=20.0,                   # hard per-session cap; None removes it
+)
+
+result = client.research(
+    "What are the mechanisms of autophagy in cancer?",
+    provider="claude_managed",
+    provider_params=params
+)
+```
+
+**Notes:**
+- Billed to `ANTHROPIC_API_KEY`: tokens, web searches, and $0.08 per running session-hour.
+- The report is checked locally against its evidence files, for cited identifiers with no evidence file and quotations not found in their source's text. Failures are sent back into the session for the coordinator to fix (`max_repair_rounds`, default 2); a report still failing is marked unsuccessful. Because citations are identifiers, `--validate-references` works on the report too.
+- `run_metadata` also records the session ID, the grader's verdict and explanation, and usage. Sessions are kept by default (`delete_session=False`) so their event history can be inspected.
+- A run stopped by the cost cap, a refusal or the timeout is still written, but marked `answer_status: unsuccessful`.
+- See docs/reference/providers.md, "Claude Managed Agents", for the evidence file format and the networking trade-off.
 
 #### Google Antigravity-Specific Parameters (Local CLI)
 

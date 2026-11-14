@@ -590,6 +590,120 @@ class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
     )
 
 
+class ClaudeManagedParams(ArtifactSelectionParams):
+    """Parameters for the Claude Managed Agents provider.
+
+    The provider runs a coordinator agent that plans, fans sub-questions out to
+    retriever agents in a workflow run, and writes the report from the evidence
+    they save, with an outcome rubric that a separate grader checks after each
+    turn. ``model`` is the coordinator's model: a Claude model ID or one of the
+    card aliases (``opus``, ``sonnet``). ``retriever_model`` is the retrievers'.
+    Artifact selection is inherited from :class:`ArtifactSelectionParams`, with
+    one provider default: only ``PLAN.md`` is returned as an artifact. The
+    retrievers' evidence files (around 200 a run) are read for the evidence
+    check and the citation list but not saved, unless named by
+    ``artifact_include_globs`` (``*.md`` for all of them).
+
+    >>> params = ClaudeManagedParams(max_cost_usd=2.5)
+    >>> (params.retriever_model, params.max_iterations, params.max_cost_usd)
+    ('claude-haiku-5-5', 5, 2.5)
+    """
+
+    retriever_model: str = Field(
+        default="claude-haiku-5-5",
+        min_length=1,
+        description=(
+            "Model for the retriever agents, which read sources and save their text. "
+            "Most of a run's tokens are theirs, so a small model keeps it cheap"
+        )
+    )
+    writer_model: str = Field(
+        default="claude-sonnet-5-5",
+        min_length=1,
+        description=(
+            "Model for the section writers, each of which writes one report section "
+            "from the findings cards for it, so no single context holds every source"
+        )
+    )
+    task_file: Optional[str] = Field(
+        default=None,
+        description=(
+            "Jinja template for the task sent to the coordinator, with a query "
+            "variable (defaults to the bundled managed-task.md)"
+        )
+    )
+    rubric_file: Optional[str] = Field(
+        default=None,
+        description=(
+            "Markdown rubric the grader scores the outputs against (defaults to the "
+            "bundled managed-rubric.md)"
+        )
+    )
+    max_iterations: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Most grader revision cycles before the session stops (API limit 20)"
+    )
+    max_cost_usd: Optional[float] = Field(
+        default=20.0,
+        gt=0,
+        description=(
+            "Hard ceiling on the session's list cost in USD. The session stops at "
+            "the cap and whatever it has written is returned, marked unsuccessful. "
+            "None removes the cap."
+        )
+    )
+    allowed_hosts: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Hosts the sandbox, web search and web fetch may reach. Empty means "
+            "unrestricted networking, which research usually needs; listing hosts "
+            "switches the environment to limited networking."
+        )
+    )
+    max_repair_rounds: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description=(
+            "How many times DRC sends a failed evidence check (a quotation not in its "
+            "cited evidence, or a cited identifier with no evidence file) back into the "
+            "session for the coordinator to fix. A report still failing after these "
+            "rounds is marked unsuccessful. 0 marks it unsuccessful without a repair"
+        )
+    )
+    poll_interval: float = Field(
+        default=15.0,
+        ge=1.0,
+        description="Seconds between session status checks"
+    )
+    timeout: int = Field(
+        default=3600,
+        ge=60,
+        description=(
+            "Maximum seconds to wait for the session before interrupting it. "
+            "Overridden by ProviderConfig.timeout when that is set."
+        )
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Reattach to an existing session instead of starting one: wait for it to "
+            "finish, then collect, check and repair its outputs as for a new run. For "
+            "recovering a run whose client lost contact with a session that went on "
+            "without it. The session runs on whatever agent it was created with"
+        )
+    )
+    delete_session: bool = Field(
+        default=False,
+        description=(
+            "Delete the session once its outputs are downloaded. Kept by default: "
+            "its event history records every search and fetch the agent made."
+        )
+    )
+
+
 class AntigravityParams(BaseProviderParams):
     """Parameters specific to the Google Antigravity research provider.
 
@@ -799,6 +913,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "cyberian": CyberianParams,
     "openscientist": OpenScientistParams,
     "claude_code": ClaudeCodeParams,
+    "claude_managed": ClaudeManagedParams,
     "antigravity": AntigravityParams,
     "biomni": BiomniParams,
     "tooluniverse": ToolUniverseParams,

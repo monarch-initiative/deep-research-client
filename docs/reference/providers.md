@@ -14,6 +14,7 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
+| Claude Managed Agents | `ANTHROPIC_API_KEY` | Hosted research team; quotes traceable to retrieved evidence, checked by a grader | Very slow |
 | Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
@@ -43,6 +44,7 @@ and the value is recorded in the report's `provider_config.timeout`.
 | OpenScientist | How long to wait for the job before cancelling it. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | Cyberian | How long cyberian waits for the agent to finish each workflow task | 1800 s |
 | Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
+| Claude Managed Agents | How long the session may run, repair turns included, before it is interrupted and its outputs collected. A session that does not settle after the interrupt raises a timeout naming the session, which `--param session_id=` can collect later | 3600 s |
 | Antigravity | How long the whole `agy` run may take before it is killed. `agy`'s own `--print-timeout` is left at its default of no limit, so this outer kill governs; set `print_timeout` to pass one through | 1800 s |
 | Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
@@ -578,6 +580,264 @@ actual model(s) used and run provenance (`run_metadata`).
 - The `stream-json` output carries every tool result, including full fetched page
   bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
   correctness problem, but worth knowing for long runs.
+
+---
+
+## Claude Managed Agents
+
+This provider runs a small research team in an Anthropic-hosted sandbox through
+[Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview).
+It is built for reports whose citations have to be traceable: every identifier
+and quotation in the report should come from text an agent actually retrieved
+in the session.
+
+### How the team works
+
+1. **Plan.** A coordinator agent (Opus 5.5 by default) writes `PLAN.md`: its
+   interpretation of the question and four to twelve sub-questions.
+2. **Retrieve.** The coordinator starts a
+   [workflow run](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration#dynamic-workflows)
+   that gives each sub-question to its own retriever agent (Haiku 5.5 by
+   default). Each retriever saves up to six sources, each as an *evidence
+   file* in `citations/` holding the source's text verbatim, plus a *findings
+   card* (`<key>.findings.md`): one terse line per finding, each with a
+   verbatim quote. A second, smaller run fills gaps.
+3. **Write.** The coordinator assigns cards to sections by their headers and
+   starts a second workflow run of writer agents (Sonnet 5.5 by default), each
+   writing a group of related sections from its cards within a word budget,
+   citing by identifier and quoting the cards word for word. The coordinator
+   writes the introduction and Open Questions from the writers' summaries,
+   assembles `REPORT.md`, and generates the References with a script.
+4. **Grade.** The whole task is a Managed Agents *outcome*. After each turn a
+   separate grader, in its own context window, checks the report and evidence
+   files against a rubric (`workflows/managed-rubric.md`). It looks at what a
+   mechanical check cannot: whether each cited source supports the sentence
+   it is attached to, whether the sources are relevant, whether disagreement
+   is reported. It sends the coordinator back until the rubric is met or
+   `max_iterations` is reached. The grader has no web access, so it judges the
+   evidence files, not the live sources.
+
+Retrieval is where most tokens go (raw pages and abstracts), so it runs on the
+small model in many short contexts, and retrievers are told to `grep` long
+texts rather than read them. No single context holds every source: the
+coordinator reads card headers and writers' summaries, and each writer reads
+only its own cards, so the coordinator's cost does not grow with the number of
+sources. All agents share one sandbox filesystem, so the evidence files and
+cards are how they hand work to each other.
+
+The prompts are in `src/deep_research_client/workflows/`: `managed-task.md`
+(the task, a Jinja template), `managed-coordinator.md`, `managed-retriever.md`,
+`managed-writer.md` and `managed-rubric.md`.
+
+### Evidence files
+
+One file per source, `citations/<key>.md`, YAML frontmatter then the text as
+retrieved:
+
+```markdown
+---
+key: hodges-1971-clinical-manifestations
+identifiers:
+  - PMID:5568449
+  - DOI:10.1093/ajcn/24.4.432
+title: Clinical manifestations of ascorbic acid deficiency in man
+source_url: https://pubmed.ncbi.nlm.nih.gov/5568449/
+content: abstract
+---
+<the abstract, verbatim>
+```
+
+`content` is `abstract`, `fulltext` or `excerpt`. A retriever may also save the
+original PDF as `<key>.pdf`. The parser is
+`deep_research_client.validation.evidence.parse_evidence_file`.
+
+### Report format
+
+The report cites by identifier, so `validate-references` and claims extraction
+work on it unchanged:
+
+```markdown
+Scurvy appears within weeks of a diet without vitamin C (PMID:5568449). In the
+Iowa depletion study, "the first signs of scurvy appeared after 29 days"
+(PMID:5568449).
+
+## References
+- PMID:5568449 Hodges RE et al. 1971. Clinical manifestations of ascorbic acid deficiency in man. evidence: citations/hodges-1971-clinical-manifestations.md
+```
+
+### The evidence check, and repair turns
+
+After the session's turn ends, DRC checks the report against the evidence
+files, with no network access:
+
+- **Cited without evidence**: identifiers the report cites that no evidence
+  file carries. These were recalled, not retrieved.
+- **Unanchored quotes**: each quotation written `"..." (ID)` is looked for in
+  the text of that identifier's evidence file, using the claims-anchoring
+  matcher (verbatim, or after normalising whitespace, markdown and quotation
+  marks). A changed number, or a real quote attributed to the wrong paper,
+  fails.
+
+If the check fails, DRC sends the failures back into the same session as a
+message, listing each quote and identifier and how to fix it (copy the
+passage exactly, cite the right source, retrieve the missing source, or drop
+the claim). The coordinator edits `REPORT.md`, ends its turn, and DRC checks
+again, up to `max_repair_rounds` times (default 2). A report still failing
+after that is marked unsuccessful. Repair turns are cheap, since only the
+coordinator works, and they share the session's cost cap and timeout. No
+repair is attempted after the cost cap, a refusal or a timeout, since the
+session cannot take another turn. The coordinator is also told to run the
+same kind of check itself (`grep -F` each quotation against its evidence
+file) before ending each turn, so most errors are fixed before DRC sees them.
+
+`run_metadata.evidence_check` records the final check, `repair_rounds` how
+many repairs were requested, and `repair_history` the counts from each failed
+check that was sent back.
+
+The check shows traceability, not truth: whether a traced quote supports its
+sentence is the grader's job, and whether an identifier resolves is
+`validate-references`'.
+
+### Setup
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+The provider is registered whenever `ANTHROPIC_API_KEY` is set. Managed Agents
+is in beta (header `managed-agents-2026-04-01`, which the SDK sends).
+`deep-research-client providers --check --provider claude_managed` lists one
+agent to prove the key and access.
+
+### Models
+
+The `model` parameter is the coordinator's model:
+
+| Model | Alias | Notes |
+|-------|-------|-------|
+| `claude-opus-5-5` | `opus`, `claude-managed` | Default |
+| `claude-sonnet-5-5` | `sonnet` | Cheaper synthesis |
+
+Any other Claude model ID is passed through. `retriever_model` (default
+`claude-haiku-5-5`) is the retrievers', and `writer_model` (default
+`claude-sonnet-5-5`) the section writers'.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import ClaudeManagedParams
+
+params = ClaudeManagedParams(
+    model="opus",                         # coordinator
+    retriever_model="claude-haiku-5-5",   # retrievers
+    writer_model="claude-sonnet-5-5",     # section writers
+    max_iterations=5,        # grader revision cycles, 1-20
+    max_repair_rounds=2,     # evidence-check repairs before the report is marked unsuccessful
+    max_cost_usd=20.0,       # hard per-session cap at list prices, retrievers included; None removes it
+    allowed_hosts=[],        # empty = unrestricted networking (see Security)
+    allowed_domains=[],      # harmonized: limit web search and fetch to these domains
+    timeout=3600,            # then the session is interrupted and its outputs collected
+    poll_interval=15.0,
+    delete_session=False,    # keep the session and its event history
+    session_id=None,         # reattach to an existing session instead of starting one
+    task_file=None,          # defaults to the bundled managed-task.md
+    rubric_file=None,        # defaults to the bundled managed-rubric.md
+)
+```
+
+Only `PLAN.md` comes back as an artifact by default. The evidence files, around
+200 a run, are downloaded and used for the evidence check and the citation
+list, but not saved with the report: they are the provider's working store, and
+the session keeps them. To save them too, name them with
+`artifact_include_globs` (`--param 'artifact_include_globs=*.md'` for all).
+The other artifact selection fields work as described in
+[Artifact selection](#artifact-selection).
+
+### How a session becomes a result
+
+1. The retriever, writer and coordinator agents and the cloud environment are
+   created on first use and reused afterwards. Each is named
+   `deep-research-client-<fingerprint>`, a hash of its definition, so changing
+   a model, prompt or networking makes a new one rather than editing the old.
+2. A session is created with the outcome as its first event, so it starts
+   immediately, with a budget if `max_cost_usd` is set.
+3. The provider polls the session. When it is idle, the event history is read:
+   the run is over once the grader has given a final verdict, or the session
+   stopped for any other reason (cost cap, refusal, exhausted retries).
+4. The session's files are listed through the Files API (`scope_id` = session)
+   and downloaded. `REPORT.md` is the report. Markdown files with evidence
+   frontmatter are the evidence, and each one's first identifier (or URL) is a
+   citation. `PLAN.md`, and any file named by `artifact_include_globs`, become
+   artifacts. Files come back flat: `citations/hodges-1971.md` is listed as `hodges-1971.md`.
+
+`run_metadata` records `session_id`, `agent_id`, `environment_id`,
+`retriever_model`, `writer_model`, `workflow_runs`, `stop_reason`, `outcome_result`,
+`outcome_iterations`, `grader_explanation`, `evidence_check`, `repair_rounds`,
+`repair_history`, token counts,
+web search and fetch counts, `list_cost_usd` and `active_seconds`. Usage covers
+the whole session, retrievers, writers and grader included. With the session kept, its
+threads in the Claude Console show every search and fetch each agent made.
+
+### Recovering a run whose client lost contact
+
+The session runs on Anthropic's side whether or not the client is watching. A
+brief network outage while polling is logged and retried until the timeout,
+but a client that dies or exits outright leaves the session running unwatched.
+To collect it, run the same command again with
+`--param session_id=sesn_...` (the ID is in the log, and in
+`client.beta.sessions.list()`). The provider then waits for that session,
+collects its outputs, and checks and repairs them exactly as for a new run,
+without starting or paying for another session.
+
+### Runs that are not a finished report
+
+These are written but marked `answer_status: unsuccessful`, not cached, and the
+CLI exits 4:
+
+- the session reached `max_cost_usd`
+- a safety classifier refused the session's output (the category, such as
+  `bio`, is in the reason). The platform records this in the idle event's stop
+  details, with the stop reason still `end_turn`
+- the session was interrupted at `timeout`
+- the grader found the rubric did not apply, or never ran
+- the report still failed the evidence check after `max_repair_rounds` repairs
+
+A run that used up `max_iterations` without satisfying the grader is *not*
+flagged: the report is complete and the grader's last explanation is in
+`run_metadata.grader_explanation`. A terminated session, exhausted retries
+(a billing error raises `ProviderBillingError`), or a pause for tool
+confirmation raises an error naming the session. A session that stops before
+writing `REPORT.md` raises an error naming the stop reason (for the cost cap,
+it says to raise `max_cost_usd`).
+
+### Security
+
+The default environment uses **unrestricted** networking, because research
+needs to reach sites that cannot be listed in advance. The sandbox holds
+nothing but the query and what the agents download, so there are no secrets to
+exfiltrate, but fetched pages can still steer an agent (prompt injection), and
+bash can send requests anywhere. To lock it down, list hosts in
+`allowed_hosts`: the environment switches to limited networking, which also
+restricts web search and fetch to those hosts (package registries stay
+reachable so agents can install converters). Entries in `allowed_domains`
+must then fall within `allowed_hosts`, or session creation fails.
+
+### Characteristics
+
+- **Cost**: tokens at API rates, web search at $10 per 1,000 searches, and
+  $0.08 per running session-hour, capped per session by `max_cost_usd`
+- **Speed**: Very slow (tens of minutes)
+- **Capabilities**: Web search, citation tracking, code execution, evidence synthesis
+- **Auth**: `ANTHROPIC_API_KEY`
+
+### Limitations
+
+- Beta API; behaviour may change between releases
+- Sessions persist until deleted and are not eligible for zero data retention
+  or HIPAA
+- Workflow runs count against your Messages API rate limits for each model;
+  a wide fan-out on a low tier can be throttled
+- Non-deterministic results
 
 ---
 

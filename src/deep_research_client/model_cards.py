@@ -678,6 +678,68 @@ def create_claude_code_model_cards() -> ProviderModelCards:
     )
 
 
+def create_claude_managed_model_cards() -> ProviderModelCards:
+    """Create model cards for the Claude Managed Agents provider.
+
+    Card names are the coordinator's Claude model IDs, so the provider's
+    resolved ``model`` can be passed to the API as it is. The retrievers' model
+    is a parameter, ``retriever_model``.
+
+    >>> cards = create_claude_managed_model_cards()
+    >>> cards.resolve_model_name("sonnet")
+    'claude-sonnet-5-5'
+    """
+
+    def card(model_id: str, display: str, aliases: List[str], cost: CostLevel) -> ModelCard:
+        return ModelCard(
+            name=model_id,
+            display_name=f"Claude Managed Agents ({display})",
+            description=(
+                "Runs a research team in an Anthropic-hosted sandbox. This model "
+                "coordinates: it plans, fans sub-questions out to retriever agents "
+                "(Haiku by default) that save each source's text verbatim, then writes "
+                "the report from that evidence, citing by identifier and quoting it "
+                "word for word. A separate grader checks that citations support their "
+                "sentences and sends the team back until a rubric is met."
+            ),
+            cost_level=cost,
+            time_estimate=TimeEstimate.VERY_SLOW,
+            capabilities=[
+                ResearchCapability.web_search,
+                ResearchCapability.citation_tracking,
+                ResearchCapability.code_interpretation,
+                ResearchCapability.evidence_synthesis,
+            ],
+            archetype=ProviderArchetype.agentic_researcher,
+            resources=[ResearchResource.general_web],
+            aliases=aliases,
+            pricing_notes=(
+                "Billed to ANTHROPIC_API_KEY: model tokens at API rates, web search at "
+                "$10 per 1,000 searches, and $0.08 per running session-hour. Each "
+                "session is capped by max_cost_usd (default $20)."
+            ),
+            use_cases=[
+                "Literature reviews whose quotes and identifiers must be traceable to retrieved text",
+                "Research that downloads and converts full texts in a sandbox",
+                "Runs whose stopping point is checked by an independent grader",
+            ],
+            limitations=[
+                "Managed Agents is in beta; behaviour may change between releases",
+                "Sessions are not eligible for zero data retention or HIPAA",
+                "The grader has no web access, so it checks the saved evidence files, not the sources",
+                "Non-deterministic results",
+            ],
+        )
+
+    opus = card("claude-opus-5-5", "Opus 5.5", ["opus", "claude-managed"], CostLevel.HIGH)
+    sonnet = card("claude-sonnet-5-5", "Sonnet 5.5", ["sonnet"], CostLevel.MEDIUM)
+    return ProviderModelCards(
+        provider_name="claude_managed",
+        default_model=opus.name,
+        models={opus.name: opus, sonnet.name: sonnet},
+    )
+
+
 def create_antigravity_model_cards() -> ProviderModelCards:
     """Create model cards for the Google Antigravity research provider."""
 
@@ -1120,6 +1182,7 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
     "claude_code": create_claude_code_model_cards(),
+    "claude_managed": create_claude_managed_model_cards(),
     "antigravity": create_antigravity_model_cards(),
     "deeper_med": create_deeper_med_model_cards(),
     "toxindex": create_toxindex_model_cards(),

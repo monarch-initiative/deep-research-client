@@ -24,6 +24,9 @@ dependencies = [
   "pyyaml >= 6.0",
   "jinja2>=3.1.6",
   "cyberian>=0.2.2",
+  "anthropic>=2.0.0",
+  # Reference validation runs on every research call by default.
+  "linkml-reference-validator>=0.2.1",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +62,8 @@ biomni = [
     # stack until that became the edison extra (#92).
     "tqdm>=4.0",
 ]
+# Kept so existing `deep_research_client[validation]` installs keep working;
+# reference validation is now part of the base install.
 validation = [
     "linkml-reference-validator>=0.2.1",
 ]
@@ -121,6 +126,7 @@ packages = ["src/deep_research_client"]
 # Include all files in workflows and templates directories
 include = [
   "src/deep_research_client/workflows/*.yaml",
+  "src/deep_research_client/workflows/*.md",
   "src/deep_research_client/templates/*.j2",
   "src/deep_research_client/schema/*.yaml",
   "src/deep_research_client/validation/*.yaml",

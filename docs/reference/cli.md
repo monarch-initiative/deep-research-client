@@ -48,15 +48,16 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--keyword TEXT` | Keyword/tag for the research (repeatable) |
 | `--author TEXT` | Primary author of the research |
 | `--contributor TEXT` | Contributor to the research (repeatable) |
-| `--validate-references` | Resolve every cited identifier and append a validation section |
-| `--validation-cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
+| `--validate-references / --no-validate-references` | Resolve every cited identifier, check quotes attributed to it, and append a validation section (default: on) |
+| `--validation-cache-dir PATH` | Directory for cached reference lookups (default: `~/.deep_research_cache/references`) |
 | `--validation-email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
 | `--validation-full-text` | Fetch full text as well as abstracts when validating (~23x slower) |
 | `--validation-max-references INT` | Stop after validating this many references |
 | `--validation-skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
 | `--validation-rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
 | `--validation-relevance / --validation-no-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
-| `--validate-terms` | Resolve every cited ontology CURIE, check it against the label the report gave it, and append a validation section |
+| `--ontology-config PATH` | OAK-style YAML whose `ontology_adapters` keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses `--term-adapter`). Asks the provider for CURIEs from those ontologies only, and validates them; terms from other ontologies are reported as not configured. Implies `--validate-terms` |
+| `--validate-terms` | Resolve every cited ontology CURIE, whatever its ontology, check it against the label the report gave it, and append a validation section. Asks the provider for nothing |
 | `--term-adapter TEXT` | OAK adapter to resolve terms through (default: `ols:`; `sqlite:obo:` for bulk work) |
 | `--term-oak-config PATH` | `oak_config.yaml` mapping prefixes to adapters, for ontologies the default adapter does not serve |
 | `--term-cache-dir PATH` | Directory for cached term labels (default: `./terms_cache`) |
@@ -68,9 +69,9 @@ deep-research-client research [OPTIONS] [QUERY]
 
 When `--output` is provided, any non-text artifacts recovered with the report are written beside it in an `OUTPUT_STEM_artifacts/` directory and linked from the generated markdown.
 
-The `--validate-*` options require the optional `validation` extra; see [validate-references](#validate-references) and the [Validate References how-to](../how-to/validate-references.md). Validation runs *after* the report has been written or printed, so a lookup service being unreachable never costs you the research result; that case exits with code `3`. On a cold cache it adds roughly 10-25% to the wall time of the research call, and next to nothing on a warm one.
+Reference validation is on by default; see [validate-references](#validate-references) and the [Validate References how-to](../how-to/validate-references.md). Validation runs *after* the report has been written or printed, so a lookup service being unreachable never costs you the research result; that case exits with code `3`. On a cold cache it adds roughly 10-25% to the wall time of the research call, and next to nothing on a warm one.
 
-The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). They behave the same way: term validation runs after the report is written, and an unreachable ontology service exits with code `3` without costing you the research result. `--validate-references` and `--validate-terms` compose - passing both appends both sections.
+Ontology terms are off by default: a report is neither asked for them nor checked for them unless you pass `--ontology-config` (or `--validate-terms`, to check whatever the report cites). The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). Term validation runs after the report is written, and an unreachable ontology service exits with code `3` without costing you the research result. The two validators are independent: when one fails, the other's section is still written.
 
 #### Examples
 
@@ -151,11 +152,7 @@ Check that the references cited in a saved report actually exist, and that quote
 deep-research-client validate-references [OPTIONS] FILES...
 ```
 
-Requires the optional `validation` extra:
-
-```bash
-pip install "deep_research_client[validation]"
-```
+Part of the base install.
 
 #### Arguments
 
@@ -169,7 +166,7 @@ pip install "deep_research_client[validation]"
 |--------|-------------|
 | `--check-quotes / --no-check-quotes` | Check quoted claims against the text of the reference they cite (default: on) |
 | `--check-relevance / --no-check-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
-| `--cache-dir PATH` | Directory for cached reference lookups (default: `./references_cache`) |
+| `--cache-dir PATH` | Directory for cached reference lookups (default: `~/.deep_research_cache/references`) |
 | `--email TEXT` | Contact email for the NCBI Entrez API (defaults to `$NCBI_EMAIL`) |
 | `--full-text` | Fetch full text as well as abstracts (~23x slower, better quote checks) |
 | `--max-references INT` | Stop after validating this many references per file |

@@ -2417,9 +2417,10 @@ def test_cli_research_warns_only_about_flags_actually_passed(
     assert "has no effect" not in result.output
 
 
-def test_cli_research_warns_about_a_flag_passed_without_validation(
+def test_cli_research_warns_about_a_flag_passed_with_validation_turned_off(
     tmp_path: Path, monkeypatch
 ) -> None:
+    """Validation is on by default, so a validation flag is dead only beside --no-validate-references."""
     monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
 
     result = CliRunner().invoke(
@@ -2430,13 +2431,30 @@ def test_cli_research_warns_about_a_flag_passed_without_validation(
             "--provider",
             "mock",
             "--no-cache",
+            "--no-validate-references",
             "--validation-skip-prefix",
             "DOI",
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert "--validation-skip-prefix has no effect" in result.output
+    assert "--validation-skip-prefix has no effect with --no-validate-references" in result.output
+    assert "## Reference Validation" not in result.output
+
+
+def test_cli_research_validates_references_by_default(tmp_path: Path, monkeypatch) -> None:
+    """No flag needed: the validation section is written unless it is turned off."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app,
+        ["research", "widgets", "--provider", "mock", "--no-cache",
+         "--validation-cache-dir", str(tmp_path / "refs")],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "## Reference Validation" in result.output
+    assert "has no effect" not in result.output
 
 
 def test_cli_research_validation_flags_reach_the_validator(

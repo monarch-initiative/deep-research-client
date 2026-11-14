@@ -37,6 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
+from ..ontologies import OntologyConfig
 from .label_matching import LabelComparison, compare_labels, label_similarity
 from .sections import strip_validation_section
 from .term_datamodel import LabelAgreement, TermCheck, TermStatus
@@ -88,6 +89,10 @@ class TermValidator:
         check_labels: Whether to compare the labels a report writes beside its
             CURIEs with the terms' own labels. Costs no extra requests: the
             label has already been fetched to check that the term resolves.
+        ontologies: The ontologies the report was asked to cite. When given,
+            terms are resolved through its adapters (an entry with no value
+            using ``adapter``), it replaces ``oak_config``, and a term from any
+            other ontology is reported ``NOT_CONFIGURED`` without a lookup.
 
     Examples:
         >>> validator = TermValidator()
@@ -105,6 +110,7 @@ class TermValidator:
     skip_prefixes: list[str] = field(default_factory=list)
     max_terms: Optional[int] = None
     check_labels: bool = True
+    ontologies: Optional[OntologyConfig] = None
 
     def validate_result(self, result: "ResearchResult") -> TermValidationReport:
         """Validate the ontology terms cited by a :class:`ResearchResult`.
@@ -170,6 +176,22 @@ class TermValidator:
 
         ontology = self._build_ontology_access()
         skipped = {prefix.upper() for prefix in self.skip_prefixes}
+        configured = (
+            {prefix.upper() for prefix in self.ontologies.prefixes} if self.ontologies else None
+        )
+        if configured is not None:
+            # Out-of-scope terms are classified without a lookup: they are skipped
+            # here and given their own status in pass two.
+            skipped |= {term.prefix.upper() for term in terms} - configured
+            # An ontology configured with "" is named but deliberately not
+            # checked. Without this its terms would count as NOT_FOUND, because
+            # being configured is what marks a prefix as one that should resolve.
+            assert self.ontologies is not None
+            skipped |= {
+                prefix.upper()
+                for prefix, adapter in self.ontologies.ontology_adapters.items()
+                if adapter == ""
+            }
 
         # Pass one: look everything up, recording nothing but what came back.
         resolved: dict[str, Optional[str]] = {}
@@ -191,7 +213,9 @@ class TermValidator:
 
         # Pass two: classify, now that each prefix's resolvability is known.
         checks = [
-            self._check_term(term, ontology, resolved, obsolete, skipped, expected)
+            self._not_configured(term)
+            if configured is not None and term.prefix.upper() not in configured
+            else self._check_term(term, ontology, resolved, obsolete, skipped, expected)
             for term in terms
         ]
         unresolvable_prefixes = list(
@@ -215,13 +239,19 @@ class TermValidator:
         """Construct the OAK-backed label resolver this run will use."""
         from linkml_term_validator.utils import OntologyAccess
 
-        return OntologyAccess(
+        access = OntologyAccess(
             oak_adapter_string=self.adapter,
             cache_labels=self.cache_labels,
             cache_dir=Path(self.cache_dir) if self.cache_dir else DEFAULT_CACHE_DIR,
-            oak_config_path=Path(self.oak_config) if self.oak_config else None,
+            oak_config_path=Path(self.oak_config) if self.oak_config and not self.ontologies else None,
             offline=self.offline,
         )
+        if self.ontologies:
+            # The mapping OAK would load from an oak_config.yaml, with empty
+            # entries resolved first: OAK skips an entry with no value, where an
+            # ontology config gives it the default adapter.
+            access.oak_config = self.ontologies.resolved_adapters(self.adapter)
+        return access
 
     def _check_term(
         self,
@@ -313,6 +343,18 @@ class TermValidator:
             for reported in term.labels
         ]
         return min(judged, key=lambda c: (severity[c.agreement], c.similarity))
+
+    @staticmethod
+    def _not_configured(term: FoundTerm) -> TermCheck:
+        """Build the result row for a term from an ontology outside the configured set."""
+        return TermCheck(
+            term_id=term.term_id,
+            prefix=term.prefix,
+            status=TermStatus.NOT_CONFIGURED,
+            occurrences=term.count,
+            reported_labels=list(term.labels),
+            message=f"prefix {term.prefix} is not among the configured ontologies",
+        )
 
     @staticmethod
     def _unverifiable(term: FoundTerm, message: str) -> TermCheck:

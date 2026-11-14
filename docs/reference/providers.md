@@ -556,7 +556,7 @@ in the session.
 2. **Retrieve.** The coordinator starts a
    [workflow run](https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration#dynamic-workflows)
    that gives each sub-question to its own retriever agent (Haiku 5.5 by
-   default). Each retriever saves up to four sources, each as an *evidence
+   default). Each retriever saves up to six sources, each as an *evidence
    file* in `citations/` holding the source's text verbatim, plus a *findings
    card* (`<key>.findings.md`): one terse line per finding, each with a
    verbatim quote. A second, smaller run fills gaps.

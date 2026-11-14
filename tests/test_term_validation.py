@@ -1216,6 +1216,119 @@ def test_lookup_errors_are_reported_as_an_unreachable_service() -> None:
 
 
 # --------------------------------------------------------------------------
+# Issue #111: an unreachable ontology service is survived, not fatal
+# --------------------------------------------------------------------------
+
+
+def _service_error_type():
+    from deep_research_client.validation import lookup_error_types
+
+    types = lookup_error_types()
+    if not types:
+        pytest.skip("terms extra not installed; cannot raise the outage type")
+    return types[0]
+
+
+def test_an_unreachable_term_is_unverifiable_and_the_run_continues(monkeypatch, tmp_path):
+    """Issue #111: one term's service outage must not abort the whole run.
+
+    The unreachable term is kept as UNVERIFIABLE (never NOT_FOUND, which would
+    turn an outage into an accusation), and every term the service can still
+    answer is validated as usual.
+    """
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_models import (
+        SERVICE_UNREACHABLE_MESSAGE,
+        TermStatus,
+    )
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == "HP:0001337":
+                raise ServiceUnavailable("connection timed out")
+            return "Dystonia" if curie == "HP:0001332" else None
+
+        def is_obsolete(self, curie):
+            return False
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: FakeOntology())
+
+    report = validator.validate_terms([
+        FoundTerm(term_id="HP:0001337", prefix="HP"),
+        FoundTerm(term_id="HP:0001332", prefix="HP"),
+    ])
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id["HP:0001337"].status == TermStatus.UNVERIFIABLE
+    assert by_id["HP:0001337"].message == SERVICE_UNREACHABLE_MESSAGE
+    assert by_id["HP:0001332"].status == TermStatus.VERIFIED
+    assert [t.term_id for t in report.service_unreachable_terms] == ["HP:0001337"]
+    # One term timing out must not brand its whole prefix as having no resolver.
+    assert "HP" not in report.unresolvable_prefixes
+
+
+def test_a_total_outage_completes_without_aborting(monkeypatch, tmp_path):
+    """Every term unreachable still returns a report (no traceback), with every
+    term UNVERIFIABLE and none accused of confabulation."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_models import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class DeadOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("service is down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: DeadOntology())
+
+    report = validator.validate_terms([
+        FoundTerm(term_id="HP:0000001", prefix="HP"),
+        FoundTerm(term_id="GO:0000002", prefix="GO"),
+    ])
+
+    assert report.total_terms == 2
+    assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
+    assert len(report.service_unreachable_terms) == 2
+    assert report.not_found_count == 0  # an outage is never read as fabrication
+
+
+def test_to_markdown_flags_unreachable_terms():
+    """The rendered report names the terms the service could not be reached for
+    and tells the reader a re-run may resolve them."""
+    from deep_research_client.validation.term_models import (
+        SERVICE_UNREACHABLE_MESSAGE,
+        TermCheck,
+        TermStatus,
+        TermValidationReport,
+    )
+
+    report = TermValidationReport(terms=[
+        TermCheck(
+            term_id="UBERON:0002107", prefix="UBERON",
+            status=TermStatus.UNVERIFIABLE, occurrences=3,
+            message=SERVICE_UNREACHABLE_MESSAGE,
+        ),
+    ])
+    md = report.to_markdown()
+    assert "could not be reached" in md
+    assert "UBERON:0002107" in md
+    assert "re-run" in md.lower()
+
+
+# --------------------------------------------------------------------------
 # Generated model
 # --------------------------------------------------------------------------
 

@@ -41,7 +41,7 @@ from .label_matching import LabelComparison, compare_labels, label_similarity
 from .sections import strip_validation_section
 from .term_datamodel import LabelAgreement, TermCheck, TermStatus
 from .term_extraction import FoundTerm, extract_terms
-from .term_models import TermValidationReport
+from .term_models import SERVICE_UNREACHABLE_MESSAGE, TermValidationReport
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
     from linkml_term_validator.utils import OntologyAccess
@@ -170,18 +170,40 @@ class TermValidator:
 
         ontology = self._build_ontology_access()
         skipped = {prefix.upper() for prefix in self.skip_prefixes}
+        lookup_errors = lookup_error_types()
 
         # Pass one: look everything up, recording nothing but what came back.
         resolved: dict[str, Optional[str]] = {}
         obsolete: dict[str, bool] = {}
+        unreachable: set[str] = set()
         for index, term in enumerate(terms, start=1):
             if term.prefix.upper() in skipped:
                 continue
             logger.info("Resolving term %d/%d: %s", index, len(terms), term.term_id)
-            label = ontology.get_label(term.term_id)
+            try:
+                label = ontology.get_label(term.term_id)
+            except lookup_errors as exc:
+                # A connectivity failure / 5xx / 408 / 429 for THIS term must not
+                # abort the whole run (issue #111). Record it as unreachable so
+                # pass two marks it UNVERIFIABLE -- never NOT_FOUND, which would
+                # turn an outage into an accusation -- and carry on to the terms
+                # the service can still answer.
+                logger.warning(
+                    "Could not reach the ontology service for %s: %s", term.term_id, exc
+                )
+                unreachable.add(term.term_id)
+                continue
             resolved[term.term_id] = label
             if label is not None:
-                obsolete[term.term_id] = ontology.is_obsolete(term.term_id) is True
+                try:
+                    obsolete[term.term_id] = ontology.is_obsolete(term.term_id) is True
+                except lookup_errors as exc:
+                    # The label resolved; only the obsolescence check failed. Keep
+                    # the resolved term and treat obsolescence as unknown (not
+                    # obsolete) rather than discarding a good lookup.
+                    logger.warning(
+                        "Could not check obsolescence for %s: %s", term.term_id, exc
+                    )
 
         resolvable_prefixes = {
             term.prefix for term in terms if resolved.get(term.term_id) is not None
@@ -191,7 +213,9 @@ class TermValidator:
 
         # Pass two: classify, now that each prefix's resolvability is known.
         checks = [
-            self._check_term(term, ontology, resolved, obsolete, skipped, expected)
+            self._check_term(
+                term, ontology, resolved, obsolete, skipped, expected, unreachable
+            )
             for term in terms
         ]
         unresolvable_prefixes = list(
@@ -200,6 +224,9 @@ class TermValidator:
                 for check in checks
                 if check.status == TermStatus.UNVERIFIABLE
                 and check.prefix.upper() not in skipped
+                # A prefix we merely could not reach is not a prefix with no
+                # resolver (issue #111); those terms are reported separately.
+                and check.term_id not in unreachable
             )
         )
 
@@ -231,10 +258,18 @@ class TermValidator:
         obsolete: dict[str, bool],
         skipped: set[str],
         expected: frozenset[str],
+        unreachable: set[str],
     ) -> TermCheck:
         """Turn one looked-up term into its result row."""
         if term.prefix.upper() in skipped:
             return self._unverifiable(term, f"prefix {term.prefix} was skipped")
+
+        # The service could not be reached for this term (issue #111). It is
+        # UNVERIFIABLE, not NOT_FOUND: a connectivity failure is no evidence the
+        # identifier is wrong. Checked before the resolved-label branch so it is
+        # never mistaken for a term the ontology does not contain.
+        if term.term_id in unreachable:
+            return self._unverifiable(term, SERVICE_UNREACHABLE_MESSAGE)
 
         label = resolved.get(term.term_id)
         if label is None:

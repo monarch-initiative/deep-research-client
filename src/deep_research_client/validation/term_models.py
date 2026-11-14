@@ -31,6 +31,7 @@ from .term_datamodel import TermValidationReport as GeneratedTermValidationRepor
 
 __all__ = [
     "OUTAGE_HINT_MIN_TERMS",
+    "SERVICE_UNREACHABLE_MESSAGE",
     "TERM_VALIDATION_SECTION_HEADING",
     "LabelAgreement",
     "TermCheck",
@@ -43,6 +44,16 @@ __all__ = [
 # that really are wrong. The same floor, for the same reason, as the reference
 # side applies to bibliographies.
 OUTAGE_HINT_MIN_TERMS = 3
+
+# The message a term carries when the ontology service could not be reached to
+# resolve it (issue #111). It stays UNVERIFIABLE -- a connectivity failure, 5xx,
+# 408 or 429 is not evidence the identifier is wrong -- but this exact wording
+# lets the report tell such terms apart from a skipped prefix or an offline
+# cache miss, and tell the reader a re-run may resolve them. Shared with
+# ``term_validator``, which stamps it, so the two cannot drift apart.
+SERVICE_UNREACHABLE_MESSAGE = (
+    "could not reach the ontology service to resolve this term"
+)
 
 
 def _mislabelled_entry(check: TermCheck) -> Dict[str, Any]:
@@ -197,6 +208,30 @@ class TermValidationReport(GeneratedTermValidationReport):
     def unverifiable_count(self) -> int:
         """Number of terms no resolver covered, or that were skipped."""
         return sum(1 for t in self.checked_terms if t.status == TermStatus.UNVERIFIABLE)
+
+    @property
+    def service_unreachable_terms(self) -> List[TermCheck]:
+        """UNVERIFIABLE terms the ontology service could not be reached for.
+
+        A transient connectivity failure (issue #111), told apart from the other
+        unverifiable reasons (a skipped or unknown prefix, an offline cache miss)
+        by its message, so the report can say a re-run may resolve them.
+
+        Examples:
+            >>> r = TermValidationReport(terms=[
+            ...     TermCheck(term_id="HP:1", prefix="HP", status=TermStatus.UNVERIFIABLE,
+            ...               message=SERVICE_UNREACHABLE_MESSAGE),
+            ...     TermCheck(term_id="XX:1", prefix="XX", status=TermStatus.UNVERIFIABLE,
+            ...               message="no configured ontology resolves the prefix XX"),
+            ... ])
+            >>> [t.term_id for t in r.service_unreachable_terms]
+            ['HP:1']
+        """
+        return [
+            t for t in self.checked_terms
+            if t.status == TermStatus.UNVERIFIABLE
+            and t.message == SERVICE_UNREACHABLE_MESSAGE
+        ]
 
     @property
     def resolvable_count(self) -> int:
@@ -568,6 +603,21 @@ class TermValidationReport(GeneratedTermValidationReport):
             for check in self.inconsistently_named_terms:
                 names = ", ".join(f'"{name}"' for name in check.reported_labels or [])
                 lines.append(f"- `{check.term_id}` - called {names}")
+            lines.append("")
+
+        if self.service_unreachable_terms:
+            lines.append("### Terms the ontology service could not be reached for")
+            lines.append("")
+            lines.append(
+                f"{len(self.service_unreachable_terms)} term(s) could not be checked "
+                "because the ontology service was unreachable (a timeout, 5xx, 408 or "
+                "429), not because anything looks wrong with them. Re-run when the "
+                "service is reachable -- the label cache resumes, so only the "
+                "unresolved terms are retried:"
+            )
+            lines.append("")
+            for check in self.service_unreachable_terms:
+                lines.append(f"- `{check.term_id}` ({self._mentions(check)})")
             lines.append("")
 
         if self.unresolvable_prefixes:

@@ -300,6 +300,14 @@ resolve them — the label cache resumes, so only the still-unresolved terms are
 a failure to reach the service at all (for example while building the resolver) surfaces as
 an error with exit code `3`.
 
+This is a behavior change: an outage used to exit with code `3` and write nothing, whereas
+now the run completes and the report is written. A term left `UNVERIFIABLE` by an outage does
+**not** trip `--fail-on-unresolved` (it is not a resolution failure), so a pipeline that
+relied on the old exit `3` to catch an outage will now pass — watch the `service_unreachable`
+count in the frontmatter summary, or treat a high unverifiable count as a signal, until a
+`--fail-on-unreachable` option lands. For a total outage, `--in-place` is skipped rather than
+overwriting an existing section with an all-unverifiable one.
+
 That is why there is no rate-limit delay option here, unlike
 [reference validation](validate-references.md). Running into a limit costs you a re-run of
 the terms that were not reached, not a confidently wrong report.

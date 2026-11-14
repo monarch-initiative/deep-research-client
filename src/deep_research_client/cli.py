@@ -1697,7 +1697,16 @@ def validate_terms_command(
         markdown_report = report.to_markdown()
 
         try:
-            if in_place:
+            if in_place and report.service_unreachable_terms and report.resolvable_count == 0:
+                # A total outage learned nothing; do not overwrite a good existing
+                # section with an all-unverifiable one (#111). Leave the file as it
+                # is and tell the user to re-run when the service is reachable.
+                _warn(
+                    f"Skipped the --in-place update of {path}: the ontology service was "
+                    "unreachable for every term, so any existing validation section was "
+                    "left untouched. Re-run when the service is reachable."
+                )
+            elif in_place:
                 updated = _refresh_validation_frontmatter(
                     content, frontmatter, report.summary(), key="term_validation"
                 )

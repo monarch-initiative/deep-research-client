@@ -64,6 +64,35 @@ DEFAULT_ADAPTER = "ols:"
 #: directory. Mirrors the reference validator's ``./references_cache``.
 DEFAULT_CACHE_DIR = Path("terms_cache")
 
+#: After this many terms fail to resolve in a row, the ontology service is
+#: treated as down and the remaining terms are marked unreachable without
+#: another doomed, timeout-length call (issue #111). It bounds a total outage to
+#: a handful of waits instead of one per term, while still giving a genuinely
+#: intermittent service several chances to answer.
+_CIRCUIT_BREAKER_THRESHOLD = 5
+
+
+@dataclass
+class _LookupResults:
+    """What pass one learned about each term, handed to pass two.
+
+    Bundled into one object so :meth:`TermValidator._check_term` takes the
+    pass-one outcome as a single argument rather than four parallel collections.
+
+    Attributes:
+        resolved: Term id to its ontology label, or None when the lookup
+            returned "no such term".
+        obsolete: Term id to whether it is deprecated (only for resolved terms).
+        unreachable: Term ids the service could not be reached for (issue #111).
+        obsolete_unknown: Resolved term ids whose obsolescence check failed, so
+            "not obsolete" is an assumption rather than a finding.
+    """
+
+    resolved: dict[str, Optional[str]]
+    obsolete: dict[str, bool]
+    unreachable: set[str]
+    obsolete_unknown: set[str]
+
 
 @dataclass
 class TermValidator:
@@ -170,40 +199,59 @@ class TermValidator:
 
         ontology = self._build_ontology_access()
         skipped = {prefix.upper() for prefix in self.skip_prefixes}
-        lookup_errors = lookup_error_types()
+        lookup_errors = _per_term_lookup_errors()
 
-        # Pass one: look everything up, recording nothing but what came back.
+        # Pass one: look everything up, recording nothing but what came back. A
+        # lookup the service cannot answer for one term is tolerated, not fatal
+        # (issue #111): the term is marked unreachable and pass two reports it
+        # UNVERIFIABLE, never NOT_FOUND (which would turn an outage into an
+        # accusation). Once a run of lookups fails in a row the service is taken
+        # to be down and the rest are marked unreachable without another
+        # timeout-length call, so a total outage costs a few waits, not one per
+        # term.
         resolved: dict[str, Optional[str]] = {}
         obsolete: dict[str, bool] = {}
         unreachable: set[str] = set()
+        obsolete_unknown: set[str] = set()
+        consecutive_failures = 0
+        tripped = False
         for index, term in enumerate(terms, start=1):
             if term.prefix.upper() in skipped:
+                continue
+            if tripped:
+                unreachable.add(term.term_id)
                 continue
             logger.info("Resolving term %d/%d: %s", index, len(terms), term.term_id)
             try:
                 label = ontology.get_label(term.term_id)
             except lookup_errors as exc:
-                # A connectivity failure / 5xx / 408 / 429 for THIS term must not
-                # abort the whole run (issue #111). Record it as unreachable so
-                # pass two marks it UNVERIFIABLE -- never NOT_FOUND, which would
-                # turn an outage into an accusation -- and carry on to the terms
-                # the service can still answer.
                 logger.warning(
                     "Could not reach the ontology service for %s: %s", term.term_id, exc
                 )
                 unreachable.add(term.term_id)
+                consecutive_failures += 1
+                if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
+                    logger.warning(
+                        "%d lookups failed in a row; treating the ontology service as "
+                        "unreachable and marking the remaining terms unreachable without "
+                        "calling it",
+                        consecutive_failures,
+                    )
+                    tripped = True
                 continue
+            consecutive_failures = 0
             resolved[term.term_id] = label
             if label is not None:
                 try:
                     obsolete[term.term_id] = ontology.is_obsolete(term.term_id) is True
                 except lookup_errors as exc:
                     # The label resolved; only the obsolescence check failed. Keep
-                    # the resolved term and treat obsolescence as unknown (not
-                    # obsolete) rather than discarding a good lookup.
+                    # the resolved term, but record that obsolescence is unknown so
+                    # an obsolete term is not quietly reported as clean.
                     logger.warning(
                         "Could not check obsolescence for %s: %s", term.term_id, exc
                     )
+                    obsolete_unknown.add(term.term_id)
 
         resolvable_prefixes = {
             term.prefix for term in terms if resolved.get(term.term_id) is not None
@@ -212,10 +260,9 @@ class TermValidator:
         expected = _known_ontology_prefixes() | resolvable_prefixes | configured_prefixes
 
         # Pass two: classify, now that each prefix's resolvability is known.
+        results = _LookupResults(resolved, obsolete, unreachable, obsolete_unknown)
         checks = [
-            self._check_term(
-                term, ontology, resolved, obsolete, skipped, expected, unreachable
-            )
+            self._check_term(term, ontology, results, skipped, expected)
             for term in terms
         ]
         unresolvable_prefixes = list(
@@ -254,11 +301,9 @@ class TermValidator:
         self,
         term: FoundTerm,
         ontology: "OntologyAccess",
-        resolved: dict[str, Optional[str]],
-        obsolete: dict[str, bool],
+        results: _LookupResults,
         skipped: set[str],
         expected: frozenset[str],
-        unreachable: set[str],
     ) -> TermCheck:
         """Turn one looked-up term into its result row."""
         if term.prefix.upper() in skipped:
@@ -268,10 +313,10 @@ class TermValidator:
         # UNVERIFIABLE, not NOT_FOUND: a connectivity failure is no evidence the
         # identifier is wrong. Checked before the resolved-label branch so it is
         # never mistaken for a term the ontology does not contain.
-        if term.term_id in unreachable:
+        if term.term_id in results.unreachable:
             return self._unverifiable(term, SERVICE_UNREACHABLE_MESSAGE)
 
-        label = resolved.get(term.term_id)
+        label = results.resolved.get(term.term_id)
         if label is None:
             # Skipping is matched case-insensitively above, membership here
             # exactly. The asymmetry is deliberate: a prefix written in an
@@ -293,8 +338,17 @@ class TermValidator:
                 message=f"{term.prefix} does not contain this term",
             )
 
-        is_obsolete = obsolete.get(term.term_id, False)
+        is_obsolete = results.obsolete.get(term.term_id, False)
         comparison = self._compare(term, label, ontology)
+        # The label resolved, so the identifier exists and is VERIFIED; but if the
+        # obsolescence check could not be reached, say so, so an obsolete term is
+        # not read as clean just because the check was skipped (issue #111).
+        if is_obsolete:
+            message: Optional[str] = "the term is obsolete"
+        elif term.term_id in results.obsolete_unknown:
+            message = "resolved, but whether it is obsolete could not be checked (service unreachable)"
+        else:
+            message = None
         return TermCheck(
             term_id=term.term_id,
             prefix=term.prefix,
@@ -306,7 +360,7 @@ class TermValidator:
             label_similarity=comparison.similarity,
             matched_synonym=comparison.matched_synonym,
             replaced_by=_replacement_for(ontology, term.term_id) if is_obsolete else None,
-            message="the term is obsolete" if is_obsolete else None,
+            message=message,
         )
 
     def _compare(
@@ -334,7 +388,21 @@ class TermValidator:
         if all(label_similarity(reported, label) == 1.0 for reported in term.labels):
             names = TermNames()
         else:
-            names = _synonyms_for(ontology, term.term_id)
+            try:
+                names = _synonyms_for(ontology, term.term_id)
+            except _per_term_lookup_errors() as exc:
+                # The service went unreachable while fetching synonyms (issue
+                # #111). Without them we cannot tell a synonym match from a
+                # mismatch, so we decline to judge the name rather than raise a
+                # false MISMATCH -- and, crucially, rather than abort the whole
+                # run one step after the label resolved. The term itself still
+                # resolved and stays VERIFIED.
+                logger.warning(
+                    "Could not fetch synonyms for %s; leaving its label unassessed: %s",
+                    term.term_id,
+                    exc,
+                )
+                return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
 
         # Ordered worst to best, so `min` picks the verdict to report.
         severity = {
@@ -430,11 +498,11 @@ def _synonyms_for(ontology: "OntologyAccess", curie: str) -> TermNames:
         try:
             mapping = alias_map(curie)
         except NotImplementedError:
-            # The only failure treated as "this route is not available". Anything
-            # else - a connectivity error above all - is left to propagate, the
-            # same way a failed label lookup is: a run that cannot reach the
-            # ontology should stop rather than quietly report terms as having no
-            # synonyms, which would put the false mismatches back.
+            # "This route is not available" -- fall through to the OLS payload.
+            # A connectivity error is NOT caught here: it propagates to the
+            # caller (``_compare``), which turns it into an unassessed label
+            # rather than a false mismatch, and keeps one unreachable synonym
+            # lookup from aborting the whole run (issue #111).
             mapping = None
         if mapping:
             names = _names_from_alias_map(mapping)
@@ -539,7 +607,15 @@ def _replacement_for(ontology: "OntologyAccess", curie: str) -> Optional[str]:
     if term_dict is None or is_ols is None or adapter is None or not is_ols(adapter):
         return None
 
-    payload = term_dict(adapter, curie)
+    try:
+        payload = term_dict(adapter, curie)
+    except _per_term_lookup_errors() as exc:
+        # The obsolescence check populates this payload, but if its own lookup
+        # failed (issue #111) this call may go back to an unreachable service.
+        # A missing replacement is already reported as "no replacement known",
+        # so degrade to that rather than aborting a run after the label resolved.
+        logger.warning("Could not fetch the replacement for %s: %s", curie, exc)
+        return None
     if not payload:
         return None
     replacement = payload.get("term_replaced_by")
@@ -593,6 +669,22 @@ def lookup_error_types() -> tuple:
     from linkml_term_validator.utils.oak_utils import OntologyServiceUnavailableError
 
     return (OntologyServiceUnavailableError,)
+
+
+def _per_term_lookup_errors() -> tuple:
+    """Exception types to tolerate for a *single* term's lookup (issue #111).
+
+    The resolver's own outage type (see :func:`lookup_error_types`) plus
+    ``OSError``, which is how a raw ``urllib`` network failure surfaces and what
+    the CLI already counts as an unreachable service. ``ValueError`` is kept
+    out: it means a malformed cached record, which should fail fast rather than
+    be swallowed as an outage.
+
+    Examples:
+        >>> OSError in _per_term_lookup_errors()
+        True
+    """
+    return (OSError,) + lookup_error_types()
 
 
 def term_validator_is_available() -> bool:

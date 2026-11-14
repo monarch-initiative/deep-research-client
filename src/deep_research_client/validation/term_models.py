@@ -427,6 +427,10 @@ class TermValidationReport(GeneratedTermValidationReport):
             ]
         if self.unresolvable_prefixes:
             summary["unresolvable_prefixes"] = list(self.unresolvable_prefixes)
+        if self.service_unreachable_terms:
+            # Surfaced so an --in-place overwrite cannot silently trade a good
+            # section for one where the service was simply unreachable (#111).
+            summary["service_unreachable"] = len(self.service_unreachable_terms)
         if self.has_problems or self.obsolete_terms or self.variant_label_terms:
             # Stated rather than implied, so that reading one number off the
             # frontmatter cannot produce a false all-clear.
@@ -605,18 +609,18 @@ class TermValidationReport(GeneratedTermValidationReport):
                 lines.append(f"- `{check.term_id}` - called {names}")
             lines.append("")
 
-        if self.service_unreachable_terms:
+        unreachable = self.service_unreachable_terms
+        if unreachable:
             lines.append("### Terms the ontology service could not be reached for")
             lines.append("")
             lines.append(
-                f"{len(self.service_unreachable_terms)} term(s) could not be checked "
-                "because the ontology service was unreachable (a timeout, 5xx, 408 or "
-                "429), not because anything looks wrong with them. Re-run when the "
-                "service is reachable -- the label cache resumes, so only the "
-                "unresolved terms are retried:"
+                f"{len(unreachable)} term(s) could not be checked because the ontology "
+                "service was unreachable (a timeout, 5xx, 408 or 429), not because "
+                "anything looks wrong with them. Re-run when the service is reachable "
+                "-- the label cache resumes, so only the unresolved terms are retried:"
             )
             lines.append("")
-            for check in self.service_unreachable_terms:
+            for check in unreachable:
                 lines.append(f"- `{check.term_id}` ({self._mentions(check)})")
             lines.append("")
 

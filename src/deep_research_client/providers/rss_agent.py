@@ -23,11 +23,12 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import signal
 import tempfile
 from typing import Optional
 
 from . import ResearchProvider
-from ..exceptions import ProviderError, ProviderNotInstalledError
+from ..exceptions import ProviderError, ProviderNotInstalledError, ProviderTimeoutError
 from ..models import ProviderConfig, ResearchResult
 from ..provider_params import RssAgentParams
 from ..model_cards import ProviderModelCards, create_rss_agent_model_cards
@@ -139,8 +140,10 @@ def prepare_workspace(
     under the project root it runs from. Running it in place would mix a
     research query into the owner's daily digest and hide every paper the
     digest had already shown, so each run gets a fresh project root: copied
-    scripts, a config built from the query, and the checkout's paper library
-    linked read-only.
+    scripts, a config built from the query, and a symlink to the checkout's
+    paper library. The pipeline only reads the library; nothing here makes the
+    symlink read-only, so a script that wrote under ``library/`` would reach
+    the owner's real files.
 
     Args:
         repo_dir: The rss_agent_claude checkout.
@@ -182,6 +185,25 @@ def read_digest_links(csv_path: Path) -> list[str]:
         return [row["link"] for row in csv.DictReader(handle) if row.get("link")]
 
 
+def _kill_process_group(process: "asyncio.subprocess.Process") -> None:
+    """SIGKILL the subprocess's whole process group.
+
+    ``run_pipeline.sh`` spawns the fetch, embedding and scoring scripts as its
+    own children. Killing only the shell would leave those running -- still
+    spending Claude calls and still writing into the workspace that is about to
+    be deleted. With ``start_new_session=True`` the shell leads a new process
+    group whose id is its pid, so signalling the group reaches every child.
+
+    Args:
+        process: The subprocess started with ``start_new_session=True``.
+    """
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        # The group has already exited; there is nothing left to signal.
+        pass
+
+
 class RssAgentProvider(ResearchProvider):
     """Provider that runs a local rss_agent_claude pipeline as a digest search.
 
@@ -214,7 +236,28 @@ class RssAgentProvider(ResearchProvider):
         super().__init__(config, self.params.model)
         repo_dir = self.params.repo_dir or os.getenv(RSS_AGENT_DIR_ENV)
         self.repo_dir = Path(repo_dir).expanduser() if repo_dir else None
-        self.python_bin = self.params.python_bin or os.getenv(RSS_AGENT_PYTHON_ENV) or "python"
+        self.python_bin = (
+            self.params.python_bin
+            or os.getenv(RSS_AGENT_PYTHON_ENV)
+            or self._default_python()
+        )
+
+    def _default_python(self) -> str:
+        """Pick the interpreter to use when the caller named none.
+
+        The README installs the pipeline's requirements into a ``venv`` at the
+        checkout root, so prefer that interpreter when it exists. Only if there
+        is no such venv does this fall back to a bare ``python`` from ``PATH``,
+        which most likely lacks torch and faiss and would fail inside the run.
+
+        Returns:
+            Path to the checkout's venv interpreter if present, else ``python``.
+        """
+        if self.repo_dir is not None:
+            venv_python = self.repo_dir / "venv" / "bin" / "python"
+            if venv_python.is_file():
+                return str(venv_python)
+        return "python"
 
     def get_default_model(self) -> str:
         """Return the default model card identifier."""
@@ -282,7 +325,14 @@ class RssAgentProvider(ResearchProvider):
             "SEMANTIC_THRESHOLD": self.params.semantic_threshold,
             "CROSSREF_DAYS_BACK": self.params.crossref_days_back,
         }
-        env.update({key: str(value) for key, value in knobs.items() if value is not None})
+        # A knob the caller left unset must fall through to the pipeline's own
+        # default, so drop any such value inherited from the ambient environment
+        # (e.g. the owner's daily-digest settings) rather than letting it leak in.
+        for key, value in knobs.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = str(value)
         switches = {
             "SKIP_CROSSREF": self.params.skip_crossref,
             "SKIP_BIORXIV": self.params.skip_biorxiv,
@@ -331,11 +381,11 @@ class RssAgentProvider(ResearchProvider):
                 # generate_markdown.py writes nothing when no article clears
                 # MIN_SCORE. That is an answer about today's feeds, not a
                 # report, so it is marked unsuccessful and not cached.
-                last_line = log.strip().splitlines()[-1] if log.strip() else ""
-                logger.warning("rss_agent_claude produced no digest: %s", last_line)
+                tail = "\n".join(log.strip().splitlines()[-5:])
+                logger.warning("rss_agent_claude produced no digest:\n%s", tail)
                 markdown = (
                     "No recent articles matched these interests closely enough "
-                    f"for a digest.\n\nPipeline said: {last_line}\n"
+                    f"for a digest.\n\nPipeline said:\n{tail}\n"
                 )
                 citations = []
                 successful = False
@@ -365,7 +415,7 @@ class RssAgentProvider(ResearchProvider):
 
         Raises:
             ProviderError: If the pipeline exits non-zero.
-            TimeoutError: If it runs past ``timeout``.
+            ProviderTimeoutError: If it runs past ``timeout``.
         """
         process = await asyncio.create_subprocess_exec(
             "bash", str(workdir / PIPELINE_SCRIPT),
@@ -373,13 +423,23 @@ class RssAgentProvider(ResearchProvider):
             env=self.pipeline_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            # Lead a new process group so a timeout or cancel can take down the
+            # pipeline's child scripts too, not just the bash that launched them.
+            start_new_session=True,
         )
         try:
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            process.kill()
+        except asyncio.CancelledError:
+            _kill_process_group(process)
             await process.wait()
             raise
+        except asyncio.TimeoutError:
+            _kill_process_group(process)
+            await process.wait()
+            raise ProviderTimeoutError(
+                self.name,
+                f"rss_agent_claude pipeline did not finish within {timeout}s",
+            )
         log = stdout.decode("utf-8", errors="replace")
         logger.debug("rss_agent_claude output:\n%s", log)
         if process.returncode != 0:

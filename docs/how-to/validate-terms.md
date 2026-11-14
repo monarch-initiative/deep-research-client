@@ -305,8 +305,10 @@ now the run completes and the report is written. A term left `UNVERIFIABLE` by a
 **not** trip `--fail-on-unresolved` (it is not a resolution failure), so a pipeline that
 relied on the old exit `3` to catch an outage will now pass — watch the `service_unreachable`
 count in the frontmatter summary, or treat a high unverifiable count as a signal, until a
-`--fail-on-unreachable` option lands. For a total outage, `--in-place` is skipped rather than
-overwriting an existing section with an all-unverifiable one.
+`--fail-on-unreachable` option lands. For a *total* outage (nothing resolved), `--in-place` is
+skipped rather than overwriting an existing section with an all-unverifiable one. A *partial*
+outage — some terms resolved, some unreachable — still writes in place; the `service_unreachable`
+count in the frontmatter summary shows how much of the section is an outage rather than a result.
 
 That is why there is no rate-limit delay option here, unlike
 [reference validation](validate-references.md). Running into a limit costs you a re-run of

@@ -1373,11 +1373,16 @@ def test_an_is_obsolete_outage_keeps_the_term_but_flags_the_gap(monkeypatch, tmp
     assert check.status == TermStatus.VERIFIED
     assert "obsolete could not be checked" in (check.message or "")
     assert report.not_found_count == 0
+    # The gap must reach the markdown report and summary, not only the message.
+    md = report.to_markdown()
+    assert "obsolescence could not be checked" in md
+    assert "HP:0001332" in md
+    assert report.summary()["obsolescence_unchecked"] == 1
 
 
-def test_the_circuit_breaker_stops_calling_a_dead_service(monkeypatch, tmp_path):
-    """A total outage must not wait out one timeout per term: after a run of
-    consecutive failures the rest are marked unreachable without a call."""
+def test_the_breaker_still_resolves_cached_terms(monkeypatch, tmp_path):
+    """Issue #111 re-review: once the breaker trips, cached terms must still
+    resolve -- otherwise "re-run resumes from the cache" is a false promise."""
     from deep_research_client.validation.term_validator import (
         TermValidator,
         _CIRCUIT_BREAKER_THRESHOLD,
@@ -1386,27 +1391,125 @@ def test_the_circuit_breaker_stops_calling_a_dead_service(monkeypatch, tmp_path)
     from deep_research_client.validation.term_extraction import FoundTerm
 
     ServiceUnavailable = _service_error_type()
-    calls = {"n": 0}
+    CACHED = "HP:0001250"
 
-    class DeadOntology:
+    class LiveOntology:  # the live service: every network lookup fails
         oak_config: dict = {}
 
         def get_label(self, curie):
-            calls["n"] += 1
             raise ServiceUnavailable("down")
 
         def is_obsolete(self, curie):  # pragma: no cover - never reached
             return False
 
+    class CacheOntology:  # offline=True resolver: answers only the cached term
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Seizure" if curie == CACHED else None
+
+        def is_obsolete(self, curie):
+            return False
+
+    def build(offline=False):
+        return CacheOntology() if offline else LiveOntology()
+
     validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
-    monkeypatch.setattr(validator, "_build_ontology_access", lambda: DeadOntology())
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    terms.append(FoundTerm(term_id=CACHED, prefix="HP"))
+    report = validator.validate_terms(terms)
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id[CACHED].status == TermStatus.VERIFIED  # cache answered after the trip
+    assert len(report.service_unreachable_terms) == _CIRCUIT_BREAKER_THRESHOLD
+
+
+def test_a_replacement_outage_on_an_obsolete_term_does_not_abort(monkeypatch, tmp_path):
+    """An obsolete term whose replacement lookup goes unreachable stays OBSOLETE
+    with no replacement, rather than aborting the run."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Old term"
+
+        def is_obsolete(self, curie):
+            return True
+
+        def get_adapter(self, prefix):
+            return object()
+
+        def _is_ols_adapter(self, adapter):
+            return True
+
+        def _ols_term_dict(self, adapter, curie):
+            raise ServiceUnavailable("replacement lookup down")
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: FakeOntology())
+
+    report = validator.validate_terms([FoundTerm(term_id="HP:0001250", prefix="HP")])
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.OBSOLETE
+    assert check.replaced_by is None  # replacement unreachable, not a crash
+
+
+def test_the_circuit_breaker_stops_calling_the_live_service(monkeypatch, tmp_path):
+    """A total outage must not wait out one network timeout per term: after a run
+    of consecutive failures the live service is not called again. The cache is
+    still consulted (for free), so with an empty cache the rest come back
+    unreachable without further network waits."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    live_calls = {"n": 0}
+
+    class LiveOntology:  # the network: every lookup fails and is counted
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            live_calls["n"] += 1
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    class EmptyCache:  # offline=True resolver: nothing cached, no network
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return None
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    def build(offline=False):
+        return EmptyCache() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
 
     terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
              for i in range(_CIRCUIT_BREAKER_THRESHOLD + 5)]
     report = validator.validate_terms(terms)
 
-    # The service was called at most the breaker threshold times, not once per term.
-    assert calls["n"] == _CIRCUIT_BREAKER_THRESHOLD
+    # The live service was hit at most the breaker threshold times, not once per term.
+    assert live_calls["n"] == _CIRCUIT_BREAKER_THRESHOLD
     assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
     assert len(report.service_unreachable_terms) == len(terms)
 

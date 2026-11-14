@@ -30,6 +30,7 @@ from .term_datamodel import LabelAgreement, TermCheck, TermStatus
 from .term_datamodel import TermValidationReport as GeneratedTermValidationReport
 
 __all__ = [
+    "OBSOLESCENCE_UNCHECKED_MESSAGE",
     "OUTAGE_HINT_MIN_TERMS",
     "SERVICE_UNREACHABLE_MESSAGE",
     "TERM_VALIDATION_SECTION_HEADING",
@@ -53,6 +54,15 @@ OUTAGE_HINT_MIN_TERMS = 3
 # ``term_validator``, which stamps it, so the two cannot drift apart.
 SERVICE_UNREACHABLE_MESSAGE = (
     "could not reach the ontology service to resolve this term"
+)
+
+# The message a term carries when its label resolved but the obsolescence check
+# could not be reached (issue #111). The term is VERIFIED -- it exists -- but
+# whether it is deprecated is unknown, so this is rendered and counted rather
+# than left silent, lest an obsolete term read as clean. Shared with
+# ``term_validator``, which stamps it.
+OBSOLESCENCE_UNCHECKED_MESSAGE = (
+    "resolved, but whether it is obsolete could not be checked (service unreachable)"
 )
 
 
@@ -231,6 +241,29 @@ class TermValidationReport(GeneratedTermValidationReport):
             t for t in self.checked_terms
             if t.status == TermStatus.UNVERIFIABLE
             and t.message == SERVICE_UNREACHABLE_MESSAGE
+        ]
+
+    @property
+    def obsolescence_unchecked_terms(self) -> List[TermCheck]:
+        """VERIFIED terms whose obsolescence check could not be reached (#111).
+
+        The identifier resolved, so it exists, but whether it is deprecated is
+        unknown. Surfaced so an obsolete term is not read as clean merely because
+        the deprecation check was skipped during an outage.
+
+        Examples:
+            >>> r = TermValidationReport(terms=[
+            ...     TermCheck(term_id="HP:1", prefix="HP", status=TermStatus.VERIFIED,
+            ...               message=OBSOLESCENCE_UNCHECKED_MESSAGE),
+            ...     TermCheck(term_id="HP:2", prefix="HP", status=TermStatus.VERIFIED),
+            ... ])
+            >>> [t.term_id for t in r.obsolescence_unchecked_terms]
+            ['HP:1']
+        """
+        return [
+            t for t in self.checked_terms
+            if t.status == TermStatus.VERIFIED
+            and t.message == OBSOLESCENCE_UNCHECKED_MESSAGE
         ]
 
     @property
@@ -431,6 +464,8 @@ class TermValidationReport(GeneratedTermValidationReport):
             # Surfaced so an --in-place overwrite cannot silently trade a good
             # section for one where the service was simply unreachable (#111).
             summary["service_unreachable"] = len(self.service_unreachable_terms)
+        if self.obsolescence_unchecked_terms:
+            summary["obsolescence_unchecked"] = len(self.obsolescence_unchecked_terms)
         if self.has_problems or self.obsolete_terms or self.variant_label_terms:
             # Stated rather than implied, so that reading one number off the
             # frontmatter cannot produce a false all-clear.
@@ -621,6 +656,20 @@ class TermValidationReport(GeneratedTermValidationReport):
             )
             lines.append("")
             for check in unreachable:
+                lines.append(f"- `{check.term_id}` ({self._mentions(check)})")
+            lines.append("")
+
+        obsolescence_unchecked = self.obsolescence_unchecked_terms
+        if obsolescence_unchecked:
+            lines.append("### Terms whose obsolescence could not be checked")
+            lines.append("")
+            lines.append(
+                f"{len(obsolescence_unchecked)} term(s) resolved, so they exist, but the "
+                "ontology service was unreachable for the deprecation check -- treat "
+                "their obsolescence as unknown rather than clean, and re-run to confirm:"
+            )
+            lines.append("")
+            for check in obsolescence_unchecked:
                 lines.append(f"- `{check.term_id}` ({self._mentions(check)})")
             lines.append("")
 

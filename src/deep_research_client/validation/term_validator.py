@@ -41,7 +41,11 @@ from .label_matching import LabelComparison, compare_labels, label_similarity
 from .sections import strip_validation_section
 from .term_datamodel import LabelAgreement, TermCheck, TermStatus
 from .term_extraction import FoundTerm, extract_terms
-from .term_models import SERVICE_UNREACHABLE_MESSAGE, TermValidationReport
+from .term_models import (
+    OBSOLESCENCE_UNCHECKED_MESSAGE,
+    SERVICE_UNREACHABLE_MESSAGE,
+    TermValidationReport,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
     from linkml_term_validator.utils import OntologyAccess
@@ -205,21 +209,39 @@ class TermValidator:
         # lookup the service cannot answer for one term is tolerated, not fatal
         # (issue #111): the term is marked unreachable and pass two reports it
         # UNVERIFIABLE, never NOT_FOUND (which would turn an outage into an
-        # accusation). Once a run of lookups fails in a row the service is taken
-        # to be down and the rest are marked unreachable without another
-        # timeout-length call, so a total outage costs a few waits, not one per
-        # term.
+        # accusation). Once a run of lookups fails in a row the live service is
+        # taken to be down and the rest are resolved from the label cache only --
+        # which answers for free, so a re-run really does resume from the cache --
+        # with the genuinely uncached terms marked unreachable, no more
+        # timeout-length calls.
         resolved: dict[str, Optional[str]] = {}
         obsolete: dict[str, bool] = {}
         unreachable: set[str] = set()
         obsolete_unknown: set[str] = set()
         consecutive_failures = 0
         tripped = False
+        offline_fallback: Optional["OntologyAccess"] = None
         for index, term in enumerate(terms, start=1):
             if term.prefix.upper() in skipped:
                 continue
             if tripped:
-                unreachable.add(term.term_id)
+                # Live service down, but the cache still answers without the
+                # network. Resolve what it holds; only uncached terms are
+                # unreachable, so the "re-run resumes from the cache" promise holds
+                # even when the breaker tripped.
+                if offline_fallback is None:
+                    offline_fallback = self._build_ontology_access(offline=True)
+                cached = offline_fallback.get_label(term.term_id)
+                if cached is not None:
+                    resolved[term.term_id] = cached
+                    try:
+                        obsolete[term.term_id] = (
+                            offline_fallback.is_obsolete(term.term_id) is True
+                        )
+                    except lookup_errors:
+                        obsolete_unknown.add(term.term_id)
+                else:
+                    unreachable.add(term.term_id)
                 continue
             logger.info("Resolving term %d/%d: %s", index, len(terms), term.term_id)
             try:
@@ -232,9 +254,8 @@ class TermValidator:
                 consecutive_failures += 1
                 if consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD:
                     logger.warning(
-                        "%d lookups failed in a row; treating the ontology service as "
-                        "unreachable and marking the remaining terms unreachable without "
-                        "calling it",
+                        "%d lookups failed in a row; treating the live ontology service "
+                        "as down and resolving the remaining terms from the cache only",
                         consecutive_failures,
                     )
                     tripped = True
@@ -285,8 +306,14 @@ class TermValidator:
             truncated=truncated,
         )
 
-    def _build_ontology_access(self) -> "OntologyAccess":
-        """Construct the OAK-backed label resolver this run will use."""
+    def _build_ontology_access(self, offline: Optional[bool] = None) -> "OntologyAccess":
+        """Construct the OAK-backed label resolver this run will use.
+
+        Args:
+            offline: Override ``self.offline``. The circuit breaker builds a
+                cache-only (``offline=True``) resolver so it can keep answering
+                from the label cache after the live service is taken to be down.
+        """
         from linkml_term_validator.utils import OntologyAccess
 
         return OntologyAccess(
@@ -294,7 +321,7 @@ class TermValidator:
             cache_labels=self.cache_labels,
             cache_dir=Path(self.cache_dir) if self.cache_dir else DEFAULT_CACHE_DIR,
             oak_config_path=Path(self.oak_config) if self.oak_config else None,
-            offline=self.offline,
+            offline=self.offline if offline is None else offline,
         )
 
     def _check_term(
@@ -346,7 +373,7 @@ class TermValidator:
         if is_obsolete:
             message: Optional[str] = "the term is obsolete"
         elif term.term_id in results.obsolete_unknown:
-            message = "resolved, but whether it is obsolete could not be checked (service unreachable)"
+            message = OBSOLESCENCE_UNCHECKED_MESSAGE
         else:
             message = None
         return TermCheck(
@@ -674,17 +701,24 @@ def lookup_error_types() -> tuple:
 def _per_term_lookup_errors() -> tuple:
     """Exception types to tolerate for a *single* term's lookup (issue #111).
 
-    The resolver's own outage type (see :func:`lookup_error_types`) plus
-    ``OSError``, which is how a raw ``urllib`` network failure surfaces and what
-    the CLI already counts as an unreachable service. ``ValueError`` is kept
-    out: it means a malformed cached record, which should fail fast rather than
-    be swallowed as an outage.
+    The resolver's own outage type (see :func:`lookup_error_types`) plus the
+    network-failure subclasses: a raw ``urllib`` failure (``URLError``), a
+    dropped connection (``ConnectionError``) and a timeout (``TimeoutError``,
+    which ``socket.timeout`` aliases). Deliberately *not* bare ``OSError``: that
+    also covers ``PermissionError``, ``FileNotFoundError`` and a full disk raised
+    while writing the label cache, which are local faults that should fail fast,
+    not be mistaken for an unreachable service. ``ValueError`` (a malformed
+    cached record) is kept out for the same reason.
 
     Examples:
-        >>> OSError in _per_term_lookup_errors()
+        >>> TimeoutError in _per_term_lookup_errors()
         True
+        >>> FileNotFoundError in _per_term_lookup_errors()
+        False
     """
-    return (OSError,) + lookup_error_types()
+    import urllib.error
+
+    return (ConnectionError, TimeoutError, urllib.error.URLError) + lookup_error_types()
 
 
 def term_validator_is_available() -> bool:

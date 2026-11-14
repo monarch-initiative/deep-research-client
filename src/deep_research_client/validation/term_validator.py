@@ -90,12 +90,16 @@ class _LookupResults:
         unreachable: Term ids the service could not be reached for (issue #111).
         obsolete_unknown: Resolved term ids whose obsolescence check failed, so
             "not obsolete" is an assumption rather than a finding.
+        from_cache: Term ids resolved from the label cache after the circuit
+            breaker tripped. Pass two judges these through the cache-only
+            accessor and does not claim a label mismatch it cannot substantiate.
     """
 
     resolved: dict[str, Optional[str]]
     obsolete: dict[str, bool]
     unreachable: set[str]
     obsolete_unknown: set[str]
+    from_cache: set[str]
 
 
 @dataclass
@@ -218,6 +222,7 @@ class TermValidator:
         obsolete: dict[str, bool] = {}
         unreachable: set[str] = set()
         obsolete_unknown: set[str] = set()
+        from_cache: set[str] = set()
         consecutive_failures = 0
         tripped = False
         offline_fallback: Optional["OntologyAccess"] = None
@@ -245,6 +250,7 @@ class TermValidator:
                     continue
                 if cached is not None:
                     resolved[term.term_id] = cached
+                    from_cache.add(term.term_id)
                     try:
                         obsolete[term.term_id] = (
                             offline_fallback.is_obsolete(term.term_id) is True
@@ -294,20 +300,28 @@ class TermValidator:
         configured_prefixes = set(getattr(ontology, "oak_config", {}) or {})
         expected = _known_ontology_prefixes() | resolvable_prefixes | configured_prefixes
 
-        # Pass two: classify, now that each prefix's resolvability is known. Once
-        # the breaker tripped, the live service is presumed down, so pass two's
-        # own lookups (synonyms in _compare, replacements in _replacement_for) go
-        # through the cache-only accessor too -- otherwise each cached term with a
-        # variant label, or an obsolete one, would pay a full network timeout
-        # against a dead service, the very cost the breaker exists to remove.
-        pass_two_ontology = ontology
-        if tripped:
-            if offline_fallback is None:
-                offline_fallback = self._build_ontology_access(offline=True)
-            pass_two_ontology = offline_fallback
-        results = _LookupResults(resolved, obsolete, unreachable, obsolete_unknown)
+        # Pass two: classify, now that each prefix's resolvability is known. The
+        # accessor is chosen PER TERM. A term resolved from the cache after the
+        # breaker tripped is judged through the cache-only accessor, since the
+        # live service is down; a term resolved live keeps the live accessor,
+        # whose OLS payload the obsolescence check already memoised, so its
+        # synonyms and replacement cost no request even now. This keeps a late
+        # outage from discarding data earlier terms already fetched, and
+        # ``_compare`` declines to judge a cache-resolved label it cannot check
+        # synonyms for rather than risk a false mismatch.
+        results = _LookupResults(
+            resolved, obsolete, unreachable, obsolete_unknown, from_cache
+        )
         checks = [
-            self._check_term(term, pass_two_ontology, results, skipped, expected)
+            self._check_term(
+                term,
+                offline_fallback
+                if (offline_fallback is not None and term.term_id in from_cache)
+                else ontology,
+                results,
+                skipped,
+                expected,
+            )
             for term in terms
         ]
         unresolvable_prefixes = list(
@@ -390,7 +404,10 @@ class TermValidator:
             )
 
         is_obsolete = results.obsolete.get(term.term_id, False)
-        comparison = self._compare(term, label, ontology)
+        comparison = self._compare(
+            term, label, ontology,
+            synonyms_reachable=term.term_id not in results.from_cache,
+        )
         # The label resolved, so the identifier exists and is VERIFIED; but if the
         # obsolescence check could not be reached, say so, so an obsolete term is
         # not read as clean just because the check was skipped (issue #111).
@@ -415,7 +432,11 @@ class TermValidator:
         )
 
     def _compare(
-        self, term: FoundTerm, label: str, ontology: "OntologyAccess"
+        self,
+        term: FoundTerm,
+        label: str,
+        ontology: "OntologyAccess",
+        synonyms_reachable: bool = True,
     ) -> LabelComparison:
         """Judge every name the report gave a term, keeping the worst verdict.
 
@@ -426,6 +447,15 @@ class TermValidator:
         Synonyms are fetched once per term rather than once per reported label,
         and only when there is a label to compare, so a report that names
         nothing costs nothing.
+
+        ``synonyms_reachable`` is False for a term resolved from the cache after
+        the circuit breaker tripped (issue #111): its synonyms live on the live
+        service, which is down, and the cache-only accessor has no adapter to
+        supply them. Judging the name against the bare label then risks a false
+        MISMATCH on a reported synonym, so a non-exact name is left NOT_ASSESSED
+        rather than guessed. (Plain ``--offline`` keeps its existing behaviour:
+        the cache is its intended source, so a bare-label comparison there is a
+        deliberate, tested verdict, not a degraded one.)
         """
         if not self.check_labels or not term.labels:
             return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
@@ -438,6 +468,11 @@ class TermValidator:
         # would otherwise pay most.
         if all(label_similarity(reported, label) == 1.0 for reported in term.labels):
             names = TermNames()
+        elif not synonyms_reachable:
+            # Cannot consult synonyms (service down, cache has no adapter), and
+            # the name is not an exact label match -- decline to judge rather
+            # than risk a false MISMATCH on a synonym we could not look up.
+            return LabelComparison(LabelAgreement.NOT_ASSESSED, 0.0)
         else:
             try:
                 names = _synonyms_for(ontology, term.term_id)

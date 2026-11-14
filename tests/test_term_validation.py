@@ -1435,7 +1435,7 @@ def test_pass_two_uses_the_cache_after_the_breaker_trips(monkeypatch, tmp_path):
         TermValidator,
         _CIRCUIT_BREAKER_THRESHOLD,
     )
-    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
     from deep_research_client.validation.term_extraction import FoundTerm
 
     ServiceUnavailable = _service_error_type()
@@ -1481,6 +1481,56 @@ def test_pass_two_uses_the_cache_after_the_breaker_trips(monkeypatch, tmp_path):
     by_id = {c.term_id: c for c in report.checked_terms}
     assert by_id[CACHED].status == TermStatus.VERIFIED  # resolved from the cache
     assert live_pass2["n"] == 0  # pass two never touched the live service after the trip
+    # Its differing label is left unjudged, not called a MISMATCH on no synonyms.
+    assert by_id[CACHED].agreement == LabelAgreement.NOT_ASSESSED
+
+
+def test_a_pre_trip_term_keeps_its_synonyms_after_a_later_trip(monkeypatch, tmp_path):
+    """A term resolved live before the breaker trips keeps the live accessor in
+    pass two (its OLS payload is memoised, costs nothing), so a later outage does
+    not strip its synonyms or downgrade a correct name to NOT_ASSESSED."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    GOOD = "HP:0001250"
+
+    class SynAdapter:
+        def entity_alias_map(self, curie):  # memoised synonyms, no network
+            return {"rdfs:label": ["Seizure"], "oio:hasExactSynonym": ["Seizures"]}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == GOOD:
+                return "Seizure"
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):
+            return False
+
+        def get_adapter(self, prefix):
+            return SynAdapter()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: LiveOntology())
+
+    # GOOD resolves live first (reported as an exact synonym), then a run of
+    # failures trips the breaker.
+    terms = [FoundTerm(term_id=GOOD, prefix="HP", labels=("Seizures",))]
+    terms += [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+              for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    report = validator.validate_terms(terms)
+
+    good = {c.term_id: c for c in report.checked_terms}[GOOD]
+    assert good.status == TermStatus.VERIFIED
+    # The exact synonym still matches via the live accessor's memoised payload.
+    assert good.agreement == LabelAgreement.MATCH
 
 
 def test_an_offline_lookup_that_raises_is_tolerated(monkeypatch, tmp_path):

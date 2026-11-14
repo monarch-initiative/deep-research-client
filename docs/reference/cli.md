@@ -70,7 +70,7 @@ When `--output` is provided, any non-text artifacts recovered with the report ar
 
 The `--validate-*` options require the optional `validation` extra; see [validate-references](#validate-references) and the [Validate References how-to](../how-to/validate-references.md). Validation runs *after* the report has been written or printed, so a lookup service being unreachable never costs you the research result; that case exits with code `3`. On a cold cache it adds roughly 10-25% to the wall time of the research call, and next to nothing on a warm one.
 
-The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). They behave the same way: term validation runs after the report is written, and an unreachable ontology service exits with code `3` without costing you the research result. `--validate-references` and `--validate-terms` compose - passing both appends both sections.
+The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). Term validation also runs after the report is written. An ontology service that is unreachable for a given term marks *that term* unverifiable and the run carries on, so one slow or failing lookup no longer discards the validation of every other term; the report says which terms could not be reached and that a re-run may resolve them (the label cache resumes). `--validate-references` and `--validate-terms` compose - passing both appends both sections.
 
 #### Examples
 

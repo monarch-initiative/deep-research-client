@@ -1533,6 +1533,51 @@ def test_a_pre_trip_term_keeps_its_synonyms_after_a_later_trip(monkeypatch, tmp_
     assert good.agreement == LabelAgreement.MATCH
 
 
+def test_a_pre_trip_obsolete_unknown_term_skips_the_network_after_a_trip(monkeypatch, tmp_path):
+    """A term resolved live before the trip whose is_obsolete failed has no
+    memoised payload, so a post-trip synonym fetch would hit the dead service.
+    Such a term is marked synonyms-unreachable: its non-exact label is left
+    NOT_ASSESSED and no network call is made."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    GOOD = "HP:0001250"
+    live_syn = {"n": 0}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == GOOD:
+                return "Seizure"
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):
+            raise ServiceUnavailable("obsolescence check down")  # -> obsolete_unknown
+
+        def get_adapter(self, prefix):
+            live_syn["n"] += 1  # a pass-two synonym fetch reaching the live service
+            raise ServiceUnavailable("down")
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: LiveOntology())
+
+    terms = [FoundTerm(term_id=GOOD, prefix="HP", labels=("Chorea",))]  # label differs
+    terms += [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+              for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    report = validator.validate_terms(terms)
+
+    good = {c.term_id: c for c in report.checked_terms}[GOOD]
+    assert good.status == TermStatus.VERIFIED
+    assert good.agreement == LabelAgreement.NOT_ASSESSED  # not judged without synonyms
+    assert live_syn["n"] == 0  # no synonym fetch to the dead service
+
+
 def test_an_offline_lookup_that_raises_is_tolerated(monkeypatch, tmp_path):
     """If the offline resolver raises instead of returning None for an uncached
     term, the post-trip term is still marked unreachable, not aborted."""

@@ -93,6 +93,11 @@ class _LookupResults:
         from_cache: Term ids resolved from the label cache after the circuit
             breaker tripped. Pass two judges these through the cache-only
             accessor and does not claim a label mismatch it cannot substantiate.
+        synonyms_unreachable: Term ids whose synonyms pass two must not try to
+            fetch, because doing so would hit a service already judged down --
+            the cache-resolved terms, plus (once the breaker tripped) terms
+            whose OLS payload was never memoised because their obsolescence
+            check had failed. Their non-exact labels are left NOT_ASSESSED.
     """
 
     resolved: dict[str, Optional[str]]
@@ -100,6 +105,7 @@ class _LookupResults:
     unreachable: set[str]
     obsolete_unknown: set[str]
     from_cache: set[str]
+    synonyms_unreachable: set[str]
 
 
 @dataclass
@@ -304,13 +310,18 @@ class TermValidator:
         # accessor is chosen PER TERM. A term resolved from the cache after the
         # breaker tripped is judged through the cache-only accessor, since the
         # live service is down; a term resolved live keeps the live accessor,
-        # whose OLS payload the obsolescence check already memoised, so its
-        # synonyms and replacement cost no request even now. This keeps a late
-        # outage from discarding data earlier terms already fetched, and
-        # ``_compare`` declines to judge a cache-resolved label it cannot check
-        # synonyms for rather than risk a false mismatch.
+        # whose OLS payload the obsolescence check usually memoised, so its
+        # synonyms and replacement cost no request even now. The exception is a
+        # term whose obsolescence check itself failed (``obsolete_unknown``):
+        # nothing was memoised for it, so once the breaker tripped a synonym
+        # fetch would hit the dead service. Those terms, and the cache-resolved
+        # ones, are marked synonyms-unreachable, so ``_compare`` leaves a
+        # non-exact label NOT_ASSESSED instead of going to the network or risking
+        # a false mismatch.
+        synonyms_unreachable = from_cache | (obsolete_unknown if tripped else set())
         results = _LookupResults(
-            resolved, obsolete, unreachable, obsolete_unknown, from_cache
+            resolved, obsolete, unreachable, obsolete_unknown, from_cache,
+            synonyms_unreachable,
         )
         checks = [
             self._check_term(
@@ -406,7 +417,7 @@ class TermValidator:
         is_obsolete = results.obsolete.get(term.term_id, False)
         comparison = self._compare(
             term, label, ontology,
-            synonyms_reachable=term.term_id not in results.from_cache,
+            synonyms_reachable=term.term_id not in results.synonyms_unreachable,
         )
         # The label resolved, so the identifier exists and is VERIFIED; but if the
         # obsolescence check could not be reached, say so, so an obsolete term is

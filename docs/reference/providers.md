@@ -14,14 +14,56 @@ Complete reference for all supported research providers.
 | OpenScientist | `OPENSCIENTIST_API_KEY` | Autonomous research, PMID citations | Very slow |
 | Cyberian | (local agents) | Agent-based, thorough | Very slow |
 | Claude Code | (local `claude` CLI) | Agentic web research, no API key | Slow |
+| Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
 | RSS Agent | `RSS_AGENT_DIR` (local checkout) + `ANTHROPIC_API_KEY` | Digest of recent papers from feeds, Crossref, bioRxiv | Slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
+| ToxIndex | (stub - no submit API yet; `TOXINDEX_API_KEY` for retrieval) | Chemical safety and toxicology agent (Sage), cited to tool calls | n/a |
 
 See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.
+
+## Timeouts
+
+`deep-research-client research --timeout SECONDS` (or `timeout=` on
+`DeepResearchClient.research()`) replaces the chosen provider's
+`ProviderConfig.timeout` for one run. **The same number limits different
+things for different providers**, so check the row for yours before picking
+one. The run logs the meaning for the provider it uses (visible with `-v`),
+and the value is recorded in the report's `provider_config.timeout`.
+
+| Provider | What `--timeout` limits | Default |
+|----------|-------------------------|---------|
+| OpenAI | Read timeout on each HTTP request. Deep Research is one blocking request, so in practice how long to wait for the report | 600 s |
+| Perplexity | Longest gap between streamed chunks, not the whole run | 600 s |
+| Edison (Falcon) | How long to wait for the task before cancelling it (`EdisonTaskTimeoutError`) | 2400 s |
+| Asta | Read timeout on each HTTP request | 180 s |
+| Consensus | Read timeout on each HTTP request | 600 s |
+| OpenScientist | How long to wait for the job before cancelling it. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| Cyberian | How long cyberian waits for the agent to finish each workflow task | 1800 s |
+| Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
+| Antigravity | How long the whole `agy` run may take before it is killed. `agy`'s own `--print-timeout` is left at its default of no limit, so this outer kill governs; set `print_timeout` to pass one through | 1800 s |
+| Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| RSS Agent | How long the whole `rss_agent_claude` pipeline run may take before it is killed | 3600 s |
+| ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
+| ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
+| DeepER-Med | **Not supported**: stub, nothing runs | n/a |
+| Mock | Longest the simulated delay (`response_delay`) may run before `TimeoutError` | none |
+
+Like `--model` and `--param`, `--timeout` applies to the provider you named
+only. If the run falls back to another provider, that one uses its own
+default, and a warning says so.
+
+When a run does exceed its time, the provider raises `ProviderTimeoutError`
+(Edison raises its own `EdisonTaskTimeoutError`), and the CLI reports
+`Research timed out …` and points at `--timeout` rather than surfacing a raw
+transport error. A timeout never triggers fallback — the remedy is a longer
+timeout, not a different provider.
+
+Each row summarises the provider class's `timeout_meaning` attribute (see
+[Declaring what the provider needs](#declaring-what-the-provider-needs)).
 
 ## OpenAI Deep Research
 
@@ -102,6 +144,7 @@ params = PerplexityParams(
 - **Speed**: Seconds to minutes
 - **Context Window**: 100K-200K tokens
 - **Capabilities**: Real-time web search, recent data
+- **Streaming**: responses are streamed, so a `sonar-deep-research` run that takes 5–8 minutes is not cut off by a proxy that closes idle connections (Claude Code cloud sessions do this at about 300 s). `ProviderConfig.timeout` (600 s by default) is the longest gap allowed between streamed chunks, not a cap on the whole run. A leading `<think>…</think>` block is removed from the report. A connection drop is tolerated only after the final chunk has arrived; a drop part-way through, or a response that is only reasoning, raises an error rather than returning a partial report.
 
 ---
 
@@ -389,6 +432,31 @@ params = ClaudeCodeParams(
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
 
+### What every run is told
+
+Whatever `system_prompt` you pass (or the default research prompt), the
+provider appends a fixed directive to it:
+
+- **Do the work in this run.** Print mode has no "later", so the model is told
+  not to defer to a background task or sub-agent. No one can answer questions
+  mid-run, so instead of asking, the model states its interpretation of an
+  ambiguous request at the top of the report.
+- **Retrieve before writing** (issue #102). Find sources with the research
+  tools first, cite each claim's URL or identifier inline as it is written, and
+  state no specific factual claim, citation or identifier (PMID, DOI, ontology
+  ID) that was not retrieved in this session. A section that can't be sourced says so rather
+  than being filled from memory. Besides being what a curation input needs,
+  this avoids the large unsourced narrative that output safety classifiers
+  halt.
+- **A partial report is allowed** (issue #103). A run that can't finish may
+  return what it has, starting with a line that begins `**Incomplete report:**`
+  and a one-sentence reason. That marker makes the run unsuccessful (see below),
+  so a partial report is kept but flagged for review, not passed off as done.
+
+The directive is not part of the cache key. A report cached before it changed
+(including a from-memory one) is still served for the same query, so rerun with
+`--no-cache` if you need a fresh run under the current directive.
+
 ### Failing loudly on an empty report
 
 A run that produces no research is the expensive failure mode, because it still
@@ -407,11 +475,49 @@ paying for a second one.
 This is an emptiness check, not a quality one — a 250-character *"I was unable to
 find sufficient information on this topic"* passes it cleanly.
 
-Three `run_metadata` fields help diagnose a thin result after the fact:
+### Runs that are not a report
+
+The CLI exits 0 whatever the model wrote, so a run that declined, or answered
+without researching, used to be written out as a clean report (issue #101). The
+provider now marks three shapes as unsuccessful:
+
+- **Nothing retrieved**: no retrieval call and no web search in the whole run,
+  so the text was written from memory. This holds even when the text cites
+  URLs, PMIDs or DOIs: with nothing fetched, those were recalled too, and may
+  be hallucinated. A denied call retrieved nothing, and neither did a
+  bookkeeping or write call (`TodoWrite`, `Write`, `Edit` and similar), so
+  none of them count.
+- **Marked incomplete**: a line of the report begins `**Incomplete report:**`,
+  the marker the directive above asks for when a run can't finish. Any markdown
+  spelling counts (`**Incomplete report**:`, `## Incomplete report:`, a
+  blockquote, no bold), and so does any line, so a run that writes the marker
+  and then recovers is still flagged. This holds whatever the report cites,
+  since a partial report can be well sourced.
+- **Declined**, in a text that cites no source at all (no URL, PMID or DOI): a
+  refusal aimed at the report itself (*"I'm not going to regenerate that …
+  research narrative"*) or a mention of a *safety classifier*, typically after
+  an output safety classifier stopped the first attempt. A disclaimer such as
+  *"I cannot provide medical advice. This report …"* or *"…recommendations,
+  but this report …"* is not a refusal: the verb and *report* must sit in the
+  same clause, with nothing but spaces between them.
+
+Either way the report is still written, but its frontmatter says
+`answer_status: unsuccessful`, `## Output` opens with a warning,
+`run_metadata.unsuccessful_reason` says which shape it was, the result is not
+cached, and the CLI exits with code 4 (the same handling as falcon's "runs that
+find nothing"). A report from a run that retrieved something, cites even one
+source and isn't marked incomplete is never marked: this is a check that the run did research, not a
+judgment of how well.
+
+Five `run_metadata` fields help diagnose a thin result after the fact:
 
 - `assistant_text_blocks` — how many separate assistant messages the report was
   assembled from. More than one is normal for an agentic run; this is provenance
   for how the report was assembled, not a warning sign.
+- `tool_calls` — how many tools the model called, denied ones included.
+- `retrieval_calls` — the calls that could have retrieved something: not denied,
+  not bookkeeping. Zero, with no web search, is what marks a run as written from
+  memory, whatever it cites.
 - `permission_denials` — how many tool calls were refused.
 - `denied_tools` — which tools were refused. A non-zero count often explains a
   thin report: the agent asked for a tool outside `allowed_tools` and gave up,
@@ -474,6 +580,116 @@ actual model(s) used and run provenance (`run_metadata`).
 - The `stream-json` output carries every tool result, including full fetched page
   bodies, so a fetch-heavy run can buffer tens of MB of stdout in memory. Not a
   correctness problem, but worth knowing for long runs.
+
+---
+
+## Antigravity
+
+[Google Antigravity](https://antigravity.google/) is a local agentic
+command-line tool (the `agy` binary), like Claude Code rather than an HTTP API.
+Antigravity ships no dedicated "deep research" product, but its headless
+("print") mode is a close structural twin of Claude Code's: this provider shells
+out to `agy -p`, lets its own agentic tools (`search_web`, `read_url_content`, a
+browser family) carry out the research on a Gemini model, and returns a cited
+markdown report. See [#109](https://github.com/monarch-initiative/deep-research-client/issues/109).
+
+Output is read as a `stream-json` event stream. Unlike Claude Code, the finished
+report is taken from the terminal `result` event's `response` field (the full
+turn output); the stream is read for the tool tally (the "did it actually
+retrieve?" check) and provenance (`usage`, `num_turns`, `conversation_id`).
+Streamed text deltas are not relied on, as they are absent in practice.
+
+### Setup
+
+No API key is needed — authentication and billing are handled by your local
+Antigravity installation. Authenticate once with an interactive `agy` session,
+then make sure the CLI is on your PATH:
+
+```bash
+agy --version   # should succeed
+agy models      # should list models (confirms you are logged in)
+```
+
+The provider is auto-detected whenever `agy` is found on PATH. Set
+`DISABLE_ANTIGRAVITY_PROVIDER=true` to opt out of auto-detection.
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import AntigravityParams
+
+params = AntigravityParams(
+    model="gemini-3.8-flash-medium",  # optional; defaults to gemini-4-carbon-medium (see `agy models`)
+    effort="high",                    # optional --effort (low|medium|high|xhigh|max)
+    skip_permissions=False,           # default; True bypasses the read-only default (see below)
+    disable_slash_commands=True,      # default; keep a query from triggering slash/skill expansion
+    print_timeout=None,               # default: agy's own no-limit; set e.g. "15m" to pass one through
+    settings_override=None,           # escape hatch: raw JSON for `agy --settings`
+    add_dirs=["/data/papers"],        # optional --add-dir entries
+    working_dir="/tmp/research",      # optional cwd for the run
+    min_report_chars=200,             # fail on an implausibly short report (0 disables)
+    extra_args=["--sandbox"],         # escape hatch for unmodeled flags
+)
+```
+
+### What every run is told
+
+`agy` has no system-prompt flag, so whatever `system_prompt` you pass (or the
+default research prompt) plus a fixed inline-report directive are **prepended to
+the prompt text** ahead of the research task. The directive is the same one the
+Claude Code provider uses: do the work in this run, retrieve before writing and
+cite each claim inline, and — if the run can't finish — return a partial report
+whose first line begins `**Incomplete report:**`, which marks the run
+unsuccessful. As with Claude Code, the directive is not part of the cache key.
+
+### The model is always explicit
+
+`agy`'s own default model is opaque: it is whatever the CLI was last configured
+to use, and it is reported nowhere the provider can read it — not in the run's
+`init`/`result` events, not in `~/.gemini/antigravity-cli/settings.json`, and
+not in `agy models`. A default run therefore used to record only a meaningless
+placeholder for its model. To keep provenance honest, the provider never relies
+on agy's default: it **always forwards an explicit `--model`**, defaulting to
+`gemini-4-carbon-medium`, so the report records the model that actually ran.
+Pass any other slug from `agy models` via the `model` parameter.
+
+### Permissions and the read-only default
+
+`agy` has no `--allowedTools` flag. Instead, its default headless permission
+mode (`request-review`) runs read-only retrieval tools freely while
+*soft-denying* mutating ones (file writes, shell): the denied call is skipped, a
+notice is printed to stderr, and the run still exits 0. So the out-of-the-box
+behaviour is already read-only, and this provider never passes
+`--dangerously-skip-permissions` unless you set `skip_permissions=True` (only do
+so for a trusted query in a sandbox). One consequence: a soft-denied *final*
+action can leave a successful run with an empty response — `min_report_chars`
+catches that and fails the run rather than caching an empty report.
+
+Two caller-controlled escape hatches can also undo the read-only stance:
+`skip_permissions=True` (adds `--dangerously-skip-permissions`) and
+`settings_override` / `extra_args` (which can pass a permissive `--settings`
+policy or other flags). They are intended for trusted, caller-controlled use;
+do not combine them with an untrusted query.
+
+### Characteristics
+
+- **Cost**: Handled by your Antigravity account (public preview is free for individuals)
+- **Speed**: Slow (agentic, multi-step; a run can issue many web searches)
+- **Capabilities**: Web search, citation tracking, evidence synthesis (read-only
+  by default, so no code interpretation unless `skip_permissions=True`)
+- **Auth**: None required by this client; relies on local Antigravity
+
+### Limitations
+
+- Requires the `agy` CLI installed and authenticated locally
+- Read-only by default (web search/fetch/browser); mutation is soft-denied.
+  Enable `skip_permissions` only in a sandbox for tasks that need more
+- Non-deterministic results
+- No token-free auth-status subcommand exists; health is probed with
+  `agy models`, which makes a network call but spends no model tokens
+- The prompt is passed as a single command-line argument (agy has no stdin
+  prompt mode for text input), so a very large `system_prompt` or query is
+  capped at 128 KiB and rejected with a clear error before the run starts
 
 ---
 
@@ -604,6 +820,83 @@ card's `limitations` say so explicitly.
 
 Once an API is published, only the body of `providers/deeper_med.py` needs to
 change.
+
+---
+
+## ToxIndex Sage (Stub, with retrieval)
+
+[ToxIndex](https://toxindex.com) (Insilica) is a **toxicology-specific**
+platform. Its conversational agent, Sage, answers chemical safety and hazard
+questions over curated toxicology datasets, a regulatory document index and
+structure-based predictors, citing every claim to the tool call behind it. It
+is not a general literature research agent.
+
+### Why it is a stub
+
+ToxIndex's bearer-authenticated API (`https://platform.toxindex.com/v1`,
+OpenAPI at `/v1/openapi.json`) can **read** a Sage conversation but cannot
+**start** one, as of 2026-10-28:
+
+- the REST spec has no route that sends a message to Sage;
+- the A2A endpoint its agent card advertises (`/a2a`) accepts the key and then
+  answers every JSON-RPC method (`message/send`, `message/stream`, `tasks/get`)
+  with `501 {"error": "not implemented"}`.
+
+So `research()` raises `NotImplementedError` and `is_available()` is always
+`False`. The class declares `stub_reason`, not `credential_env_var`, because
+setting the key does not make research work. Once a submit route ships, swap
+the two and fill in `research()`.
+
+### What works
+
+```bash
+export TOXINDEX_API_KEY="your-key"   # minted at https://platform.toxindex.com/settings/keys
+# Optional: another API root (defaults to https://platform.toxindex.com/v1)
+# export TOXINDEX_BASE_URL="https://platform.toxindex.com/v1"
+
+# Verify the key (GET /whoami). Reports UNREACHABLE even when the key is
+# accepted, since Sage cannot take work over the API yet; the detail says which.
+deep-research-client providers --check --provider toxindex
+
+# Ask Sage in the web app, then fetch the finished conversation as a report
+deep-research-client toxindex-conversation <conversation-id> --output report.md
+```
+
+The conversation id is in the ToxIndex app's URL. From Python:
+
+```python
+import asyncio
+from deep_research_client.models import ProviderConfig
+from deep_research_client.providers.toxindex import ToxIndexProvider
+
+provider = ToxIndexProvider(ProviderConfig(name="toxindex", api_key="..."))
+result = asyncio.run(provider.retrieve_conversation("6c906ccf-..."))
+```
+
+### How a conversation becomes a report
+
+- **Query** is the first user message; **markdown** is the text of the last
+  assistant message.
+- **Citations**: Sage cites inline as `[tc-45957cb5]`. Each tag is the
+  `citation_id` that opens a tool result, so it resolves to the tool call that
+  produced it, rendered as
+  `[tc-45957cb5] tox_chemical_identity {"identifier": "carbamate"} (tool call toolu_...)`.
+  A tag with no matching tool result is logged and listed in
+  `run_metadata.unresolved_citations`.
+- **`run_metadata`** also counts `tool_calls`, `tools_used` by name, and
+  `failed_tool_calls`.
+- A conversation that is empty, still `running`, or ends on something other
+  than an answer (Sage asking a clarifying question, say) is refused with a
+  `ValueError`. The API answers an unknown id with an empty `200`, not a `404`,
+  so "has no messages" may mean a wrong id.
+
+### Errors
+
+The API returns `{"error": "..."}` bodies. `401` (`missing api key`,
+`invalid api key`) maps to `ProviderAuthError` and `5xx` to
+`ProviderTransientError`. The API documents no `402` or `429`, and the free
+tier's limits are unpublished, so those are classified by status alone if
+they ever appear.
 
 ---
 
@@ -1196,6 +1489,7 @@ rather than keeping their own tables:
 | `credential_noun` | The key belongs to a wider account than the label names (defaults to the label) | `"OpenAI"` → `no OpenAI API key configured` |
 | `registration_requirement` | The client can hold the provider back while an instance would call itself available: an opt-out variable, an opt-in flag, a binary probed during auto-detection | `"set ENABLE_MOCK_PROVIDER=true to enable the mock provider"` |
 | `stub_reason` | There is no upstream API yet, so nothing the user sets would help | `"DeepER-Med - no public API released yet (arXiv:…)"` |
+| `timeout_meaning` | The provider honours `ProviderConfig.timeout`: say what it limits, as a phrase completing "the timeout is …". Leave it `None` and the client refuses `--timeout` for the provider. Add a row to [Timeouts](#timeouts) too | `"the longest gap allowed between streamed chunks, not a limit on the whole run (default 600 s)"` |
 
 Anything subtler (a missing binary, a missing optional package) belongs in an
 `unavailable_reason()` override, as `claude_code`, `cyberian` and `biomni` do.

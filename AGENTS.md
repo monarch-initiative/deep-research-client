@@ -54,6 +54,10 @@ We welcome PRs wrapping other tools (aka "providers"). When doing this:
       the CLI and client derive their hints from these, so there is no table
       to update. See docs/reference/providers.md, "Declaring what the provider
       needs"
+- [ ] if the provider reads `ProviderConfig.timeout`, set `timeout_meaning`
+      to say what it limits (else `--timeout` is refused for it), add the
+      provider to the table in `tests/test_timeout.py`, and add a row to
+      "Timeouts" in docs/reference/providers.md
 - [ ] Ensure documented in docs/reference/providers.md as well as README
 - [ ] does not signifantly add to base install dependencies; if so make this an optional install (allowing e.g. `pip install deep-research-client[my-bespoke-provider]`)
 - [ ] import the optional dependency lazily, not at module scope. `just test`

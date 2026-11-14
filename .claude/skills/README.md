@@ -1,44 +1,29 @@
 # Deep Research Client Skills
 
-This directory contains Claude Code skills for the deep-research-client project.
+These agent skills support deep-research-client workflows. They live under
+`.claude/skills/` for discovery in Claude Code and can also be installed for
+other supported agents with the [skills CLI](https://skills.sh/).
 
 ## Available Skills
 
-### run-deep-research
+- [run-deep-research](run-deep-research/SKILL.md): choose a provider and model,
+  preserve cached research, and assess reports and citations.
+- [gene-set-enrichment](gene-set-enrichment/SKILL.md): research gene sets with
+  structured summaries and gene groupings.
 
-A comprehensive skill for performing deep research using multiple AI research providers (OpenAI, Falcon, Perplexity, Consensus).
+## Installation
 
-**Key Features:**
-- Support for multiple research providers with different speed/depth trade-offs
-- Smart caching to avoid expensive re-queries
-- Template-based research with variable substitution
-- Rich markdown output with citations and metadata
-
-**Installation:**
-
-To use this skill locally:
+Preview the available skills, then choose the research workflow:
 
 ```bash
-# Copy the skill to your local skills directory
-cp -r .claude/skills/run-deep-research ~/.claude/skills/
+npx skills add monarch-initiative/deep-research-client --list
+npx skills add monarch-initiative/deep-research-client --skill run-deep-research
 ```
 
-Or to use it project-wide, it's already available in `.claude/skills/run-deep-research/`.
-
-**Usage:**
-
-Once installed, Claude Code will automatically use this skill when you request deep research tasks. The skill will:
-
-1. Ask you to choose between fast/light or comprehensive/slow approaches
-2. Help you select the appropriate provider and model
-3. Execute the research query
-4. Save results with proper citations and metadata
-
-**Example prompts that trigger this skill:**
-- "Research the latest developments in CRISPR gene editing"
-- "I need a comprehensive analysis of quantum computing trends"
-- "Do a literature review on machine learning interpretability"
-- "Research gene TP53 in humans focusing on cancer associations"
+Installation defaults to the current project. Add `-g` for user-wide installation
+and `-a codex` or `-a claude-code` to select an agent. See the
+[root README](../../README.md#agent-skills) for runtime setup and manual copying.
+Installing a skill does not install DRC or configure provider credentials.
 
 ### extract-claims
 
@@ -71,37 +56,20 @@ Both are adapted from `docs/how-to/extract-claims.md`, which stays the full refe
 
 ## Adding More Skills
 
-To add additional skills to this project:
+Create a directory `.claude/skills/your-skill-name/` containing `SKILL.md` with
+YAML frontmatter:
 
-1. **Simple skill**: Create a single `.md` file like `skill-name.md` with YAML frontmatter:
-   ```yaml
-   ---
-   name: your-skill-name
-   description: Brief description of what your skill does (200 char max)
-   ---
-   ```
+```yaml
+---
+name: your-skill-name
+description: Describe the workflow and when an agent should use it.
+---
+```
 
-2. **Complex skill** (with templates/examples): Create a directory with `SKILL.md`:
-   ```
-   .claude/skills/skill-name/
-   ├── SKILL.md          # Main skill with YAML frontmatter
-   └── examples/         # Optional supporting files
-       └── template.md
-   ```
-
-3. Add the skill instructions and documentation in the markdown body
-
-## Skill Development Guidelines
-
-When creating skills for this project:
-
-- Follow the YAML frontmatter format with `name` and `description`
-- Include clear "When to Use" sections
-- Provide concrete usage examples with `uv run` commands
-- Document all environment variables and configuration
-- Include workflow steps for Claude to follow
-- Add common patterns and use cases
+Keep the instructions focused on the task. Use directory-relative links for
+supporting files bundled with the skill, and avoid assuming that the user has a
+checkout of this repository.
 
 ## License
 
-Skills in this directory are part of the deep-research-client project and follow the same BSD-3-Clause license.
+Skills follow this project's BSD-3-Clause license.

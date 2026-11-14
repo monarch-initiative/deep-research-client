@@ -198,6 +198,11 @@ class RssAgentProvider(ResearchProvider):
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
 
+    timeout_meaning = (
+        "how long the whole rss_agent_claude pipeline run may take before it is "
+        "killed (default 3600 s)"
+    )
+
     def __init__(self, config: ProviderConfig, params: Optional[RssAgentParams] = None):
         """Initialize the RSS Agent provider.
 

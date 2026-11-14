@@ -1216,6 +1216,553 @@ def test_lookup_errors_are_reported_as_an_unreachable_service() -> None:
 
 
 # --------------------------------------------------------------------------
+# Issue #111: an unreachable ontology service is survived, not fatal
+# --------------------------------------------------------------------------
+
+
+def _service_error_type():
+    from deep_research_client.validation import lookup_error_types
+
+    types = lookup_error_types()
+    if not types:
+        pytest.skip("terms extra not installed; cannot raise the outage type")
+    return types[0]
+
+
+def test_an_unreachable_term_is_unverifiable_and_the_run_continues(monkeypatch, tmp_path):
+    """Issue #111: one term's service outage must not abort the whole run.
+
+    The unreachable term is kept as UNVERIFIABLE (never NOT_FOUND, which would
+    turn an outage into an accusation), and every term the service can still
+    answer is validated as usual.
+    """
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_models import (
+        SERVICE_UNREACHABLE_MESSAGE,
+        TermStatus,
+    )
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == "HP:0001337":
+                raise ServiceUnavailable("connection timed out")
+            return "Dystonia" if curie == "HP:0001332" else None
+
+        def is_obsolete(self, curie):
+            return False
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: FakeOntology())
+
+    report = validator.validate_terms([
+        FoundTerm(term_id="HP:0001337", prefix="HP"),
+        FoundTerm(term_id="HP:0001332", prefix="HP"),
+    ])
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id["HP:0001337"].status == TermStatus.UNVERIFIABLE
+    assert by_id["HP:0001337"].message == SERVICE_UNREACHABLE_MESSAGE
+    assert by_id["HP:0001332"].status == TermStatus.VERIFIED
+    assert [t.term_id for t in report.service_unreachable_terms] == ["HP:0001337"]
+    # One term timing out must not brand its whole prefix as having no resolver.
+    assert "HP" not in report.unresolvable_prefixes
+
+
+def test_a_total_outage_completes_without_aborting(monkeypatch, tmp_path):
+    """Every term unreachable still returns a report (no traceback), with every
+    term UNVERIFIABLE and none accused of confabulation."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_models import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class DeadOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("service is down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: DeadOntology())
+
+    report = validator.validate_terms([
+        FoundTerm(term_id="HP:0000001", prefix="HP"),
+        FoundTerm(term_id="GO:0000002", prefix="GO"),
+    ])
+
+    assert report.total_terms == 2
+    assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
+    assert len(report.service_unreachable_terms) == 2
+    assert report.not_found_count == 0  # an outage is never read as fabrication
+    assert report.unresolvable_prefixes == []  # not "no resolver" either
+
+
+def test_a_pass_two_synonym_outage_does_not_abort_the_run(monkeypatch, tmp_path):
+    """Issue #111 pass two: a term whose label resolves but whose synonym lookup
+    goes unreachable must not abort the run. The term stays VERIFIED and its
+    label is left NOT_ASSESSED rather than raising a false MISMATCH."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FlakyAdapter:
+        def entity_alias_map(self, curie):
+            raise ServiceUnavailable("synonym lookup timed out")
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Dystonia"  # resolves, but differs from the reported label
+
+        def is_obsolete(self, curie):
+            return False
+
+        def get_adapter(self, prefix):
+            return FlakyAdapter()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: FakeOntology())
+
+    report = validator.validate_terms([
+        FoundTerm(term_id="HP:0001332", prefix="HP", labels=("Chorea",)),
+    ])
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED  # the identifier resolved
+    assert check.agreement == LabelAgreement.NOT_ASSESSED  # name could not be judged
+    assert report.service_unreachable_terms == []  # it resolved, so not unreachable
+
+
+def test_an_is_obsolete_outage_keeps_the_term_but_flags_the_gap(monkeypatch, tmp_path):
+    """The label resolved but the obsolescence check could not be reached: keep
+    the term VERIFIED, but say obsolescence is unknown so an obsolete term is not
+    quietly reported as clean."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Dystonia"
+
+        def is_obsolete(self, curie):
+            raise ServiceUnavailable("obsolescence check timed out")
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda: FakeOntology())
+
+    report = validator.validate_terms([FoundTerm(term_id="HP:0001332", prefix="HP")])
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.VERIFIED
+    assert "obsolete could not be checked" in (check.message or "")
+    assert report.not_found_count == 0
+    # The gap must reach the markdown report and summary, not only the message.
+    md = report.to_markdown()
+    assert "obsolescence could not be checked" in md
+    assert "HP:0001332" in md
+    assert report.summary()["obsolescence_unchecked"] == 1
+
+
+def test_the_breaker_still_resolves_cached_terms(monkeypatch, tmp_path):
+    """Issue #111 re-review: once the breaker trips, cached terms must still
+    resolve -- otherwise "re-run resumes from the cache" is a false promise."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    CACHED = "HP:0001250"
+
+    class LiveOntology:  # the live service: every network lookup fails
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    class CacheOntology:  # offline=True resolver: answers only the cached term
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Seizure" if curie == CACHED else None
+
+        def is_obsolete(self, curie):
+            return False
+
+    def build(offline=False):
+        return CacheOntology() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    terms.append(FoundTerm(term_id=CACHED, prefix="HP"))
+    report = validator.validate_terms(terms)
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id[CACHED].status == TermStatus.VERIFIED  # cache answered after the trip
+    assert len(report.service_unreachable_terms) == _CIRCUIT_BREAKER_THRESHOLD
+
+
+def test_pass_two_uses_the_cache_after_the_breaker_trips(monkeypatch, tmp_path):
+    """Issue #111 re-review 2: after the breaker trips, pass two (synonyms /
+    replacement) must also avoid the dead live service, or a cached term with a
+    variant label pays a full network timeout -- the cost the breaker removes."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    CACHED = "HP:0001332"
+    live_pass2 = {"n": 0}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+        def get_adapter(self, prefix):  # a pass-two lookup reaching the live service
+            live_pass2["n"] += 1
+            raise ServiceUnavailable("down")
+
+    class CacheOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Dystonia" if curie == CACHED else None
+
+        def is_obsolete(self, curie):
+            return False
+
+        def get_adapter(self, prefix):
+            return None  # no synonyms offline, and no network
+
+    def build(offline=False):
+        return CacheOntology() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    terms.append(FoundTerm(term_id=CACHED, prefix="HP", labels=("Chorea",)))
+    report = validator.validate_terms(terms)
+
+    by_id = {c.term_id: c for c in report.checked_terms}
+    assert by_id[CACHED].status == TermStatus.VERIFIED  # resolved from the cache
+    assert live_pass2["n"] == 0  # pass two never touched the live service after the trip
+    # Its differing label is left unjudged, not called a MISMATCH on no synonyms.
+    assert by_id[CACHED].agreement == LabelAgreement.NOT_ASSESSED
+
+
+def test_a_pre_trip_term_keeps_its_synonyms_after_a_later_trip(monkeypatch, tmp_path):
+    """A term resolved live before the breaker trips keeps the live accessor in
+    pass two (its OLS payload is memoised, costs nothing), so a later outage does
+    not strip its synonyms or downgrade a correct name to NOT_ASSESSED."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    GOOD = "HP:0001250"
+
+    class SynAdapter:
+        def entity_alias_map(self, curie):  # memoised synonyms, no network
+            return {"rdfs:label": ["Seizure"], "oio:hasExactSynonym": ["Seizures"]}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == GOOD:
+                return "Seizure"
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):
+            return False
+
+        def get_adapter(self, prefix):
+            return SynAdapter()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: LiveOntology())
+
+    # GOOD resolves live first (reported as an exact synonym), then a run of
+    # failures trips the breaker.
+    terms = [FoundTerm(term_id=GOOD, prefix="HP", labels=("Seizures",))]
+    terms += [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+              for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    report = validator.validate_terms(terms)
+
+    good = {c.term_id: c for c in report.checked_terms}[GOOD]
+    assert good.status == TermStatus.VERIFIED
+    # The exact synonym still matches via the live accessor's memoised payload.
+    assert good.agreement == LabelAgreement.MATCH
+
+
+def test_a_pre_trip_obsolete_unknown_term_skips_the_network_after_a_trip(monkeypatch, tmp_path):
+    """A term resolved live before the trip whose is_obsolete failed has no
+    memoised payload, so a post-trip synonym fetch would hit the dead service.
+    Such a term is marked synonyms-unreachable: its non-exact label is left
+    NOT_ASSESSED and no network call is made."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import LabelAgreement, TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    GOOD = "HP:0001250"
+    live_syn = {"n": 0}
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            if curie == GOOD:
+                return "Seizure"
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):
+            raise ServiceUnavailable("obsolescence check down")  # -> obsolete_unknown
+
+        def get_adapter(self, prefix):
+            live_syn["n"] += 1  # a pass-two synonym fetch reaching the live service
+            raise ServiceUnavailable("down")
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=True)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: LiveOntology())
+
+    terms = [FoundTerm(term_id=GOOD, prefix="HP", labels=("Chorea",))]  # label differs
+    terms += [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+              for i in range(_CIRCUIT_BREAKER_THRESHOLD)]
+    report = validator.validate_terms(terms)
+
+    good = {c.term_id: c for c in report.checked_terms}[GOOD]
+    assert good.status == TermStatus.VERIFIED
+    assert good.agreement == LabelAgreement.NOT_ASSESSED  # not judged without synonyms
+    assert live_syn["n"] == 0  # no synonym fetch to the dead service
+
+
+def test_an_offline_lookup_that_raises_is_tolerated(monkeypatch, tmp_path):
+    """If the offline resolver raises instead of returning None for an uncached
+    term, the post-trip term is still marked unreachable, not aborted."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class LiveOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    class RaisingCache:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("offline resolver refused")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    def build(offline=False):
+        return RaisingCache() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD + 1)]
+    report = validator.validate_terms(terms)  # must not raise
+
+    assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
+    assert len(report.service_unreachable_terms) == len(terms)
+
+
+def test_a_replacement_outage_on_an_obsolete_term_does_not_abort(monkeypatch, tmp_path):
+    """An obsolete term whose replacement lookup goes unreachable stays OBSOLETE
+    with no replacement, rather than aborting the run."""
+    from deep_research_client.validation.term_validator import TermValidator
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+
+    class FakeOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return "Old term"
+
+        def is_obsolete(self, curie):
+            return True
+
+        def get_adapter(self, prefix):
+            return object()
+
+        def _is_ols_adapter(self, adapter):
+            return True
+
+        def _ols_term_dict(self, adapter, curie):
+            raise ServiceUnavailable("replacement lookup down")
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", lambda offline=False: FakeOntology())
+
+    report = validator.validate_terms([FoundTerm(term_id="HP:0001250", prefix="HP")])
+
+    check = report.checked_terms[0]
+    assert check.status == TermStatus.OBSOLETE
+    assert check.replaced_by is None  # replacement unreachable, not a crash
+
+
+def test_the_circuit_breaker_stops_calling_the_live_service(monkeypatch, tmp_path):
+    """A total outage must not wait out one network timeout per term: after a run
+    of consecutive failures the live service is not called again. The cache is
+    still consulted (for free), so with an empty cache the rest come back
+    unreachable without further network waits."""
+    from deep_research_client.validation.term_validator import (
+        TermValidator,
+        _CIRCUIT_BREAKER_THRESHOLD,
+    )
+    from deep_research_client.validation.term_datamodel import TermStatus
+    from deep_research_client.validation.term_extraction import FoundTerm
+
+    ServiceUnavailable = _service_error_type()
+    live_calls = {"n": 0}
+
+    class LiveOntology:  # the network: every lookup fails and is counted
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            live_calls["n"] += 1
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    class EmptyCache:  # offline=True resolver: nothing cached, no network
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            return None
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    def build(offline=False):
+        return EmptyCache() if offline else LiveOntology()
+
+    validator = TermValidator(cache_dir=tmp_path / "cache", check_labels=False)
+    monkeypatch.setattr(validator, "_build_ontology_access", build)
+
+    terms = [FoundTerm(term_id=f"HP:{i:07d}", prefix="HP")
+             for i in range(_CIRCUIT_BREAKER_THRESHOLD + 5)]
+    report = validator.validate_terms(terms)
+
+    # The live service was hit at most the breaker threshold times, not once per term.
+    assert live_calls["n"] == _CIRCUIT_BREAKER_THRESHOLD
+    assert all(c.status == TermStatus.UNVERIFIABLE for c in report.checked_terms)
+    assert len(report.service_unreachable_terms) == len(terms)
+
+
+def test_cli_validate_terms_survives_a_total_outage(monkeypatch, tmp_path):
+    """End to end: an outage no longer exits 3, and --in-place leaves an existing
+    file untouched rather than overwriting it with an all-unverifiable section."""
+    from deep_research_client.validation.term_validator import TermValidator
+
+    ServiceUnavailable = _service_error_type()
+
+    class DeadOntology:
+        oak_config: dict = {}
+
+        def get_label(self, curie):
+            raise ServiceUnavailable("down")
+
+        def is_obsolete(self, curie):  # pragma: no cover - never reached
+            return False
+
+    monkeypatch.setattr(
+        TermValidator, "_build_ontology_access", lambda self: DeadOntology()
+    )
+
+    report = tmp_path / "report.md"
+    original = "# R\n\n| Seizure | HP:0001250 |\n"
+    report.write_text(original, encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["validate-terms", str(report), "--in-place"])
+
+    assert result.exit_code == 0, result.output  # was exit 3 before #111
+    assert report.read_text(encoding="utf-8") == original  # file left untouched
+
+
+def test_to_markdown_flags_unreachable_terms():
+    """The rendered report names the terms the service could not be reached for
+    and tells the reader a re-run may resolve them."""
+    from deep_research_client.validation.term_models import (
+        SERVICE_UNREACHABLE_MESSAGE,
+        TermCheck,
+        TermStatus,
+        TermValidationReport,
+    )
+
+    report = TermValidationReport(terms=[
+        TermCheck(
+            term_id="UBERON:0002107", prefix="UBERON",
+            status=TermStatus.UNVERIFIABLE, occurrences=3,
+            message=SERVICE_UNREACHABLE_MESSAGE,
+        ),
+    ])
+    md = report.to_markdown()
+    assert "could not be reached" in md
+    assert "UBERON:0002107" in md
+    assert "re-run" in md.lower()
+
+
+# --------------------------------------------------------------------------
 # Generated model
 # --------------------------------------------------------------------------
 

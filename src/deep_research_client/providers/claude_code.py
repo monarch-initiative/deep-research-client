@@ -32,9 +32,13 @@ import logging
 import re
 import shutil
 from datetime import datetime
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
-from . import ResearchProvider
+from ._cli_agent import (
+    CLIAgentResearchProvider,
+    INCOMPLETE_REPORT_MARKER,
+    INLINE_REPORT_DIRECTIVE,
+)
 from ..exceptions import (
     ProviderAuthError,
     ProviderBillingError,
@@ -47,6 +51,14 @@ from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import ClaudeCodeParams
 from ..model_cards import ProviderModelCards, create_claude_code_model_cards
 from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
+
+# Re-exported for backwards compatibility: these names moved to the shared
+# ``_cli_agent`` module but are still imported from here by tests and callers.
+# ``_INLINE_REPORT_DIRECTIVE`` keeps its leading underscore as the module-local
+# spelling that ``_build_command`` and the test suite use.
+_INLINE_REPORT_DIRECTIVE = INLINE_REPORT_DIRECTIVE
+__all__ = ["ClaudeCodeProvider", "classify_cli_failure", "terminal_result_text",
+           "INCOMPLETE_REPORT_MARKER", "INLINE_REPORT_DIRECTIVE"]
 
 logger = logging.getLogger(__name__)
 
@@ -173,19 +185,6 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     return None
 
 
-# Non-interactive ("print") mode has no "later": the process emits one response
-# and exits. Local skills/workflows that defer work to a background task would be
-# orphaned, leaving us with only a chatty preamble instead of a report. This
-# directive forces Claude Code to do the work and emit the finished report inline.
-_INLINE_REPORT_DIRECTIVE = (
-    "IMPORTANT: You are running non-interactively and must produce the complete "
-    "final research report directly in this single response. Do the research now "
-    "using your available tools (web search, web fetch, etc.) and write the full "
-    "report inline. Do NOT defer the work, do NOT hand it off to a background task, "
-    "workflow, or sub-agent, do NOT promise to follow up later, and do NOT ask "
-    "clarifying questions. Output only the report itself in Markdown."
-)
-
 # Aliases that point at the provider's own default model card rather than a real
 # Claude model id. When the user "selects" one of these we let the local Claude
 # Code installation pick its own default model instead of forwarding --model.
@@ -197,12 +196,28 @@ _DEFAULT_MODEL_SENTINELS = {
     "default",
 }
 
-# URL pattern for citation extraction (mirrors the other providers).
-_URL_PATTERN = re.compile(r"https?://[^\s\)\]>]+")
+class ParsedStream(NamedTuple):
+    """What a ``stream-json`` run produced, as read by ``_parse_stream``."""
+
+    #: The model's text blocks, in emission order.
+    assistant_texts: List[str]
+    #: The terminal ``result`` event: provenance and error status.
+    result: dict
+    #: Names of the tools the model called, in call order, repeats included.
+    tool_uses: List[str]
 
 
-class ClaudeCodeProvider(ResearchProvider):
+class ClaudeCodeProvider(CLIAgentResearchProvider):
     """Provider that runs the local Claude Code CLI to perform research."""
+
+    #: Tools that organise or save the agent's own work rather than retrieve
+    #: anything, so a run whose only calls are these answered from memory. The
+    #: write tools are reachable only when allowed_tools is widened or
+    #: skip_permissions is set, but a from-memory answer saved with Write is
+    #: still from memory. Consumed by the inherited ``_retrieval_calls``.
+    _NON_RETRIEVAL_TOOLS = frozenset(
+        {"TodoWrite", "ExitPlanMode", "Write", "Edit", "MultiEdit", "NotebookEdit"}
+    )
 
     #: Auto-detection probes the default ``claude`` binary and honours an
     #: opt-out, neither of which an instance's is_available() can see.
@@ -212,6 +227,9 @@ class ClaudeCodeProvider(ResearchProvider):
 
     #: Nothing to run is an install problem, not a missing key.
     unavailable_error = ProviderNotInstalledError
+    timeout_meaning = (
+        "how long the whole claude run may take before it is killed (default 1800 s)"
+    )
 
     def __init__(self, config: ProviderConfig, params: Optional[ClaudeCodeParams] = None):
         """Initialize the Claude Code provider.
@@ -501,11 +519,14 @@ class ClaudeCodeProvider(ResearchProvider):
                 f"{stderr.strip() or '<no stderr>'}"
             )
 
-        assistant_texts, data = self._parse_stream(stdout, self.name)
+        assistant_texts, data, tool_uses = self._parse_stream(stdout, self.name)
         markdown = self._report_text(assistant_texts, data)
         self._check_report_length(markdown, self.params.min_report_chars)
 
         run_metadata = self._extract_run_metadata(data)
+        retrieval_calls = self._retrieval_calls(tool_uses, data.get("permission_denials"))
+        run_metadata["tool_calls"] = len(tool_uses)
+        run_metadata["retrieval_calls"] = retrieval_calls
         run_metadata.update(self.params.toolset_run_metadata())
         # How many separate assistant messages the report was assembled from.
         # More than one is normal for an agentic run (the model narrates between
@@ -513,6 +534,18 @@ class ClaudeCodeProvider(ResearchProvider):
         # not a warning sign.
         run_metadata["assistant_text_blocks"] = len(assistant_texts)
         citations = self._extract_citations(markdown)
+        unsuccessful_reason = self._unsuccessful_reason(
+            markdown,
+            citations,
+            retrieval_calls=retrieval_calls,
+            web_search_requests=run_metadata.get("web_search_requests", 0),
+        )
+        if unsuccessful_reason:
+            run_metadata["unsuccessful_reason"] = unsuccessful_reason
+            # INFO, not WARNING: the client already warns that the result is
+            # not cached and the CLI names this reason, so a WARNING here would
+            # print the same news a third time at the CLI's default log level.
+            logger.info("Claude Code did not produce a report: %s", unsuccessful_reason)
 
         # Prefer the model id(s) the run actually reported over our sentinel
         # default, so provenance reflects what really ran (even if unspecified or
@@ -540,57 +573,11 @@ class ClaudeCodeProvider(ResearchProvider):
             start_time=start_time,
             end_time=end_time,
             duration_seconds=duration,
-        )
-
-    async def _run_process(self, command: List[str], query: str) -> tuple[str, str, int]:
-        """Run the claude subprocess, piping the query to stdin.
-
-        Args:
-            command: The command argument list (without the prompt).
-            query: The research prompt, supplied via stdin.
-
-        Returns:
-            Tuple of (stdout, stderr, return_code).
-
-        Raises:
-            ValueError: If the process does not finish within the timeout.
-        """
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=self.params.working_dir,
-        )
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(input=query.encode("utf-8")),
-                timeout=self.timeout,
-            )
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            # A spent usage allowance can stall a run rather than fail it, and
-            # then it arrives here looking like slowness. Say so, so the reader
-            # checks the allowance before chasing latency.
-            raise ValueError(
-                f"Claude Code run timed out after {self.timeout}s. If this repeats, "
-                f"check the account with `deep-research-client providers --check "
-                f"--provider {self.name}` -- a spent usage limit can stall a run "
-                f"instead of failing it."
-            )
-
-        # returncode is set once communicate() has returned.
-        returncode = -1 if process.returncode is None else process.returncode
-        return (
-            stdout_bytes.decode("utf-8", errors="replace"),
-            stderr_bytes.decode("utf-8", errors="replace"),
-            returncode,
+            answer_successful=False if unsuccessful_reason else None,
         )
 
     @staticmethod
-    def _parse_stream(stdout: str, provider: str = "claude_code") -> tuple[List[str], dict]:
+    def _parse_stream(stdout: str, provider: str = "claude_code") -> ParsedStream:
         """Parse Claude Code's ``stream-json`` output into text blocks and metadata.
 
         The stream is JSON Lines: one event per line. ``assistant`` events carry
@@ -603,7 +590,8 @@ class ClaudeCodeProvider(ResearchProvider):
             provider: Provider name to attribute a classified failure to.
 
         Returns:
-            Tuple of (assistant text blocks in emission order, terminal result event).
+            The assistant text blocks, the terminal result event, and the names
+            of the tools the model called.
 
         Raises:
             ValueError: If the output is empty, contains no terminal result event,
@@ -614,6 +602,7 @@ class ClaudeCodeProvider(ResearchProvider):
             raise ValueError("Claude Code returned empty output.")
 
         assistant_texts: List[str] = []
+        tool_uses: List[str] = []
         result_event: Optional[dict] = None
 
         for line in text.splitlines():
@@ -649,10 +638,14 @@ class ClaudeCodeProvider(ResearchProvider):
                 elif not isinstance(content, list):
                     continue
                 for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text":
                         block_text = str(block.get("text") or "")
                         if block_text.strip():
                             assistant_texts.append(block_text)
+                    elif block.get("type") == "tool_use":
+                        tool_uses.append(str(block.get("name") or "<unnamed>"))
             elif event.get("type") == "result":
                 result_event = event
 
@@ -670,7 +663,7 @@ class ClaudeCodeProvider(ResearchProvider):
                 raise classified
             raise ValueError(f"Claude Code reported an error ({subtype}): {detail}")
 
-        return assistant_texts, result_event
+        return ParsedStream(assistant_texts, result_event, tool_uses)
 
     @staticmethod
     def _report_text(assistant_texts: List[str], data: dict) -> str:
@@ -701,47 +694,6 @@ class ClaudeCodeProvider(ResearchProvider):
         if not result or not str(result).strip():
             raise ValueError("Claude Code output contained no result text.")
         return str(result).strip()
-
-    @staticmethod
-    def _check_report_length(markdown: str, min_chars: int) -> None:
-        """Reject a report too short to be a plausible research result.
-
-        Silent success on an empty run is the costly failure mode: the caller
-        gets a well-formed file with real provenance and no content. Failing here
-        turns that into a non-zero exit.
-
-        This is an emptiness check, not a quality one: a short "I could not find
-        sufficient information" reply passes it.
-
-        Because the run that failed has already been paid for, the rejected text
-        is logged in full and previewed in the exception, so the cause is
-        diagnosable without a second run.
-
-        Raises:
-            ValueError: If ``markdown`` is shorter than ``min_chars``.
-        """
-        if min_chars <= 0:
-            return
-
-        report = markdown.strip()
-        if len(report) >= min_chars:
-            return
-
-        logger.warning(
-            "Claude Code report is below the min_report_chars threshold (%d < %d). "
-            "Full text of the rejected report: %s",
-            len(report),
-            min_chars,
-            report or "<empty>",
-        )
-        preview = report[:200] + ("..." if len(report) > 200 else "")
-        raise ValueError(
-            f"Claude Code returned a {len(report)}-character report, below the "
-            f"min_report_chars threshold of {min_chars}. This usually means the "
-            "run failed, was cut short, or produced no research. Lower or disable "
-            "the threshold (min_report_chars=0) if short answers are expected. "
-            f"Report text: {preview!r}"
-        )
 
     @staticmethod
     def _extract_run_metadata(data: dict) -> dict:
@@ -799,22 +751,3 @@ class ClaudeCodeProvider(ResearchProvider):
                 metadata["denied_tools"] = denied_tools
 
         return metadata
-
-    @staticmethod
-    def _extract_citations(markdown: str) -> List[str]:
-        """Extract URL citations from the markdown report, preserving order.
-
-        Args:
-            markdown: The markdown research report.
-
-        Returns:
-            Deduplicated list of cited URLs.
-        """
-        citations: List[str] = []
-        seen = set()
-        for url in _URL_PATTERN.findall(markdown):
-            cleaned = url.rstrip(".,;")
-            if cleaned and cleaned not in seen:
-                seen.add(cleaned)
-                citations.append(cleaned)
-        return citations

@@ -506,7 +506,9 @@ class TestOpenScientistProvider:
         monkeypatch.setattr(OpenScientistProvider, "_poll_until_done", fake_poll_until_done)
         monkeypatch.setattr(OpenScientistProvider, "_cancel_job", fake_cancel_job)
 
-        with pytest.raises(ValueError, match="timed out after 3600s"):
+        from deep_research_client.exceptions import ProviderTimeoutError
+
+        with pytest.raises(ProviderTimeoutError, match="did not finish within 3600s"):
             await self.provider.research("What is autophagy?")
 
         assert seen["cancelled"] == "job-timeout"

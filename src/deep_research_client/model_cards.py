@@ -678,6 +678,59 @@ def create_claude_code_model_cards() -> ProviderModelCards:
     )
 
 
+def create_antigravity_model_cards() -> ProviderModelCards:
+    """Create model cards for the Google Antigravity research provider."""
+
+    default = ModelCard(
+        name="gemini-4-carbon-medium",
+        display_name="Gemini 4 Carbon (Medium) via Antigravity",
+        description=(
+            "Runs the local Google Antigravity CLI (agy) in non-interactive "
+            "mode, letting its agentic tools (web search, URL fetch, browser) "
+            "drive a multi-step research process that yields a cited markdown "
+            "report. Defaults to Gemini 4 Carbon at medium reasoning effort and "
+            "always forwards an explicit model, so the report records exactly "
+            "what ran; pass any other slug from `agy models` via the model "
+            "parameter."
+        ),
+        cost_level=CostLevel.MEDIUM,
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            # No code_interpretation: the provider is read-only by default and
+            # shell/code tools are soft-denied unless skip_permissions is set.
+            ResearchCapability.web_search,
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
+        ],
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[ResearchResource.general_web],
+        aliases=["antigravity", "agy", "default", "antigravity-default"],
+        pricing_notes=(
+            "Billing and authentication are handled by the local Antigravity "
+            "installation (public preview is free for individuals); no separate "
+            "provider API key is required."
+        ),
+        use_cases=[
+            "Deep research using an already-configured Antigravity environment",
+            "Agentic web research with citations on Gemini models",
+            "Research where an Antigravity/Gemini account is the available tool",
+        ],
+        limitations=[
+            "Requires the `agy` CLI to be installed and authenticated locally",
+            "Read-only by default (web search/fetch/browser); mutation soft-denied",
+            "Non-deterministic results",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="antigravity",
+        default_model="gemini-4-carbon-medium",
+        models={
+            "gemini-4-carbon-medium": default,
+        },
+    )
+
+
 # Single source of truth for the DeepER-Med citation. Defined here rather than in
 # providers/deeper_med.py because that module imports from this one; the provider
 # re-exports it so callers can reference either.
@@ -748,6 +801,60 @@ def create_deeper_med_model_cards() -> ProviderModelCards:
         provider_name="deeper_med",
         default_model="deeper-med-agentic",
         models={"deeper-med-agentic": deeper_med},
+    )
+
+
+def create_toxindex_model_cards() -> ProviderModelCards:
+    """Create model cards for ToxIndex Sage, a chemical safety agent (issue #98).
+
+    The provider is a stub for research -- ToxIndex has no route that submits
+    a question to Sage -- but finished conversations can be retrieved, so the
+    capabilities below are observed from those transcripts rather than taken
+    from marketing copy. Cost and speed are not measured.
+    """
+
+    sage = ModelCard(
+        name="sage",
+        display_name="ToxIndex Sage (stub)",
+        description=(
+            "Insilica's toxicology agent: answers chemical safety and hazard "
+            "questions over curated toxicology datasets (Kiln), a regulatory "
+            "document index (Crawler) and computational predictors (ToxJobs), "
+            "citing each claim to the tool call behind it. Domain-specific: "
+            "chemical safety and computational toxicology only. STUB: ToxIndex "
+            "has no API route that submits a question, so research() raises; "
+            "finished conversations can be retrieved."
+        ),
+        cost_level=CostLevel.LOW,
+        # One observed answer took about seven minutes, a clarifying question included.
+        time_estimate=TimeEstimate.SLOW,
+        capabilities=[
+            ResearchCapability.citation_tracking,
+            ResearchCapability.evidence_synthesis,
+            # Runs SQL over datasets and structure-based toxicity predictors.
+            ResearchCapability.code_interpretation,
+        ],
+        archetype=ProviderArchetype.agentic_researcher,
+        resources=[ResearchResource.chemical_databases],
+        aliases=["toxindex", "toxindex-sage"],
+        pricing_notes="Free preview tier; paid plan limits are not published",
+        use_cases=[
+            "Chemical hazard and toxicity questions for a named substance",
+            "Exposure limits and regulatory reference values",
+            "Gap checks across curated toxicology datasets",
+        ],
+        limitations=[
+            "Stub: no API route submits a question, so this model cannot be invoked",
+            "Toxicology-specific; not a general literature research agent",
+            "Citations are ToxIndex tool calls (tc-... ids), not PMIDs or DOIs",
+            "Cost and speed are not measured",
+        ],
+    )
+
+    return ProviderModelCards(
+        provider_name="toxindex",
+        default_model="sage",
+        models={"sage": sage},
     )
 
 
@@ -1066,7 +1173,9 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "consensus": create_consensus_model_cards(),
     "openscientist": create_openscientist_model_cards(),
     "claude_code": create_claude_code_model_cards(),
+    "antigravity": create_antigravity_model_cards(),
     "deeper_med": create_deeper_med_model_cards(),
+    "toxindex": create_toxindex_model_cards(),
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
     "tooluniverse": create_tooluniverse_model_cards(),

@@ -1506,7 +1506,7 @@ go-and-looks, not failures.</p>
 </tr>
 <tr>
 <td><code>UNVERIFIABLE</code></td>
-<td>No resolver covered this prefix, or it was skipped. Nothing was learned either way, so this is never evidence of fabrication.</td>
+<td>No resolver covered this prefix, it was skipped, or the ontology service could not be reached for this term. Nothing was learned either way, so this is never evidence of fabrication.</td>
 </tr>
 </tbody>
 </table>
@@ -1635,12 +1635,27 @@ correct paraphrase can still land there.</p>
 <h2 id="when-the-ontology-service-is-unreachable">When the ontology service is unreachable</h2>
 <p>A lookup that fails is not the same as a term that does not exist, and the two are kept
 apart. A definitive 404 is an answer: the term is absent. A connectivity failure, a 5xx, a
-408 or a 429 is not, and raises rather than returning nothing — so a rate-limited run exits
-with code <code>3</code> and says the service was unreachable, instead of quietly reporting real terms
-as fabricated.</p>
+408 or a 429 is not, so such a term is marked <code>UNVERIFIABLE</code>, never <code>NOT_FOUND</code> — a service
+outage is never read as fabrication.</p>
+<p>A failure for one term does not sink the rest of the run. The term that could not be reached
+is recorded as unverifiable and validation carries on to the terms the service can still
+answer, so a single slow lookup no longer discards the whole report's term validation. The
+report lists the terms it could not reach under their own heading and notes that a re-run may
+resolve them — the label cache resumes, so only the still-unresolved terms are retried. Only
+a failure to reach the service at all (for example while building the resolver) surfaces as
+an error with exit code <code>3</code>.</p>
+<p>This is a behavior change: an outage used to exit with code <code>3</code> and write nothing, whereas
+now the run completes and the report is written. A term left <code>UNVERIFIABLE</code> by an outage does
+<strong>not</strong> trip <code>--fail-on-unresolved</code> (it is not a resolution failure), so a pipeline that
+relied on the old exit <code>3</code> to catch an outage will now pass — watch the <code>service_unreachable</code>
+count in the frontmatter summary, or treat a high unverifiable count as a signal, until a
+<code>--fail-on-unreachable</code> option lands. For a <em>total</em> outage (nothing resolved), <code>--in-place</code> is
+skipped rather than overwriting an existing section with an all-unverifiable one. A <em>partial</em>
+outage — some terms resolved, some unreachable — still writes in place; the <code>service_unreachable</code>
+count in the frontmatter summary shows how much of the section is an outage rather than a result.</p>
 <p>That is why there is no rate-limit delay option here, unlike
-<a href="../validate-references/">reference validation</a>. Running into a limit costs you a re-run, not
-a confidently wrong report.</p>
+<a href="../validate-references/">reference validation</a>. Running into a limit costs you a re-run of
+the terms that were not reached, not a confidently wrong report.</p>
 <h2 id="fail-a-pipeline-on-bad-terms">Fail a pipeline on bad terms</h2>
 <p>Both commands accept <code>--fail-on-unresolved</code>, which exits with code <code>2</code> when any term fails
 to resolve or is named as a different term. Obsolete terms, variant labels and unverifiable

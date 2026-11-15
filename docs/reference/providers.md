@@ -17,6 +17,7 @@ Complete reference for all supported research providers.
 | Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
+| RSS Agent | `RSS_AGENT_DIR` (local checkout) + `ANTHROPIC_API_KEY` | Digest of recent papers from feeds, Crossref, bioRxiv | Slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 | ToxIndex | (stub - no submit API yet; `TOXINDEX_API_KEY` for retrieval) | Chemical safety and toxicology agent (Sage), cited to tool calls | n/a |
 
@@ -45,6 +46,7 @@ and the value is recorded in the report's `provider_config.timeout`.
 | Claude Code | How long the whole `claude` run may take before it is killed | 1800 s |
 | Antigravity | How long the whole `agy` run may take before it is killed. `agy`'s own `--print-timeout` is left at its default of no limit, so this outer kill governs; set `print_timeout` to pass one through | 1800 s |
 | Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| RSS Agent | How long the whole `rss_agent_claude` pipeline run may take before it is killed | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
 | ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
 | DeepER-Med | **Not supported**: stub, nothing runs | n/a |
@@ -688,6 +690,93 @@ do not combine them with an untrusted query.
 - The prompt is passed as a single command-line argument (agy has no stdin
   prompt mode for text input), so a very large `system_prompt` or query is
   capped at 128 KiB and rejected with a clear error before the run starts
+
+---
+
+## RSS Agent (Literature Digest)
+
+[rss_agent_claude](https://github.com/jcthrash/rss_agent_claude) is a literature
+curation pipeline. It fetches recent papers from RSS/Atom feeds, Crossref,
+bioRxiv, Nature-family and ASM journals; keeps those whose embedding
+(`all-mpnet-base-v2`) is close to an interest profile; scores novelty against a
+FAISS index of a personal paper library; and has Claude Haiku score the
+survivors against a ranking prompt. It is a `retriever`: the report is a ranked
+list of **new papers**, not an answer to the question.
+
+### Setup
+
+rss_agent_claude is a set of scripts with heavy requirements (torch,
+transformers, faiss-cpu), so it is not a dependency of this package. Clone it
+and install its requirements in an environment of its own, then point the
+client at both:
+
+```bash
+git clone https://github.com/jcthrash/rss_agent_claude
+cd rss_agent_claude
+python -m venv venv && venv/bin/pip install -r requirements.txt
+cp config/examples/feeds.txt config/feeds.txt   # then edit to taste
+venv/bin/python scripts/build_library_index.py  # needs library/source_papers/paperpile_library.json
+
+export RSS_AGENT_DIR="$PWD"
+export RSS_AGENT_PYTHON="$PWD/venv/bin/python"
+export ANTHROPIC_API_KEY="your-key"              # or put it in the checkout's .env
+```
+
+The provider is registered only when `RSS_AGENT_DIR` is set. It reports itself
+unavailable, saying which, when the directory is not a checkout, the library
+index is missing (`filter_and_rank.py` will not start without it), or the
+interpreter cannot be found.
+
+### How a query is run
+
+Each run happens in a fresh temporary workspace, never in the checkout, so a
+query neither enters nor is filtered by your daily digest's history:
+
+- `scripts/` is copied and `library/` linked from the checkout;
+- `feeds.txt`, `crossref_issn_fallbacks.txt` and `biorxiv_subjects.txt` come
+  from the checkout's `config/`, falling back to `config/examples/`;
+- each non-blank line of the query becomes one topic in
+  `interest_profile.txt`, `crossref_terms.txt` and `biorxiv_terms.txt`;
+- `ranking_prompt.txt` is generated from the topics with a generic rubric,
+  unless `ranking_prompt_file` names one (e.g. your tuned
+  `config/ranking_prompt.txt`).
+
+The report is the pipeline's own `curated_today.md` (Top Picks and Also Worth
+Scanning), and the citations are the digested articles' links. When no article
+clears `MIN_SCORE` there is no digest; the result is then marked
+`answer_status: unsuccessful`, is not cached, and the CLI exits with code 4.
+
+```bash
+deep-research-client research $'Marine nitrogen fixation\nSAR11 physiology' \
+  --provider rss_agent --param max_age_days=7 --param skip_biorxiv=true --no-cache
+```
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import RssAgentParams
+
+params = RssAgentParams(
+    repo_dir="/path/to/rss_agent_claude",   # default: RSS_AGENT_DIR
+    python_bin="/path/to/venv/bin/python",  # default: RSS_AGENT_PYTHON, then python
+    ranking_prompt_file=None,               # default: generated from the query
+    min_score=0.6, top_picks_score=0.75,    # digest tiers
+    max_age_days=7,                         # how recent a paper must be
+    max_llm=500,                            # cap on Claude-scored articles
+    semantic_threshold=0.25, crossref_days_back=21,
+    skip_crossref=False, skip_biorxiv=False, skip_nature=False, skip_asm=False,
+)
+```
+
+Tuning fields left unset keep the pipeline's defaults; each is passed as the
+`run_pipeline.sh` environment variable of the same name in upper case.
+
+### Limitations
+
+- Sees only recent papers from the feeds and journals configured in the checkout.
+- Lists papers; does not synthesize them or answer the question.
+- Results change daily, so cached reports go stale: pass `--no-cache` for a fresh digest.
+- `ProviderConfig.timeout` (default 3600 s) bounds the whole pipeline run.
 
 ---
 

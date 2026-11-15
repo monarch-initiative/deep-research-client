@@ -87,6 +87,7 @@ TIMEOUT_TABLE: dict[str, bool] = {
     "openscientist": True,
     "claude_code": True,
     "antigravity": True,
+    "rss_agent": True,
     "biomni": True,
     "toxindex": True,
     "mock": True,

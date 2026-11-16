@@ -20,6 +20,7 @@ skeleton would be more conditionals than code.
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -362,6 +363,41 @@ class CLIAgentResearchProvider(ResearchProvider):
         if _REFUSAL_PATTERN.search(markdown):
             return "the model declined to write the report, and it cites no sources"
         return None
+
+    @staticmethod
+    def _abs_path_arg(path: str) -> str:
+        """Resolve a path argument to absolute against the current directory.
+
+        The CLI runs in a *different* working directory than the caller's (see
+        :meth:`_working_directory`, which defaults to a throwaway temp dir), so
+        a relative path passed on the command line -- an ``--add-dir`` entry,
+        say -- would otherwise resolve against that temp dir and silently point
+        at nothing. Called at command-build time, while the process is still in
+        the caller's directory, so ``abspath`` anchors to what the user meant.
+
+        >>> CLIAgentResearchProvider._abs_path_arg("/data/papers")
+        '/data/papers'
+        """
+        return os.path.abspath(path)
+
+    @staticmethod
+    def _abs_executable(executable: str) -> str:
+        """Make a relative executable *path* absolute so a cwd change won't break it.
+
+        ``create_subprocess_exec`` resolves a program that contains a path
+        separator (e.g. ``./bin/agy``) against the process cwd, which is no
+        longer the caller's once :meth:`_working_directory` moves it. A bare
+        command name (``agy``, ``claude``) carries no separator and is found via
+        ``PATH`` regardless of cwd, so it is left untouched.
+
+        >>> CLIAgentResearchProvider._abs_executable("agy")
+        'agy'
+        >>> CLIAgentResearchProvider._abs_executable("./bin/agy").endswith("/bin/agy")
+        True
+        """
+        if os.sep in executable or (os.altsep and os.altsep in executable):
+            return os.path.abspath(executable)
+        return executable
 
     @contextmanager
     def _working_directory(self) -> Iterator[str]:

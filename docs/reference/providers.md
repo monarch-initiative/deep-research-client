@@ -680,11 +680,12 @@ notice is printed to stderr, and the run still exits 0. So the out-of-the-box
 behaviour is already read-only, and this provider never passes
 `--dangerously-skip-permissions` unless you set `skip_permissions=True` (only do
 so for a trusted query in a sandbox). One consequence: a soft-denied *final*
-action can leave a successful run with an empty response. When that empty report
-is explained by an auto-denied tool — the terminal event's `denied_actions`, or
-an `auto-denied` note on stderr — the provider raises an error that names the
-refused action (e.g. `Bash (command)`) and includes the stderr, instead of the
-generic short-report error, so the real cause is visible (issue #113).
+action can leave a successful run with an empty response. When that empty-or-too-short
+report is explained by an auto-denied tool — the terminal event's
+`denied_actions` (the strong signal), or an `auto-denied` note on stderr (a
+fallback) — the provider raises an error that names the refused action (e.g.
+`Bash (command)`) and includes the stderr tail, instead of the generic
+short-report error, so the real cause is visible (issue #113).
 Otherwise `min_report_chars` catches the empty report and fails the run rather
 than caching it. The refused actions are also recorded in `run_metadata`
 (`denied_actions`, `denied_action_names`) even when the report survives.

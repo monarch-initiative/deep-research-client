@@ -139,6 +139,24 @@ def test_build_command_forwards_options():
     assert cmd[-1] == "--sandbox"
 
 
+def test_build_command_resolves_relative_add_dirs_to_absolute():
+    """The run's cwd is a throwaway temp dir, so a relative --add-dir must be
+    resolved against the caller's directory first, not left to point into the
+    temp dir (PR #114 review)."""
+    cmd = _provider(AntigravityParams(add_dirs=["data/papers"]))._build_command("P")
+    resolved = cmd[cmd.index("--add-dir") + 1]
+    assert os.path.isabs(resolved)
+    assert resolved == os.path.abspath("data/papers")
+
+
+def test_build_command_absolutizes_a_relative_executable_path():
+    """A relative executable *path* (with a separator) would break under the
+    temp-dir cwd; a bare command name is left alone for PATH lookup."""
+    assert _provider(AntigravityParams(agy_executable="./bin/agy"))._build_command("P")[0] \
+        == os.path.abspath("./bin/agy")
+    assert _provider(AntigravityParams(agy_executable="agy"))._build_command("P")[0] == "agy"
+
+
 @pytest.mark.parametrize("alias", ["antigravity", "agy", "default", "antigravity-default", "ANTIGRAVITY", None])
 def test_default_aliases_resolve_to_the_default_model(alias):
     """An unset model or a provider-default alias resolves to a concrete slug,
@@ -486,3 +504,35 @@ def test_denied_action_names_helper():
     assert denied_action_names([{"action": "x", "display_name": "x"}]) == ["x"]
     assert denied_action_names(None) == []
     assert denied_action_names(["not a dict"]) == []
+
+
+def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch):
+    """A run killed by the timeout must still sweep up its throwaway dir."""
+    import tempfile as _tempfile
+    from deep_research_client.exceptions import ProviderTimeoutError
+
+    created = []
+    real_mkdtemp = _tempfile.mkdtemp
+
+    def _recording_mkdtemp(*args, **kwargs):
+        path = real_mkdtemp(*args, **kwargs)
+        created.append(path)
+        return path
+
+    monkeypatch.setattr(
+        "deep_research_client.providers._cli_agent.tempfile.mkdtemp",
+        _recording_mkdtemp,
+    )
+
+    slow = tmp_path / "slowagy"
+    slow.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    slow.chmod(0o755)
+    provider = AntigravityProvider(
+        ProviderConfig(name="antigravity", timeout=1),
+        AntigravityParams(agy_executable=str(slow)),
+    )
+    with pytest.raises(ProviderTimeoutError):
+        asyncio.run(provider._run_process([str(slow)]))
+
+    assert created, "a throwaway temp dir should have been created"
+    assert not os.path.exists(created[0])

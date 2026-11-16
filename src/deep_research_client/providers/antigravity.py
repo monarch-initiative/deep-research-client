@@ -542,7 +542,10 @@ class AntigravityProvider(CLIAgentResearchProvider):
             )
 
         command: List[str] = [
-            self.agy_executable,
+            # Absolute if it carries a path separator, so the default
+            # throwaway-temp-dir cwd (see _working_directory) cannot break a
+            # relative executable path like ./bin/agy.
+            self._abs_executable(self.agy_executable),
             "-p",
             prompt,
             "--output-format",
@@ -573,8 +576,12 @@ class AntigravityProvider(CLIAgentResearchProvider):
         if self.params.settings_override:
             command.extend(["--settings", self.params.settings_override])
 
+        # Resolve add_dirs against the caller's directory, not the throwaway
+        # temp-dir cwd the run will use, so a relative entry still points where
+        # the caller meant (see _working_directory). extra_args are passed
+        # verbatim; a relative path inside them is the caller's to make absolute.
         for directory in self.params.add_dirs:
-            command.extend(["--add-dir", directory])
+            command.extend(["--add-dir", self._abs_path_arg(directory)])
 
         command.extend(self.params.extra_args)
 
@@ -641,7 +648,9 @@ class AntigravityProvider(CLIAgentResearchProvider):
         # report is too short, name the denied action instead of raising the
         # generic short-report error, which hides the real cause.
         if len(markdown) < self.params.min_report_chars:
-            denied = self._denied_action_failure(result.get("denied_actions"), stderr)
+            denied = self._denied_action_failure(
+                result.get("denied_actions"), stderr, len(markdown)
+            )
             if denied is not None:
                 logger.error(str(denied))
                 raise denied
@@ -694,19 +703,26 @@ class AntigravityProvider(CLIAgentResearchProvider):
         )
 
     def _denied_action_failure(
-        self, denied_actions: Optional[list], stderr: str
+        self, denied_actions: Optional[list], stderr: str, report_chars: int
     ) -> Optional[ValueError]:
-        """Build a specific error for a run left empty by an auto-denied tool.
+        """Build a specific error for a short run explained by an auto-denied tool.
 
-        Returns an error naming the denied action when the empty report is
-        explained by a permission the headless read-only mode refused -- either
-        the terminal event's ``denied_actions`` or the ``auto-denied`` note on
-        stderr -- and None otherwise, so the caller falls back to the generic
-        short-report check.
+        Returns an error naming the denied action when the empty-or-too-short
+        report is explained by a permission the headless read-only mode refused
+        -- the terminal event's ``denied_actions`` is the strong signal, the
+        ``auto-denied`` note on stderr a fallback -- and None otherwise, so the
+        caller falls back to the generic short-report check.
+
+        The remedy depends on how the agent reached the denied tool. With a
+        ``working_dir`` set, the usual cause is agent-instruction files in it;
+        on the default (a throwaway temp dir, so no such files), the query
+        itself steered the agent to a refused tool.
 
         Args:
             denied_actions: The terminal ``result`` event's ``denied_actions``.
             stderr: Raw stderr from the run.
+            report_chars: Length of the report produced (0 when empty), so the
+                message can be accurate rather than always say "empty".
 
         Returns:
             A ValueError to raise, or None when no denial is evident.
@@ -721,16 +737,31 @@ class AntigravityProvider(CLIAgentResearchProvider):
             if names
             else "a tool it needed was auto-denied by the read-only permission mode"
         )
-        stderr_tail = stderr.strip()
+        shape = "an empty report" if report_chars == 0 else (
+            f"a {report_chars}-character report"
+        )
+        if getattr(self.params, "working_dir", None) is not None:
+            remedy = (
+                "This usually means the agent read agent-instruction files in "
+                "the working_dir you set (e.g. CLAUDE.md, AGENTS.md) and tried a "
+                "shell or file tool. Unset working_dir to run in a clean "
+                "temporary directory"
+            )
+        else:
+            remedy = (
+                "The run already used a clean temporary directory, so the query "
+                "itself led the agent to a tool the read-only mode denies. "
+                "Rephrase it to rely on retrieval tools only"
+            )
+        # Bound the stderr so a noisy run cannot produce a huge message or flood
+        # the logs, and so less of any local path or account detail is echoed;
+        # the tail carries the auto-denied note.
+        stderr_tail = stderr.strip()[-2000:]
         return ValueError(
-            f"{self.name} produced an empty report because {refused}. This "
-            "usually means the agent read agent-instruction files in its working "
-            "directory (e.g. CLAUDE.md, AGENTS.md) and tried to run a shell or "
-            "file tool. By default the run now uses an empty temporary directory, "
-            "so set working_dir only when you intend the agent to see those "
-            "files; for a trusted, sandboxed query you may set skip_permissions="
-            "True to allow the tool instead."
-            + (f" agy stderr: {stderr_tail}" if stderr_tail else "")
+            f"{self.name} produced {shape} because {refused}. {remedy}; for a "
+            "trusted, sandboxed query you may set skip_permissions=True to allow "
+            "the tool instead."
+            + (f" agy stderr (tail): {stderr_tail}" if stderr_tail else "")
         )
 
     @staticmethod
@@ -875,6 +906,9 @@ class AntigravityProvider(CLIAgentResearchProvider):
         # for a tool the read-only mode refused. Which tool it was is the
         # actionable half, so record the names (and count) as provenance, the
         # way claude_code records ``denied_tools``.
+        # Count and names follow claude_code's denied_tools convention: the
+        # count is raw entries (so three Bash denials read as 3), the names are
+        # deduplicated for readability.
         denied_names = denied_action_names(result.get("denied_actions"))
         if denied_names:
             metadata["denied_actions"] = len(result["denied_actions"])

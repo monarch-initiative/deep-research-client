@@ -509,8 +509,11 @@ def test_denied_action_names_helper():
 def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch):
     """A run killed by the timeout must still sweep up its throwaway dir.
 
-    Rather than wrap mkdtemp, point tempfile at an empty base directory and
-    assert it holds no drc-cli-agent-* leftovers after the killed run.
+    Rather than wrap mkdtemp, point tempfile at an empty base directory. The
+    slow stub records the directory it actually ran in before sleeping, so the
+    test proves a temp dir under ``base`` was created and then removed -- not
+    merely that ``base`` happens to be empty (which would also hold if no temp
+    dir were ever made).
     """
     import tempfile as _tempfile
     from deep_research_client.exceptions import ProviderTimeoutError
@@ -519,8 +522,9 @@ def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch)
     base.mkdir()
     monkeypatch.setattr(_tempfile, "tempdir", str(base))
 
+    cwd_record = tmp_path / "cwd.txt"
     slow = tmp_path / "slowagy"
-    slow.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    slow.write_text(f'#!/bin/sh\npwd > "{cwd_record}"\nsleep 5\n', encoding="utf-8")
     slow.chmod(0o755)
     provider = AntigravityProvider(
         ProviderConfig(name="antigravity", timeout=1),
@@ -529,6 +533,9 @@ def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch)
     with pytest.raises(ProviderTimeoutError):
         asyncio.run(provider._run_process([str(slow)]))
 
-    # The run created its throwaway dir under `base` (tempfile.tempdir) and
-    # removed it on the way out, even though the process was killed.
+    # The run created a throwaway dir under `base` and ran there...
+    ran_in = cwd_record.read_text(encoding="utf-8").strip()
+    assert os.path.dirname(os.path.realpath(ran_in)) == os.path.realpath(str(base))
+    # ...and swept it up on the way out, even though the process was killed.
+    assert not os.path.exists(ran_in)
     assert os.listdir(base) == []

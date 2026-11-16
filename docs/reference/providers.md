@@ -439,7 +439,10 @@ and starting in the caller's workspace lets the agent pick up agent-instruction
 files sitting there (`CLAUDE.md`, `AGENTS.md`), which can send it after a tool
 the read-only allowlist denies (issue #113). Set `working_dir="."` to keep the
 old current-directory behaviour, or `add_dirs` to grant tool access to specific
-directories without making one the cwd.
+directories without making one the cwd. Note the flip side of this change:
+project-scoped Claude Code config in the current directory (`.mcp.json`,
+`.claude/settings.json`, a local `CLAUDE.md`) is no longer loaded by default;
+set `working_dir="."` if a run needs it.
 
 ### What every run is told
 

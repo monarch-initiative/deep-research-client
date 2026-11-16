@@ -507,22 +507,17 @@ def test_denied_action_names_helper():
 
 
 def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch):
-    """A run killed by the timeout must still sweep up its throwaway dir."""
+    """A run killed by the timeout must still sweep up its throwaway dir.
+
+    Rather than wrap mkdtemp, point tempfile at an empty base directory and
+    assert it holds no drc-cli-agent-* leftovers after the killed run.
+    """
     import tempfile as _tempfile
     from deep_research_client.exceptions import ProviderTimeoutError
 
-    created = []
-    real_mkdtemp = _tempfile.mkdtemp
-
-    def _recording_mkdtemp(*args, **kwargs):
-        path = real_mkdtemp(*args, **kwargs)
-        created.append(path)
-        return path
-
-    monkeypatch.setattr(
-        "deep_research_client.providers._cli_agent.tempfile.mkdtemp",
-        _recording_mkdtemp,
-    )
+    base = tmp_path / "tmpbase"
+    base.mkdir()
+    monkeypatch.setattr(_tempfile, "tempdir", str(base))
 
     slow = tmp_path / "slowagy"
     slow.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
@@ -534,5 +529,6 @@ def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch)
     with pytest.raises(ProviderTimeoutError):
         asyncio.run(provider._run_process([str(slow)]))
 
-    assert created, "a throwaway temp dir should have been created"
-    assert not os.path.exists(created[0])
+    # The run created its throwaway dir under `base` (tempfile.tempdir) and
+    # removed it on the way out, even though the process was killed.
+    assert os.listdir(base) == []

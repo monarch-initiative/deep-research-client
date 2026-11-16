@@ -740,12 +740,19 @@ class AntigravityProvider(CLIAgentResearchProvider):
         shape = "an empty report" if report_chars == 0 else (
             f"a {report_chars}-character report"
         )
-        if getattr(self.params, "working_dir", None) is not None:
+        if self.params.working_dir is not None:
             remedy = (
                 "This usually means the agent read agent-instruction files in "
                 "the working_dir you set (e.g. CLAUDE.md, AGENTS.md) and tried a "
                 "shell or file tool. Unset working_dir to run in a clean "
                 "temporary directory"
+            )
+        elif self.params.add_dirs:
+            remedy = (
+                "The run used a clean temporary directory, so the cause is "
+                "either agent-instruction files in one of your add_dirs paths or "
+                "the query itself steering the agent to a refused tool. Drop "
+                "add_dirs if the agent does not need those files"
             )
         else:
             remedy = (

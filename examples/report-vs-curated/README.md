@@ -46,6 +46,11 @@ relevance 1.00 · informativeness 0.00 · support 0.97 · completeness 1.00
 citation_quality 1.00 · grounding 0.53 · citation_accuracy 1.00 · review_burden 0.83
 ```
 
+These numbers are for the committed **slice**, not the full report (see "A note on
+scale" below): `relevance`, `completeness` and `informativeness` in particular
+reflect the 12 claims chosen, not a finding about the report as a whole. The folded
+metrics are the point here.
+
 `grounding`, `citation_accuracy` and `review_burden` are the folded metrics: the
 report's entities are half-grounded, every checked citation resolves to a real
 work, and a sixth of the claims (the contradictory pairs' candidate side) want a

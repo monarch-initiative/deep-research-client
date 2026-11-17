@@ -34,7 +34,7 @@ from typing import Optional
 
 from .alignment_models import ClaimAlignment, RubricMetric, RubricSummary
 from .models import CitationStatus, ClaimSet, ClaimTopic, entity_mentions
-from .verification_models import VerificationReport, VerificationStatus
+from .verification_models import ClaimVerification, VerificationReport, VerificationStatus
 
 __all__ = ["summarize_alignment"]
 
@@ -91,12 +91,14 @@ def _citation_accuracy_metric(
     looks off topic). A claim whose citation verdicts are all UNVERIFIABLE learned
     nothing and is left out of the denominator, so it cannot inflate the score. A
     checked claim is sound unless one of its verdicts is a fabricated citation (an
-    ``UNSUPPORTED`` ``citation:`` verdict). This reads accuracy from the verdicts,
-    where ``citation_quality`` only asks whether a claim is cited at all.
+    ``UNSUPPORTED`` ``citation:`` verdict); a claim citing one real work and one
+    fabricated one counts as fabricated, so this is a per-claim rate, not a
+    per-citation one. This reads accuracy from the verdicts, where
+    ``citation_quality`` only asks whether a claim is cited at all.
     """
     # Group the citation verdicts by claim once, so this stays linear in the number
     # of verdicts rather than scanning the whole list per claim.
-    by_claim: dict[str, list] = {}
+    by_claim: dict[str, list[ClaimVerification]] = {}
     for v in verification.verification_list:
         if (v.method or "").startswith("citation:"):
             by_claim.setdefault(v.claim_id, []).append(v)

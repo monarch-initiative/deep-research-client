@@ -65,8 +65,16 @@ def test_all_three_folded_metrics_are_present_on_the_real_report() -> None:
 
     grounding = summary.metric("grounding")
     assert grounding is not None and grounding.value is not None and 0.0 < grounding.value < 1.0
+
+    # Hand-verified anchor: the report cites real works on exactly these seven claims,
+    # and every one resolves, so citation_accuracy is 7/7 with nothing fabricated.
+    checked = {v.claim_id for v in verification.verification_list
+               if (v.method or "").startswith("citation:")}
+    assert checked == {"c45", "c46", "c47", "c49", "c50", "c51", "c52"}
     citation = summary.metric("citation_accuracy")
-    assert citation is not None and citation.denominator >= 1  # some citations were checked
+    assert citation is not None and citation.numerator == 7 and citation.denominator == 7
+    assert citation.supporting_claim_ids in (None, [])  # none fabricated
+
     burden = summary.metric("review_burden")
     # The contradictory pairs' candidate-side claims are folded in as needing a human.
     assert burden is not None and burden.supporting_claim_ids

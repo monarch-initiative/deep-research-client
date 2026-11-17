@@ -480,6 +480,11 @@ class TestOpenScientistProvider:
         assert result.citations == ["PMID:12345678", "PMID:23456789"]
         assert [artifact.filename for artifact in result.artifacts] == ["figure.png"]
         assert result.run_metadata == {"job_id": "job-123"}
+        # Issue #50: the upstream job is recorded in provider-neutral fields,
+        # with the job URL built from this instance's base_url.
+        assert result.provider_job_id == "job-123"
+        assert result.provider_instance_url == "https://example.test"
+        assert result.provider_job_url == "https://example.test/job/job-123"
 
     async def test_research_timeout_cancels_job(self, monkeypatch):
         """Test timeout handling cancels the submitted job."""

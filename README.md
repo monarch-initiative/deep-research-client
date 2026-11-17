@@ -985,6 +985,13 @@ What is machine learning?
 ...
 ```
 
+For hosted providers, the frontmatter also records a durable handle on the
+upstream run — `provider_job_id`, and where the provider exposes them
+`provider_job_url` and `provider_instance_url` — so a committed report can be
+reconnected to its provider-side job later. Edison/Falcon keeps its existing
+`trajectory_id` key alongside the neutral `provider_job_id`. See
+[Provider run identifiers](docs/reference/providers.md#provider-run-identifiers).
+
 ### Citation Handling
 
 - **Default**: Citations included at end of markdown output

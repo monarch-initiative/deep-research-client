@@ -1,0 +1,5 @@
+CLAIM A:
+Aortic root dilatation is the major cardiovascular manifestation of Marfan syndrome.
+
+CLAIM B:
+Marfan syndrome has phenotype aortic root dilatation.

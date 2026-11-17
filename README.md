@@ -16,6 +16,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 - 📋 **Advanced Templates**: Support for both simple f-string and powerful Jinja2 templates
 - ✅ **Reference Validation**: Resolve every cited PMID, DOI, PMC and GEO identifier, check quoted claims against the source, and flag references that resolve but look off topic
 - 🏷️ **Ontology Term Validation**: Resolve every cited CURIE and check it against the label the report gave it, catching the real term that means something else entirely
+- 🧩 **Claim Extraction & Alignment**: Decompose a report or curated file into atomic, source-anchored claims (`claims extract`), then align one source's claims against another's and classify each pair on two axes — how the propositions relate (identical, subsumes, close, contradictory, …) and how their evidence relates (observation vs attribution vs background knowledge) — with report-level rubric metrics (`claims align`). See [docs/how-to/align-claims.md](docs/how-to/align-claims.md)
 - 🔁 **Opt-in Provider Fallback**: Let another provider take over when one is out of credits or unconfigured, with the provider that actually produced the report recorded on it
 - 🏗️ **Extensible**: Easy to add new research providers
 

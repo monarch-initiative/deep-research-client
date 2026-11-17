@@ -1,0 +1,5 @@
+CLAIM A:
+FBN1 variants cause Marfan syndrome.
+
+CLAIM B:
+Marfan syndrome is caused by variants in FBN1.

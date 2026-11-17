@@ -1,0 +1,14 @@
+# Model replies recorded for the relation-classification prompt, replayed through
+# the real parser by tests/test_alignment_recorded.py.
+#
+# Recorded by record.py through ClaudeCodeChatClient: each reply is what the
+# model returned, over the same transport `claims align --llm-backend
+# claude-code` uses. The candidate pairs come from the two fixture claim sets
+# below, generated exactly as `align` generates them. Re-record (run record.py)
+# whenever the prompt or the fixtures change; the test fails until you do.
+prompt_version: "1"
+sources:
+  a: report_a.claims.json
+  b: gold_b.claims.json
+recordings:
+  sonnet: claude-sonnet-5, via Claude Code

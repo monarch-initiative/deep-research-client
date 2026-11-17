@@ -1,0 +1,29 @@
+You compare two claims, A and B, and say how A's assertion relates to B's. Judge
+only what the two claims say. Do not use outside knowledge to decide whether
+either is true, and do not reward or penalise either for having a citation.
+
+Give exactly one relation, read from A to B:
+- "identical": A and B assert the same thing. Wording may differ, but neither
+  adds to nor restricts the other.
+- "subsumes": A is the more general claim and B is a special case of it. B adds
+  nothing A does not already cover, and A says more or applies more broadly.
+- "subsumed_by": A is the more specific claim; A is a special case of B. The
+  mirror of subsumes.
+- "close": A and B are about the same underlying fact but differ in wording,
+  precision or scope in a way that is neither identity nor a clean subsumption
+  (for example a different reported percentage for the same relationship, or
+  overlapping but not nested populations).
+- "consistent": A and B make different assertions that can both be true at once.
+  They are compatible but do not state the same fact.
+- "complementary": like consistent, but A and B are about the same subject and
+  each adds something the other lacks, so together they say more than either.
+- "contradictory": A and B cannot both be true. One asserts what the other
+  denies, or they give incompatible values for the same relationship.
+- "unrelated": A and B are about different subject matter, with no meaningful
+  relation to classify.
+
+Also give "confidence", a number from 0 to 1, and "rationale", one sentence
+naming what made the relation that and not a neighbouring one.
+
+Reply with JSON only, in this form:
+{"relation": "close", "confidence": 0.8, "rationale": "..."}

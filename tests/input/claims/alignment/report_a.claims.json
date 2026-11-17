@@ -1,0 +1,85 @@
+{
+  "source": {
+    "id": "report_a.md",
+    "source_type": "MARKDOWN_REPORT",
+    "title": "Marfan syndrome overview"
+  },
+  "extractor": {
+    "name": "llm-atomic",
+    "model": "fixture",
+    "prompt_version": "5"
+  },
+  "claims": [
+    {
+      "id": "c1",
+      "claim_text": "FBN1 variants cause Marfan syndrome.",
+      "source_span": {
+        "start": 0,
+        "end": 36,
+        "text": "FBN1 variants cause Marfan syndrome."
+      },
+      "anchor_status": "EXACT",
+      "entities": [
+        {
+          "label": "FBN1",
+          "id": "HGNC:3603"
+        }
+      ],
+      "citation_status": "UNCITED",
+      "about": "DOMAIN",
+      "basis": "BACKGROUND_KNOWLEDGE"
+    },
+    {
+      "id": "c2",
+      "claim_text": "Marfan syndrome occurs in about 1 in 5000 people.",
+      "source_span": {
+        "start": 0,
+        "end": 49,
+        "text": "Marfan syndrome occurs in about 1 in 5000 people."
+      },
+      "anchor_status": "EXACT",
+      "citations": [
+        {
+          "marker": "[1]",
+          "reference_id": "PMID:1",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c3",
+      "claim_text": "Aortic root dilatation is the major cardiovascular manifestation of Marfan syndrome.",
+      "source_span": {
+        "start": 0,
+        "end": 84,
+        "text": "Aortic root dilatation is the major cardiovascular manifestation of Marfan syndrome."
+      },
+      "anchor_status": "EXACT",
+      "entities": [
+        {
+          "label": "Aortic root dilatation",
+          "id": "HP:0002616"
+        }
+      ],
+      "citation_status": "UNCITED",
+      "about": "DOMAIN",
+      "basis": "OBSERVATION"
+    },
+    {
+      "id": "c4",
+      "claim_text": "The sky appears blue on a clear day.",
+      "source_span": {
+        "start": 0,
+        "end": 36,
+        "text": "The sky appears blue on a clear day."
+      },
+      "anchor_status": "EXACT",
+      "citation_status": "UNCITED",
+      "about": "DOMAIN",
+      "basis": "BACKGROUND_KNOWLEDGE"
+    }
+  ]
+}

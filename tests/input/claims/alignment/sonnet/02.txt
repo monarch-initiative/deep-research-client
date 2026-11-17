@@ -1,0 +1,1 @@
+{"relation": "contradictory", "confidence": 0.8, "rationale": "Both give a prevalence for the same condition but with incompatible values (1 in 5000 vs 1 in 3000), so they cannot both be true, though the 'about' hedging leaves some room for a near-miss reading as 'close'."}

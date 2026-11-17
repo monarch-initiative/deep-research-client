@@ -29,6 +29,7 @@ nav:
     - Extract Claims: how-to/extract-claims.md
     - Ground Claims: how-to/ground-claims.md
     - Align Claims: how-to/align-claims.md
+    - Verify Claims: how-to/verify-claims.md
     - 'Example: within-report comparison': examples/within-report-alignment.md
     - Manage Cache: how-to/cache.md
     - Browse Cache: how-to/browse-cache.md

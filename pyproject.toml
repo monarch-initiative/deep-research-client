@@ -156,6 +156,7 @@ extend-exclude = [
   "src/deep_research_client/evaluation/datamodel.py",
   "src/deep_research_client/claims/datamodel.py",
   "src/deep_research_client/claims/alignment_datamodel.py",
+  "src/deep_research_client/claims/verification_datamodel.py",
 ]
 
 # Ref.: https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
@@ -178,6 +179,7 @@ skip = [
   "src/deep_research_client/evaluation/datamodel.py",
   "src/deep_research_client/claims/datamodel.py",
   "src/deep_research_client/claims/alignment_datamodel.py",
+  "src/deep_research_client/claims/verification_datamodel.py",
 ]
 
 # Reminder: words have to be lowercased for the ignore-words-list
@@ -198,6 +200,7 @@ extend-exclude = [
   "src/deep_research_client/datamodel/deep_research_client.py",
   "src/deep_research_client/validation/datamodel.py",
   "src/deep_research_client/claims/alignment_datamodel.py",
+  "src/deep_research_client/claims/verification_datamodel.py",
 ]
 
 # For local development, uncomment to use local cyberian checkout:

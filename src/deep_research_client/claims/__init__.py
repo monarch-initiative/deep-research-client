@@ -63,7 +63,25 @@ from .models import (
     TextSpan,
     content_sha256,
 )
+from .publication_ids import (
+    NormalizedPublicationId,
+    PublicationIdType,
+    normalize_publication_id,
+)
 from .rubrics import summarize_alignment
+from .triage import CONSENSUS_CUES, triage_claims
+from .verification import Verifier, averify_claims, verify_claims
+from .verification_citation import CitationVerifier, report_topic_text, verdict_from_check
+from .verification_models import (
+    ClaimVerification,
+    Decidability,
+    FlagKind,
+    ReviewFlag,
+    VerificationReport,
+    VerificationStatus,
+    VerifiedSourceType,
+    VerifierInfo,
+)
 
 __all__ = [
     # Extraction (issue #43, item 1)
@@ -121,4 +139,25 @@ __all__ = [
     "GroundingCandidate",
     "GrounderInfo",
     "OakGrounder",
+    # Publication identifier normalization (issue #41)
+    "NormalizedPublicationId",
+    "PublicationIdType",
+    "normalize_publication_id",
+    # Verification and triage (issue #43, item 5)
+    "CONSENSUS_CUES",
+    "triage_claims",
+    "Verifier",
+    "averify_claims",
+    "verify_claims",
+    "CitationVerifier",
+    "report_topic_text",
+    "verdict_from_check",
+    "ClaimVerification",
+    "Decidability",
+    "FlagKind",
+    "ReviewFlag",
+    "VerificationReport",
+    "VerificationStatus",
+    "VerifiedSourceType",
+    "VerifierInfo",
 ]

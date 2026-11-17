@@ -171,6 +171,11 @@ were addressed, and the one that was contradicted shows up as the drop in
 of one count (a candidate claim either aligns to something or is novel), so they
 sum to 1 by construction rather than being independent signals.
 
+A contradictory pair is also a signal for human review. Pass the alignment to
+[`claims verify`](verify-claims.md) and each `CONTRADICTORY` pair becomes a
+`CONTRADICTION` flag (or `SELF_CONTRADICTION`, within one source) — a logical
+conflict a person must adjudicate.
+
 ## Adversarial inputs
 
 Claim text reaches the classifier as prompt content. A source document could in

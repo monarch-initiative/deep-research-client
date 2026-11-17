@@ -4620,9 +4620,10 @@ def claims_ground(
         raise typer.Exit(1)
 
     if grounder.searches_failed:
+        attempted = grounder.searches_failed + grounder.searches_ok
         _warn(
-            f"{grounder.searches_failed} ontology searches failed; some labels may be "
-            f"ungrounded. Check the warnings above (connectivity, adapters, config)."
+            f"{grounder.searches_failed} of {attempted} ontology searches failed; some labels "
+            f"may be ungrounded. Check the warnings above (connectivity, adapters, config)."
         )
     info = grounded.grounder
     if info is not None:

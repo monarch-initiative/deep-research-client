@@ -92,11 +92,14 @@ best paired with a local `sqlite:obo:` adapter.
 - **Ids from the source and ids added here are not distinguished afterwards.**
   Both live in `EntityMention.id`. The `grounder` record says how many were added,
   not which.
-- **A total outage fails fast.** If a whole term's worth of ontology searches all
-  fail (a bad adapter, OLS down), grounding stops early and exits non-zero rather
-  than making the same failing calls for every label. A *partial* outage — one
-  ontology of several down — is warned about at the end, and the labels it would
-  have grounded are simply left ungrounded.
+- **A total outage fails fast.** If enough searches fail with none succeeding (a
+  bad adapter, OLS down from the start), grounding stops early and exits non-zero
+  rather than making the same failing calls for every label; a single transient
+  error on a one-ontology config is tolerated. An outage that begins *mid-run*,
+  after some labels have grounded, is not detected early — the remaining labels
+  are tried, left ungrounded, and reported in the end-of-run "N of M searches
+  failed" warning. A *partial* outage (one ontology of several down) is likewise
+  warned about, and the labels it would have grounded are left ungrounded.
 
 ## Then align
 

@@ -42,6 +42,11 @@ TERM_INSTALL_HINT = (
 #: too many lookups against a networked adapter.
 DEFAULT_CANDIDATES_PER_ONTOLOGY = 3
 
+#: The outage floor: with fewer configured ontologies than this, this many
+#: searches must fail (and none succeed) before the run gives up, so a single
+#: transient error on a one-ontology config does not abort everything.
+_MIN_FAILS_BEFORE_OUTAGE = 3
+
 
 class OakGrounder:
     """Ground labels by OAK ontology search plus a model's choice.
@@ -97,7 +102,7 @@ class OakGrounder:
         """The OAK-backed resolver, built once. Raises with a hint if the extra is absent."""
         try:
             from linkml_term_validator.utils import OntologyAccess
-        except ImportError as exc:  # pragma: no cover - exercised via the CLI refusal test
+        except ImportError as exc:  # pragma: no cover - the CLI checks find_spec before here
             raise ImportError(TERM_INSTALL_HINT) from exc
         access = OntologyAccess(
             oak_adapter_string=self._adapter,
@@ -131,8 +136,9 @@ class OakGrounder:
         """The ontology search itself; callers hold ``_search_lock``."""
         if self._access is None:
             self._access = self._build_access()
+        adapters = self._ontologies.resolved_adapters(self._adapter)
         found: dict[str, GroundingCandidate] = {}
-        for prefix, adapter_string in self._ontologies.resolved_adapters(self._adapter).items():
+        for prefix, adapter_string in adapters.items():
             if adapter_string == "":
                 continue
             try:
@@ -158,11 +164,12 @@ class OakGrounder:
             except Exception as exc:  # noqa: BLE001 - one ontology failing must not abort the run
                 self.searches_failed += 1
                 logger.warning("Ontology search failed for %s on %s: %s", label, prefix, exc)
-        # Fail fast on a total outage: once a whole term's worth of searches has
-        # been attempted and not one has ever succeeded, stop rather than make the
-        # same failing calls for every remaining label.
-        searchable = sum(1 for a in self._ontologies.resolved_adapters(self._adapter).values() if a != "")
-        if self.searches_ok == 0 and searchable and self.searches_failed >= searchable:
+        # Fail fast on a total outage: if enough searches have been attempted and not
+        # one has ever succeeded, stop rather than make the same failing calls for
+        # every remaining label. The floor keeps a single transient error on a
+        # one-ontology config from aborting the whole run.
+        searchable = sum(1 for a in adapters.values() if a != "")
+        if searchable and self.searches_ok == 0 and self.searches_failed >= max(searchable, _MIN_FAILS_BEFORE_OUTAGE):
             raise GroundingError(
                 "Every ontology search has failed; nothing can be grounded. Check network "
                 "connectivity, the --adapter, and the ontology config (last errors are logged)."

@@ -62,12 +62,23 @@ def test_an_empty_adapter_string_is_not_searched() -> None:
     assert grounder.searches_failed == 0  # NCIT was skipped, not searched and failed
 
 
-def test_a_total_search_outage_raises_rather_than_returning_nothing() -> None:
-    """A whole term's searches all failing is an outage, not an empty result."""
+#: Three ontologies whose adapters all point at missing files, so every search fails.
+_ALL_BAD = {"A": "simpleobo:/no/a.obo", "B": "simpleobo:/no/b.obo", "C": "simpleobo:/no/c.obo"}
+
+
+def test_a_single_transient_failure_does_not_abort_the_run() -> None:
+    """One failed search on a one-ontology config is tolerated (returns nothing), not fatal."""
     grounder = _grounder({"X": "simpleobo:/no/such/file.obo"})
+    assert grounder._candidates("anything") == []  # no raise
+    assert (grounder.searches_ok, grounder.searches_failed) == (0, 1)
+
+
+def test_a_total_outage_raises_rather_than_returning_nothing() -> None:
+    """Once enough searches have failed with none succeeding, it is an outage, not empty."""
+    grounder = _grounder(_ALL_BAD)
     with pytest.raises(GroundingError, match="Every ontology search"):
         grounder._candidates("anything")
-    assert (grounder.searches_ok, grounder.searches_failed) == (0, 1)
+    assert grounder.searches_ok == 0 and grounder.searches_failed >= 3
 
 
 def test_a_total_outage_fails_fast_without_calling_the_model() -> None:
@@ -78,6 +89,6 @@ def test_a_total_outage_fails_fast_without_calling_the_model() -> None:
         claims=[Claim(id="c1", claim_text="X.", anchor_status=AnchorStatus.EXACT,
                       citation_status=CitationStatus.UNCITED, entities=[EntityMention(label="acne")])],
     )
-    grounder = _grounder({"X": "simpleobo:/no/such/file.obo"})
+    grounder = _grounder(_ALL_BAD)
     with pytest.raises(GroundingError):
         ground_claims(claim_set, grounder)

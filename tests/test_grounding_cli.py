@@ -57,7 +57,8 @@ def test_a_bad_backend_is_refused_before_any_search(monkeypatch) -> None:
 
 @pytest.mark.skipif(
     importlib.util.find_spec("linkml_term_validator") is not None,
-    reason="runs only when the optional `terms` extra is absent (the base-install CI job)",
+    reason="runs only where the `terms` extra is absent; it is in the dev group, so the "
+           "standard CI pytest jobs install it and skip this -- run it with `--no-dev`",
 )
 def test_the_cli_names_the_terms_extra_when_it_is_missing() -> None:
     """With linkml-term-validator not installed, `claims ground` says how to install it."""

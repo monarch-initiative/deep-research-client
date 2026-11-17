@@ -77,7 +77,8 @@ def test_a_verifier_adds_verdicts_and_names_itself() -> None:
     )
     assert report.verifier.name == "triage+fake"
     assert report.verifier.methods == ["triage", "fake"]
-    assert report.verification_for("c1").status == VerificationStatus.SUPPORTED.value
+    verdict = report.verification_for("c1")
+    assert verdict is not None and verdict.status == VerificationStatus.SUPPORTED.value
     assert report.verifier.verified == 1  # only c1 got a verdict
 
 
@@ -104,7 +105,8 @@ def test_a_verdict_that_is_not_settled_still_counts_as_seen() -> None:
         [FakeVerifier({"c1": VerificationStatus.UNVERIFIABLE})],
     )
     assert report.flags_of_kind(FlagKind.UNCHECKED_CITATION) == []
-    assert report.verification_for("c1").status == VerificationStatus.UNVERIFIABLE.value
+    verdict = report.verification_for("c1")
+    assert verdict is not None and verdict.status == VerificationStatus.UNVERIFIABLE.value
 
 
 def test_max_claims_bounds_verifier_coverage() -> None:

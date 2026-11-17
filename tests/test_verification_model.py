@@ -17,14 +17,14 @@ from deep_research_client.claims import (
 )
 
 
-def _report(**kw) -> VerificationReport:
-    base = dict(
+def _report(flags=None, verifications=None) -> VerificationReport:
+    return VerificationReport(
         source_id="r.md",
         source_type=VerifiedSourceType.MARKDOWN_REPORT,
         verifier=VerifierInfo(name="triage"),
+        flags=flags,
+        verifications=verifications,
     )
-    base.update(kw)
-    return VerificationReport(**base)
 
 
 def test_views_read_flags_and_verdicts() -> None:
@@ -45,7 +45,8 @@ def test_views_read_flags_and_verdicts() -> None:
     assert [f.kind for f in report.needs_agent] == [FlagKind.UNSUPPORTED_CLAIM.value]
     assert [f.claim_ids for f in report.flags_for("c2")] == [["c2", "c3"]]
     assert report.flags_of_kind(FlagKind.CONTRADICTION)[0].pair_id == "p1"
-    assert report.verification_for("c4").status == VerificationStatus.SUPPORTED.value
+    verdict = report.verification_for("c4")
+    assert verdict is not None and verdict.status == VerificationStatus.SUPPORTED.value
     assert report.verification_for("nope") is None
 
 

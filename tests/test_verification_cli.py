@@ -67,17 +67,17 @@ def _write_contradiction_set(tmp_path) -> tuple[Path, Path]:
                                 semantic_relation=SemanticRelation.CONTRADICTORY,
                                 evidential_relation=EvidentialRelation.BOTH_BACKGROUND)],
     )
-    cfile = tmp_path / "c.json"
-    afile = tmp_path / "a.json"
-    cfile.write_text(claim_set.model_dump_json(exclude_none=True), encoding="utf-8")
-    afile.write_text(alignment.model_dump_json(exclude_none=True), encoding="utf-8")
-    return cfile, afile
+    claims_path = tmp_path / "c.json"
+    align_path = tmp_path / "a.json"
+    claims_path.write_text(claim_set.model_dump_json(exclude_none=True), encoding="utf-8")
+    align_path.write_text(alignment.model_dump_json(exclude_none=True), encoding="utf-8")
+    return claims_path, align_path
 
 
 def test_alignment_contributes_contradiction_flags(tmp_path) -> None:
-    cfile, afile = _write_contradiction_set(tmp_path)
+    claims_path, align_path = _write_contradiction_set(tmp_path)
     out = tmp_path / "report.json"
-    result = runner.invoke(app, ["claims", "verify", str(cfile), "--alignment", str(afile),
+    result = runner.invoke(app, ["claims", "verify", str(claims_path), "--alignment", str(align_path),
                                  "-o", str(out)])
     assert result.exit_code == 0, result.stderr
     report = json.loads(out.read_text(encoding="utf-8"))

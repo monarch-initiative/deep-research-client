@@ -18,6 +18,7 @@ Complete reference for all supported research providers.
 | Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
+| RSS Agent | `RSS_AGENT_DIR` (local checkout) + `ANTHROPIC_API_KEY` | Digest of recent papers from feeds, Crossref, bioRxiv | Slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 | ToxIndex | (stub - no submit API yet; `TOXINDEX_API_KEY` for retrieval) | Chemical safety and toxicology agent (Sage), cited to tool calls | n/a |
 
@@ -47,6 +48,7 @@ and the value is recorded in the report's `provider_config.timeout`.
 | Claude Managed Agents | How long the session may run, repair turns included, before it is interrupted and its outputs collected. A session that does not settle after the interrupt raises a timeout naming the session, which `--param session_id=` can collect later | 3600 s |
 | Antigravity | How long the whole `agy` run may take before it is killed. `agy`'s own `--print-timeout` is left at its default of no limit, so this outer kill governs; set `print_timeout` to pass one through | 1800 s |
 | Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
+| RSS Agent | How long the whole `rss_agent_claude` pipeline run may take before it is killed | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
 | ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
 | DeepER-Med | **Not supported**: stub, nothing runs | n/a |
@@ -423,7 +425,7 @@ params = ClaudeCodeParams(
     allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
     skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=["/data/papers"],    # optional --add-dir entries
-    working_dir="/tmp/research",  # optional cwd for the run
+    working_dir="/tmp/research",  # optional cwd (default: a fresh temp dir)
     min_report_chars=200,         # fail on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
@@ -431,6 +433,18 @@ params = ClaudeCodeParams(
 
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+**Working directory.** With `working_dir` unset the run uses a fresh empty
+temporary directory, removed when it ends, rather than the caller's current
+directory. A one-shot research run needs its web tools, not the caller's files,
+and starting in the caller's workspace lets the agent pick up agent-instruction
+files sitting there (`CLAUDE.md`, `AGENTS.md`), which can send it after a tool
+the read-only allowlist denies (issue #113). Set `working_dir="."` to keep the
+old current-directory behaviour, or `add_dirs` to grant tool access to specific
+directories without making one the cwd. Note the flip side of this change:
+project-scoped Claude Code config in the current directory (`.mcp.json`,
+`.claude/settings.json`, a local `CLAUDE.md`) is no longer loaded by default;
+set `working_dir="."` if a run needs it.
 
 ### What every run is told
 
@@ -884,11 +898,20 @@ params = AntigravityParams(
     print_timeout=None,               # default: agy's own no-limit; set e.g. "15m" to pass one through
     settings_override=None,           # escape hatch: raw JSON for `agy --settings`
     add_dirs=["/data/papers"],        # optional --add-dir entries
-    working_dir="/tmp/research",      # optional cwd for the run
+    working_dir="/tmp/research",      # optional cwd (default: a fresh temp dir)
     min_report_chars=200,             # fail on an implausibly short report (0 disables)
     extra_args=["--sandbox"],         # escape hatch for unmodeled flags
 )
 ```
+
+**Working directory.** With `working_dir` unset the run uses a fresh empty
+temporary directory, removed when it ends, rather than the caller's current
+directory. `agy` treats its starting directory as the workspace, so starting in
+a directory that holds agent-instruction files (`CLAUDE.md`, `AGENTS.md`) lets
+the agent read them and reach for a shell or file tool its read-only mode
+auto-denies — which ends the run with an empty report (issue #113). Set
+`working_dir="."` to run in the current directory, or `add_dirs` to grant tool
+access to specific directories without making one the cwd.
 
 ### What every run is told
 
@@ -920,8 +943,15 @@ notice is printed to stderr, and the run still exits 0. So the out-of-the-box
 behaviour is already read-only, and this provider never passes
 `--dangerously-skip-permissions` unless you set `skip_permissions=True` (only do
 so for a trusted query in a sandbox). One consequence: a soft-denied *final*
-action can leave a successful run with an empty response — `min_report_chars`
-catches that and fails the run rather than caching an empty report.
+action can leave a successful run with an empty response. When that empty-or-too-short
+report is explained by an auto-denied tool — the terminal event's
+`denied_actions` (the strong signal), or an `auto-denied` note on stderr (a
+fallback) — the provider raises an error that names the refused action (e.g.
+`Bash (command)`) and includes the stderr tail, instead of the generic
+short-report error, so the real cause is visible (issue #113).
+Otherwise `min_report_chars` catches the empty report and fails the run rather
+than caching it. The refused actions are also recorded in `run_metadata`
+(`denied_actions`, `denied_action_names`) even when the report survives.
 
 Two caller-controlled escape hatches can also undo the read-only stance:
 `skip_permissions=True` (adds `--dangerously-skip-permissions`) and
@@ -948,6 +978,93 @@ do not combine them with an untrusted query.
 - The prompt is passed as a single command-line argument (agy has no stdin
   prompt mode for text input), so a very large `system_prompt` or query is
   capped at 128 KiB and rejected with a clear error before the run starts
+
+---
+
+## RSS Agent (Literature Digest)
+
+[rss_agent_claude](https://github.com/jcthrash/rss_agent_claude) is a literature
+curation pipeline. It fetches recent papers from RSS/Atom feeds, Crossref,
+bioRxiv, Nature-family and ASM journals; keeps those whose embedding
+(`all-mpnet-base-v2`) is close to an interest profile; scores novelty against a
+FAISS index of a personal paper library; and has Claude Haiku score the
+survivors against a ranking prompt. It is a `retriever`: the report is a ranked
+list of **new papers**, not an answer to the question.
+
+### Setup
+
+rss_agent_claude is a set of scripts with heavy requirements (torch,
+transformers, faiss-cpu), so it is not a dependency of this package. Clone it
+and install its requirements in an environment of its own, then point the
+client at both:
+
+```bash
+git clone https://github.com/jcthrash/rss_agent_claude
+cd rss_agent_claude
+python -m venv venv && venv/bin/pip install -r requirements.txt
+cp config/examples/feeds.txt config/feeds.txt   # then edit to taste
+venv/bin/python scripts/build_library_index.py  # needs library/source_papers/paperpile_library.json
+
+export RSS_AGENT_DIR="$PWD"
+export RSS_AGENT_PYTHON="$PWD/venv/bin/python"
+export ANTHROPIC_API_KEY="your-key"              # or put it in the checkout's .env
+```
+
+The provider is registered only when `RSS_AGENT_DIR` is set. It reports itself
+unavailable, saying which, when the directory is not a checkout, the library
+index is missing (`filter_and_rank.py` will not start without it), or the
+interpreter cannot be found.
+
+### How a query is run
+
+Each run happens in a fresh temporary workspace, never in the checkout, so a
+query neither enters nor is filtered by your daily digest's history:
+
+- `scripts/` is copied and `library/` linked from the checkout;
+- `feeds.txt`, `crossref_issn_fallbacks.txt` and `biorxiv_subjects.txt` come
+  from the checkout's `config/`, falling back to `config/examples/`;
+- each non-blank line of the query becomes one topic in
+  `interest_profile.txt`, `crossref_terms.txt` and `biorxiv_terms.txt`;
+- `ranking_prompt.txt` is generated from the topics with a generic rubric,
+  unless `ranking_prompt_file` names one (e.g. your tuned
+  `config/ranking_prompt.txt`).
+
+The report is the pipeline's own `curated_today.md` (Top Picks and Also Worth
+Scanning), and the citations are the digested articles' links. When no article
+clears `MIN_SCORE` there is no digest; the result is then marked
+`answer_status: unsuccessful`, is not cached, and the CLI exits with code 4.
+
+```bash
+deep-research-client research $'Marine nitrogen fixation\nSAR11 physiology' \
+  --provider rss_agent --param max_age_days=7 --param skip_biorxiv=true --no-cache
+```
+
+### Parameters
+
+```python
+from deep_research_client.provider_params import RssAgentParams
+
+params = RssAgentParams(
+    repo_dir="/path/to/rss_agent_claude",   # default: RSS_AGENT_DIR
+    python_bin="/path/to/venv/bin/python",  # default: RSS_AGENT_PYTHON, then python
+    ranking_prompt_file=None,               # default: generated from the query
+    min_score=0.6, top_picks_score=0.75,    # digest tiers
+    max_age_days=7,                         # how recent a paper must be
+    max_llm=500,                            # cap on Claude-scored articles
+    semantic_threshold=0.25, crossref_days_back=21,
+    skip_crossref=False, skip_biorxiv=False, skip_nature=False, skip_asm=False,
+)
+```
+
+Tuning fields left unset keep the pipeline's defaults; each is passed as the
+`run_pipeline.sh` environment variable of the same name in upper case.
+
+### Limitations
+
+- Sees only recent papers from the feeds and journals configured in the checkout.
+- Lists papers; does not synthesize them or answer the question.
+- Results change daily, so cached reports go stale: pass `--no-cache` for a fresh digest.
+- `ProviderConfig.timeout` (default 3600 s) bounds the whole pipeline run.
 
 ---
 

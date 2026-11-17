@@ -236,7 +236,7 @@ go-and-looks, not failures.
 | `VERIFIED` | The CURIE resolves to a current term. |
 | `NOT_FOUND` | The CURIE did not resolve, in an ontology that resolved other terms from the same prefix. Likely invented. |
 | `OBSOLETE` | The CURIE resolves, but the term has been deprecated. |
-| `UNVERIFIABLE` | No resolver covered this prefix, or it was skipped. Nothing was learned either way, so this is never evidence of fabrication. |
+| `UNVERIFIABLE` | No resolver covered this prefix, it was skipped, or the ontology service could not be reached for this term. Nothing was learned either way, so this is never evidence of fabrication. |
 
 The line between `NOT_FOUND` and `UNVERIFIABLE` is drawn from what the run actually learned.
 A prefix counts as resolvable if it is an OBO-library prefix, if it is configured in an
@@ -337,13 +337,30 @@ correct paraphrase can still land there.
 
 A lookup that fails is not the same as a term that does not exist, and the two are kept
 apart. A definitive 404 is an answer: the term is absent. A connectivity failure, a 5xx, a
-408 or a 429 is not, and raises rather than returning nothing — so a rate-limited run exits
-with code `3` and says the service was unreachable, instead of quietly reporting real terms
-as fabricated.
+408 or a 429 is not, so such a term is marked `UNVERIFIABLE`, never `NOT_FOUND` — a service
+outage is never read as fabrication.
+
+A failure for one term does not sink the rest of the run. The term that could not be reached
+is recorded as unverifiable and validation carries on to the terms the service can still
+answer, so a single slow lookup no longer discards the whole report's term validation. The
+report lists the terms it could not reach under their own heading and notes that a re-run may
+resolve them — the label cache resumes, so only the still-unresolved terms are retried. Only
+a failure to reach the service at all (for example while building the resolver) surfaces as
+an error with exit code `3`.
+
+This is a behavior change: an outage used to exit with code `3` and write nothing, whereas
+now the run completes and the report is written. A term left `UNVERIFIABLE` by an outage does
+**not** trip `--fail-on-unresolved` (it is not a resolution failure), so a pipeline that
+relied on the old exit `3` to catch an outage will now pass — watch the `service_unreachable`
+count in the frontmatter summary, or treat a high unverifiable count as a signal, until a
+`--fail-on-unreachable` option lands. For a *total* outage (nothing resolved), `--in-place` is
+skipped rather than overwriting an existing section with an all-unverifiable one. A *partial*
+outage — some terms resolved, some unreachable — still writes in place; the `service_unreachable`
+count in the frontmatter summary shows how much of the section is an outage rather than a result.
 
 That is why there is no rate-limit delay option here, unlike
-[reference validation](validate-references.md). Running into a limit costs you a re-run, not
-a confidently wrong report.
+[reference validation](validate-references.md). Running into a limit costs you a re-run of
+the terms that were not reached, not a confidently wrong report.
 
 ## Fail a pipeline on bad terms
 

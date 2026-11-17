@@ -7,6 +7,7 @@ tests use. A live run is covered by ``test_antigravity_integration.py``.
 
 import asyncio
 import json
+import os
 
 import pytest
 from pydantic import ValidationError
@@ -23,6 +24,7 @@ from deep_research_client.providers.antigravity import (
     AntigravityProvider,
     DEFAULT_MODEL,
     classify_agy_failure,
+    denied_action_names,
     parse_agy_error,
 )
 
@@ -31,11 +33,16 @@ def _provider(params: AntigravityParams | None = None) -> AntigravityProvider:
     return AntigravityProvider(ProviderConfig(name="antigravity"), params)
 
 
-def _stream(*, response: str, status: str = "SUCCESS", tools=(), model="gemini-3.8-flash-medium"):
+def _stream(
+    *, response: str, status: str = "SUCCESS", tools=(),
+    model="gemini-3.8-flash-medium", denied_actions=None,
+):
     """Assemble an agy stream-json stdout from its parts.
 
     Each tool is emitted as an ACTIVE then a DONE event sharing a step_index,
     the way the real CLI does, so the parser's deduplication is exercised.
+    ``denied_actions``, when given, is attached to the terminal result event the
+    way the real CLI reports an auto-denied tool.
     """
     init = {"cwd": "/x", "permission_mode": "request-review",
             "tools": ["search_web", "read_url_content", "write_file"]}
@@ -49,10 +56,13 @@ def _stream(*, response: str, status: str = "SUCCESS", tools=(), model="gemini-3
             lines.append(json.dumps({"event": "step_update", "step_update": {
                 "step_type": "tool", "tool_name": tool, "step_index": i,
                 "state": state, "tool_info": {"name": tool, "parameters": {}}}}))
-    lines.append(json.dumps({"event": "result", "result": {
+    result = {
         "status": status, "response": response, "num_turns": 1,
         "duration_seconds": 11.5, "conversation_id": "conv-123",
-        "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}}}))
+        "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}}
+    if denied_actions is not None:
+        result["denied_actions"] = denied_actions
+    lines.append(json.dumps({"event": "result", "result": result}))
     return "\n".join(lines)
 
 
@@ -127,6 +137,24 @@ def test_build_command_forwards_options():
     assert ["--settings", '{"a":1}'] == cmd[cmd.index("--settings"):cmd.index("--settings") + 2]
     assert ["--add-dir", "/tmp/x"] == cmd[cmd.index("--add-dir"):cmd.index("--add-dir") + 2]
     assert cmd[-1] == "--sandbox"
+
+
+def test_build_command_resolves_relative_add_dirs_to_absolute():
+    """The run's cwd is a throwaway temp dir, so a relative --add-dir must be
+    resolved against the caller's directory first, not left to point into the
+    temp dir (PR #114 review)."""
+    cmd = _provider(AntigravityParams(add_dirs=["data/papers"]))._build_command("P")
+    resolved = cmd[cmd.index("--add-dir") + 1]
+    assert os.path.isabs(resolved)
+    assert resolved == os.path.abspath("data/papers")
+
+
+def test_build_command_absolutizes_a_relative_executable_path():
+    """A relative executable *path* (with a separator) would break under the
+    temp-dir cwd; a bare command name is left alone for PATH lookup."""
+    assert _provider(AntigravityParams(agy_executable="./bin/agy"))._build_command("P")[0] \
+        == os.path.abspath("./bin/agy")
+    assert _provider(AntigravityParams(agy_executable="agy"))._build_command("P")[0] == "agy"
 
 
 @pytest.mark.parametrize("alias", ["antigravity", "agy", "default", "antigravity-default", "ANTIGRAVITY", None])
@@ -277,15 +305,61 @@ def test_research_error_status_raises(monkeypatch):
         asyncio.run(provider.research("anything"))
 
 
-def test_research_empty_response_is_rejected_by_length_guard(monkeypatch):
-    """A soft-denied final tool can leave a SUCCESS run with an empty response."""
+def test_research_empty_response_without_denial_hits_length_guard(monkeypatch):
+    """An empty SUCCESS run with no denial evidence falls back to the length guard."""
+    provider = _provider()
+    stdout = _stream(response="", tools=("search_web",))
+    _patch_run(monkeypatch, provider, stdout=stdout)
+
+    with pytest.raises(ValueError, match="min_report_chars"):
+        asyncio.run(provider.research("anything"))
+
+
+def test_research_empty_response_names_auto_denied_tool_from_stderr(monkeypatch):
+    """A tool auto-denied by the read-only mode (issue #113) is named, not hidden
+    behind the generic short-report error."""
     provider = _provider()
     stdout = _stream(response="", tools=("search_web",))
     _patch_run(monkeypatch, provider, stdout=stdout,
                stderr='... the "write_file" permission ... was auto-denied.')
 
-    with pytest.raises(ValueError, match="min_report_chars"):
+    with pytest.raises(ValueError, match="auto-denied") as excinfo:
         asyncio.run(provider.research("anything"))
+    # The stderr the real cause lives in is carried through, and the generic
+    # length error is NOT what the caller sees.
+    assert "write_file" in str(excinfo.value)
+    assert "min_report_chars" not in str(excinfo.value)
+
+
+def test_research_empty_response_names_denied_actions_from_result(monkeypatch):
+    """The terminal event's denied_actions name the refused tool in the error,
+    the shape issue #113 reports (a denied shell command, SUCCESS, empty)."""
+    provider = _provider()
+    stdout = _stream(
+        response="", tools=("search_web",),
+        denied_actions=[{"action": "command", "display_name": "Bash"}],
+    )
+    _patch_run(monkeypatch, provider, stdout=stdout)
+
+    with pytest.raises(ValueError, match="Bash \\(command\\)") as excinfo:
+        asyncio.run(provider.research("anything"))
+    assert "empty report" in str(excinfo.value)
+
+
+def test_research_records_denied_actions_even_on_a_full_report(monkeypatch):
+    """A mid-run denial the agent recovered from is kept as provenance, so a
+    thin-but-present report still shows what was refused."""
+    provider = _provider()
+    stdout = _stream(
+        response="A cited research report. " * 20 + "https://example.org/x",
+        tools=("search_web", "read_url_content"),
+        denied_actions=[{"action": "command", "display_name": "Bash"}],
+    )
+    _patch_run(monkeypatch, provider, stdout=stdout)
+
+    result = asyncio.run(provider.research("anything"))
+    assert result.run_metadata["denied_actions"] == 1
+    assert result.run_metadata["denied_action_names"] == ["Bash (command)"]
 
 
 def test_research_from_memory_is_flagged_unsuccessful(monkeypatch):
@@ -380,3 +454,88 @@ def test_extract_run_metadata_tolerates_missing_fields():
     assert md["num_turns"] == 2
     assert md["usage"]["total_tokens"] == 5
     assert "conversation_id" not in md  # absent fields are simply omitted
+
+
+# --------------------------------------------------------------------------- #
+# Working directory (issue #113): a research run must not inherit the caller's
+# directory, where agent-instruction files would derail it.
+# --------------------------------------------------------------------------- #
+
+def _pwd_stub(tmp_path):
+    """An executable that prints the directory it was started in, like `pwd`."""
+    script = tmp_path / "pwdstub"
+    script.write_text("#!/bin/sh\npwd\n", encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
+def test_run_process_defaults_to_a_throwaway_temp_dir(tmp_path):
+    """With no working_dir, the CLI runs in a fresh temp dir that is cleaned up."""
+    provider = _provider(AntigravityParams(agy_executable=str(_pwd_stub(tmp_path))))
+    stdout, _stderr, code = asyncio.run(provider._run_process([str(_pwd_stub(tmp_path))]))
+    assert code == 0
+    used_dir = stdout.strip()
+    # It ran somewhere other than the test's own cwd, in a drc-named temp dir...
+    assert os.path.realpath(used_dir) != os.path.realpath(os.getcwd())
+    assert "drc-cli-agent-" in used_dir
+    # ...and that throwaway directory is gone once the run returns.
+    assert not os.path.exists(used_dir)
+
+
+def test_run_process_honours_an_explicit_working_dir(tmp_path):
+    """A set working_dir is used verbatim and left in place."""
+    workdir = tmp_path / "chosen"
+    workdir.mkdir()
+    provider = _provider(AntigravityParams(
+        agy_executable=str(_pwd_stub(tmp_path)), working_dir=str(workdir)))
+    stdout, _stderr, code = asyncio.run(provider._run_process([str(_pwd_stub(tmp_path))]))
+    assert code == 0
+    assert os.path.realpath(stdout.strip()) == os.path.realpath(str(workdir))
+    assert workdir.exists()
+
+
+def test_denied_action_names_helper():
+    """display_name wins, the raw action is appended, and entries dedupe."""
+    assert denied_action_names([{"action": "command", "display_name": "Bash"}]) == [
+        "Bash (command)"]
+    assert denied_action_names([{"action": "write_file"}]) == ["write_file"]
+    assert denied_action_names([{"display_name": "Bash"}, {"display_name": "Bash"}]) == [
+        "Bash"]
+    assert denied_action_names([{"action": "x", "display_name": "x"}]) == ["x"]
+    assert denied_action_names(None) == []
+    assert denied_action_names(["not a dict"]) == []
+
+
+def test_run_process_removes_the_temp_dir_even_on_timeout(tmp_path, monkeypatch):
+    """A run killed by the timeout must still sweep up its throwaway dir.
+
+    Rather than wrap mkdtemp, point tempfile at an empty base directory. The
+    slow stub records the directory it actually ran in before sleeping, so the
+    test proves a temp dir under ``base`` was created and then removed -- not
+    merely that ``base`` happens to be empty (which would also hold if no temp
+    dir were ever made).
+    """
+    import tempfile as _tempfile
+    from deep_research_client.exceptions import ProviderTimeoutError
+
+    base = tmp_path / "tmpbase"
+    base.mkdir()
+    monkeypatch.setattr(_tempfile, "tempdir", str(base))
+
+    cwd_record = tmp_path / "cwd.txt"
+    slow = tmp_path / "slowagy"
+    slow.write_text(f'#!/bin/sh\npwd > "{cwd_record}"\nsleep 5\n', encoding="utf-8")
+    slow.chmod(0o755)
+    provider = AntigravityProvider(
+        ProviderConfig(name="antigravity", timeout=1),
+        AntigravityParams(agy_executable=str(slow)),
+    )
+    with pytest.raises(ProviderTimeoutError):
+        asyncio.run(provider._run_process([str(slow)]))
+
+    # The run created a throwaway dir under `base` and ran there...
+    ran_in = cwd_record.read_text(encoding="utf-8").strip()
+    assert os.path.dirname(os.path.realpath(ran_in)) == os.path.realpath(str(base))
+    # ...and swept it up on the way out, even though the process was killed.
+    assert not os.path.exists(ran_in)
+    assert os.listdir(base) == []

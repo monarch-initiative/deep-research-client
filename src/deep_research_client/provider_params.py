@@ -435,6 +435,65 @@ class DeeperMedParams(BaseProviderParams):
     """
 
 
+class RssAgentParams(BaseProviderParams):
+    """Parameters specific to the RSS Agent (rss_agent_claude) provider.
+
+    Tuning fields left as None keep the pipeline's own defaults; each maps to
+    the ``run_pipeline.sh`` environment variable of the same name in upper case.
+    """
+
+    repo_dir: Optional[str] = Field(
+        default=None,
+        description="Path to the rss_agent_claude checkout (defaults to RSS_AGENT_DIR)"
+    )
+    python_bin: Optional[str] = Field(
+        default=None,
+        description=(
+            "Python interpreter with rss_agent_claude's requirements installed "
+            "(defaults to RSS_AGENT_PYTHON, then 'python')"
+        )
+    )
+    ranking_prompt_file: Optional[str] = Field(
+        default=None,
+        description=(
+            "Claude scoring prompt to use instead of the one generated from the "
+            "query, e.g. the checkout's config/ranking_prompt.txt"
+        )
+    )
+    workdir_base: Optional[str] = Field(
+        default=None,
+        description="Directory to create the per-run workspace in (defaults to the system temp dir)"
+    )
+    min_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Minimum final score for an article to appear in the digest"
+    )
+    top_picks_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Score at or above which an article is a Top Pick"
+    )
+    max_age_days: Optional[int] = Field(
+        default=None, ge=1,
+        description="Only consider articles published within this many days"
+    )
+    max_llm: Optional[int] = Field(
+        default=None, ge=1,
+        description="Maximum number of articles sent to Claude for scoring"
+    )
+    semantic_threshold: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Minimum embedding similarity to the interest profile"
+    )
+    crossref_days_back: Optional[int] = Field(
+        default=None, ge=1,
+        description="How many days back the Crossref queries look"
+    )
+    skip_crossref: bool = Field(default=False, description="Skip Crossref keyword search")
+    skip_biorxiv: bool = Field(default=False, description="Skip bioRxiv preprints")
+    skip_nature: bool = Field(default=False, description="Skip Nature-family journal queries")
+    skip_asm: bool = Field(default=False, description="Skip ASM journal queries")
+
+
 class ToxIndexParams(BaseProviderParams):
     """Parameters specific to the ToxIndex provider stub.
 
@@ -561,7 +620,13 @@ class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
     )
     working_dir: Optional[str] = Field(
         default=None,
-        description="Working directory in which to run the claude process (defaults to current dir)"
+        description=(
+            "Working directory in which to run the claude process. When unset, "
+            "the run uses a fresh empty temporary directory (removed afterwards) "
+            "so it does not pick up agent-instruction files (CLAUDE.md, AGENTS.md) "
+            "from the caller's directory. Set to '.' to run in the current "
+            "directory, or to a path to grant the agent workspace access."
+        )
     )
     timeout: int = Field(
         default=1800,
@@ -767,7 +832,15 @@ class AntigravityParams(BaseProviderParams):
     )
     working_dir: Optional[str] = Field(
         default=None,
-        description="Working directory in which to run the agy process (defaults to current dir)"
+        description=(
+            "Working directory in which to run the agy process. When unset, the "
+            "run uses a fresh empty temporary directory (removed afterwards) so "
+            "it does not pick up agent-instruction files (CLAUDE.md, AGENTS.md) "
+            "from the caller's directory, which agy would otherwise read and act "
+            "on, exhausting the run on a tool its read-only mode denies. Set to "
+            "'.' to run in the current directory, or to a path to grant the agent "
+            "workspace access."
+        )
     )
     timeout: int = Field(
         default=1800,
@@ -919,6 +992,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "tooluniverse": ToolUniverseParams,
     "deeper_med": DeeperMedParams,
     "toxindex": ToxIndexParams,
+    "rss_agent": RssAgentParams,
 }
 
 

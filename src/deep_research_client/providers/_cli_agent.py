@@ -20,8 +20,12 @@ skeleton would be more conditionals than code.
 
 import asyncio
 import logging
+import os
 import re
-from typing import ClassVar, FrozenSet, List, Optional
+import shutil
+import tempfile
+from contextlib import contextmanager
+from typing import ClassVar, FrozenSet, Iterator, List, Optional
 
 from . import ResearchProvider
 from ..exceptions import ProviderTimeoutError
@@ -360,6 +364,74 @@ class CLIAgentResearchProvider(ResearchProvider):
             return "the model declined to write the report, and it cites no sources"
         return None
 
+    @staticmethod
+    def _abs_path_arg(path: str) -> str:
+        """Resolve a path argument to absolute against the current directory.
+
+        The CLI runs in a *different* working directory than the caller's (see
+        :meth:`_working_directory`, which defaults to a throwaway temp dir), so
+        a relative path passed on the command line -- an ``--add-dir`` entry,
+        say -- would otherwise resolve against that temp dir and silently point
+        at nothing. Called at command-build time, while the process is still in
+        the caller's directory, so ``abspath`` anchors to what the user meant.
+
+        >>> CLIAgentResearchProvider._abs_path_arg("/data/papers")
+        '/data/papers'
+        """
+        return os.path.abspath(path)
+
+    @staticmethod
+    def _abs_executable(executable: str) -> str:
+        """Make a relative executable *path* absolute so a cwd change won't break it.
+
+        ``create_subprocess_exec`` resolves a program that contains a path
+        separator (e.g. ``./bin/agy``) against the process cwd, which is no
+        longer the caller's once :meth:`_working_directory` moves it. A bare
+        command name (``agy``, ``claude``) carries no separator and is found via
+        ``PATH`` regardless of cwd, so it is left untouched.
+
+        >>> CLIAgentResearchProvider._abs_executable("agy")
+        'agy'
+        >>> CLIAgentResearchProvider._abs_executable("./bin/agy").endswith("/bin/agy")
+        True
+        """
+        if os.sep in executable or (os.altsep and os.altsep in executable):
+            return os.path.abspath(executable)
+        return executable
+
+    @contextmanager
+    def _working_directory(self) -> Iterator[str]:
+        """Yield the directory to run the CLI in, a throwaway one by default.
+
+        When the caller set no ``working_dir``, the CLI runs in a fresh empty
+        temporary directory, removed when the run ends, rather than inheriting
+        the current process's directory. A one-shot research run needs its web
+        tools, not the caller's files, and starting in the caller's workspace
+        lets the agent pick up agent-instruction files sitting there
+        (``CLAUDE.md``, ``AGENTS.md`` and the like). Those can send it after a
+        shell or file tool its read-only mode denies, ending an otherwise
+        successful run with an empty report (issue #113). Workspace access stays
+        opt-in: set ``working_dir`` to run in a chosen directory (``"."`` keeps
+        the old current-directory behaviour), or ``add_dirs`` to grant the
+        agent's tools access to extra directories without making one the cwd.
+
+        Yields:
+            The absolute (or caller-given) path to use as the subprocess ``cwd``.
+        """
+        working_dir = getattr(self.params, "working_dir", None)  # type: ignore[attr-defined]
+        if working_dir is not None:
+            yield working_dir
+            return
+
+        tmp = tempfile.mkdtemp(prefix="drc-cli-agent-")
+        logger.debug("Running %s in a throwaway working directory: %s", self.name, tmp)
+        try:
+            yield tmp
+        finally:
+            # ignore_errors: the run is already done and its result captured; a
+            # cleanup failure (a tool left a busy file, say) must not mask it.
+            shutil.rmtree(tmp, ignore_errors=True)
+
     async def _run_process(
         self, command: List[str], stdin_input: Optional[str] = None
     ) -> tuple[str, str, int]:
@@ -367,7 +439,8 @@ class CLIAgentResearchProvider(ResearchProvider):
 
         Shared by the CLI providers: one sends the prompt via stdin, the other
         passes it as an argument and sends nothing. Both honour ``self.timeout``
-        (a whole-run deadline) and ``self.params.working_dir``.
+        (a whole-run deadline) and run in :meth:`_working_directory` -- the
+        caller's ``working_dir`` when set, otherwise a fresh temporary one.
 
         Args:
             command: The command argument list.
@@ -382,39 +455,39 @@ class CLIAgentResearchProvider(ResearchProvider):
         """
         # Set by the concrete subclass's __init__; see the class docstring.
         run_timeout: int = self.timeout  # type: ignore[attr-defined]
-        working_dir = getattr(self.params, "working_dir", None)  # type: ignore[attr-defined]
 
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=working_dir,
-        )
-
-        payload = stdin_input.encode("utf-8") if stdin_input is not None else None
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(input=payload),
-                timeout=run_timeout,
-            )
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-            # A spent usage allowance can stall a run rather than fail it, and
-            # then it arrives here looking like slowness. Say so, so the reader
-            # checks the allowance before chasing latency.
-            raise ProviderTimeoutError(
-                self.name,
-                f"the {self.name} run did not finish within {run_timeout}s. If "
-                f"this repeats, check the account with `deep-research-client "
-                f"providers --check --provider {self.name}` -- a spent usage "
-                f"limit can stall a run instead of failing it",
+        with self._working_directory() as working_dir:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=working_dir,
             )
 
-        returncode = -1 if process.returncode is None else process.returncode
-        return (
-            stdout_bytes.decode("utf-8", errors="replace"),
-            stderr_bytes.decode("utf-8", errors="replace"),
-            returncode,
-        )
+            payload = stdin_input.encode("utf-8") if stdin_input is not None else None
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(input=payload),
+                    timeout=run_timeout,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                # A spent usage allowance can stall a run rather than fail it,
+                # and then it arrives here looking like slowness. Say so, so the
+                # reader checks the allowance before chasing latency.
+                raise ProviderTimeoutError(
+                    self.name,
+                    f"the {self.name} run did not finish within {run_timeout}s. If "
+                    f"this repeats, check the account with `deep-research-client "
+                    f"providers --check --provider {self.name}` -- a spent usage "
+                    f"limit can stall a run instead of failing it",
+                )
+
+            returncode = -1 if process.returncode is None else process.returncode
+            return (
+                stdout_bytes.decode("utf-8", errors="replace"),
+                stderr_bytes.decode("utf-8", errors="replace"),
+                returncode,
+            )

@@ -49,7 +49,7 @@ Each flag carries a **decidability** — who can settle the question it raises. 
 | `CONSENSUS_OVERSTATED` | A claim frames a point as settled (`well established`, `consensus`, `it is well known`, …) while either uncited or taking part in a contradiction. | **human** — a lexical heuristic, always a person's call |
 | `CONTRADICTION` / `SELF_CONTRADICTION` | A contradictory alignment pair — across two sources, or within one. | **human** — which claim holds is a judgement |
 | `CONFABULATED_CITATION` | *(citation check)* A cited identifier resolves to no real record. | **machine** — a resolver settled it |
-| `WEAK_CITATION` | *(citation check)* A citation resolves, but the work looks off topic for the claim. | **human** |
+| `WEAK_CITATION` | *(citation check)* A citation resolves, but the work looks off topic for the report. | **human** |
 | `UNCHECKED_CITATION` | A resolvable citation a verifier ran over but did not confirm either way. | **agent** |
 
 `--alignment` loads an alignment from [`claims align`](align-claims.md) so that
@@ -62,9 +62,10 @@ identifier against its source (reusing the reference validator) and returns a
 verdict per identifier: a fabricated identifier (resolves to nothing) becomes a
 machine-decidable `CONFABULATED_CITATION`; a real but off-topic work becomes a
 `WEAK_CITATION` for a human; a resolved, on-topic work is `SUPPORTED`. Relevance is
-weighed against **the claim's own text**, so `WEAK_CITATION` means the work looks
-off topic *for that claim* — and because a single claim is little vocabulary, only
-a clear mismatch trips it; an uncertain overlap stays `SUPPORTED`.
+weighed against **the report's own vocabulary** (all of the set's claim text, which
+the CLI assembles), so `WEAK_CITATION` means the work looks off topic *for the
+report*, not that it fails to support this one claim. A single claim is too little
+text for the keyword heuristic, which is why the whole report is used.
 
 ```bash
 deep-research-client claims verify report.claims.json --check-citations
@@ -126,6 +127,10 @@ rest of #41 — is a hook left for a following PR.
   `SUPPORTED` here means the cited work resolves and is on topic — not that it
   entails the claim. A semantic claim-vs-work judge (a model reading both) is the
   agent hook deliberately deferred.
+- **Relevance needs enough report text to judge.** The keyword heuristic keys on
+  terms the report repeats, so for a very small set (a claim or two) it finds none,
+  relevance is left unassessed, and a resolved citation is `SUPPORTED` on existence
+  alone — `WEAK_CITATION` simply will not fire.
 - **The report describes one run.** Running `claims verify` again overwrites the
   report; it is a snapshot of the flags and verdicts at that moment.
 

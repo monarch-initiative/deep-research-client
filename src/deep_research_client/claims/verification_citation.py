@@ -29,10 +29,39 @@ from typing import Any, Optional, Sequence
 
 from ..validation.datamodel import ReferenceCheck, ReferenceStatus, TopicalRelevance
 from ..validation.extraction import FoundReference
-from .models import Claim, resolved_reference_ids
+from .models import Claim, ClaimSet, resolved_reference_ids
 from .verification_models import ClaimVerification, VerificationStatus
 
-__all__ = ["CitationVerifier", "verdict_from_check"]
+__all__ = ["CitationVerifier", "report_topic_text", "verdict_from_check"]
+
+
+def report_topic_text(claim_set: ClaimSet) -> Optional[str]:
+    """The report vocabulary to weigh citation relevance against.
+
+    Relevance is judged against the whole report's words, not one claim's (a single
+    sentence is too little for the keyword heuristic), so a :class:`CitationVerifier`
+    is given every claim's text joined. Pulled out of the CLI so the wiring is
+    testable: this is the text the verifier must receive.
+
+    Args:
+        claim_set: The set being verified.
+
+    Returns:
+        Every claim's text joined by newlines, or None when the set has no text.
+
+    >>> from deep_research_client.claims import (AnchorStatus, CitationStatus, Claim,
+    ...     ClaimSet, ExtractorInfo, SourceDocument, SourceType)
+    >>> cs = ClaimSet(source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+    ...     extractor=ExtractorInfo(name="x"),
+    ...     claims=[Claim(id="c1", claim_text="A.", anchor_status=AnchorStatus.EXACT,
+    ...                   citation_status=CitationStatus.UNCITED),
+    ...             Claim(id="c2", claim_text="B.", anchor_status=AnchorStatus.EXACT,
+    ...                   citation_status=CitationStatus.UNCITED)])
+    >>> report_topic_text(cs)
+    'A.\\nB.'
+    """
+    joined = "\n".join(c.claim_text for c in claim_set.claim_list if c.claim_text)
+    return joined or None
 
 #: Confidence that a VERIFIED, on-topic citation supports the claim -- high for
 #: the resolution-plus-relevance check this makes, short of the 1.0 that only a

@@ -93,6 +93,37 @@ def test_relevance_needs_report_level_text_not_one_claim() -> None:
     assert assess_relevance(keywords, off_topic, body=off_topic).relevance == TopicalRelevance.OFF_TOPIC
 
 
+def test_report_topic_text_joins_every_claim_and_a_verifier_takes_it() -> None:
+    """The relevance text is the whole report's, not one claim's -- where the regression lived."""
+    from deep_research_client.claims import (
+        AnchorStatus, CitationStatus, ClaimSet, CitationVerifier, ExtractorInfo,
+        SourceDocument, SourceType, report_topic_text,
+    )
+
+    cs = ClaimSet(
+        source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+        extractor=ExtractorInfo(name="x"),
+        claims=[Claim(id=f"c{i}", claim_text=t, anchor_status=AnchorStatus.EXACT,
+                      about=ClaimTopic.DOMAIN, basis=ClaimBasis.OBSERVATION,
+                      citation_status=CitationStatus.UNCITED)
+                for i, t in enumerate(["First claim.", "Second claim.", "Third claim."])],
+    )
+    topic = report_topic_text(cs)
+    assert topic == "First claim.\nSecond claim.\nThird claim."  # the whole report, not one claim
+    # The verifier keeps exactly that text to weigh relevance against.
+    assert CitationVerifier(topic_text=topic)._topic_text == topic
+
+
+def test_report_topic_text_is_none_for_an_empty_set() -> None:
+    from deep_research_client.claims import (
+        ClaimSet, ExtractorInfo, SourceDocument, SourceType, report_topic_text,
+    )
+
+    cs = ClaimSet(source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+                  extractor=ExtractorInfo(name="x"))
+    assert report_topic_text(cs) is None
+
+
 def test_averify_returns_nothing_for_an_uncited_claim_without_building_the_validator() -> None:
     """An uncited claim needs no resolver, so the optional extra is never touched."""
     from deep_research_client.claims import CitationVerifier

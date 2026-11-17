@@ -4710,6 +4710,7 @@ def claims_verify(
     import importlib.util
 
     from .claims import CitationVerifier, Verifier, averify_claims
+    from .claims.verification_citation import report_topic_text
     from .claims.verification_models import Decidability
 
     claim_set = _load_claim_set(claims_file)
@@ -4726,8 +4727,8 @@ def claims_verify(
             raise typer.Exit(1)
         # Relevance is weighed against the report's vocabulary (a single claim is too
         # little text for the keyword heuristic), so pass the whole set's claim text.
-        topic_text = "\n".join(c.claim_text for c in claim_set.claim_list if c.claim_text)
-        verifiers.append(CitationVerifier(topic_text=topic_text or None, email=email, cache_dir=cache))
+        verifiers.append(CitationVerifier(
+            topic_text=report_topic_text(claim_set), email=email, cache_dir=cache))
 
     report = asyncio.run(averify_claims(
         claim_set, verifiers, alignment=loaded_alignment,

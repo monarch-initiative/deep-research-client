@@ -176,6 +176,35 @@ A contradictory pair is also a signal for human review. Pass the alignment to
 `CONTRADICTION` flag (or `SELF_CONTRADICTION`, within one source) — a logical
 conflict a person must adjudicate.
 
+### Folding in grounding and verification
+
+The five metrics above read only the alignment. Pass the candidate's own
+[verification report](verify-claims.md) as `verification=` and three more metrics
+fold the later steps in, so accuracy reflects what was actually checked:
+
+```python
+from deep_research_client.claims import summarize_alignment, verify_claims
+
+report = verify_claims(candidate, [citation_verifier])   # or triage-only
+summary = summarize_alignment(alignment, candidate, reference, reference="a",
+                              verification=report)
+```
+
+- `grounding` — candidate entity mentions resolved to an ontology id (coverage),
+  appended only when the candidate was grounded (it carries a grounder stamp).
+- `citation_accuracy` — of the candidate's checked cited claims, those whose
+  citations resolve to a real work, read from the citation verdicts. This differs
+  from `support` (contradiction counts) and from `citation_quality` (which asks
+  only whether a claim is cited at all): it is the "is the cited work real"
+  signal. The claims with a fabricated citation are listed.
+- `review_burden` — candidate claims raising no flag only a human can settle, with
+  the ones a person must review listed.
+
+Each is still a `numerator / denominator` carrying its ids, and the five original
+metrics are unchanged, so passing no `verification` leaves the summary exactly as
+before. The `verification` must be the candidate's own (its `source_id` is
+checked).
+
 ## Adversarial inputs
 
 Claim text reaches the classifier as prompt content. A source document could in

@@ -48,9 +48,10 @@ class ResultFormatter:
         # Add provider configuration
         if result.provider_config:
             metadata["provider_config"] = result.provider_config
-            trajectory_id = result.provider_config.get("trajectory_id")
-            if trajectory_id:
-                metadata["trajectory_id"] = trajectory_id
+
+        # Durable handle on the upstream provider run, plus the legacy
+        # trajectory_id for back-compat (both centralized on the model).
+        metadata.update(result.provider_job_frontmatter())
 
         # Add run provenance metadata (e.g. actual model(s) used, cost, turns)
         if result.run_metadata:

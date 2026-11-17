@@ -26,6 +26,28 @@ See [Capabilities, Resources & Archetypes](capabilities.md) for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.
 
+## Provider run identifiers
+
+A lightweight Markdown report is safe to commit, but the richer artifacts a run
+produced may need to be reassembled from the provider later — to verify
+provenance, fetch a PDF export, or debug a provider-side run. For that a
+committed report has to carry a durable handle on its upstream job. Three
+provider-neutral fields on `ResearchResult`, written to the report frontmatter,
+hold it (issue #50):
+
+| Field | Meaning |
+|-------|---------|
+| `provider_job_id` | The provider-side identifier for this run (e.g. an OpenScientist job ID or an Edison trajectory UUID). |
+| `provider_job_url` | A direct URL to the provider-side job, when the provider exposes one. |
+| `provider_instance_url` | The base URL of the hosted instance that ran this, when the provider is a hosted service. |
+
+Each provider sets whichever it can and leaves the rest unset rather than
+guessing — a field is absent from the frontmatter when it is unknown, so its
+presence is the finding. Provider-specific raw identifiers that do not fit these
+keys stay in `run_metadata`. The older Edison/Falcon `trajectory_id` key is
+unchanged and still written (see [Edison](#edison-scientific-falcon)); it now
+coexists with `provider_job_id`, which carries the same UUID.
+
 ## Timeouts
 
 `deep-research-client research --timeout SECONDS` (or `timeout=` on
@@ -189,6 +211,7 @@ params = FalconParams(
 - **Capabilities**: Scientific literature, powered by PaperQA3
 - **Artifacts**: Edison output artifacts are fetched from the completed task. Image artifacts such as diagrams, charts, and figures are written beside saved reports and embedded in the generated Markdown; other artifact files are linked from an `Artifacts` section.
 - **Runs that find nothing**: when Edison's agent was not sure of its answer (`has_successful_answer` false or never set) -- typically because retrieval found no papers -- the report is still written with its artifacts, but its frontmatter says `answer_status: unsuccessful`, `## Output` opens with a warning, the result is not cached, and the CLI exits with code 4. Which papers Edison can retrieve is up to its own corpus and search, not this client.
+- **Trajectory / job identifier**: every run records Edison's task UUID both as the provider-neutral `provider_job_id` (see [Provider run identifiers](#provider-run-identifiers)) and under the long-standing `provider_config.trajectory_id`, which is also surfaced as a top-level `trajectory_id` frontmatter key. The two always carry the same UUID; `trajectory_id` is kept so existing tooling and the `deep-research-client edison-trajectory <task id>` command keep working. A report reassembled by that command additionally sets `provider_config.retrieval_mode: edison_trajectory`. Edison exposes no public per-job URL, so `provider_job_url` and `provider_instance_url` are left unset rather than guessed. (A fresh run recorded no identifier at all before this; only the retrieval command did.)
 - **Timeout and cancellation**: the client waits up to `ProviderConfig.timeout` seconds for the Edison task (2400 by default, edison-client's own default), then raises `EdisonTaskTimeoutError` (a `TimeoutError`). When the client stops waiting by choice (that timeout, Ctrl-C, or the caller cancelling the run), it asks Edison to cancel the task, so it doesn't keep running and billing. Edison only cancels a task that has started. One still queued is left alone, and a warning names it so you can stop it from the Edison dashboard. When a status check fails instead, for example on a network error, the task is left running, because it may still finish. A warning gives the `deep-research-client edison-trajectory <task id>` command that collects it.
 - **Artifacts with unreadable storage ids**: an output whose storage id is not a UUID is skipped with a warning. The answer and the other artifacts are still returned.
 - **Failures cached before this was added**: a run that failed this way under an earlier version was cached like any report, and a cache entry records no `answer_status`, so it is still served as one. If you hit this before upgrading, rerun that query with `--no-cache` (or `deep-research-client clear-cache`, which clears everything) to get a fresh run.
@@ -303,6 +326,7 @@ See [Artifact selection](#artifact-selection) for what the last four do.
 - **Citations**: PMID format with deduplication
 - **Artifacts**: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as `ResearchArtifact` entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see [Artifact selection](#artifact-selection).
 - **Job ID**: the result's `run_metadata` carries the OpenScientist `job_id`, which is also written to the report frontmatter. With it, a caller can fetch the job's complete artifacts ZIP from `GET {OPENSCIENTIST_URL}/api/v1/jobs/{job_id}/artifacts` when artifact selection leaves out a file it needs. Results cached before this field existed have no `run_metadata` (the cache version was deliberately not bumped, since runs are long), so callers must handle its absence.
+- **Provider run identifiers**: the same job is also recorded in the provider-neutral frontmatter keys described under [Provider run identifiers](#provider-run-identifiers): `provider_job_id`, `provider_job_url` (`{OPENSCIENTIST_URL}/job/{job_id}`), and `provider_instance_url` (the base URL this run used, so a committed report points back at the instance that produced it, not a hard-coded default).
 
 ### When to Use
 

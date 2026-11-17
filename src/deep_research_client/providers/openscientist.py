@@ -211,9 +211,17 @@ class OpenScientistProvider(ResearchProvider):
                 provider=self.name,
                 query=query,
                 model=self.model,
-                # The job ID is the only handle on the job's full artifacts ZIP,
-                # which callers may need to re-fetch when the selected artifacts
-                # above leave out files they must audit.
+                # Provider-neutral handle on the upstream job (issue #50): the
+                # instance, the job ID, and the human-facing job page. With
+                # these a committed report can be reconnected to its job later.
+                provider_instance_url=self.base_url,
+                provider_job_id=job_id,
+                provider_job_url=f"{self.base_url}/job/{job_id}",
+                # The job ID is also the only handle on the job's full artifacts
+                # ZIP, which callers may need to re-fetch when the selected
+                # artifacts above leave out files they must audit. Kept in
+                # run_metadata too, where artifact-recovery callers already read
+                # it (documented in docs/reference/providers.md).
                 run_metadata={"job_id": job_id},
             )
 

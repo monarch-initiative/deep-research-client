@@ -284,6 +284,62 @@ def test_format_research_result_handles_mixed_artifacts(formatter_class):
 
 
 @pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_provider_job_metadata_is_written_to_frontmatter(formatter_class):
+    """Issue #50: a hosted provider's job handle reaches the frontmatter."""
+    result = ResearchResult(
+        markdown="# Report",
+        provider="openscientist",
+        query="query",
+        provider_instance_url="https://www.openscientist.io",
+        provider_job_id="aec8afbb-82e9-4d15-aa3c-5e5ae83d2257",
+        provider_job_url="https://www.openscientist.io/job/aec8afbb-82e9-4d15-aa3c-5e5ae83d2257",
+    )
+
+    frontmatter = yaml.safe_load(
+        formatter_class().format_full_markdown(result).split("---", 2)[1]
+    )
+
+    assert frontmatter["provider_instance_url"] == "https://www.openscientist.io"
+    assert frontmatter["provider_job_id"] == "aec8afbb-82e9-4d15-aa3c-5e5ae83d2257"
+    assert (
+        frontmatter["provider_job_url"]
+        == "https://www.openscientist.io/job/aec8afbb-82e9-4d15-aa3c-5e5ae83d2257"
+    )
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_edison_job_id_coexists_with_legacy_trajectory_id(formatter_class):
+    """Issue #50: the neutral job id and the legacy trajectory_id both appear."""
+    uuid = "784d73d5-da42-402e-9701-6c5b44beab14"
+    result = ResearchResult(
+        markdown="# Report",
+        provider="falcon",
+        query="query",
+        provider_job_id=uuid,
+        provider_config={"trajectory_id": uuid},
+    )
+
+    frontmatter = yaml.safe_load(
+        formatter_class().format_full_markdown(result).split("---", 2)[1]
+    )
+
+    assert frontmatter["provider_job_id"] == uuid
+    assert frontmatter["trajectory_id"] == uuid
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
+def test_no_provider_job_keys_when_none_are_known(formatter_class):
+    """A provider with no job handle must not sprout empty job keys."""
+    result = ResearchResult(markdown="# Report", provider="mock", query="query")
+
+    rendered = formatter_class().format_full_markdown(result)
+
+    assert "provider_job_id" not in rendered
+    assert "provider_instance_url" not in rendered
+    assert "trajectory_id" not in rendered
+
+
+@pytest.mark.parametrize("formatter_class", [ResultFormatter, LegacyResultFormatter])
 def test_an_unsuccessful_answer_is_marked_in_both_formatters(formatter_class):
     """Issue #52: a failed run must be detectable from the file, by field and by eye."""
     result = ResearchResult(

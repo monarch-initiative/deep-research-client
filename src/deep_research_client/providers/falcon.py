@@ -263,7 +263,7 @@ class FalconProvider(ResearchProvider):
                 raise
             response = self._coerce_response([task])
             logger.info("Edison API request completed successfully")
-            return self._result_from_response(client, response, query)
+            return self._result_from_response(client, response, query, task_id=task_id)
         except Exception as e:
             logger.error(f"Edison API request failed: {e}")
             logger.debug("Error details:", exc_info=True)
@@ -396,12 +396,13 @@ class FalconProvider(ResearchProvider):
         try:
             response = self._coerce_response([client.get_task(task_id=trajectory_id, verbose=True)])
             query = response[0].query or f"Edison trajectory {trajectory_id}"
-            result = self._result_from_response(client, response, query)
+            result = self._result_from_response(client, response, query, task_id=trajectory_id)
         finally:
             client.close()
+        # trajectory_id is set by _result_from_response; add only the marker
+        # that this report came from a retrieval rather than a fresh run.
         result.provider_config = {
             **(result.provider_config or {}),
-            "trajectory_id": trajectory_id,
             "retrieval_mode": "edison_trajectory",
         }
         return result
@@ -411,8 +412,21 @@ class FalconProvider(ResearchProvider):
         client: EdisonClient,
         response: EdisonResponse,
         query: str,
+        task_id: Optional[str] = None,
     ) -> ResearchResult:
-        """Build a research result from an Edison verbose response."""
+        """Build a research result from an Edison verbose response.
+
+        Args:
+            client: The Edison client, used to fetch artifacts.
+            response: The validated Edison response.
+            query: The original research question.
+            task_id: Edison's trajectory/task UUID, when known. This provider's
+                durable job handle (issue #50): recorded as the provider-neutral
+                ``provider_job_id`` and, for back-compat with the
+                ``edison-trajectory`` tooling, under
+                ``provider_config["trajectory_id"]``. ``None`` leaves both unset,
+                e.g. when a caller hands in a response without its id.
+        """
         markdown_content = self._extract_text_content(response)
         logger.debug(f"Extracted markdown content: {len(markdown_content)} characters")
 
@@ -429,6 +443,8 @@ class FalconProvider(ResearchProvider):
             provider=self.name,
             query=query,
             answer_successful=self._answer_successful(response),
+            provider_job_id=task_id,
+            provider_config={"trajectory_id": task_id} if task_id else None,
         )
 
     def _answer_successful(self, response: EdisonResponse) -> Optional[bool]:

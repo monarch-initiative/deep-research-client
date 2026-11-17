@@ -851,6 +851,18 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
     assert created_clients[0].get_task_calls == [(TASK_ID, True)]
     assert created_clients[1].get_task_calls == [("trajectory-123", True)]
 
+    # Issue #50: both paths record Edison's task UUID as the provider-neutral
+    # job id and keep it under the legacy trajectory_id key. A fresh run used
+    # to record neither.
+    assert research_result.provider_job_id == TASK_ID
+    assert research_result.provider_config["trajectory_id"] == TASK_ID
+    assert trajectory_result.provider_job_id == "trajectory-123"
+    assert trajectory_result.provider_config["trajectory_id"] == "trajectory-123"
+    assert trajectory_result.provider_config["retrieval_mode"] == "edison_trajectory"
+    # Edison exposes no public job URL, so these stay unset rather than guessed.
+    assert research_result.provider_job_url is None
+    assert research_result.provider_instance_url is None
+
 
 def test_extract_artifacts_continues_past_a_non_uuid_storage_id(tmp_path):
     """One unreadable storage id must not cost the other artifacts (issue #88)."""

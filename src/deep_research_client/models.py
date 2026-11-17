@@ -321,6 +321,31 @@ class ResearchResult(BaseModel):
         ),
     )
 
+    # Durable handle on the upstream provider run (issue #50). Provider-neutral
+    # so a committed report can be reconnected to its provider-side job later --
+    # to verify provenance, fetch a richer export, or debug the run -- without
+    # knowing which provider produced it. A provider sets whichever it can;
+    # Edison/Falcon fills only provider_job_id (its trajectory UUID), which it
+    # also keeps under provider_config["trajectory_id"] for back-compat.
+    provider_job_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Provider-side identifier for this run (e.g. an OpenScientist job ID "
+            "or an Edison trajectory UUID). None when the provider exposes none."
+        ),
+    )
+    provider_job_url: Optional[str] = Field(
+        default=None,
+        description="Direct URL to the provider-side job, when the provider has one.",
+    )
+    provider_instance_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base URL of the provider instance that ran this (e.g. "
+            "https://www.openscientist.io), when the provider is a hosted service."
+        ),
+    )
+
     answer_successful: Optional[bool] = Field(
         default=None,
         description=(
@@ -434,6 +459,53 @@ class ResearchResult(BaseModel):
         if self.answer_successful is not None:
             metadata["answer_status"] = "successful" if self.answer_successful else "unsuccessful"
         metadata["citation_count"] = len(self.citations)
+        return metadata
+
+    def provider_job_frontmatter(self) -> Dict[str, Any]:
+        """Render the upstream provider-run identifiers for a report's frontmatter.
+
+        Here rather than in a formatter for the same reason as
+        :meth:`fallback_frontmatter`: there is more than one formatter, and
+        provenance that only some reports carried would be worse than none.
+
+        Emits the provider-neutral keys from their dedicated fields (issue
+        #50), and preserves the Edison/Falcon-specific ``trajectory_id`` that
+        its reports have carried since the ``edison-trajectory`` work -- read
+        from ``provider_config`` so results cached before these fields existed,
+        and the retrieval path that still writes it there, keep the key. It is
+        emitted even when it equals ``provider_job_id``: a consumer that only
+        knows the old key must still find it (issue #50's Falcon example shows
+        both).
+
+        Returns:
+            Frontmatter keys identifying the upstream run, in the order the
+            issue lists them, or ``{}`` when nothing is known -- the presence
+            of a key is the finding.
+
+        >>> ResearchResult(markdown="x", provider="mock", query="q").provider_job_frontmatter()
+        {}
+        >>> ResearchResult(
+        ...     markdown="x", provider="openscientist", query="q",
+        ...     provider_instance_url="https://www.openscientist.io",
+        ...     provider_job_id="aec8afbb", provider_job_url="https://www.openscientist.io/job/aec8afbb",
+        ... ).provider_job_frontmatter()
+        {'provider_instance_url': 'https://www.openscientist.io', 'provider_job_id': 'aec8afbb', 'provider_job_url': 'https://www.openscientist.io/job/aec8afbb'}
+        >>> ResearchResult(
+        ...     markdown="x", provider="falcon", query="q", provider_job_id="784d73d5",
+        ...     provider_config={"trajectory_id": "784d73d5"},
+        ... ).provider_job_frontmatter()
+        {'provider_job_id': '784d73d5', 'trajectory_id': '784d73d5'}
+        """
+        metadata: Dict[str, Any] = {}
+        if self.provider_instance_url:
+            metadata["provider_instance_url"] = self.provider_instance_url
+        if self.provider_job_id:
+            metadata["provider_job_id"] = self.provider_job_id
+        if self.provider_job_url:
+            metadata["provider_job_url"] = self.provider_job_url
+        trajectory_id = (self.provider_config or {}).get("trajectory_id")
+        if trajectory_id:
+            metadata["trajectory_id"] = trajectory_id
         return metadata
 
     def answer_warning(self) -> Optional[str]:

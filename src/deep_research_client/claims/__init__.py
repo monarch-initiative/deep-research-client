@@ -71,6 +71,7 @@ from .publication_ids import (
 from .rubrics import summarize_alignment
 from .triage import CONSENSUS_CUES, triage_claims
 from .verification import Verifier, averify_claims, verify_claims
+from .verification_citation import CitationVerifier, verdict_from_check
 from .verification_models import (
     ClaimVerification,
     Decidability,
@@ -148,6 +149,8 @@ __all__ = [
     "Verifier",
     "averify_claims",
     "verify_claims",
+    "CitationVerifier",
+    "verdict_from_check",
     "ClaimVerification",
     "Decidability",
     "FlagKind",

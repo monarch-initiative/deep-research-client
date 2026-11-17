@@ -167,6 +167,10 @@ class FlagKind(str, Enum):
     """
     A claim is cited, but none of its citations resolve to a normalised identifier (a PMID, DOI, and so on): the marker points nowhere that can be checked. Connects to publication identifier normalisation (#41).
     """
+    CONFABULATED_CITATION = "CONFABULATED_CITATION"
+    """
+    A claim cites a normalised identifier that resolves to no real record: the work appears to have been fabricated. A resolver settled this, so it is one of the few findings a machine can decide outright.
+    """
     UNCHECKED_CITATION = "UNCHECKED_CITATION"
     """
     A claim cites a resolvable identifier, but no verifier confirmed the cited work supports it. Raised when verification ran but produced no supporting or contradicting verdict for the claim.

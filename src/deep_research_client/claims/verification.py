@@ -45,6 +45,38 @@ __all__ = [
 #: citation that reached none of these after verifiers ran is UNCHECKED.
 _SETTLED = (VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED)
 
+#: How a verifier's verdict becomes a review flag. Derived in one place so every
+#: verifier's verdicts surface consistently: (flag kind, decidability) per status.
+#: SUPPORTED and UNVERIFIABLE raise no flag (nothing to review).
+_FLAG_FOR_STATUS: dict[VerificationStatus, tuple[FlagKind, Decidability]] = {
+    VerificationStatus.UNSUPPORTED: (FlagKind.CONFABULATED_CITATION, Decidability.MACHINE),
+    VerificationStatus.NEEDS_REVIEW: (FlagKind.WEAK_CITATION, Decidability.HUMAN),
+    VerificationStatus.CONTRADICTED: (FlagKind.CONTRADICTION, Decidability.HUMAN),
+}
+
+
+def _flags_from_verdicts(verifications: list[ClaimVerification]) -> list[ReviewFlag]:
+    """Turn notable verifier verdicts into review flags.
+
+    A verdict and a flag are different products: the verdict records what a
+    verifier found, the flag routes it to whoever can act on it. Mapped in one
+    pure place so a new verifier's verdicts surface without new flag code.
+    """
+    flags: list[ReviewFlag] = []
+    for v in verifications:
+        mapped = _FLAG_FOR_STATUS.get(VerificationStatus(v.status))
+        if mapped is None:
+            continue
+        kind, decidability = mapped
+        flags.append(ReviewFlag(
+            kind=kind,
+            decidability=decidability,
+            claim_ids=[v.claim_id],
+            message=v.note or f"{v.claim_id}: {v.status} ({v.method}).",
+            evidence=v.reference_id,
+        ))
+    return flags
+
 
 class Verifier(Protocol):
     """Checks one claim against the world and returns verdicts, or none.
@@ -159,6 +191,7 @@ async def averify_claims(
             raise
         for verdicts in results:
             verifications.extend(verdicts)
+        flags.extend(_flags_from_verdicts(verifications))
         flags.extend(_unchecked_flags(claim_set, verifications))
 
     names = [v.name for v in verifiers]

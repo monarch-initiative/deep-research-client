@@ -1,12 +1,18 @@
-"""The folded rubric on a real deep-research report, offline.
+"""The folded rubric on real and report-shaped deep-research data, offline.
 
-Uses the committed DisMech-style fixtures: a real report (``report_a``, the
-candidate) against a curated reference (``gold_b``). The cross-source alignment is
-rebuilt from the recorded model replies (as test_alignment_recorded does), the
-candidate's verification is computed purely by triage (no model, no network), and
-the enriched ``summarize_alignment`` is checked on that real data. The live
-extract -> ground -> verify path is covered under the integration marker in
-test_rubric_integration.py.
+Two kinds of real-world coverage, both without a model or the network:
+
+- A genuine DisMech report: the committed ``acne_vulgaris`` falcon report (267
+  claims). Triage reproduces its verification profile, and the folded
+  ``review_burden`` / ``grounding`` metrics are checked on that real report.
+- Report-shaped fixtures with a recorded alignment: ``report_a`` (candidate)
+  against ``gold_b`` (reference). These are small synthetic fixtures (so the
+  alignment could be recorded), used to exercise the enriched
+  ``summarize_alignment`` through its public entry point. The cross-source
+  alignment is rebuilt from the recorded model replies.
+
+The live extract -> ground -> verify path on real data is covered under the
+integration marker in test_rubric_integration.py.
 """
 
 import json
@@ -22,18 +28,57 @@ from deep_research_client.claims import (
     AlignerInfo,
     ClaimAlignment,
     ClaimSet,
+    FlagKind,
+    VerificationReport,
     candidate_pairs,
     evidential_relation,
     shares_citation,
     summarize_alignment,
     verify_claims,
 )
+from deep_research_client.claims import rubrics
 from deep_research_client.claims.align_parsing import relation_from_reply
 
 ALIGN = Path(__file__).parent / "input" / "claims" / "alignment"
 MANIFEST = yaml.safe_load((ALIGN / "manifest.yaml").read_text(encoding="utf-8"))
 MODEL = sorted(MANIFEST["recordings"])[0]
+EXAMPLES = Path(__file__).resolve().parent.parent / "examples" / "within-report-alignment"
 
+
+# ---- A genuine DisMech report: acne_vulgaris (falcon), 267 real claims ----
+
+@cache
+def _acne() -> tuple[ClaimSet, VerificationReport]:
+    claims = ClaimSet.model_validate(
+        json.loads((EXAMPLES / "acne_vulgaris.claims.json").read_text("utf-8")))
+    verification = VerificationReport.model_validate(
+        json.loads((EXAMPLES / "acne_vulgaris.verification.json").read_text("utf-8")))
+    return claims, verification
+
+
+def test_triage_reproduces_the_committed_profile_on_the_real_report() -> None:
+    """verify_claims on the real acne report gives the committed flag profile."""
+    claims, committed = _acne()
+    fresh = verify_claims(claims)  # pure triage, no model, no network
+    assert fresh.flag_count == committed.flag_count == 193
+    assert all(f.kind == FlagKind.UNSUPPORTED_CLAIM.value for f in fresh.flag_list)
+    assert fresh.needs_human == []  # every issue here is agent-decidable, none human-only
+
+
+def test_folded_metrics_on_the_real_report() -> None:
+    """review_burden and grounding read correctly off the real report + its verification."""
+    claims, committed = _acne()
+    # Nothing is flagged for a human, so the whole report is "clean" on review burden.
+    burden = rubrics._review_burden_metric(claims, committed)
+    assert burden.value == 1.0 and burden.denominator == 267
+    assert burden.supporting_claim_ids in (None, [])
+    # This report was never run through grounding (no grounder stamp), so there is
+    # no coverage to score, even though extraction left a few entity ids behind.
+    assert claims.grounder is None
+    assert rubrics._grounding_metric(claims) is None
+
+
+# ---- Report-shaped fixtures with a recorded alignment: report_a vs gold_b ----
 
 @cache
 def _sources() -> tuple[ClaimSet, ClaimSet]:
@@ -49,7 +94,7 @@ def _aligned_source(claim_set: ClaimSet) -> AlignedSource:
 
 @cache
 def _alignment() -> ClaimAlignment:
-    """Rebuild the real report_a-vs-gold_b alignment from the recorded replies."""
+    """Rebuild the report_a-vs-gold_b alignment from the recorded model replies."""
     set_a, set_b = _sources()
     pairs = candidate_pairs(set_a.claim_list, set_b.claim_list)
     aligned = []
@@ -71,34 +116,21 @@ def _alignment() -> ClaimAlignment:
     )
 
 
-def test_enriched_rubric_on_a_real_report_against_a_curated_reference() -> None:
-    """The five alignment metrics plus review_burden, computed on real report data."""
+def test_enriched_rubric_through_the_public_api_on_a_recorded_alignment() -> None:
+    """The five alignment metrics plus review_burden, via summarize_alignment."""
     set_a, set_b = _sources()
-    alignment = _alignment()
-    verification = verify_claims(set_a)  # triage-only: pure, no model, no network
-    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    verification = verify_claims(set_a)  # triage-only: pure
+    summary = summarize_alignment(_alignment(), set_a, set_b, reference="b", verification=verification)
 
     names = {m.name for m in summary.metrics}
-    # The five alignment metrics are always there.
     assert {"relevance", "informativeness", "support", "completeness", "citation_quality"} <= names
-    # Triage ran, so review_burden folds in; triage produces no citation verdicts and
-    # report_a is not grounded, so those two folded metrics stay absent.
+    # Triage ran -> review_burden folds in; no citation verdicts and not grounded ->
+    # those two folded metrics stay absent.
     assert "review_burden" in names
-    assert "citation_accuracy" not in names
-    assert "grounding" not in names
+    assert "citation_accuracy" not in names and "grounding" not in names
 
     burden = summary.metric("review_burden")
-    assert burden is not None
-    # review_burden counts candidate claims with no human-only flag; it is a real
-    # fraction of report_a's claims, and its shortfall ids are a subset of them.
-    assert 0.0 <= burden.value <= 1.0
+    assert burden is not None and 0.0 <= burden.value <= 1.0
     candidate_ids = {c.id for c in set_a.claim_list}
     assert set(burden.supporting_claim_ids or []) <= candidate_ids
     assert burden.denominator == len(candidate_ids)
-
-
-def test_the_reused_fixtures_are_a_real_report_and_a_reference() -> None:
-    """Guard that these stay real multi-claim fixtures, not toy stubs."""
-    set_a, set_b = _sources()
-    assert len(set_a.claim_list) >= 3 and len(set_b.claim_list) >= 3
-    assert _alignment().pair_list  # at least one candidate pair was classified

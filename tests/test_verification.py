@@ -121,6 +121,32 @@ def test_a_non_citation_unsupported_verdict_is_not_called_confabulated() -> None
     assert FlagKind.UNCHECKED_CITATION.value in kinds
 
 
+class MultiVerifier:
+    """A Verifier returning several verdicts for one claim, for the mixed-verdict case."""
+
+    name = "multi"
+
+    def __init__(self, verdicts: dict[str, list[VerificationStatus]]) -> None:
+        self._verdicts = verdicts
+
+    async def averify(self, claim: Claim) -> list[ClaimVerification]:
+        return [
+            ClaimVerification(claim_id=claim.id, status=s, method="citation:resolution",
+                              reference_id=f"PMID:{i}", verifier=self.name)
+            for i, s in enumerate(self._verdicts.get(claim.id, []), start=1)
+        ]
+
+
+def test_one_supported_work_addresses_a_claim_citing_several() -> None:
+    """A claim with one SUPPORTED and one UNVERIFIABLE citation is not flagged unchecked."""
+    report = verify_claims(
+        _set(_cited("c1")),
+        [MultiVerifier({"c1": [VerificationStatus.SUPPORTED, VerificationStatus.UNVERIFIABLE]})],
+    )
+    assert report.flags_of_kind(FlagKind.UNCHECKED_CITATION) == []
+    assert len(report.verifications_for("c1")) == 2
+
+
 def test_max_claims_leaves_uncovered_claims_flagged_unchecked() -> None:
     """Claims past the cap get no verdict, so their resolvable citations read as unchecked."""
     report = verify_claims(

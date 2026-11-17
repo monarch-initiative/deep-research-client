@@ -4724,7 +4724,10 @@ def claims_verify(
 
             _error(INSTALL_HINT)
             raise typer.Exit(1)
-        verifiers.append(CitationVerifier(email=email, cache_dir=cache))
+        # Relevance is weighed against the report's vocabulary (a single claim is too
+        # little text for the keyword heuristic), so pass the whole set's claim text.
+        topic_text = "\n".join(c.claim_text for c in claim_set.claim_list if c.claim_text)
+        verifiers.append(CitationVerifier(topic_text=topic_text or None, email=email, cache_dir=cache))
 
     report = asyncio.run(averify_claims(
         claim_set, verifiers, alignment=loaded_alignment,

@@ -62,8 +62,8 @@ _NEGATORS = frozenset({
     "absent", "absence", "nor", "neither",
 })
 
-#: How far back to look for a negator before a cue.
-_NEGATION_WINDOW = 30
+#: How many whole words before a cue to scan for a negator.
+_NEGATION_LOOKBACK = 3
 
 
 def _snippet(text: str) -> str:
@@ -91,8 +91,9 @@ def _matched_cue(text: str, cues: Sequence[str]) -> Optional[str]:
             at = folded.find(needle, start)
             if at == -1:
                 break
-            preceding = folded[max(0, at - _NEGATION_WINDOW):at]
-            prior_words = re.findall(r"[a-z]+", preceding)[-3:]
+            # Whole words before the cue (the full preceding text, so a window can't
+            # cut a word mid-way and invent a spurious token).
+            prior_words = re.findall(r"[a-z]+", folded[:at])[-_NEGATION_LOOKBACK:]
             if not _NEGATORS.intersection(prior_words):
                 return cue
             start = at + 1
@@ -176,12 +177,18 @@ def triage_claims(
          ('UNSUPPORTED_CLAIM', 'AGENT', ['c2']),
          ('CONSENSUS_OVERSTATED', 'HUMAN', ['c2'])]
     """
-    if alignment is not None and alignment.source_a.id != claim_set.source.id:
-        raise ValueError(
-            "the alignment does not match this claim set: it aligns "
-            f"{alignment.source_a.id!r} (A), but the claim set is "
-            f"{claim_set.source.id!r}. Pass the alignment whose A side is this set."
-        )
+    if alignment is not None:
+        if alignment.source_a.id != claim_set.source.id:
+            raise ValueError(
+                "the alignment does not match this claim set: it aligns "
+                f"{alignment.source_a.id!r} (A), but the claim set is "
+                f"{claim_set.source.id!r}. Pass the alignment whose A side is this set."
+            )
+        if alignment.within_source and alignment.source_b.id != claim_set.source.id:
+            raise ValueError(
+                "the alignment is marked within_source but its B side "
+                f"{alignment.source_b.id!r} is not this claim set {claim_set.source.id!r}."
+            )
     contradicted = (
         _contradicted_claim_ids(alignment, claim_set) if alignment is not None else set()
     )

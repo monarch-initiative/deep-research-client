@@ -175,7 +175,9 @@ def normalize_publication_id(raw: str) -> NormalizedPublicationId:
     if url:
         # A bare URL with no extractable id: it points to a page, not to a
         # canonical publication id, so it resolves only weakly. Trailing prose
-        # punctuation ("(see https://x/p).") is not part of the URL.
+        # punctuation ("(see https://x/p).") is not part of the URL. Trade-off: a
+        # URL that genuinely ends in a bracket (a Wikipedia "..._(disambiguation)"
+        # link) loses it; worth it to make prose-embedded URLs normalise alike.
         cleaned = url.group(0).rstrip(_URL_TRAILING)
         return NormalizedPublicationId(
             raw=raw,

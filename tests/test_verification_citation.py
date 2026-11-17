@@ -64,6 +64,35 @@ def test_verified_but_off_topic_needs_review() -> None:
     assert verdict.method == "citation:relevance"
 
 
+def test_relevance_needs_report_level_text_not_one_claim() -> None:
+    """Why the verifier weighs relevance against the report, not a single claim.
+
+    The keyword heuristic keeps only terms a text repeats (MIN_TERM_OCCURRENCES),
+    so one claim sentence yields no keywords and relevance can never be assessed --
+    the regression that passing claim.claim_text as topic_text caused. This runs
+    the real extract_keywords/assess_relevance path (no mocks) so it cannot quietly
+    regress again.
+    """
+    from deep_research_client.validation.relevance import assess_relevance, extract_keywords
+
+    one_sentence = "Marfan syndrome is caused by FBN1 variants."
+    assert extract_keywords(one_sentence) == []  # no term repeats -> nothing to weigh
+
+    report = (
+        "Marfan syndrome is a connective tissue disorder. "
+        "Marfan syndrome is caused by FBN1 variants. "
+        "FBN1 encodes fibrillin. Fibrillin fibres weaken in Marfan syndrome. "
+        "FBN1 variants disrupt fibrillin assembly in connective tissue."
+    )
+    keywords = extract_keywords(report)
+    assert keywords  # a report's repeated vocabulary gives the heuristic something
+
+    on_topic = "FBN1 variants cause Marfan syndrome by disrupting fibrillin. " * 8
+    off_topic = "Pollen development in Arabidopsis thaliana anthers. " * 8
+    assert assess_relevance(keywords, on_topic, body=on_topic).relevance == TopicalRelevance.ON_TOPIC
+    assert assess_relevance(keywords, off_topic, body=off_topic).relevance == TopicalRelevance.OFF_TOPIC
+
+
 def test_averify_returns_nothing_for_an_uncited_claim_without_building_the_validator() -> None:
     """An uncited claim needs no resolver, so the optional extra is never touched."""
     from deep_research_client.claims import CitationVerifier

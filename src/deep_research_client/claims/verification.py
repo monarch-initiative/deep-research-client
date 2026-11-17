@@ -123,7 +123,9 @@ def _unchecked_flags(
     weak, contradicted). A cited, resolvable claim that is not addressed stands
     unchecked -- whether because no verifier reached it, or because every verdict
     came back UNVERIFIABLE (no resolver, nothing learned). An agent could still
-    settle it, so it is flagged for one.
+    settle it, so it is flagged for one. A claim citing several works is addressed
+    as soon as one is SUPPORTED: one supporting work is enough that the claim is not
+    unsupported, so a second work that came back UNVERIFIABLE raises no flag.
     """
     addressed = {
         v.claim_id for v in verifications

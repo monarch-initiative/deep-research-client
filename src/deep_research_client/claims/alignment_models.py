@@ -200,6 +200,23 @@ class ClaimAlignment(GeneratedClaimAlignment):
         """Pairs whose claims cannot both be true."""
         return [p for p in self.pair_list if p.semantic_relation == SemanticRelation.CONTRADICTORY]
 
+    def unpaired_ids(self, claim_ids: list[str]) -> list[str]:
+        """Claim ids, in the given order, that align to nothing on either side.
+
+        For a within-source alignment, where one claim can be the A side of one
+        pair and the B side of another, membership must be checked against both
+        sides; ``unaligned_a_ids``/``unaligned_b_ids`` each see only one side and
+        would over-report. Use this for a within-source alignment.
+
+        Args:
+            claim_ids: Every claim id in the source, in order.
+
+        Returns:
+            Those appearing in no aligning pair, on either side.
+        """
+        aligned = self.aligned_a_ids | self.aligned_b_ids
+        return [cid for cid in claim_ids if cid not in aligned]
+
     def unaligned_a_ids(self, a_claim_ids: list[str]) -> list[str]:
         """A-side claim ids, in the given order, that align to nothing in B.
 

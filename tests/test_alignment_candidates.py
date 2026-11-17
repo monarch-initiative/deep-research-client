@@ -109,6 +109,20 @@ def test_within_generates_unordered_distinct_pairs() -> None:
     assert ids == [("c1", "c2"), ("c1", "c3"), ("c2", "c3")]
 
 
+def test_within_embeds_each_text_once() -> None:
+    """Within one set the two sides are the same list, so the embedder runs once."""
+    claims = [_claim("c1", "alpha beta"), _claim("c2", "gamma delta")]
+    calls = []
+
+    def counting(texts):
+        calls.append(list(texts))
+        return [[1.0, 0.0] for _ in texts]
+
+    pairs = candidate_pairs_within(claims, min_overlap=0.99, embedder=counting, embed_threshold=0.5)
+    assert len(calls) == 1  # embedded once, not once per side
+    assert [(p.claim_a.id, p.claim_b.id) for p in pairs] == [("c1", "c2")]
+
+
 def test_within_pairs_nothing_when_claims_do_not_overlap() -> None:
     claims = [
         _claim("c1", "FBN1 variants cause Marfan syndrome.", entity="HGNC:3603"),

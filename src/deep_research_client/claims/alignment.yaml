@@ -178,6 +178,15 @@ classes:
         range: AlignerInfo
         required: true
         inlined: true
+      within_source:
+        range: boolean
+        description: >-
+          True when the alignment compares one source's claims against each other
+          (source_a and source_b are the same source), as opposed to two sources.
+          Set explicitly rather than inferred: two independent extractions of one
+          document are still a valid cross-source comparison. The report-level
+          rubric compares two different sources, so it does not apply when this is
+          true.
       pairs:
         range: AlignedClaimPair
         multivalued: true

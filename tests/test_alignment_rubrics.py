@@ -122,6 +122,19 @@ def test_claim_sets_that_do_not_match_the_alignment_are_refused(scenario) -> Non
         summarize_alignment(alignment, set_b, set_a)  # A and B swapped
 
 
+def test_a_within_source_alignment_has_no_rubric() -> None:
+    """The rubric compares two sources; it is refused in the library, not only the CLI."""
+    report = _set("r.md", SourceType.MARKDOWN_REPORT, [_claim("c1"), _claim("c2")])
+    alignment = ClaimAlignment(
+        source_a=AlignedSource(id="r.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        source_b=AlignedSource(id="r.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        aligner=AlignerInfo(name="llm-pairwise-within"), within_source=True,
+        pairs=[_pair("p1", "c1", "c2", SemanticRelation.IDENTICAL)],
+    )
+    with pytest.raises(ValueError, match="within one source"):
+        summarize_alignment(alignment, report, report)
+
+
 def test_the_substrate_is_source_agnostic_report_vs_report() -> None:
     """Alignment and rubrics read claims, not source types: two reports align too.
 

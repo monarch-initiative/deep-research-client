@@ -18,6 +18,25 @@ from deep_research_client.claims import (
 )
 
 
+def test_the_committed_worked_example_still_validates() -> None:
+    """The docs example data must keep matching the schema if it changes later."""
+    import json
+
+    examples = Path(__file__).resolve().parent.parent / "examples" / "within-report-alignment"
+    from deep_research_client.claims import ClaimSet
+
+    claims = ClaimSet.model_validate(
+        json.loads((examples / "acne_vulgaris.claims.json").read_text(encoding="utf-8"))
+    )
+    alignment = ClaimAlignment.model_validate(
+        json.loads((examples / "acne_vulgaris.self-align.json").read_text(encoding="utf-8"))
+    )
+    assert len(claims.claim_list) == 267
+    assert len(alignment.pair_list) == 114
+    assert alignment.within_source is True
+    assert alignment.source_a.id == alignment.source_b.id  # a within-source alignment
+
+
 def test_aligned_source_type_covers_every_claims_source_type() -> None:
     """AlignedSourceType mirrors claims.SourceType; a new source type must be added here.
 

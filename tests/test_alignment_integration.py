@@ -87,7 +87,7 @@ async def test_compare_claims_classifies_a_single_pair() -> None:
 
 
 async def test_a_report_aligns_against_itself() -> None:
-    """Within-report alignment finds where a source repeats and contradicts itself."""
+    """Within-report alignment pairs a report's near-duplicate claims and flags them."""
     _needs_claude()
     from deep_research_client.claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
 
@@ -111,6 +111,8 @@ async def test_a_report_aligns_against_itself() -> None:
 
     assert alignment.source_a.id == alignment.source_b.id == "within.md"
     assert alignment.aligner.name == "llm-pairwise-within"
+    assert alignment.within_source is True
     # c1 and c2 say the same thing; the model should see that.
-    c1_c2 = next(p for p in alignment.pair_list if (p.claim_a_id, p.claim_b_id) == ("c1", "c2"))
+    c1_c2 = next((p for p in alignment.pair_list if (p.claim_a_id, p.claim_b_id) == ("c1", "c2")), None)
+    assert c1_c2 is not None, "c1 and c2 should have been proposed and classified"
     assert c1_c2.semantic_relation in {SemanticRelation.IDENTICAL, SemanticRelation.CLOSE}

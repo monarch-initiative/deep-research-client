@@ -72,6 +72,38 @@ def _pair(index: int, candidate: CandidatePair, relation: Any) -> AlignedClaimPa
     )
 
 
+def _assemble(
+    candidates: list[CandidatePair],
+    classification: Any,
+    *,
+    source_a: AlignedSource,
+    source_b: AlignedSource,
+    aligner_name: str,
+    model: str,
+    min_overlap: float,
+    embedder: Optional[Embedder],
+    within_source: Optional[bool],
+) -> ClaimAlignment:
+    """Build the ClaimAlignment from classified candidates. Shared by both aligners."""
+    pairs = [
+        _pair(number, candidate, verdict)
+        for number, (candidate, verdict) in enumerate(zip(candidates, classification.verdicts), 1)
+    ]
+    return ClaimAlignment(
+        source_a=source_a,
+        source_b=source_b,
+        within_source=within_source,
+        aligner=AlignerInfo(
+            name=aligner_name,
+            model=classification.model_label(model),
+            prompt_version=ALIGN_PROMPT_VERSION,
+            min_overlap=min_overlap,
+            embedder_used=embedder is not None,
+        ),
+        pairs=pairs,
+    )
+
+
 async def aalign_claim_sets(
     set_a: ClaimSet,
     set_b: ClaimSet,
@@ -110,21 +142,11 @@ async def aalign_claim_sets(
     classification = await classify_pairs(
         candidates, llm_client, model, concurrency=concurrency, max_tokens=max_tokens,
     )
-    pairs = [
-        _pair(number, candidate, verdict)
-        for number, (candidate, verdict) in enumerate(zip(candidates, classification.verdicts), 1)
-    ]
-    return ClaimAlignment(
-        source_a=_aligned_source(set_a.source),
-        source_b=_aligned_source(set_b.source),
-        aligner=AlignerInfo(
-            name="llm-pairwise",
-            model=classification.model_label(model),
-            prompt_version=ALIGN_PROMPT_VERSION,
-            min_overlap=min_overlap,
-            embedder_used=embedder is not None,
-        ),
-        pairs=pairs,
+    return _assemble(
+        candidates, classification,
+        source_a=_aligned_source(set_a.source), source_b=_aligned_source(set_b.source),
+        aligner_name="llm-pairwise", model=model, min_overlap=min_overlap,
+        embedder=embedder, within_source=None,
     )
 
 
@@ -168,22 +190,12 @@ async def aalign_within(
     classification = await classify_pairs(
         candidates, llm_client, model, concurrency=concurrency, max_tokens=max_tokens,
     )
-    pairs = [
-        _pair(number, candidate, verdict)
-        for number, (candidate, verdict) in enumerate(zip(candidates, classification.verdicts), 1)
-    ]
     source = _aligned_source(claim_set.source)
-    return ClaimAlignment(
-        source_a=source,
-        source_b=source,
-        aligner=AlignerInfo(
-            name="llm-pairwise-within",
-            model=classification.model_label(model),
-            prompt_version=ALIGN_PROMPT_VERSION,
-            min_overlap=min_overlap,
-            embedder_used=embedder is not None,
-        ),
-        pairs=pairs,
+    return _assemble(
+        candidates, classification,
+        source_a=source, source_b=source,
+        aligner_name="llm-pairwise-within", model=model, min_overlap=min_overlap,
+        embedder=embedder, within_source=True,
     )
 
 

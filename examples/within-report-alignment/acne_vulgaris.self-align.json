@@ -18,6 +18,7 @@
     "min_overlap": 0.6,
     "embedder_used": false
   },
+  "within_source": true,
   "pairs": [
     {
       "id": "p1",

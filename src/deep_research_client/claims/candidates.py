@@ -165,7 +165,7 @@ def candidate_pairs(
     [('a1', 'b1', ['ENTITY', 'LEXICAL'])]
     """
     return _candidate_pairs(
-        claims_a, claims_b, accept=_ALL_PAIRS,
+        claims_a, claims_b, accept=_all_pairs,
         min_overlap=min_overlap, embedder=embedder, embed_threshold=embed_threshold,
     )
 
@@ -211,7 +211,7 @@ def candidate_pairs_within(
     )
 
 
-def _ALL_PAIRS(i: int, j: int) -> bool:
+def _all_pairs(i: int, j: int) -> bool:
     """Accept every (i, j): the cross-set case."""
     return True
 

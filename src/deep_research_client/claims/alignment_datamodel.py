@@ -256,6 +256,7 @@ class ClaimAlignment(ConfiguredBaseModel):
     source_a: AlignedSource = Field(default=..., description="""The first source, whose claims fill the A side of every pair.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimAlignment']} })
     source_b: AlignedSource = Field(default=..., description="""The second source, whose claims fill the B side of every pair.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimAlignment']} })
     aligner: AlignerInfo = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimAlignment']} })
+    within_source: Optional[bool] = Field(default=None, description="""True when the alignment compares one source's claims against each other (source_a and source_b are the same source), as opposed to two sources. Set explicitly rather than inferred: two independent extractions of one document are still a valid cross-source comparison. The report-level rubric compares two different sources, so it does not apply when this is true.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimAlignment']} })
     pairs: Optional[list[AlignedClaimPair]] = Field(default=None, description="""One per classified candidate pair, including pairs judged UNRELATED. A claim may appear in several pairs, or in none.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimAlignment']} })
 
 

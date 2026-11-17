@@ -4379,7 +4379,7 @@ def claims_align(
         raise typer.Exit(1)
 
     set_a = _load_claim_set(claims_a)
-    set_b = None if within else _load_claim_set(claims_b)  # type: ignore[arg-type]
+    set_b = _load_claim_set(claims_b) if claims_b is not None else None
 
     llm_client, model = _claims_llm_client(
         llm_backend, llm_model, llm_base_url, llm_api_key_env,
@@ -4410,8 +4410,7 @@ def claims_align(
         raise typer.Exit(1)
 
     if within:
-        covered = alignment.aligned_a_ids | alignment.aligned_b_ids
-        alone = sum(1 for c in set_a.claim_list if c.id not in covered)
+        alone = len(alignment.unpaired_ids([c.id for c in set_a.claim_list]))
         logger.info(
             "Aligned %d pairs among %d claims; %d claims relate to no other",
             len(alignment.aligned_pairs), len(set_a.claim_list), alone,

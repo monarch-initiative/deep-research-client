@@ -63,6 +63,11 @@ from .models import (
     TextSpan,
     content_sha256,
 )
+from .publication_ids import (
+    NormalizedPublicationId,
+    PublicationIdType,
+    normalize_publication_id,
+)
 from .rubrics import summarize_alignment
 from .verification_models import (
     ClaimVerification,
@@ -131,6 +136,10 @@ __all__ = [
     "GroundingCandidate",
     "GrounderInfo",
     "OakGrounder",
+    # Publication identifier normalization (issue #41)
+    "NormalizedPublicationId",
+    "PublicationIdType",
+    "normalize_publication_id",
     # Verification data model (issue #43, item 5)
     "ClaimVerification",
     "Decidability",

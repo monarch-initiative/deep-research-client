@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List,
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
-    from .claims import ClaimSet
+    from .claims import ClaimAlignment, ClaimSet
     from .evaluation.datamodel import ArmSpec, EvalSet
     from .ontologies import OntologyConfig
     from .transcript_stats import TranscriptStats
@@ -4166,7 +4166,7 @@ def _claims_llm_client(
     return client, (llm_model or DEFAULT_MODEL)
 
 
-claims_app = typer.Typer(help="Extract the claims a source makes, and align one source's against another's")
+claims_app = typer.Typer(help="Extract the claims a source makes, align them across sources, and verify what needs review")
 app.add_typer(claims_app, name="claims")
 
 
@@ -4330,6 +4330,30 @@ def _load_claim_set(path: Path) -> "ClaimSet":
         return ClaimSet.model_validate(data)
     except ValueError as exc:
         _error(f"{path} is not a valid claim set (from `claims extract`): {exc}")
+        raise typer.Exit(1)
+
+
+def _load_alignment(path: Path) -> "ClaimAlignment":
+    """Load a ClaimAlignment written by `claims align`, as JSON or YAML by suffix."""
+    import json
+
+    import yaml
+
+    from .claims import ClaimAlignment
+
+    if not path.is_file():
+        _error(f"Alignment file not found: {path}")
+        raise typer.Exit(1)
+    text = path.read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(text) if path.suffix.lower() in (".yaml", ".yml") else json.loads(text)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        _error(f"Could not parse {path} as an alignment: {exc}")
+        raise typer.Exit(1)
+    try:
+        return ClaimAlignment.model_validate(data)
+    except ValueError as exc:
+        _error(f"{path} is not a valid alignment (from `claims align`): {exc}")
         raise typer.Exit(1)
 
 
@@ -4634,6 +4658,91 @@ def claims_ground(
     _render_payload(grounded.model_dump(mode="json", exclude_none=True), output)
     if output is not None:
         logger.info(f"Grounded claims written to {output}")
+
+
+@claims_app.command("verify")
+def claims_verify(
+    claims_file: Annotated[Path, typer.Argument(
+        help="A claim set from `claims extract`")],
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the verification report here (.json/.yaml) instead of JSON to stdout")] = None,
+    alignment: Annotated[Optional[Path], typer.Option(
+        "--alignment",
+        help="An alignment of this set from `claims align`, for contradiction flags")] = None,
+    check_citations: Annotated[bool, typer.Option(
+        "--check-citations",
+        help="Resolve each cited identifier against its source (needs the `validation` "
+             "extra and network); off by default, so verification is pure triage")] = False,
+    email: Annotated[Optional[str], typer.Option(
+        "--email",
+        help="Contact address for the NCBI API when checking citations (raises the rate limit)")] = None,
+    cache: Annotated[Optional[Path], typer.Option(
+        "--cache", help="Directory where resolved references are cached between runs")] = None,
+    max_claims: Annotated[Optional[int], typer.Option(
+        "--max-claims", min=1,
+        help="Check citations for at most this-many claims (triage still sees every claim)")] = None,
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Citation checks in flight at once")] = 4,
+):
+    """Flag the claims and pairs that need review, and optionally check their citations.
+
+    Triage always runs: it reads the claim set (and, with `--alignment`, the
+    contradictions found between its claims) and raises a flag wherever something
+    needs a look -- a domain finding that cites nothing, a citation resolving to no
+    identifier, a point framed as settled consensus, a contradiction. Each flag is
+    tagged with who can settle it: a machine, an agent, or only a person.
+
+    Triage needs nothing installed and reaches no network. `--check-citations`
+    additionally resolves each cited identifier against its source to catch
+    fabricated citations; it needs the `validation` extra
+    (`pip install "deep_research_client[validation]"`) and the network.
+
+    Examples:
+
+      deep-research-client claims verify report.claims.json \\
+        --alignment report.self-align.json -o report.verified.json
+
+      deep-research-client claims verify report.claims.json --check-citations
+    """
+    import asyncio
+    import importlib.util
+
+    from .claims import CitationVerifier, Verifier, averify_claims
+    from .claims.verification_models import Decidability
+
+    claim_set = _load_claim_set(claims_file)
+    loaded_alignment = _load_alignment(alignment) if alignment is not None else None
+
+    verifiers: list[Verifier] = []
+    if check_citations:
+        # Fail fast and specifically when the validation extra is absent, before any
+        # resolution, rather than letting an ImportError surface from a worker thread.
+        if importlib.util.find_spec("linkml_reference_validator") is None:
+            from .validation.validator import INSTALL_HINT
+
+            _error(INSTALL_HINT)
+            raise typer.Exit(1)
+        topic_text = "\n".join(c.claim_text for c in claim_set.claim_list if c.claim_text)
+        verifiers.append(CitationVerifier(topic_text=topic_text or None, email=email, cache_dir=cache))
+
+    report = asyncio.run(averify_claims(
+        claim_set, verifiers, alignment=loaded_alignment,
+        max_claims=max_claims, concurrency=concurrency,
+    ))
+
+    human = len(report.needs_human)
+    agent = len(report.needs_agent)
+    machine = sum(1 for f in report.flag_list if f.decidability == Decidability.MACHINE)
+    _warn(
+        f"{report.flag_count} review flags ({human} need a human, {agent} an agent, "
+        f"{machine} a machine) across {report.verifier.considered} claims."
+    )
+    if check_citations:
+        _warn(f"Checked citations for {report.verifier.verified} claims.")
+    _render_payload(report.model_dump(mode="json", exclude_none=True), output)
+    if output is not None:
+        logger.info(f"Verification report written to {output}")
 
 
 def main():

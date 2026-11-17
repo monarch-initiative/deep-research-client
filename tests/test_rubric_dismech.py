@@ -26,9 +26,18 @@ from deep_research_client.claims import (
     AlignedSource,
     AlignedSourceType,
     AlignerInfo,
+    AnchorStatus,
+    CitationStatus,
+    Claim,
     ClaimAlignment,
     ClaimSet,
+    ClaimTopic,
+    EvidentialRelation,
+    ExtractorInfo,
     FlagKind,
+    SemanticRelation,
+    SourceDocument,
+    SourceType,
     VerificationReport,
     candidate_pairs,
     evidential_relation,
@@ -36,7 +45,6 @@ from deep_research_client.claims import (
     summarize_alignment,
     verify_claims,
 )
-from deep_research_client.claims import rubrics
 from deep_research_client.claims.align_parsing import relation_from_reply
 
 ALIGN = Path(__file__).parent / "input" / "claims" / "alignment"
@@ -60,22 +68,52 @@ def test_triage_reproduces_the_committed_profile_on_the_real_report() -> None:
     """verify_claims on the real acne report gives the committed flag profile."""
     claims, committed = _acne()
     fresh = verify_claims(claims)  # pure triage, no model, no network
-    assert fresh.flag_count == committed.flag_count == 193
+    # Reproduces the committed count exactly (the literal lives in the fixture),
+    assert fresh.flag_count == committed.flag_count
+    # and the shape: all unsupported-claim flags, none needing a human.
     assert all(f.kind == FlagKind.UNSUPPORTED_CLAIM.value for f in fresh.flag_list)
     assert fresh.needs_human == []  # every issue here is agent-decidable, none human-only
 
 
-def test_folded_metrics_on_the_real_report() -> None:
+def _trivial_reference(candidate: ClaimSet) -> tuple[ClaimAlignment, ClaimSet]:
+    """A one-claim reference and a minimal cross-source alignment with candidate as A.
+
+    The folded review_burden/grounding metrics are candidate-only, so the reference
+    content does not affect them; this is just enough of a valid cross-source
+    alignment to reach them through the public summarize_alignment.
+    """
+    reference = ClaimSet(
+        source=SourceDocument(id="ref.yaml", source_type=SourceType.STRUCTURED_DOCUMENT),
+        extractor=ExtractorInfo(name="x"),
+        claims=[Claim(id="r1", claim_text="A curated reference claim.",
+                      anchor_status=AnchorStatus.EXACT, about=ClaimTopic.DOMAIN,
+                      citation_status=CitationStatus.UNCITED)],
+    )
+    alignment = ClaimAlignment(
+        source_a=AlignedSource(id=candidate.source.id, source_type=AlignedSourceType.MARKDOWN_REPORT),
+        source_b=AlignedSource(id="ref.yaml", source_type=AlignedSourceType.STRUCTURED_DOCUMENT),
+        aligner=AlignerInfo(name="llm-pairwise"),
+        pairs=[AlignedClaimPair(id="p1", claim_a_id=candidate.claim_list[0].id, claim_b_id="r1",
+                                claim_a_text=".", claim_b_text=".",
+                                semantic_relation=SemanticRelation.CLOSE,
+                                evidential_relation=EvidentialRelation.BOTH_SECONDARY)],
+    )
+    return alignment, reference
+
+
+def test_folded_metrics_on_the_real_report_through_the_public_api() -> None:
     """review_burden and grounding read correctly off the real report + its verification."""
     claims, committed = _acne()
+    alignment, reference = _trivial_reference(claims)
+    summary = summarize_alignment(alignment, claims, reference, reference="b", verification=committed)
     # Nothing is flagged for a human, so the whole report is "clean" on review burden.
-    burden = rubrics._review_burden_metric(claims, committed)
-    assert burden.value == 1.0 and burden.denominator == 267
+    burden = summary.metric("review_burden")
+    assert burden is not None and burden.value == 1.0 and burden.denominator == 267
     assert burden.supporting_claim_ids in (None, [])
-    # This report was never run through grounding (no grounder stamp), so there is
-    # no coverage to score, even though extraction left a few entity ids behind.
+    # This report was never run through grounding (no grounder stamp), so there is no
+    # coverage to score, even though extraction left a few entity ids behind.
     assert claims.grounder is None
-    assert rubrics._grounding_metric(claims) is None
+    assert summary.metric("grounding") is None
 
 
 # ---- Report-shaped fixtures with a recorded alignment: report_a vs gold_b ----

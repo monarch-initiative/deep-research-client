@@ -54,6 +54,7 @@ __all__ = [
     "TextSpan",
     "citation_status_for",
     "content_sha256",
+    "entity_mentions",
     "ids_by_section",
     "inconsistencies",
     "resolved_reference_ids",
@@ -95,6 +96,31 @@ def citation_status_for(citations: list[CitationHandle], anchor_status: str) -> 
     if anchor_status == AnchorStatus.UNANCHORED:
         return CitationStatus.UNKNOWN
     return CitationStatus.CITED if citations else CitationStatus.UNCITED
+
+
+def entity_mentions(claim: Claim) -> list[EntityMention]:
+    """Every entity mention on a claim: its entities, plus its subject and object.
+
+    One definition of "a mention", shared by grounding (which fills their ids) and
+    the rubric (which scores how many were filled), so the two cannot drift.
+
+    Args:
+        claim: The claim to read.
+
+    Returns:
+        Its :class:`EntityMention`s: the ``entities`` list, then ``subject`` and
+        ``object`` when present.
+
+    >>> claim = Claim(id="c", claim_text="X.", anchor_status=AnchorStatus.EXACT,
+    ...               citation_status=CitationStatus.UNCITED,
+    ...               entities=[EntityMention(label="acne")],
+    ...               subject=EntityMention(label="TLR2"))
+    >>> [m.label for m in entity_mentions(claim)]
+    ['acne', 'TLR2']
+    """
+    mentions = list(claim.entities or [])
+    mentions += [m for m in (claim.subject, claim.object) if m is not None]
+    return mentions
 
 
 def resolved_reference_ids(claim: Claim) -> set[str]:

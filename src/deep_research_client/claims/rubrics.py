@@ -33,17 +33,10 @@ the folded metrics) the candidate's verification report.
 from typing import Optional
 
 from .alignment_models import ClaimAlignment, RubricMetric, RubricSummary
-from .models import CitationStatus, Claim, ClaimSet, ClaimTopic, EntityMention
+from .models import CitationStatus, ClaimSet, ClaimTopic, entity_mentions
 from .verification_models import VerificationReport, VerificationStatus
 
 __all__ = ["summarize_alignment"]
-
-
-def _mentions(claim: Claim) -> list[EntityMention]:
-    """Every entity mention on a claim: its entities, subject and object."""
-    mentions = list(claim.entities or [])
-    mentions += [m for m in (claim.subject, claim.object) if m is not None]
-    return mentions
 
 
 def _grounding_metric(candidate: ClaimSet) -> Optional[RubricMetric]:
@@ -58,7 +51,7 @@ def _grounding_metric(candidate: ClaimSet) -> Optional[RubricMetric]:
     grounded = 0
     ungrounded_claim_ids: list[str] = []
     for claim in candidate.claim_list:
-        mentions = _mentions(claim)
+        mentions = entity_mentions(claim)
         if not mentions:
             continue
         total += len(mentions)
@@ -77,27 +70,46 @@ def _grounding_metric(candidate: ClaimSet) -> Optional[RubricMetric]:
     )
 
 
+#: Citation verdicts that settled something about the work. UNVERIFIABLE is left
+#: out on purpose: a skipped identifier or one with no resolver taught us nothing,
+#: so a claim whose citations are all UNVERIFIABLE was not really checked and must
+#: not count as accurate.
+_DECISIVE = (
+    VerificationStatus.SUPPORTED,
+    VerificationStatus.UNSUPPORTED,
+    VerificationStatus.NEEDS_REVIEW,
+)
+
+
 def _citation_accuracy_metric(
     candidate: ClaimSet, verification: VerificationReport
 ) -> Optional[RubricMetric]:
     """Checked cited claims whose citations resolve to a real work, or None if none checked.
 
-    A claim is *checked* when a citation verifier returned a verdict for it; it is
-    sound when none of those verdicts is a fabricated citation (an ``UNSUPPORTED``
-    ``citation:`` verdict). This reads accuracy from the verdicts, where
-    ``citation_quality`` only asks whether a claim is cited at all.
+    A claim is *checked* only when a citation verdict settled something about the
+    work (SUPPORTED, UNSUPPORTED or NEEDS_REVIEW -- the last meaning it resolved but
+    looks off topic). A claim whose citation verdicts are all UNVERIFIABLE learned
+    nothing and is left out of the denominator, so it cannot inflate the score. A
+    checked claim is sound unless one of its verdicts is a fabricated citation (an
+    ``UNSUPPORTED`` ``citation:`` verdict). This reads accuracy from the verdicts,
+    where ``citation_quality`` only asks whether a claim is cited at all.
     """
+    # Group the citation verdicts by claim once, so this stays linear in the number
+    # of verdicts rather than scanning the whole list per claim.
+    by_claim: dict[str, list] = {}
+    for v in verification.verification_list:
+        if (v.method or "").startswith("citation:"):
+            by_claim.setdefault(v.claim_id, []).append(v)
+
     checked: list[str] = []
     fabricated: list[str] = []
     for claim in candidate.claim_list:
-        verdicts = [
-            v for v in verification.verifications_for(claim.id)
-            if (v.method or "").startswith("citation:")
-        ]
-        if not verdicts:
-            continue
+        verdicts = by_claim.get(claim.id, [])
+        statuses = [VerificationStatus(v.status) for v in verdicts]
+        if not any(s in _DECISIVE for s in statuses):
+            continue  # nothing decisive learned (UNVERIFIABLE-only, or no citation verdict)
         checked.append(claim.id)
-        if any(VerificationStatus(v.status) == VerificationStatus.UNSUPPORTED for v in verdicts):
+        if VerificationStatus.UNSUPPORTED in statuses:
             fabricated.append(claim.id)
     if not checked:
         return None
@@ -111,12 +123,22 @@ def _citation_accuracy_metric(
 
 
 def _review_burden_metric(
-    candidate: ClaimSet, verification: VerificationReport
+    candidate: ClaimSet,
+    verification: VerificationReport,
+    contradicted_ids: set[str],
 ) -> RubricMetric:
-    """Candidate claims that raise no human-only review flag (higher is cleaner)."""
+    """Candidate claims that raise no human-only review flag (higher is cleaner).
+
+    Counts a claim as needing a human when the verification flagged it for one, or
+    when it is the candidate side of a contradictory pair in the alignment being
+    summarised. The latter is folded in from the alignment directly, so the burden
+    is coherent with ``support`` even when the verification was built triage-only
+    (without the alignment's contradiction flags).
+    """
     needs_human = {
         cid for flag in verification.needs_human for cid in (flag.claim_ids or [])
     }
+    needs_human |= contradicted_ids
     candidate_ids = [c.id for c in candidate.claim_list]
     flagged = [cid for cid in candidate_ids if cid in needs_human]
     return _metric(
@@ -159,10 +181,11 @@ def summarize_alignment(
 ) -> RubricSummary:
     """Aggregate an alignment into report-level rubric metrics.
 
-    The five alignment metrics are always produced. When ``verification`` (the
-    candidate's report) is given, and when the candidate was grounded, the folded
-    metrics ``grounding``, ``citation_accuracy`` and ``review_burden`` are appended,
-    so the summary reads accuracy from what grounding and verification found, not
+    The five alignment metrics are always produced. ``grounding`` is appended
+    whenever the candidate was grounded (it needs no verification, only the
+    candidate's own ontology ids). ``citation_accuracy`` and ``review_burden`` are
+    appended when ``verification`` (the candidate's report) is given. Together they
+    let the summary read accuracy from what grounding and verification found, not
     only from the alignment.
 
     Args:
@@ -311,6 +334,12 @@ def summarize_alignment(
         citation_accuracy = _citation_accuracy_metric(candidate, verification)
         if citation_accuracy is not None:
             metrics.append(citation_accuracy)
-        metrics.append(_review_burden_metric(candidate, verification))
+        # The candidate side of each contradictory pair also needs a human, folded
+        # in from the alignment so the burden holds even for a triage-only report.
+        contradicted_candidate = {
+            (p.claim_a_id if reference == "b" else p.claim_b_id)
+            for p in alignment.contradictions
+        }
+        metrics.append(_review_burden_metric(candidate, verification, contradicted_candidate))
 
     return RubricSummary(reference=reference, metrics=metrics)

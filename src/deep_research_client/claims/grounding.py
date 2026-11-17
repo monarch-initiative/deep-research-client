@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Optional, Protocol
 
 from ..ontologies import OntologyConfig
-from .models import Claim, ClaimSet, EntityMention, GrounderInfo
+from .models import Claim, ClaimSet, EntityMention, GrounderInfo, entity_mentions
 
 __all__ = [
     "GroundedTerm",
@@ -110,13 +110,6 @@ def normalized_label(label: str) -> str:
     return " ".join(label.split()).casefold()
 
 
-def _mentions(claim: Claim) -> list[EntityMention]:
-    """Every entity mention on a claim: its entities, subject and object."""
-    mentions = list(claim.entities or [])
-    mentions += [m for m in (claim.subject, claim.object) if m is not None]
-    return mentions
-
-
 @dataclass(frozen=True)
 class _RankedLabel:
     """A distinct ungrounded label, with a context sentence and how often it occurs."""
@@ -157,7 +150,7 @@ def rank_labels(claim_set: ClaimSet) -> list[_RankedLabel]:
     display: dict[str, str] = {}
     context: dict[str, str] = {}
     for claim in claim_set.claim_list:
-        for mention in _mentions(claim):
+        for mention in entity_mentions(claim):
             if mention.id:
                 continue
             key = normalized_label(mention.label)

@@ -191,19 +191,24 @@ summary = summarize_alignment(alignment, candidate, reference, reference="a",
 ```
 
 - `grounding` — candidate entity mentions resolved to an ontology id (coverage),
-  appended only when the candidate was grounded (it carries a grounder stamp).
+  appended whenever the candidate was grounded (it carries a grounder stamp). This
+  one needs no `verification`: a grounded candidate gains it even when `verification`
+  is omitted.
 - `citation_accuracy` — of the candidate's checked cited claims, those whose
-  citations resolve to a real work, read from the citation verdicts. This differs
+  citations resolve to a real work, read from the citation verdicts. A claim counts
+  as *checked* only when a verdict settled something (a resolver that could not
+  reach the identifier leaves it out, so it cannot inflate the score). This differs
   from `support` (contradiction counts) and from `citation_quality` (which asks
-  only whether a claim is cited at all): it is the "is the cited work real"
-  signal. The claims with a fabricated citation are listed.
+  only whether a claim is cited at all): it is the "is the cited work real" signal.
+  The claims with a fabricated citation are listed. Needs `verification`.
 - `review_burden` — candidate claims raising no flag only a human can settle, with
-  the ones a person must review listed.
+  the ones a person must review listed. The candidate side of each contradictory
+  pair in the alignment is folded in too, so the burden stays coherent with
+  `support` even when the `verification` was built triage-only. Needs `verification`.
 
-Each is still a `numerator / denominator` carrying its ids, and the five original
-metrics are unchanged, so passing no `verification` leaves the summary exactly as
-before. The `verification` must be the candidate's own (its `source_id` is
-checked).
+Each is still a `numerator / denominator` carrying its ids, and the five alignment
+metrics are unchanged. The `verification` must be the candidate's own (its
+`source_id` is checked).
 
 ## Adversarial inputs
 

@@ -1,0 +1,1752 @@
+{
+  "source_id": "Acne_Vulgaris-deep-research-falcon.md",
+  "source_type": "MARKDOWN_REPORT",
+  "verifier": {
+    "name": "triage",
+    "methods": [
+      "triage"
+    ],
+    "considered": 267,
+    "flagged": 193,
+    "verified": 0
+  },
+  "flags": [
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c4"
+      ],
+      "message": "c4 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne vulgaris is a chronic inflammatory disorder of the pilosebaceous unit."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c5"
+      ],
+      "message": "c5 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Sebaceous lipid dysregulation is one of the drivers of acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c6"
+      ],
+      "message": "c6 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Follicular hyperkeratinization is one of the drivers of acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c7"
+      ],
+      "message": "c7 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Strain-level immunostimulation by Cutibacterium acnes is one of the drivers of acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c8"
+      ],
+      "message": "c8 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Downstream innate and adaptive immune activation is one of the drivers of acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c9"
+      ],
+      "message": "c9 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Androgen/IGF-1 metabolic signaling modulates acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c10"
+      ],
+      "message": "c10 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The cutaneous microbiome modulates acne vulgaris."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c11"
+      ],
+      "message": "c11 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dysbiosis with enrichment of C. acnes phylotype IA1, altered sebum composition, and activation of TLR and inflammasome pathways converge to initiate IL-1\u03b2\u2013dependent comedogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c12"
+      ],
+      "message": "c12 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dysbiosis with C. acnes phylotype IA1 enrichment, altered sebum composition, and TLR/inflammasome activation propagate Th17/IL-17\u2013skewed inflammation in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c13"
+      ],
+      "message": "c13 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Chronic acne can culminate in extracellular matrix remodeling."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c14"
+      ],
+      "message": "c14 asserts a domain finding but cites nothing to support it.",
+      "evidence": "MMP and TGF-\u03b2 pathways contribute to acne scars."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c15"
+      ],
+      "message": "c15 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Clinical phenotypes of acne span microcomedones, comedones, papules/pustules, nodules, and scarring."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c16"
+      ],
+      "message": "c16 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne prevalence is about 85% in adolescence."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c17"
+      ],
+      "message": "c17 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne persists in subsets such as adult female acne, where androgenic drivers are prominent."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c18"
+      ],
+      "message": "c18 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne has a prevalence of 15\u201320% among adult women."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c19"
+      ],
+      "message": "c19 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hyperandrogenism occurs in about 50% of cases of adult female acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c20"
+      ],
+      "message": "c20 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hyperandrogenism in adult female acne is commonly linked to PCOS."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c21"
+      ],
+      "message": "c21 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Insulin/IGF-1 and androgens converge on PI3K\u2013AKT\u2013mTORC1 signaling, SREBP-1 activation and FoxO1 downregulation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c22"
+      ],
+      "message": "c22 asserts a domain finding but cites nothing to support it.",
+      "evidence": "PI3K\u2013AKT\u2013mTORC1 signaling, SREBP-1 activation and FoxO1 downregulation promote sebocyte proliferation and lipogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c23"
+      ],
+      "message": "c23 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Lipid shifts (e.g., increased MUFAs, oxidized squalene) and reduced linoleic acid contribute to inflammation and hyperkeratinization in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c24"
+      ],
+      "message": "c24 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dysregulated keratinocyte differentiation is a core early event in follicular hyperkeratinization."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c25"
+      ],
+      "message": "c25 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL-1\u03b2 signaling promotes microcomedo formation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c26"
+      ],
+      "message": "c26 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dysbiosis with loss of diversity and enrichment of IA1 phylotypes (SLST A1) is associated with inflammatory acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c27"
+      ],
+      "message": "c27 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes activates TLR2/4 and NLRP3\u2013caspase-1 to mature IL-1\u03b2."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c28"
+      ],
+      "message": "c28 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes induces TNF-\u03b1, IL-6, IL-8, and IL-12."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c29"
+      ],
+      "message": "c29 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne lesions show increased Th1/Th17 cytokines."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c30"
+      ],
+      "message": "c30 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Pathogenic C. acnes strains elicit IL-17/IFN-\u03b3\u2013dominant responses, supporting a Th17-skewed milieu."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c31"
+      ],
+      "message": "c31 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Antimicrobial peptides (e.g., \u03b2-defensins, LL-37) are induced by TLR signaling."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c32"
+      ],
+      "message": "c32 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Commensal coagulase-negative staphylococci (CoNS) can counter-regulate inflammation, e.g., via LTA\u2013miR-143 dampening TLR2."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c33"
+      ],
+      "message": "c33 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Commensal CoNS can inhibit pathogenic C. acnes via bacteriocins and short-chain acids."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c34"
+      ],
+      "message": "c34 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Persistent inflammation alters the extracellular matrix through MMP activity and TGF-\u03b2\u2013driven fibroblast activation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c35"
+      ],
+      "message": "c35 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Pathological scars reflect aberrant collagen deposition and remodeling by fibroblasts."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c36"
+      ],
+      "message": "c36 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Gram-positive bacteria, including C. acnes, activate NLRP3."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c37"
+      ],
+      "message": "c37 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Gram-positive bacteria, including C. acnes, activate downstream gasdermin D/pyroptosis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c38"
+      ],
+      "message": "c38 asserts a domain finding but cites nothing to support it.",
+      "evidence": "NLRP3 activation by Gram-positive bacteria directly links innate sensing to IL\u20111\u03b2 maturation in acne lesions."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c39"
+      ],
+      "message": "c39 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Commensal skin microbes regulate epithelial and immune responses."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c40"
+      ],
+      "message": "c40 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Cutibacterium strain pathogenicity and TLR9/NLRP interactions are determinants of lesion-prone states."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c41"
+      ],
+      "message": "c41 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophage polarization (M1) is implicated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c42"
+      ],
+      "message": "c42 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophages phagocytose C. acnes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c43"
+      ],
+      "message": "c43 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophages orchestrate inflammatory cascades and scar propensity in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c44"
+      ],
+      "message": "c44 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Plant-derived modulators can suppress NLRP3 in C. acnes\u2013stimulated macrophages in vitro."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c47"
+      ],
+      "message": "c47 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Topical antiandrogens are rising in use for adult female acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c48"
+      ],
+      "message": "c48 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Topical retinoids and topical benzoyl peroxide reduce comedogenesis in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c49"
+      ],
+      "message": "c49 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Topical retinoids and topical benzoyl peroxide reduce bacterial load in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c50"
+      ],
+      "message": "c50 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Systemic retinoids reduce comedogenesis in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c51"
+      ],
+      "message": "c51 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Systemic retinoids reduce bacterial load in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c52"
+      ],
+      "message": "c52 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Emerging non-antibiotic acne approaches target sebocyte signaling, for example through PPAR\u03b3 modulation and topical antiandrogens."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c53"
+      ],
+      "message": "c53 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Emerging non-antibiotic acne approaches target the IL-1 and IL-17 axes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c54"
+      ],
+      "message": "c54 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Emerging non-antibiotic acne approaches include microbiome-directed strategies such as probiotics, bacteriophages, and leveraging coagulase-negative staphylococci (CoNS) antimicrobials."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c55"
+      ],
+      "message": "c55 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Contemporary acne guidance emphasizes minimizing antibiotic use because of collateral microbiome disruption and resistance."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c56"
+      ],
+      "message": "c56 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Contemporary acne guidance employs benzoyl peroxide and retinoids as alternatives to antibiotics."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c57"
+      ],
+      "message": "c57 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Contemporary acne guidance explores microbiome-sparing modalities."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c58"
+      ],
+      "message": "c58 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes phylotype IA1 accounts for 84.4% of C. acnes in acne cohorts overall."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c59"
+      ],
+      "message": "c59 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes phylotype IA1 accounts for 95.6% of C. acnes on back lesions in acne cohorts."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c60"
+      ],
+      "message": "c60 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes phylotype IA1 accounts for 39.1% of C. acnes in healthy controls."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c61"
+      ],
+      "message": "c61 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes phylotype II accounts for 43.4% of C. acnes in healthy controls."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c62"
+      ],
+      "message": "c62 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The enrichment of C. acnes IA1 in acne cohorts versus healthy controls supports a strain-level association with acne disease."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c63"
+      ],
+      "message": "c63 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Adult female acne has a prevalence of 15\u201320%."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c64"
+      ],
+      "message": "c64 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hyperandrogenism occurs in about 50% of adult female acne cases."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c65"
+      ],
+      "message": "c65 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c66"
+      ],
+      "message": "c66 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acne affects approximately 85% of adolescents and young adults."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c67"
+      ],
+      "message": "c67 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Excess or altered sebum is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c68"
+      ],
+      "message": "c68 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Follicular hyperkeratinization is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c69"
+      ],
+      "message": "c69 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes dysbiosis with expansion of the IA1 type is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c70"
+      ],
+      "message": "c70 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR/NLRP3 activation leading to IL-1\u03b2 is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c71"
+      ],
+      "message": "c71 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Neutrophil and macrophage recruitment is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c72"
+      ],
+      "message": "c72 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th1/Th17 polarization (IL-17A/IFN-\u03b3) is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c73"
+      ],
+      "message": "c73 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Antimicrobial peptide (AMP) induction is a primary mechanism in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c74"
+      ],
+      "message": "c74 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Chronic extracellular matrix remodeling underpins scars in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c75"
+      ],
+      "message": "c75 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The PI3K\u2013AKT\u2013mTORC1/SREBP-1/FoxO1 pathway is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c76"
+      ],
+      "message": "c76 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR2/4\u2013NF-\u03baB/MAPK signaling is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c77"
+      ],
+      "message": "c77 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The NLRP3\u2013caspase-1\u2013IL-1\u03b2 pathway is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c78"
+      ],
+      "message": "c78 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th17/IL-17 signaling is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c79"
+      ],
+      "message": "c79 asserts a domain finding but cites nothing to support it.",
+      "evidence": "PPAR\u03b3 signaling in sebocytes is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c80"
+      ],
+      "message": "c80 asserts a domain finding but cites nothing to support it.",
+      "evidence": "MMP/TGF-\u03b2 signaling in the extracellular matrix is dysregulated in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c81"
+      ],
+      "message": "c81 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Sebocyte lipogenesis and holocrine secretion are affected cellular processes in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c82"
+      ],
+      "message": "c82 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Keratinocyte differentiation is an affected cellular process in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c83"
+      ],
+      "message": "c83 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Inflammasome activation and pyroptosis are affected cellular processes in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c84"
+      ],
+      "message": "c84 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophage polarization is an affected cellular process in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c85"
+      ],
+      "message": "c85 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Extracellular matrix turnover is an affected cellular process in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c86"
+      ],
+      "message": "c86 asserts a domain finding but cites nothing to support it.",
+      "evidence": "AR (androgen receptor) is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c87"
+      ],
+      "message": "c87 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IGF1 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c88"
+      ],
+      "message": "c88 asserts a domain finding but cites nothing to support it.",
+      "evidence": "MTOR (mTORC1) is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c89"
+      ],
+      "message": "c89 asserts a domain finding but cites nothing to support it.",
+      "evidence": "SREBF1 (SREBP-1) is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c90"
+      ],
+      "message": "c90 asserts a domain finding but cites nothing to support it.",
+      "evidence": "FOXO1 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c91"
+      ],
+      "message": "c91 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR2 and TLR4 are key molecular players in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c92"
+      ],
+      "message": "c92 asserts a domain finding but cites nothing to support it.",
+      "evidence": "NLRP3 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c93"
+      ],
+      "message": "c93 asserts a domain finding but cites nothing to support it.",
+      "evidence": "CASP1 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c94"
+      ],
+      "message": "c94 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL1B is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c95"
+      ],
+      "message": "c95 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL6 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c96"
+      ],
+      "message": "c96 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL8 (CXCL8) is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c97"
+      ],
+      "message": "c97 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TNF is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c98"
+      ],
+      "message": "c98 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL17A is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c99"
+      ],
+      "message": "c99 asserts a domain finding but cites nothing to support it.",
+      "evidence": "PPARG is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c100"
+      ],
+      "message": "c100 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The MMP family is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c101"
+      ],
+      "message": "c101 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TGFB1 is a key molecular player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c102"
+      ],
+      "message": "c102 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Androgens, including testosterone and DHT, are key chemical players in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c103"
+      ],
+      "message": "c103 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IGF-1 is a key chemical player in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c104"
+      ],
+      "message": "c104 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Lipids, including linoleic acid, squalene and MUFAs, are key chemical players in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c105"
+      ],
+      "message": "c105 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Benzoyl peroxide is a chemical entity relevant to acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c106"
+      ],
+      "message": "c106 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Succinic acid is a short-chain fatty acid relevant to acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c107"
+      ],
+      "message": "c107 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Bacteriocins such as cutimycin are chemical entities relevant to acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c108"
+      ],
+      "message": "c108 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Sebocytes are a key cell type in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c109"
+      ],
+      "message": "c109 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Keratinocytes are a key cell type in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c110"
+      ],
+      "message": "c110 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophages, skewed toward the M1 phenotype, are a key cell type in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c111"
+      ],
+      "message": "c111 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Neutrophils are a key cell type in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c112"
+      ],
+      "message": "c112 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th17 T cells are a key cell type in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c113"
+      ],
+      "message": "c113 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The pilosebaceous unit is a key anatomical location in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c114"
+      ],
+      "message": "c114 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The hair follicle infundibulum is a key anatomical location in acne pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c115"
+      ],
+      "message": "c115 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The dermis/extracellular matrix is a key anatomical location in acne pathophysiology, in relation to scarring."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c116"
+      ],
+      "message": "c116 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Lipid metabolic process is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c117"
+      ],
+      "message": "c117 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Regulation of cell differentiation is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c118"
+      ],
+      "message": "c118 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Innate immune response is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c119"
+      ],
+      "message": "c119 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR signaling pathway is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c120"
+      ],
+      "message": "c120 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Inflammasome complex assembly is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c121"
+      ],
+      "message": "c121 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Interleukin-1 beta production is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c122"
+      ],
+      "message": "c122 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th17 cell differentiation is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c123"
+      ],
+      "message": "c123 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Extracellular matrix organization is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c124"
+      ],
+      "message": "c124 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Collagen catabolic process is a biological process relevant to the disease's pathophysiology, listed for GO annotation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c130"
+      ],
+      "message": "c130 asserts a domain finding but cites nothing to support it.",
+      "evidence": "In acne progression, pubertal/androgenic and IGF-1 signals elevate sebum production."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c131"
+      ],
+      "message": "c131 asserts a domain finding but cites nothing to support it.",
+      "evidence": "In acne progression, pubertal/androgenic and IGF-1 signals alter sebum composition."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c132"
+      ],
+      "message": "c132 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Altered sebum leads to follicular hyperkeratinization and microcomedo formation in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c133"
+      ],
+      "message": "c133 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Follicular hyperkeratinization and microcomedo formation in acne are linked to IL-1\u03b2."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c134"
+      ],
+      "message": "c134 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Microcomedo formation is followed by C. acnes dysbiosis, characterized by enrichment of the IA1 type."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c135"
+      ],
+      "message": "c135 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes persists through biofilm-associated mechanisms in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c136"
+      ],
+      "message": "c136 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes dysbiosis in acne is accompanied by TLR and NLRP3 activation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c137"
+      ],
+      "message": "c137 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR/NLRP3 activation is followed by neutrophil and macrophage infiltration in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c138"
+      ],
+      "message": "c138 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th1/Th17 polarization occurs in acne progression."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c139"
+      ],
+      "message": "c139 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Neutrophil/macrophage infiltration and Th1/Th17 polarization lead to clinical inflammatory lesions such as papules and pustules."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c140"
+      ],
+      "message": "c140 asserts a domain finding but cites nothing to support it.",
+      "evidence": "With chronicity and depth of lesions, MMP/TGF-\u03b2 remodeling leads to atrophic or hypertrophic scarring in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c141"
+      ],
+      "message": "c141 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Open and closed comedones are key clinical phenotypes of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c142"
+      ],
+      "message": "c142 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Inflammatory papules and pustules are key clinical phenotypes of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c143"
+      ],
+      "message": "c143 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Nodules and cysts are key clinical phenotypes of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c144"
+      ],
+      "message": "c144 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Postinflammatory hyperpigmentation is a key clinical phenotype of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c145"
+      ],
+      "message": "c145 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Atrophic scars are a key clinical phenotype of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c146"
+      ],
+      "message": "c146 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hypertrophic scars are a key clinical phenotype of acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c147"
+      ],
+      "message": "c147 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL-1\u03b2 is mechanistically linked to comedogenesis in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c148"
+      ],
+      "message": "c148 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL-17 is mechanistically linked to pustular inflammation in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c149"
+      ],
+      "message": "c149 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TNF-\u03b1 is mechanistically linked to pustular inflammation in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c150"
+      ],
+      "message": "c150 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Disequilibrium of MMPs and TGF-\u03b2 is mechanistically linked to scar morphologies in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c151"
+      ],
+      "message": "c151 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Cutibacterium acnes activates TLR2."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c152"
+      ],
+      "message": "c152 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes can induce IL-1\u03b2 via NOD-like receptor signaling, particularly the NLRP3 inflammasome."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c153"
+      ],
+      "message": "c153 asserts a domain finding but cites nothing to support it.",
+      "evidence": "C. acnes phylotype IA1 is enriched in acne compared with healthy skin."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c154"
+      ],
+      "message": "c154 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c155"
+      ],
+      "message": "c155 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c156"
+      ],
+      "message": "c156 asserts a domain finding but cites nothing to support it.",
+      "evidence": "In healthy skin, phylotype IA1 accounts for 39.1% and phylotype II for 43.4% of C. acnes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c157"
+      ],
+      "message": "c157 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Androgen- and IGF-1-mediated signaling upregulates sebocyte proliferation and lipogenesis via PI3K/Akt\u2013mTORC1 signaling."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c158"
+      ],
+      "message": "c158 asserts a domain finding but cites nothing to support it.",
+      "evidence": "FoxO1 downregulation is involved in the androgen/IGF-1 PI3K/Akt\u2013mTORC1 signaling in sebocytes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c159"
+      ],
+      "message": "c159 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The NLRP3 inflammasome plays a key role in inflammasome responses to Gram-positive bacteria, and this is generalizable to C. acnes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c160"
+      ],
+      "message": "c160 asserts a domain finding but cites nothing to support it.",
+      "evidence": "NLRP3 inflammasome activation leads to caspase-1 processing of IL-1\u03b2 and IL-18."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c161"
+      ],
+      "message": "c161 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Polarization of macrophages toward the M1 phenotype plays a pivotal role in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c162"
+      ],
+      "message": "c162 asserts a domain finding but cites nothing to support it.",
+      "evidence": "LicA hampers NLRP3 inflammasome activation in C. acnes-induced macrophages."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c163"
+      ],
+      "message": "c163 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hypertrophic scars, keloids and atrophic scars arise from dysregulated wound healing."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c164"
+      ],
+      "message": "c164 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Scarring involves aberrant collagen deposition and impaired ECM remodeling."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c165"
+      ],
+      "message": "c165 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Fibroblasts are central to scarring biology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c166"
+      ],
+      "message": "c166 asserts a domain finding but cites nothing to support it.",
+      "evidence": "The prevalence of acne in adult women is 15\u201320%."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c167"
+      ],
+      "message": "c167 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hyperandrogenism is present in 50% of cases of adult female acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c168"
+      ],
+      "message": "c168 asserts a domain finding but cites nothing to support it.",
+      "evidence": "70% of hyperandrogenism cases in adult female acne feature PCOS."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c171"
+      ],
+      "message": "c171 asserts a domain finding but cites nothing to support it.",
+      "evidence": "AR drives sebocyte differentiation and lipogenesis under androgen control."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c174"
+      ],
+      "message": "c174 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IGF1 enhances sebocyte lipogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c175"
+      ],
+      "message": "c175 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IGF1 enhances androgen signaling."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c178"
+      ],
+      "message": "c178 asserts a domain finding but cites nothing to support it.",
+      "evidence": "MTOR integrates androgen and IGF-1 signals to drive lipogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c181"
+      ],
+      "message": "c181 asserts a domain finding but cites nothing to support it.",
+      "evidence": "SREBF1 acts in sebocyte lipogenesis downstream of mTORC1."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c184"
+      ],
+      "message": "c184 asserts a domain finding but cites nothing to support it.",
+      "evidence": "FOXO1 is downregulated, relieving restraint on lipogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c187"
+      ],
+      "message": "c187 asserts a domain finding but cites nothing to support it.",
+      "evidence": "TLR2 and TLR4 sense C. acnes."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c188"
+      ],
+      "message": "c188 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Sensing of C. acnes by TLR2 and TLR4 leads to NF-\u03baB/MAPK-mediated cytokine release."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c197"
+      ],
+      "message": "c197 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL1B plays a role in comedogenesis."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c198"
+      ],
+      "message": "c198 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL1B plays a role in early lesion inflammation in acne."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c201"
+      ],
+      "message": "c201 asserts a domain finding but cites nothing to support it.",
+      "evidence": "IL17A plays a role in pustular inflammation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c204"
+      ],
+      "message": "c204 asserts a domain finding but cites nothing to support it.",
+      "evidence": "PPARG plays a role in sebocyte differentiation."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c205"
+      ],
+      "message": "c205 asserts a domain finding but cites nothing to support it.",
+      "evidence": "PPARG plays a role in sebocyte cytokine output."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c213"
+      ],
+      "message": "c213 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Comedones (HP:0001051) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c214"
+      ],
+      "message": "c214 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Papule (HP:0025031) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c215"
+      ],
+      "message": "c215 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Pustule (HP:0000981) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c216"
+      ],
+      "message": "c216 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Acneiform eruptions (HP:0001053) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c217"
+      ],
+      "message": "c217 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Atrophic scars (HP:0001030) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c218"
+      ],
+      "message": "c218 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hypertrophic scar (HP:0001076) is a phenotype associated with the disease under study."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c219"
+      ],
+      "message": "c219 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Sebocytes (CL:0002328) are involved in the disease pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c220"
+      ],
+      "message": "c220 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Keratinocytes (CL:0000312) are involved in the disease pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c221"
+      ],
+      "message": "c221 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Macrophages (CL:0000738) are involved in the disease pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c222"
+      ],
+      "message": "c222 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Th17 helper T cells (CL:0000913) are involved in the disease pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c223"
+      ],
+      "message": "c223 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Neutrophils (CL:0000775) are involved in the disease pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c224"
+      ],
+      "message": "c224 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Skin of face (UBERON:0002075) is listed as an anatomical location relevant to the disease's pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c225"
+      ],
+      "message": "c225 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dermis (UBERON:0002067) is listed as an anatomical location relevant to the disease's pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c226"
+      ],
+      "message": "c226 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Epidermis (UBERON:0002076) is listed as an anatomical location relevant to the disease's pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c227"
+      ],
+      "message": "c227 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Pilosebaceous unit (UBERON:0035367) is listed as an anatomical location relevant to the disease's pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c228"
+      ],
+      "message": "c228 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Hair follicle infundibulum (UBERON:0013702) is listed as an anatomical location relevant to the disease's pathophysiology."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c229"
+      ],
+      "message": "c229 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Testosterone has the ChEBI identifier CHEBI:17347."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c230"
+      ],
+      "message": "c230 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Dihydrotestosterone has the ChEBI identifier CHEBI:16467."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c231"
+      ],
+      "message": "c231 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Linoleic acid has the ChEBI identifier CHEBI:15956."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c232"
+      ],
+      "message": "c232 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Squalene has the ChEBI identifier CHEBI:15735."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c233"
+      ],
+      "message": "c233 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Succinic acid has the ChEBI identifier CHEBI:16707."
+    },
+    {
+      "kind": "UNSUPPORTED_CLAIM",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c234"
+      ],
+      "message": "c234 asserts a domain finding but cites nothing to support it.",
+      "evidence": "Benzoyl peroxide has the ChEBI identifier CHEBI:3010."
+    }
+  ]
+}

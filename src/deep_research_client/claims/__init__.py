@@ -70,6 +70,7 @@ from .publication_ids import (
 )
 from .rubrics import summarize_alignment
 from .triage import CONSENSUS_CUES, triage_claims
+from .verification import Verifier, averify_claims, verify_claims
 from .verification_models import (
     ClaimVerification,
     Decidability,
@@ -141,9 +142,12 @@ __all__ = [
     "NormalizedPublicationId",
     "PublicationIdType",
     "normalize_publication_id",
-    # Verification data model (issue #43, item 5)
+    # Verification and triage (issue #43, item 5)
     "CONSENSUS_CUES",
     "triage_claims",
+    "Verifier",
+    "averify_claims",
+    "verify_claims",
     "ClaimVerification",
     "Decidability",
     "FlagKind",

@@ -552,6 +552,52 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/align-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Align Claims
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../examples/within-report-alignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Example: within-report comparison
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../how-to/cache/" class="md-nav__link">
         
   
@@ -1428,6 +1474,15 @@
   <a href="#claims-extract" class="md-nav__link">
     <span class="md-ellipsis">
       claims extract
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-align" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims align
     </span>
   </a>
   
@@ -2417,6 +2472,15 @@
   <a href="#claims-extract" class="md-nav__link">
     <span class="md-ellipsis">
       claims extract
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-align" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims align
     </span>
   </a>
   
@@ -3894,6 +3958,86 @@ deep-research-client claims extract report.md -o report.claims.json \
 
 # A curated dismech disease file: no model involved
 deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
+</code></pre>
+<h4 id="claims-align">claims align</h4>
+<pre><code class="language-bash">deep-research-client claims align CLAIMS_A [CLAIMS_B] [OPTIONS]
+</code></pre>
+<p>Align one claim set against another — or, with a single input, against itself —
+and classify each pair on two axes: the <code>semantic_relation</code> (judged by a model)
+and the <code>evidential_relation</code> (derived from each claim's <code>about</code> and <code>basis</code>). See
+<a href="../../how-to/align-claims/">Align Claims</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAIMS_A</code></td>
+<td>A claim set from <code>claims extract</code> (the A side)</td>
+</tr>
+<tr>
+<td><code>CLAIMS_B</code></td>
+<td>A second claim set (the B side). Omit to align <code>CLAIMS_A</code> with itself (the within-report case); <code>--rubric</code> is then refused</td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Write the alignment here; <code>.yaml</code>/<code>.yml</code> writes YAML, anything else JSON. Without it, JSON goes to stdout</td>
+</tr>
+<tr>
+<td><code>--rubric / --no-rubric</code></td>
+<td>Also compute report-level rubric metrics and print a summary to stderr (default: off)</td>
+</tr>
+<tr>
+<td><code>--rubric-output PATH</code></td>
+<td>Write the rubric summary here (<code>.json</code>/<code>.yaml</code>); implies <code>--rubric</code></td>
+</tr>
+<tr>
+<td><code>--reference TEXT</code></td>
+<td>Which side the rubric judges the other against: <code>a</code> or <code>b</code> (default: <code>b</code>). Two inputs only — refused for a within-report alignment</td>
+</tr>
+<tr>
+<td><code>--llm-backend TEXT</code></td>
+<td><code>openai</code> (default) or <code>claude-code</code>, as for <code>claims extract</code></td>
+</tr>
+<tr>
+<td><code>--llm-model TEXT</code></td>
+<td>Model that classifies the semantic relation (default: <code>gpt-4o-mini</code>, or <code>sonnet</code> with <code>--llm-backend claude-code</code>)</td>
+</tr>
+<tr>
+<td><code>--llm-base-url TEXT</code></td>
+<td>Base URL of an OpenAI-compatible API. <code>openai</code> backend only</td>
+</tr>
+<tr>
+<td><code>--llm-api-key-env TEXT</code></td>
+<td>Env var holding the API key (default: <code>OPENAI_API_KEY</code>). <code>openai</code> backend only</td>
+</tr>
+<tr>
+<td><code>--concurrency INT</code></td>
+<td>Model requests in flight at once (default: 4)</td>
+</tr>
+<tr>
+<td><code>--llm-max-tokens INT</code></td>
+<td>Reply budget per pair (default: 1024). A reply cut off at it is an error</td>
+</tr>
+<tr>
+<td><code>--min-overlap FLOAT</code></td>
+<td>Lexical overlap (Jaccard) at or above which a pair is a candidate (default: 0.34)</td>
+</tr>
+</tbody>
+</table>
+<p>Candidate pairs are proposed without a model (shared grounded entities, shared
+resolved citations, lexical overlap); the model classifies only those. The
+optional embedding signal is a Python-API hook (<code>embedder=</code>), not a CLI flag.</p>
+<pre><code class="language-bash"># Align a report against a curated gold file, via a logged-in Claude Code
+deep-research-client claims align report.claims.json gold.claims.json \
+  --llm-backend claude-code --rubric --reference b -o alignment.json
+
+# Align a report with itself: find internal redundancy and self-contradiction
+deep-research-client claims align report.claims.json \
+  --llm-backend claude-code -o report.self-align.json
 </code></pre>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>

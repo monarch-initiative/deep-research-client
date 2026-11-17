@@ -214,6 +214,9 @@ class OpenScientistProvider(ResearchProvider):
                 # Provider-neutral handle on the upstream job (issue #50): the
                 # instance, the job ID, and the human-facing job page. With
                 # these a committed report can be reconnected to its job later.
+                # `/job/<id>` is the web UI page a human opens, deliberately not
+                # the `/api/v1/jobs/<id>` API path the calls above use; the form
+                # is the one quoted in issue #50. base_url is already rstrip'd.
                 provider_instance_url=self.base_url,
                 provider_job_id=job_id,
                 provider_job_url=f"{self.base_url}/job/{job_id}",

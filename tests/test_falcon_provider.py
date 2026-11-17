@@ -10,8 +10,12 @@ from uuid import UUID
 # Skip all tests in this module if edison_client is not installed
 pytest.importorskip("edison_client")
 
+import yaml
+
+from deep_research_client.client import DeepResearchClient
+from deep_research_client.processing import ResultFormatter
 from deep_research_client.providers.falcon import EdisonTaskTimeoutError, FalconProvider
-from deep_research_client.models import ProviderConfig
+from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import FalconParams
 
 
@@ -862,6 +866,57 @@ def test_research_and_trajectory_return_same_artifacts(monkeypatch):
     # Edison exposes no public job URL, so these stay unset rather than guessed.
     assert research_result.provider_job_url is None
     assert research_result.provider_instance_url is None
+
+
+def test_trajectory_id_survives_the_client_and_reaches_frontmatter(monkeypatch):
+    """Issue #50 / PR #120 review: the client must not clobber trajectory_id.
+
+    ``DeepResearchClient.research`` rewrites ``provider_config`` after the
+    provider returns. It used to replace it outright, dropping the
+    ``trajectory_id`` the fresh-run path records, so a normal
+    ``research --provider falcon`` run never wrote it to the frontmatter even
+    though ``provider_job_id`` survived. This goes through the full client
+    path, which the provider-level tests above do not.
+    """
+    verbose_response = create_verbose_response(
+        _answer_frame({"formatted_answer": "An answer with [PMID:12345678]"})
+    )
+
+    class FakeEdisonClient:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+
+        def create_task(self, task_data: dict) -> str:
+            return TASK_ID
+
+        def get_task(self, task_id: str, verbose: bool = False, lite: bool = False):
+            if lite:
+                return _lite_task(task_id, "success")
+            return verbose_response
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("edison_client.EdisonClient", FakeEdisonClient)
+
+    client = DeepResearchClient(
+        cache_config=CacheConfig(enabled=False),
+        provider_configs={"falcon": ProviderConfig(name="falcon", api_key="test-key")},
+    )
+    result = client.research("What does hadA do?", provider="falcon")
+
+    # The neutral field already survived (it is a dedicated model field); the
+    # regression was trajectory_id, overwritten with the config keys.
+    assert result.provider_job_id == TASK_ID
+    assert result.provider_config["trajectory_id"] == TASK_ID
+    # The authoritative config keys still win where they belong.
+    assert "max_retries" in result.provider_config
+
+    frontmatter = yaml.safe_load(
+        ResultFormatter().format_full_markdown(result).split("---", 2)[1]
+    )
+    assert frontmatter["provider_job_id"] == TASK_ID
+    assert frontmatter["trajectory_id"] == TASK_ID
 
 
 def test_extract_artifacts_continues_past_a_non_uuid_storage_id(tmp_path):

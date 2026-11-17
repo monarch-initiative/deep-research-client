@@ -1116,7 +1116,13 @@ class DeepResearchClient:
             # provider's configured/default model.
             if result.model is None:
                 result.model = getattr(research_provider, 'model', None)
+            # Merge, don't replace: a provider may already have recorded a
+            # durable run handle here (Falcon's trajectory_id, ToxIndex's
+            # conversation_id). The config keys below are authoritative and so
+            # win on collision, but overwriting wholesale dropped the provider's
+            # own keys before they reached the frontmatter (issue #50).
             result.provider_config = {
+                **(result.provider_config or {}),
                 'timeout': research_provider.config.timeout,
                 'max_retries': research_provider.config.max_retries,
             }

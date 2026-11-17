@@ -233,7 +233,7 @@ def test_verification_for_a_different_source_is_refused() -> None:
 def test_without_verification_only_the_five_alignment_metrics_appear(scenario) -> None:
     """Backward compatible: the folded metrics appear only when their inputs are given."""
     alignment, set_a, set_b = scenario
-    names = {m.name for m in summarize_alignment(alignment, set_a, set_b, reference="b").metrics}
+    names = {m.name for m in (summarize_alignment(alignment, set_a, set_b, reference="b").metrics or [])}
     assert names == {"relevance", "informativeness", "support", "completeness", "citation_quality"}
 
 

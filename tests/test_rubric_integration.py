@@ -71,7 +71,7 @@ async def test_the_enriched_rubric_folds_in_grounding_and_citations_live() -> No
     summary = summarize_alignment(
         alignment, grounded, reference, reference="b", verification=verification,
     )
-    names = {m.name for m in summary.metrics}
+    names = {m.name for m in (summary.metrics or [])}
     # The five alignment metrics, plus all three folded metrics, since the candidate
     # was grounded (it has entity mentions) and its citations were checked.
     assert {"relevance", "informativeness", "support", "completeness", "citation_quality"} <= names

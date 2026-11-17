@@ -122,7 +122,7 @@ def test_enriched_rubric_through_the_public_api_on_a_recorded_alignment() -> Non
     verification = verify_claims(set_a)  # triage-only: pure
     summary = summarize_alignment(_alignment(), set_a, set_b, reference="b", verification=verification)
 
-    names = {m.name for m in summary.metrics}
+    names = {m.name for m in (summary.metrics or [])}
     assert {"relevance", "informativeness", "support", "completeness", "citation_quality"} <= names
     # Triage ran -> review_burden folds in; no citation verdicts and not grounded ->
     # those two folded metrics stay absent.
@@ -130,7 +130,7 @@ def test_enriched_rubric_through_the_public_api_on_a_recorded_alignment() -> Non
     assert "citation_accuracy" not in names and "grounding" not in names
 
     burden = summary.metric("review_burden")
-    assert burden is not None and 0.0 <= burden.value <= 1.0
+    assert burden is not None and burden.value is not None and 0.0 <= burden.value <= 1.0
     candidate_ids = {c.id for c in set_a.claim_list}
     assert set(burden.supporting_claim_ids or []) <= candidate_ids
     assert burden.denominator == len(candidate_ids)

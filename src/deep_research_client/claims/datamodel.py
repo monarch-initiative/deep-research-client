@@ -226,6 +226,7 @@ class ClaimSet(ConfiguredBaseModel):
 
     source: SourceDocument = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimSet']} })
     extractor: ExtractorInfo = Field(default=..., json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimSet']} })
+    grounder: Optional[GrounderInfo] = Field(default=None, description="""What grounded the claims' entities to ontology terms, when a grounding step has run. Absent on a set straight from extraction.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimSet']} })
     claims: Optional[list[Claim]] = Field(default=None, json_schema_extra = { "linkml_meta": {'domain_of': ['ClaimSet']} })
 
 
@@ -247,9 +248,23 @@ class ExtractorInfo(ConfiguredBaseModel):
     """
     linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
 
-    name: str = Field(default=..., description="""Extractor identifier, for example llm-atomic or dismech.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
-    model: Optional[str] = Field(default=None, description="""Model used, for extractors that call one: the id the model's replies report, so an alias such as sonnet is recorded as the model it resolved to. Several ids, comma separated, if replies differed; the name requested, if no reply named one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
-    prompt_version: Optional[str] = Field(default=None, description="""Version of the extraction prompt, for extractors that use one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo']} })
+    name: str = Field(default=..., description="""Extractor identifier, for example llm-atomic or dismech.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+    model: Optional[str] = Field(default=None, description="""Model used, for extractors that call one: the id the model's replies report, so an alias such as sonnet is recorded as the model it resolved to. Several ids, comma separated, if replies differed; the name requested, if no reply named one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+    prompt_version: Optional[str] = Field(default=None, description="""Version of the extraction prompt, for extractors that use one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+
+
+class GrounderInfo(ConfiguredBaseModel):
+    """
+    What grounded the claims' entities to ontology CURIEs, so a grounded set can be reproduced or compared. Grounding fills EntityMention.id; it does not change the labels the extractor wrote.
+    """
+    linkml_meta: ClassVar[LinkMLMeta] = LinkMLMeta({'from_schema': 'https://w3id.org/monarch-initiative/deep-research-client/claims'})
+
+    name: str = Field(default=..., description="""Grounder identifier, for example oak-llm.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+    model: Optional[str] = Field(default=None, description="""Model used to choose among ontology candidates, as ExtractorInfo records it. Absent for a grounder that uses no model.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+    prompt_version: Optional[str] = Field(default=None, description="""Version of the grounding prompt, for grounders that use one.""", json_schema_extra = { "linkml_meta": {'domain_of': ['ExtractorInfo', 'GrounderInfo']} })
+    ontologies: Optional[list[str]] = Field(default=None, description="""The ontology prefixes grounding searched, for example MONDO, HP.""", json_schema_extra = { "linkml_meta": {'domain_of': ['GrounderInfo']} })
+    considered: Optional[int] = Field(default=None, description="""How many distinct entity labels grounding tried to ground.""", json_schema_extra = { "linkml_meta": {'domain_of': ['GrounderInfo']} })
+    grounded: Optional[int] = Field(default=None, description="""How many of those it assigned a CURIE to.""", json_schema_extra = { "linkml_meta": {'domain_of': ['GrounderInfo']} })
 
 
 class Claim(ConfiguredBaseModel):
@@ -328,6 +343,7 @@ class CitationHandle(ConfiguredBaseModel):
 ClaimSet.model_rebuild()
 SourceDocument.model_rebuild()
 ExtractorInfo.model_rebuild()
+GrounderInfo.model_rebuild()
 Claim.model_rebuild()
 TextSpan.model_rebuild()
 NearestPassage.model_rebuild()

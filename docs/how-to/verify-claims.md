@@ -141,3 +141,8 @@ The report is built to be read by a person, most-urgent-first: start with
 can take `report.needs_agent` (unsupported claims, unresolved citations) and try to
 resolve them, escalating what it cannot. The machine-decidable flags
 (`CONFABULATED_CITATION`) are already settled — those citations are fabricated.
+
+The report also feeds the report-level rubric: pass it to
+[`summarize_alignment(..., verification=report)`](align-claims.md#folding-in-grounding-and-verification)
+and its citation verdicts and review flags fold into `citation_accuracy` and
+`review_burden` beside the alignment metrics.

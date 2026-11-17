@@ -1,0 +1,544 @@
+{
+  "source": {
+    "id": "Atelosteogenesis_Type_II-deep-research-openai.md",
+    "source_type": "MARKDOWN_REPORT",
+    "title": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes",
+    "content_sha256": "9912cc42cb57f803df2a2d9bd9f14a67a5a4dd7481415e7a419c87c863dcb17d"
+  },
+  "extractor": {
+    "name": "llm-atomic",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "5"
+  },
+  "grounder": {
+    "name": "oak-llm",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "1",
+    "ontologies": [
+      "MONDO",
+      "HP",
+      "GO",
+      "CHEBI",
+      "CL",
+      "UBERON"
+    ],
+    "considered": 60,
+    "grounded": 23
+  },
+  "claims": [
+    {
+      "id": "c45",
+      "claim_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "source_span": {
+        "start": 6038,
+        "end": 6132,
+        "text": "the **pathophysiology** of AO2 is a failure of proper cartilage extracellular matrix sulfation"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Molecular Pathophysiology",
+      "subject": {
+        "label": "pathophysiology of AO2"
+      },
+      "predicate": {
+        "label": "is"
+      },
+      "object": {
+        "label": "a failure of proper cartilage extracellular matrix sulfation"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "atelosteogenesis type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "cartilage extracellular matrix",
+          "id": "UBERON:4000059"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "([www.ncbi.nlm.nih.gov](https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005))",
+          "url": "https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005",
+          "scope": "SENTENCE"
+        },
+        {
+          "marker": "([pubmed.ncbi.nlm.nih.gov](https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been))",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c46",
+      "claim_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "source_span": {
+        "start": 6134,
+        "end": 6209,
+        "text": "leading to structurally weak cartilage in the trachea, ribs, and long bones"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Molecular Pathophysiology",
+      "subject": {
+        "label": "failure of cartilage extracellular matrix sulfation in AO2"
+      },
+      "predicate": {
+        "label": "leads to"
+      },
+      "object": {
+        "label": "structurally weak cartilage in the trachea, ribs, and long bones"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "atelosteogenesis type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "trachea"
+        },
+        {
+          "label": "ribs",
+          "id": "UBERON:0014478"
+        },
+        {
+          "label": "long bones"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "([www.ncbi.nlm.nih.gov](https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005))",
+          "url": "https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005",
+          "scope": "SENTENCE"
+        },
+        {
+          "marker": "([pubmed.ncbi.nlm.nih.gov](https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been))",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c47",
+      "claim_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "source_span": {
+        "start": 6211,
+        "end": 6287,
+        "text": "which in turn causes skeletal malformations and fatal respiratory compromise"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Molecular Pathophysiology",
+      "subject": {
+        "label": "structurally weak cartilage in AO2"
+      },
+      "predicate": {
+        "label": "causes"
+      },
+      "object": {
+        "label": "skeletal malformations and fatal respiratory compromise"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "atelosteogenesis type II",
+          "id": "MONDO:0009727"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "([www.ncbi.nlm.nih.gov](https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005))",
+          "url": "https://www.ncbi.nlm.nih.gov/books/NBK1317/#:~:text=Impaired%20activity%20of%20the%20sulfate,114%2C%20Forlino%20et%20al%202005",
+          "scope": "SENTENCE"
+        },
+        {
+          "marker": "([pubmed.ncbi.nlm.nih.gov](https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been))",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/#:~:text=typical%20findings%20are%20ulnar%20deviation,term%20survivors%20have%20been",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c49",
+      "claim_text": "AO2 presents with proportionately short stature.",
+      "source_span": {
+        "start": 6716,
+        "end": 6758,
+        "text": "There is proportionately **short stature**"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Hallmark Skeletal Phenotypes",
+      "subject": {
+        "label": "AO2",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "presents with"
+      },
+      "object": {
+        "label": "proportionately short stature"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "AO2",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "short stature"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c50",
+      "claim_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "source_span": {
+        "start": 6764,
+        "end": 6850,
+        "text": "**severe rhizomelic limb shortening** (marked shortening of the upper arms and thighs)"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Hallmark Skeletal Phenotypes",
+      "subject": {
+        "label": "AO2",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "presents with"
+      },
+      "object": {
+        "label": "severe rhizomelic limb shortening"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "AO2",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "rhizomelic limb shortening"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c51",
+      "claim_text": "In AO2 the skull is relatively normal-sized.",
+      "source_span": {
+        "start": 6857,
+        "end": 6893,
+        "text": "the skull is relatively normal-sized"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Hallmark Skeletal Phenotypes",
+      "subject": {
+        "label": "skull in AO2"
+      },
+      "predicate": {
+        "label": "is"
+      },
+      "object": {
+        "label": "relatively normal-sized"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "AO2",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "skull",
+          "id": "UBERON:0003129"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c52",
+      "claim_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "source_span": {
+        "start": 7062,
+        "end": 7165,
+        "text": "The **hands** show the characteristic *\u201chitchhiker thumb,\u201d* in which the thumbs are abducted and flexed"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Hallmark Skeletal Phenotypes",
+      "subject": {
+        "label": "hands in AO2"
+      },
+      "predicate": {
+        "label": "show"
+      },
+      "object": {
+        "label": "hitchhiker thumb with abducted and flexed thumbs"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "AO2",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "hitchhiker thumb",
+          "id": "HP:0001234"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "reference_id": "PMID:20301493",
+          "url": "https://pubmed.ncbi.nlm.nih.gov/20301493/",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c1",
+      "claim_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "source_span": {
+        "start": 690,
+        "end": 736,
+        "text": "is a rare, perinatal-lethal skeletal dysplasia"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Overview",
+      "subject": {
+        "label": "Atelosteogenesis Type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "is"
+      },
+      "object": {
+        "label": "a rare, perinatal-lethal skeletal dysplasia"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "Atelosteogenesis Type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "skeletal dysplasia"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "www.orpha.net",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c2",
+      "claim_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "source_span": {
+        "start": 737,
+        "end": 780,
+        "text": "characterized by severe short-limb dwarfism"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Overview",
+      "subject": {
+        "label": "Atelosteogenesis Type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "is characterized by"
+      },
+      "object": {
+        "label": "severe short-limb dwarfism"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "Atelosteogenesis Type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "short-limb dwarfism"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "www.orpha.net",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c3",
+      "claim_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "source_span": {
+        "start": 786,
+        "end": 806,
+        "text": "a normal-sized skull"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Overview",
+      "subject": {
+        "label": "Atelosteogenesis Type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "is characterized by"
+      },
+      "object": {
+        "label": "a normal-sized skull"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "Atelosteogenesis Type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "skull",
+          "id": "UBERON:0003129"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "www.orpha.net",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c4",
+      "claim_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "source_span": {
+        "start": 808,
+        "end": 820,
+        "text": "cleft palate"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Overview",
+      "subject": {
+        "label": "Atelosteogenesis Type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "is characterized by"
+      },
+      "object": {
+        "label": "cleft palate",
+        "id": "HP:0000175"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "Atelosteogenesis Type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "cleft palate",
+          "id": "HP:0000175"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "www.orpha.net",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "c5",
+      "claim_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "source_span": {
+        "start": 822,
+        "end": 852,
+        "text": "distinctive facial dysmorphism"
+      },
+      "anchor_status": "EXACT",
+      "section": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes > Overview",
+      "subject": {
+        "label": "Atelosteogenesis Type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "is characterized by"
+      },
+      "object": {
+        "label": "distinctive facial dysmorphism"
+      },
+      "negated": false,
+      "entities": [
+        {
+          "label": "Atelosteogenesis Type II",
+          "id": "MONDO:0009727"
+        },
+        {
+          "label": "facial dysmorphism"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "www.orpha.net",
+          "scope": "SENTENCE"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "reference": "b",
+  "metrics": [
+    {
+      "name": "relevance",
+      "numerator": 12,
+      "denominator": 12,
+      "value": 1.0,
+      "note": "0 candidate claims align to nothing in the reference"
+    },
+    {
+      "name": "informativeness",
+      "numerator": 0,
+      "denominator": 12,
+      "value": 0.0,
+      "note": "0 candidate claims add information the reference lacks"
+    },
+    {
+      "name": "support",
+      "numerator": 102,
+      "denominator": 105,
+      "value": 0.9714285714285714,
+      "supporting_pair_ids": [
+        "p37",
+        "p38",
+        "p94"
+      ],
+      "note": "3 of 105 aligned pairs are contradictory"
+    },
+    {
+      "name": "completeness",
+      "numerator": 10,
+      "denominator": 10,
+      "value": 1.0,
+      "note": "0 reference claims the candidate does not cover"
+    },
+    {
+      "name": "citation_quality",
+      "numerator": 12,
+      "denominator": 12,
+      "value": 1.0,
+      "note": "0 of 12 candidate domain claims are uncited"
+    },
+    {
+      "name": "grounding",
+      "numerator": 26,
+      "denominator": 49,
+      "value": 0.5306122448979592,
+      "supporting_claim_ids": [
+        "c45",
+        "c46",
+        "c47",
+        "c49",
+        "c50",
+        "c51",
+        "c52",
+        "c1",
+        "c2",
+        "c3",
+        "c5"
+      ],
+      "note": "26 of 49 candidate entity mentions are grounded to an ontology id"
+    },
+    {
+      "name": "citation_accuracy",
+      "numerator": 7,
+      "denominator": 7,
+      "value": 1.0,
+      "note": "0 of 7 checked claims cite a work that does not resolve"
+    },
+    {
+      "name": "review_burden",
+      "numerator": 10,
+      "denominator": 12,
+      "value": 0.8333333333333334,
+      "supporting_claim_ids": [
+        "c49",
+        "c3"
+      ],
+      "note": "2 of 12 candidate claims need human review"
+    }
+  ]
+}

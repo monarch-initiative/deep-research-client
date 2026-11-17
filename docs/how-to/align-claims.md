@@ -176,6 +176,40 @@ A contradictory pair is also a signal for human review. Pass the alignment to
 `CONTRADICTION` flag (or `SELF_CONTRADICTION`, within one source) — a logical
 conflict a person must adjudicate.
 
+### Folding in grounding and verification
+
+The five metrics above read only the alignment. Pass the candidate's own
+[verification report](verify-claims.md) as `verification=` and three more metrics
+fold the later steps in, so accuracy reflects what was actually checked:
+
+```python
+from deep_research_client.claims import summarize_alignment, verify_claims
+
+report = verify_claims(candidate, [citation_verifier])   # or triage-only
+summary = summarize_alignment(alignment, candidate, reference, reference="a",
+                              verification=report)
+```
+
+- `grounding` — candidate entity mentions resolved to an ontology id (coverage),
+  appended whenever the candidate was grounded (it carries a grounder stamp). This
+  one needs no `verification`: a grounded candidate gains it even when `verification`
+  is omitted.
+- `citation_accuracy` — of the candidate's checked cited claims, those whose
+  citations resolve to a real work, read from the citation verdicts. A claim counts
+  as *checked* only when a verdict settled something (a resolver that could not
+  reach the identifier leaves it out, so it cannot inflate the score). This differs
+  from `support` (contradiction counts) and from `citation_quality` (which asks
+  only whether a claim is cited at all): it is the "is the cited work real" signal.
+  The claims with a fabricated citation are listed. Needs `verification`.
+- `review_burden` — candidate claims raising no flag only a human can settle, with
+  the ones a person must review listed. The candidate side of each contradictory
+  pair in the alignment is folded in too, so the burden stays coherent with
+  `support` even when the `verification` was built triage-only. Needs `verification`.
+
+Each is still a `numerator / denominator` carrying its ids, and the five alignment
+metrics are unchanged. The `verification` must be the candidate's own (its
+`source_id` is checked).
+
 ## Adversarial inputs
 
 Claim text reaches the classifier as prompt content. A source document could in

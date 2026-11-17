@@ -1,0 +1,352 @@
+{
+  "source": {
+    "id": "Atelosteogenesis_Type_II.yaml",
+    "source_type": "STRUCTURED_DOCUMENT",
+    "title": "atelosteogenesis type II",
+    "content_sha256": "d355bc600ace02c3a75f08c8ba345f49b10f3bd39eeae7da01b2a58c63aeaef2"
+  },
+  "extractor": {
+    "name": "dismech"
+  },
+  "claims": [
+    {
+      "id": "pathophysiology[0]",
+      "claim_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "source_path": "pathophysiology[0]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "entities": [
+        {
+          "label": "sulfate transmembrane transport",
+          "id": "GO:1902358"
+        },
+        {
+          "label": "chondrocyte",
+          "id": "CL:0000138"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:11448940",
+          "reference_id": "PMID:11448940",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "PMID:8571951",
+          "reference_id": "PMID:8571951",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "pathophysiology[1]",
+      "claim_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "source_path": "pathophysiology[1]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "entities": [
+        {
+          "label": "extracellular matrix organization",
+          "id": "GO:0030198"
+        },
+        {
+          "label": "chondrocyte",
+          "id": "CL:0000138"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:8571951",
+          "reference_id": "PMID:8571951",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "PMID:11448940",
+          "reference_id": "PMID:11448940",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "pathophysiology[2]",
+      "claim_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "source_path": "pathophysiology[2]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "entities": [
+        {
+          "label": "cartilage development",
+          "id": "GO:0051216"
+        },
+        {
+          "label": "endochondral ossification",
+          "id": "GO:0001958"
+        },
+        {
+          "label": "chondrocyte",
+          "id": "CL:0000138"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:9133349",
+          "reference_id": "PMID:9133349",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "PMID:8571951",
+          "reference_id": "PMID:8571951",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "pathophysiology[3]",
+      "claim_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "source_path": "pathophysiology[3]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "entities": [
+        {
+          "label": "skeletal system development",
+          "id": "GO:0001501"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:20301493",
+          "reference_id": "PMID:20301493",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "PMID:1279661",
+          "reference_id": "PMID:1279661",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "pathophysiology[4]",
+      "claim_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "source_path": "pathophysiology[4]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "citations": [
+        {
+          "marker": "PMID:3799721",
+          "reference_id": "PMID:3799721",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "PMID:20301493",
+          "reference_id": "PMID:20301493",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "pathophysiology[5]",
+      "claim_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "source_path": "pathophysiology[5]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "entities": [
+        {
+          "label": "chondrocyte",
+          "id": "CL:0000138"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:30685387",
+          "reference_id": "PMID:30685387",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "phenotypes[0]",
+      "claim_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "source_path": "phenotypes[0]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "has phenotype"
+      },
+      "object": {
+        "label": "Rhizomelia",
+        "id": "HP:0008905"
+      },
+      "entities": [
+        {
+          "label": "Rhizomelia",
+          "id": "HP:0008905"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:20301493",
+          "reference_id": "PMID:20301493",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "ORPHA:56304",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "phenotypes[1]",
+      "claim_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "source_path": "phenotypes[1]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "has phenotype"
+      },
+      "object": {
+        "label": "Micromelia",
+        "id": "HP:0002983"
+      },
+      "entities": [
+        {
+          "label": "Micromelia",
+          "id": "HP:0002983"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:1279661",
+          "reference_id": "PMID:1279661",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "ORPHA:56304",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "phenotypes[2]",
+      "claim_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "source_path": "phenotypes[2]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "has phenotype"
+      },
+      "object": {
+        "label": "Hitchhiker thumb",
+        "id": "HP:0001234"
+      },
+      "entities": [
+        {
+          "label": "Hitchhiker thumb",
+          "id": "HP:0001234"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:20301493",
+          "reference_id": "PMID:20301493",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "ORPHA:56304",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "phenotypes[3]",
+      "claim_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "source_path": "phenotypes[3]",
+      "anchor_status": "NOT_APPLICABLE",
+      "subject": {
+        "label": "atelosteogenesis type II",
+        "id": "MONDO:0009727"
+      },
+      "predicate": {
+        "label": "has phenotype"
+      },
+      "object": {
+        "label": "Ulnar deviation of the hand or of fingers of the hand",
+        "id": "HP:0001193"
+      },
+      "entities": [
+        {
+          "label": "Ulnar deviation of the hand or of fingers of the hand",
+          "id": "HP:0001193"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:20301493",
+          "reference_id": "PMID:20301493",
+          "scope": "RECORD"
+        },
+        {
+          "marker": "ORPHA:56304",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    }
+  ]
+}

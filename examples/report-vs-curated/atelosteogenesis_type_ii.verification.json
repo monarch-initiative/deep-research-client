@@ -1,0 +1,126 @@
+{
+  "source_id": "Atelosteogenesis_Type_II-deep-research-openai.md",
+  "source_type": "MARKDOWN_REPORT",
+  "verifier": {
+    "name": "triage+citation",
+    "methods": [
+      "triage",
+      "citation"
+    ],
+    "considered": 88,
+    "flagged": 56,
+    "verified": 24
+  },
+  "flags": [
+    {
+      "kind": "UNRESOLVED_CITATION",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c1"
+      ],
+      "message": "c1 is cited, but none of its citations resolve to an identifier that can be checked.",
+      "evidence": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia."
+    },
+    {
+      "kind": "UNRESOLVED_CITATION",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c2"
+      ],
+      "message": "c2 is cited, but none of its citations resolve to an identifier that can be checked.",
+      "evidence": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism."
+    },
+    {
+      "kind": "UNRESOLVED_CITATION",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c3"
+      ],
+      "message": "c3 is cited, but none of its citations resolve to an identifier that can be checked.",
+      "evidence": "Atelosteogenesis Type II is characterized by a normal-sized skull."
+    },
+    {
+      "kind": "UNRESOLVED_CITATION",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c4"
+      ],
+      "message": "c4 is cited, but none of its citations resolve to an identifier that can be checked.",
+      "evidence": "Atelosteogenesis Type II is characterized by cleft palate."
+    },
+    {
+      "kind": "UNRESOLVED_CITATION",
+      "decidability": "AGENT",
+      "claim_ids": [
+        "c5"
+      ],
+      "message": "c5 is cited, but none of its citations resolve to an identifier that can be checked.",
+      "evidence": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism."
+    }
+  ],
+  "verifications": [
+    {
+      "claim_id": "c45",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c46",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c47",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c49",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c50",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c51",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    },
+    {
+      "claim_id": "c52",
+      "status": "SUPPORTED",
+      "method": "citation:resolution",
+      "reference_id": "PMID:20301493",
+      "confidence": 0.8,
+      "note": "PMID:20301493 resolves and is on topic.",
+      "verifier": "citation"
+    }
+  ]
+}

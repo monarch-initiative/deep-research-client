@@ -1,0 +1,1859 @@
+{
+  "source_a": {
+    "id": "Atelosteogenesis_Type_II-deep-research-openai.md",
+    "source_type": "MARKDOWN_REPORT",
+    "title": "Atelosteogenesis Type II: Pathophysiology, Genetics, and Skeletal Phenotypes",
+    "content_sha256": "9912cc42cb57f803df2a2d9bd9f14a67a5a4dd7481415e7a419c87c863dcb17d"
+  },
+  "source_b": {
+    "id": "Atelosteogenesis_Type_II.yaml",
+    "source_type": "STRUCTURED_DOCUMENT",
+    "title": "atelosteogenesis type II",
+    "content_sha256": "d355bc600ace02c3a75f08c8ba345f49b10f3bd39eeae7da01b2a58c63aeaef2"
+  },
+  "aligner": {
+    "name": "llm-pairwise",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "1",
+    "min_overlap": 0.34,
+    "embedder_used": false
+  },
+  "within_source": false,
+  "pairs": [
+    {
+      "id": "p1",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern the sulfation defect in AO2 (SLC26A2 disease), but A states the pathophysiology as failed matrix sulfation while B states the upstream cause (reduced sulfate import into chondrocytes) across the spectrum, so they are compatible and each adds a different step in the same mechanism."
+    },
+    {
+      "id": "p2",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both describe undersulfated cartilage matrix as the mechanism of atelosteogenesis type II (AO2), but B adds a specific cause (inadequate sulfate availability) and consequences (compromised matrix organization), while A states only the general sulfation failure, so neither is a clean subsumption nor identical."
+    },
+    {
+      "id": "p3",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern AO2 cartilage matrix defects, but A specifies a failure of ECM sulfation while B states a general matrix composition/organization abnormality impairing endochondral ossification; neither contains the other, and together they give cause and downstream consequence."
+    },
+    {
+      "id": "p4",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) and are compatible, but A gives the molecular pathophysiology (defective cartilage matrix sulfation) while B gives the clinical skeletal phenotype, so each adds something the other lacks."
+    },
+    {
+      "id": "p5",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but A states a cartilage matrix sulfation defect as the underlying cause while B describes the thoracic and airway cartilage consequences leading to respiratory lethality; they are compatible and each adds something the other lacks, without stating the same fact."
+    },
+    {
+      "id": "p6",
+      "claim_a_id": "c45",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern the pathophysiology of atelosteogenesis type II (AO2/AOII, SLC26A2-related), but A states a general sulfation-failure mechanism while B describes a downstream mouse-model cascade (collagen retention, ATF6 UPR, FGFR3 signaling) that neither restates nor contradicts A, so each adds something the other lacks."
+    },
+    {
+      "id": "p7",
+      "claim_a_id": "c45",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern AO2 (atelosteogenesis type II) and can be true together, but A states a molecular pathophysiology (impaired cartilage matrix sulfation) while B states a skeletal phenotype (rhizomelia), so each adds a different fact about the same disease."
+    },
+    {
+      "id": "p8",
+      "claim_a_id": "c45",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A states a cause (cartilage matrix sulfation failure) and B states a phenotype (micromelia); neither addresses the other's content and both can be true together, though they are not so tightly linked as to be complementary."
+    },
+    {
+      "id": "p9",
+      "claim_a_id": "c45",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A states its pathophysiology (defective cartilage matrix sulfation) while B states a phenotypic feature (hitchhiker thumb); they are compatible and each adds information the other lacks."
+    },
+    {
+      "id": "p10",
+      "claim_a_id": "c45",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "The pathophysiology of AO2 is a failure of proper cartilage extracellular matrix sulfation.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2), but A states a pathophysiological mechanism (defective cartilage matrix sulfation) while B states a hand phenotype (ulnar deviation of fingers); they are compatible and each adds information the other lacks, without being the same fact."
+    },
+    {
+      "id": "p11",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern AO2 (SLC26A2): A states a downstream consequence (failed cartilage ECM sulfation yields weak cartilage in trachea, ribs, long bones), while B states the upstream defect (reduced sulfate import into chondrocytes) shared across the spectrum; they are compatible and each adds a different step of the causal chain."
+    },
+    {
+      "id": "p12",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both describe the same sulfation-defect mechanism in cartilage matrix (A for AO2 with its tissue consequences, B as a general sulfate-shortage mechanism, labeled with AO2), but A adds the specific weak-cartilage outcomes in trachea, ribs and long bones while B adds the proteoglycan undersulfation and matrix organization detail, so neither is a clean subset of the other."
+    },
+    {
+      "id": "p13",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "SUBSUMED_BY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.62,
+      "rationale": "A is a specific mechanism (failed sulfation of cartilage ECM in AO2 causing weak cartilage in trachea, ribs, long bones), a special case of B's general claim that abnormal cartilage-matrix composition impairs cartilage templates and growth-plate processes needed for endochondral bone formation; though B's relation label is the disease AO2, A's detail fits within B's scope."
+    },
+    {
+      "id": "p14",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (AO2) cartilage/skeletal defects and are compatible, but A gives a mechanism (sulfation failure causing weak cartilage in trachea, ribs, long bones) while B gives phenotypic outcomes (limb shortening, hand/foot positioning, vertebral and craniofacial anomalies), so each adds what the other lacks."
+    },
+    {
+      "id": "p15",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern atelosteogenesis type II and are compatible, but A gives a sulfation-failure cause of weak cartilage in trachea, ribs and long bones while B gives the consequences (small thorax, airway cartilage abnormality, perinatal respiratory lethality), so each adds something the other lacks."
+    },
+    {
+      "id": "p16",
+      "claim_a_id": "c46",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern AO2 (SLC26A2 sulfation defect) and can be true together, but A states the tissue-level outcome of weak cartilage while B describes a mouse-model mechanism of collagen retention, ATF6 UPR and FGFR3 signaling, so each adds something the other lacks."
+    },
+    {
+      "id": "p17",
+      "claim_a_id": "c46",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern the AOII skeletal phenotype and can be true together, but A states a mechanism (sulfation failure causing weak cartilage in trachea, ribs, long bones) while B states a distinct feature (rhizomelic limb shortening), so each adds something the other lacks."
+    },
+    {
+      "id": "p18",
+      "claim_a_id": "c46",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern the AOII skeletal phenotype and are compatible, but A states a mechanism (failed cartilage matrix sulfation causing weak cartilage in trachea, ribs, long bones) while B states limb shortening (micromelia), so each adds something the other lacks without either subsuming the other."
+    },
+    {
+      "id": "p19",
+      "claim_a_id": "c46",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different facts, one a cartilage sulfation failure causing weak cartilage and the other a hitchhiker thumb phenotype, which are compatible and each add something the other lacks."
+    },
+    {
+      "id": "p20",
+      "claim_a_id": "c46",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Failure of cartilage extracellular matrix sulfation in AO2 leads to structurally weak cartilage in the trachea, ribs, and long bones.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims concern atelosteogenesis type II (AO2) but describe different features: A gives sulfation failure causing weak cartilage in trachea, ribs and long bones, B gives ulnar deviation of the fingers; they are compatible and together say more than either alone."
+    },
+    {
+      "id": "p21",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern atelosteogenesis type II but state different facts (A: weak cartilage causes skeletal malformations and fatal respiratory compromise; B: reduced chondrocyte sulfate import from SLC26A2 variants is the initiating defect), which are compatible and together describe cause and consequence without either nesting the other."
+    },
+    {
+      "id": "p22",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern the pathology of AO2 cartilage, but A states the downstream consequence (weak cartilage causing skeletal malformations and respiratory death) while B states an upstream mechanism (inadequate sulfate leading to undersulfated matrix), so they can both be true and together form a causal chain without either restating the other."
+    },
+    {
+      "id": "p23",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern cartilage defects in atelosteogenesis type II, but A states a specific outcome (skeletal malformations and fatal respiratory compromise from weak cartilage) while B states a mechanism (abnormal matrix impairing endochondral ossification templates), so they are compatible and each adds something the other lacks."
+    },
+    {
+      "id": "p24",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (AO2) cartilage/skeletal pathology and are compatible, but A states a mechanism (weak cartilage) and outcome (fatal respiratory compromise) while B lists specific skeletal features (limb shortening, hand/foot positioning, vertebral and craniofacial anomalies), so each adds something the other lacks."
+    },
+    {
+      "id": "p25",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both explain respiratory lethality in atelosteogenesis type II (AO2) via cartilage abnormalities, but A gives a general cartilage-weakness cause for skeletal malformations and respiratory death, whereas B specifies distinct mechanisms (small thorax limiting lung growth, airway cartilage stenosis and collapse), so neither is a clean subsumption nor identical."
+    },
+    {
+      "id": "p26",
+      "claim_a_id": "c47",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern AO2 (atelosteogenesis type II) cartilage pathology and are compatible, but A states the phenotypic outcome (weak cartilage causing skeletal malformations and fatal respiratory compromise) while B states a mouse-model molecular mechanism (collagen retention, ATF6 UPR, FGFR3 signaling) with a caveat, so each adds something the other lacks without either nesting in the other."
+    },
+    {
+      "id": "p27",
+      "claim_a_id": "c47",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern the AO2 skeletal phenotype and are compatible, but A gives a causal mechanism (weak cartilage causing malformations and respiratory failure) while B names a specific feature (rhizomelia), so each adds something the other lacks and neither is nested in the other."
+    },
+    {
+      "id": "p28",
+      "claim_a_id": "c47",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern the AO2 (AOII) skeletal phenotype and can be true together, but A states a causal mechanism (weak cartilage causing malformations and fatal respiratory compromise) while B states a specific feature (limb shortening/micromelia), so each adds something the other lacks without either being a special case of the other."
+    },
+    {
+      "id": "p29",
+      "claim_a_id": "c47",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different compatible facts: A gives the cause of skeletal malformation and respiratory death from weak cartilage, B gives a specific thumb phenotype, so neither nests in the other and together they say more."
+    },
+    {
+      "id": "p30",
+      "claim_a_id": "c47",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Structurally weak cartilage in AO2 causes skeletal malformations and fatal respiratory compromise.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) and are compatible, but A states a cartilage-weakness cause of skeletal malformations and respiratory death while B states a specific ulnar deviation hand phenotype, so each adds something the other lacks without either being a special case of the other."
+    },
+    {
+      "id": "p31",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (AO2): A states its phenotype (proportionately short stature, a clinical feature) while B states the molecular mechanism (reduced sulfate import via SLC26A2), so they are compatible and each adds something the other lacks, but neither restates the other."
+    },
+    {
+      "id": "p32",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern atelosteogenesis type II: A states a clinical feature (proportionately short stature) while B states a pathogenic mechanism (undersulfated cartilage matrix), so they are compatible, address the same subject, and each adds something the other lacks."
+    },
+    {
+      "id": "p33",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different facts: A gives a phenotypic feature (proportionately short stature) and B a pathogenic mechanism (abnormal cartilage matrix impairing endochondral ossification); they are compatible and together say more than either alone."
+    },
+    {
+      "id": "p34",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.4,
+      "rationale": "A says AO2 has proportionately short stature, while B lists severe limb shortening and skeletal and craniofacial abnormalities without saying whether the trunk is spared, so they are in tension but not strictly incompatible and neither restates the other."
+    },
+    {
+      "id": "p35",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A states a skeletal phenotype (proportionately short stature) for AO2, while B describes respiratory pathophysiology (small thorax, airway cartilage abnormalities) explaining perinatal lethality; both concern the same disorder but assert different, non-overlapping facts, with neither adding to a shared topic beyond the disease name."
+    },
+    {
+      "id": "p36",
+      "claim_a_id": "c49",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "A states a clinical phenotype (proportionately short stature) of AO2, while B describes a mouse chondrocyte molecular mechanism (collagen retention, ATF6, FGFR3) and says nothing about stature, so neither bears on the other despite the shared disease label."
+    },
+    {
+      "id": "p37",
+      "claim_a_id": "c49",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "CONTRADICTORY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "A says AO2 presents with proportionate short stature, while B says it is characterized by rhizomelic (disproportionate, proximal-limb) shortening, so the two describe incompatible growth patterns for the same condition."
+    },
+    {
+      "id": "p38",
+      "claim_a_id": "c49",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CONTRADICTORY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A says AO2 has proportionately short stature (limbs and trunk shortened in proportion), whereas B says AOII has micromelia (marked limb shortening), which implies disproportionate shortening, so the two are hard to reconcile; however, they may be read as merely different aspects of short stature."
+    },
+    {
+      "id": "p39",
+      "claim_a_id": "c49",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims concern the same disorder (AO2/AOII = atelosteogenesis type II) but assert different phenotypic features (proportionately short stature vs. hitchhiker thumbs), which can both be true and together describe more of the phenotype."
+    },
+    {
+      "id": "p40",
+      "claim_a_id": "c49",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "AO2 presents with proportionately short stature.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern the same condition (AO2 is atelosteogenesis type II) but assert different phenotypic features, short stature versus ulnar deviation of the fingers, which can both be true without either restating or nesting the other, and they are not a single combined description of the condition."
+    },
+    {
+      "id": "p41",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different facts, A a clinical phenotype (severe rhizomelic shortening) and B the molecular mechanism (reduced sulfate import from biallelic SLC26A2 variants), which are compatible and together say more than either alone."
+    },
+    {
+      "id": "p42",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A states a clinical phenotype (severe rhizomelic limb shortening) while B states a pathogenic mechanism (inadequate sulfate causing undersulfated cartilage matrix), so they are compatible and each adds something the other lacks."
+    },
+    {
+      "id": "p43",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A states a clinical phenotype (severe rhizomelic limb shortening) while B states a pathogenic mechanism (abnormal cartilage matrix impairing endochondral ossification); they are compatible, not the same fact, and each adds something the other lacks."
+    },
+    {
+      "id": "p44",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both are about AO2 (atelosteogenesis type II) and severe limb shortening, but A adds the rhizomelic specificity while B adds the other features (hand/foot positioning, vertebral and craniofacial abnormalities) and the cartilage/ossification mechanism, so neither contains the other."
+    },
+    {
+      "id": "p45",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different facts: A describes severe rhizomelic limb shortening, B describes thoracic and airway cartilage abnormalities explaining perinatal respiratory lethality; they are compatible and together say more."
+    },
+    {
+      "id": "p46",
+      "claim_a_id": "c50",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A states a clinical feature of AO2 (severe rhizomelic limb shortening) while B describes a mouse chondrocyte mechanism (collagen retention, ATF6 UPR, FGFR3 signaling) with a provisional AOII caveat; they concern the same disease but different facts, neither adds to the other directly, and both can be true."
+    },
+    {
+      "id": "p47",
+      "claim_a_id": "c50",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "SUBSUMED_BY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.62,
+      "rationale": "A says AO2 presents with severe rhizomelic limb shortening, which is a narrower claim (severity, presenting feature) than B's general statement that rhizomelia is a characteristic AOII phenotype, so A is a special case of B."
+    },
+    {
+      "id": "p48",
+      "claim_a_id": "c50",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern limb shortening in atelosteogenesis type II, but A specifies severe rhizomelic (proximal) shortening while B states generalized marked shortening (micromelia), which is overlapping but not cleanly nested in scope."
+    },
+    {
+      "id": "p49",
+      "claim_a_id": "c50",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both describe phenotype features of the same disease (atelosteogenesis type II) but assert different features (severe rhizomelic limb shortening vs. hitchhiker thumbs), so they are compatible and together say more than either alone."
+    },
+    {
+      "id": "p50",
+      "claim_a_id": "c50",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "AO2 presents with severe rhizomelic limb shortening, meaning marked shortening of the upper arms and thighs.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of atelosteogenesis type II (AO2) but different ones (rhizomelic limb shortening vs ulnar deviation of fingers), so they can both be true and together say more about the same disease."
+    },
+    {
+      "id": "p51",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A describes skull size in atelosteogenesis type II (a phenotypic feature), while B asserts a molecular mechanism (reduced sulfate import) for SLC26A2 variants; they address different facts with no direct bearing on each other, though both concern the same disorder."
+    },
+    {
+      "id": "p52",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A describes a normal-sized skull phenotype while B describes a sulfation-related matrix pathogenesis; they are different assertions that can both be true and don't add up to a shared fact."
+    },
+    {
+      "id": "p53",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II but state different facts (normal-sized skull vs. cartilage-matrix defects impairing endochondral ossification) that are compatible and each adds information the other lacks."
+    },
+    {
+      "id": "p54",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A says the skull is relatively normal-sized in AO2 (atelosteogenesis type II), while B lists general features including craniofacial malformations; these address different aspects and can both be true, but neither states the other's fact."
+    },
+    {
+      "id": "p55",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "A describes skull size in AO2 (atelosteogenesis type II), while B describes thoracic and airway cartilage abnormalities causing respiratory lethality; they concern different features of the condition with no overlapping assertion, though both mention the same disease."
+    },
+    {
+      "id": "p56",
+      "claim_a_id": "c51",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A states a skull-size phenotype in AO2 (atelosteogenesis type II), while B describes a mouse chondrocyte molecular mechanism (collagen retention, ATF6, FGFR3) with no claim about skull size, so they share only the disease label and neither bears on the other."
+    },
+    {
+      "id": "p57",
+      "claim_a_id": "c51",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe skeletal features of the same disorder (AO2/atelosteogenesis type II), but A says the skull is relatively normal-sized while B says proximal limb rhizomelia is characteristic; they are compatible and each adds a different phenotype fact."
+    },
+    {
+      "id": "p58",
+      "claim_a_id": "c51",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A says the skull is relatively normal-sized in AO2 and B says micromelia (limb shortening) is part of the AOII phenotype; these concern different features of the same condition and can both be true, but neither adds to the other in a way that makes them complementary on the same point."
+    },
+    {
+      "id": "p59",
+      "claim_a_id": "c51",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claims concern atelosteogenesis type II (AO2/AOII) but assert different features (normal skull size vs. hitchhiker thumbs), which can both be true and neither adds to the other as a same-fact statement."
+    },
+    {
+      "id": "p60",
+      "claim_a_id": "c51",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "In AO2 the skull is relatively normal-sized.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claims concern atelosteogenesis type II (AO2), but A describes skull size while B describes ulnar deviation of the fingers; they are different phenotypic features, so neither is compatible-but-complementary in a meaningful way nor related as a restatement."
+    },
+    {
+      "id": "p61",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A describes a clinical hand feature (hitchhiker thumb) in AO2, while B states a molecular mechanism (reduced sulfate import) for SLC26A2 variants; B's relation field names AO2 but its assertion is not about hand morphology, so they share a disease context but no classifiable relation between the stated facts."
+    },
+    {
+      "id": "p62",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (A a hand phenotype, B a sulfation-related matrix pathomechanism), so they are compatible and about the same disease, but they state different facts that together say more than either alone."
+    },
+    {
+      "id": "p63",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern atelosteogenesis type II (A a specific hand phenotype, B a general cartilage/endochondral ossification pathomechanism); they are compatible but state different facts that together say more than either."
+    },
+    {
+      "id": "p64",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II (AO2) and are compatible, but A gives a specific hand finding (hitchhiker thumb) while B gives a general overview of skeletal features including 'characteristic hand and foot positioning', so each adds information the other lacks without one being a clean special case of the other."
+    },
+    {
+      "id": "p65",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II (AO2) but assert different, compatible facts: A describes the hitchhiker thumb hand finding, B describes thoracic and airway cartilage causes of respiratory lethality, so each adds something the other lacks."
+    },
+    {
+      "id": "p66",
+      "claim_a_id": "c52",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "A describes a hand phenotype (hitchhiker thumb) in AO2, while B describes a mouse chondrocyte molecular mechanism (collagen retention, ATF6, FGFR3) in Slc26a2-null cells; they share only the disease context and make no overlapping or directly related assertion."
+    },
+    {
+      "id": "p67",
+      "claim_a_id": "c52",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both describe characteristic features of the same disorder (atelosteogenesis type II), one a hand/thumb finding and the other proximal limb rhizomelia, so they are compatible but state different phenotypic facts that together say more."
+    },
+    {
+      "id": "p68",
+      "claim_a_id": "c52",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe skeletal features of the same disorder (atelosteogenesis type II): A the hitchhiker thumb in the hands, B generalized limb shortening (micromelia). They are different, compatible findings, and together they give a fuller phenotype."
+    },
+    {
+      "id": "p69",
+      "claim_a_id": "c52",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both say hitchhiker-type abducted thumbs characterize AO2, but A specifies 'abducted and flexed' while B specifies 'medially deviated abducted', so each adds a different descriptor and neither cleanly subsumes the other."
+    },
+    {
+      "id": "p70",
+      "claim_a_id": "c52",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "The hands in AO2 show a characteristic 'hitchhiker thumb', in which the thumbs are abducted and flexed.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": true,
+      "candidate_signals": [
+        "CITATION",
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe the hand phenotype of atelosteogenesis type II (AO2) but assert different features (abducted/flexed hitchhiker thumbs vs. ulnar deviation of fingers), so both can be true and together they say more about the hand."
+    },
+    {
+      "id": "p71",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern atelosteogenesis type II within the SLC26A2 disease context, but A states its rarity and perinatal lethality while B states the molecular defect (reduced sulfate import) shared across the spectrum; they are compatible and each adds information the other lacks."
+    },
+    {
+      "id": "p72",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II, but A states it is a rare perinatal-lethal skeletal dysplasia while B describes a sulfate-availability mechanism compromising cartilage matrix; they are compatible and each adds information the other lacks, with neither nesting in the other."
+    },
+    {
+      "id": "p73",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II, but A describes it as a rare perinatal-lethal skeletal dysplasia while B gives a general mechanism of cartilage-matrix abnormality impairing endochondral bone formation; they are compatible and each adds something the other lacks."
+    },
+    {
+      "id": "p74",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A gives its rarity and perinatal lethality while B describes its pathological features (limb shortening, hand/foot positioning, vertebral and craniofacial abnormalities), so each adds information the other lacks and neither contradicts or nests the other."
+    },
+    {
+      "id": "p75",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern atelosteogenesis type II and are compatible: A states it is a rare perinatal-lethal skeletal dysplasia, while B gives the mechanism of the respiratory lethality (small thorax, airway cartilage abnormalities), so each adds something the other lacks without either being a special case of the other."
+    },
+    {
+      "id": "p76",
+      "claim_a_id": "c1",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II but assert different, compatible facts: A gives its rarity and perinatal lethality, while B gives a mouse-model mechanism (collagen retention, ATF6, FGFR3) and says it is not established for human AOII."
+    },
+    {
+      "id": "p77",
+      "claim_a_id": "c1",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II but assert different facts (A: rare, perinatal-lethal skeletal dysplasia; B: rhizomelia as a characteristic phenotype), which are compatible and together describe the disease more fully, with neither nested in the other."
+    },
+    {
+      "id": "p78",
+      "claim_a_id": "c1",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II and can be true together, but A gives its rarity and perinatal lethality as a skeletal dysplasia while B gives a specific phenotype (limb shortening/micromelia), so each adds information the other lacks."
+    },
+    {
+      "id": "p79",
+      "claim_a_id": "c1",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II but assert different facts (A: rare, perinatal-lethal skeletal dysplasia; B: hitchhiker thumb phenotype), which can both be true and together describe the disease more fully."
+    },
+    {
+      "id": "p80",
+      "claim_a_id": "c1",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Atelosteogenesis Type II is a rare, perinatal-lethal skeletal dysplasia.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II but assert different facts (A: rarity and perinatal lethality as a skeletal dysplasia; B: ulnar deviation of the fingers as a hand phenotype), so both can be true and together say more than either alone."
+    },
+    {
+      "id": "p81",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II: A states its phenotype (severe short-limb dwarfism) while B states a molecular mechanism (reduced sulfate import via SLC26A2 variants) for the SLC26A2 chondrodysplasia spectrum; the claims are compatible and each adds something the other lacks, but neither states the same fact."
+    },
+    {
+      "id": "p82",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II, but A states its clinical phenotype (severe short-limb dwarfism) while B describes a sulfation-deficit mechanism affecting cartilage matrix; they are compatible and each adds information the other lacks, though B does not explicitly name the disease in its text."
+    },
+    {
+      "id": "p83",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II; A states its phenotype (severe short-limb dwarfism) while B describes a cartilage-matrix/endochondral ossification mechanism, so they are compatible but each adds something the other lacks, neither being a restatement of the other."
+    },
+    {
+      "id": "p84",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both describe atelosteogenesis type II and are compatible, with severe limb shortening overlapping, but B adds hand/foot positioning, vertebral and craniofacial features and a cartilage/ossification mechanism while A only states short-limb dwarfism, so each says something the other lacks."
+    },
+    {
+      "id": "p85",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II, but A states severe short-limb dwarfism while B states respiratory lethality from thoracic and airway cartilage defects; they are compatible, neither nested in the other, and together say more than either alone."
+    },
+    {
+      "id": "p86",
+      "claim_a_id": "c2",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both concern atelosteogenesis type II but assert different facts (A: clinical short-limb dwarfism phenotype; B: mouse Slc26a2-null chondrocyte collagen retention/ATF6/FGFR3 mechanism), so they can both be true and together say more than either alone."
+    },
+    {
+      "id": "p87",
+      "claim_a_id": "c2",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both describe limb shortening in atelosteogenesis type II, but A states general severe short-limb dwarfism while B specifies rhizomelic (proximal) shortening; they are compatible and each adds something, without one being a clean special case of the other."
+    },
+    {
+      "id": "p88",
+      "claim_a_id": "c2",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern limb shortening in AOII (severe short-limb dwarfism vs. micromelia/generalized marked limb shortening), but A frames it as a defining characteristic of the disease with dwarfism (whole-body stature) while B states it as one skeletal phenotype feature, so they differ in scope and precision without being a clean subsumption or identity."
+    },
+    {
+      "id": "p89",
+      "claim_a_id": "c2",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of Atelosteogenesis Type II (short-limb dwarfism vs. hitchhiker thumbs) that can both be true and each adds a distinct feature, so they are neither identical nor nested."
+    },
+    {
+      "id": "p90",
+      "claim_a_id": "c2",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by severe short-limb dwarfism.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims concern the phenotype of atelosteogenesis type II, but A states severe short-limb dwarfism while B states ulnar deviation of the fingers; they are compatible and each adds a distinct feature the other lacks."
+    },
+    {
+      "id": "p91",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "A states a skull-size phenotype of atelosteogenesis type II, while B states a molecular mechanism (reduced sulfate import via SLC26A2 variants) with no shared assertion about skull size, so neither relates to the other's content."
+    },
+    {
+      "id": "p92",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "A asserts a skull-size phenotype of atelosteogenesis type II, while B describes how inadequate sulfate impairs proteoglycan sulfation and cartilage matrix; B's stated relation names the disease only as a label, so the two share no meaningful assertion to compare."
+    },
+    {
+      "id": "p93",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A states a skull-size feature of atelosteogenesis type II while B gives a general mechanism of cartilage-matrix defects impairing endochondral ossification; they address different facets of the same disease and neither contradicts nor restates the other."
+    },
+    {
+      "id": "p94",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "CONTRADICTORY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A says AO II has a normal-sized skull, while B lists craniofacial malformations among its features, which are not compatible with a normal skull, though B does not explicitly address skull size."
+    },
+    {
+      "id": "p95",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A asserts a normal-sized skull in atelosteogenesis type II while B describes thoracic and airway cartilage causes of respiratory lethality; both can be true but they address different features, with no overlap or contradiction."
+    },
+    {
+      "id": "p96",
+      "claim_a_id": "c3",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A makes a clinical phenotype claim about skull size in AOII, while B describes a mouse chondrocyte mechanism (collagen retention, ATF6, FGFR3 signaling) and says nothing about skull size, so neither bears on the other beyond sharing the disease name."
+    },
+    {
+      "id": "p97",
+      "claim_a_id": "c3",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims describe AOII skeletal features (normal-sized skull vs. rhizomelic limb shortening) that are different assertions about different body parts and can both be true, without either contradicting or restating the other."
+    },
+    {
+      "id": "p98",
+      "claim_a_id": "c3",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A asserts a normal-sized skull and B asserts micromelia (limb shortening) for AOII; they concern different skeletal features and can both be true, with neither nested in the other nor contradicting it."
+    },
+    {
+      "id": "p99",
+      "claim_a_id": "c3",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of atelosteogenesis type II (normal skull vs. hitchhiker thumb), which are different assertions that can both hold and together add to the picture of the disorder, so they are neither identical nor unrelated."
+    },
+    {
+      "id": "p100",
+      "claim_a_id": "c3",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by a normal-sized skull.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of atelosteogenesis type II (normal-sized skull vs. ulnar deviation of fingers), which are different, compatible assertions about the same disease that together say more than either alone."
+    },
+    {
+      "id": "p101",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A claims cleft palate is a feature of Atelosteogenesis Type II, while B claims reduced sulfate import into chondrocytes is the shared molecular defect from biallelic SLC26A2 variants; they address different aspects (clinical phenotype vs. molecular mechanism) with no direct assertion linking them, though both concern the same disease."
+    },
+    {
+      "id": "p102",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A asserts a phenotypic feature (cleft palate) of Atelosteogenesis Type II, while B describes a sulfation-deficiency mechanism compromising cartilage matrix tied to the same disease; they are different assertions that can both be true and neither contains the other, and B does not mention cleft palate so it does not add to A's specific fact."
+    },
+    {
+      "id": "p103",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both concern atelosteogenesis type II, but A states a specific phenotypic feature (cleft palate) while B gives a general pathogenic mechanism (abnormal cartilage matrix impairing endochondral ossification); they are compatible and neither entails the other, and together say more than either alone."
+    },
+    {
+      "id": "p104",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "SUBSUMED_BY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "A names a specific feature (cleft palate) of atelosteogenesis type II, which falls under B's general 'craniofacial malformations' for the same disease, so A is a special case of B's broader description."
+    },
+    {
+      "id": "p105",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern atelosteogenesis type II but assert different features (cleft palate vs. thoracic/airway cartilage abnormalities causing respiratory lethality); they can both be true and neither covers the other, with little added mutual completion, so consistent rather than complementary."
+    },
+    {
+      "id": "p106",
+      "claim_a_id": "c4",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A asserts a clinical feature (cleft palate) of AOII, while B describes a mouse-model mechanism (collagen retention, ATF6, FGFR3 signaling) with no mention of cleft palate; they share only the disease name and neither bears on the other's truth."
+    },
+    {
+      "id": "p107",
+      "claim_a_id": "c4",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of atelosteogenesis type II (cleft palate vs. rhizomelic limb shortening), which can both be true and each adds a different feature, so they are neither identical nor unrelated."
+    },
+    {
+      "id": "p108",
+      "claim_a_id": "c4",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims concern the same disease (AOII) but assert different phenotypic features (cleft palate vs. micromelia/limb shortening); they are compatible and each adds a distinct feature, so together they say more than either alone."
+    },
+    {
+      "id": "p109",
+      "claim_a_id": "c4",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims describe phenotypic features of atelosteogenesis type II (cleft palate vs. hitchhiker thumb) that can both be true, but they assert different features, so together they say more than either alone."
+    },
+    {
+      "id": "p110",
+      "claim_a_id": "c4",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by cleft palate.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims concern the phenotype of atelosteogenesis type II but assert different features (cleft palate vs. ulnar deviation of the fingers), so they can both be true and together describe more of the disorder than either alone."
+    },
+    {
+      "id": "p111",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Biallelic pathogenic SLC26A2 variants reduce sulfate import into chondrocytes. This is the initiating molecular defect shared across the SLC26A2 chondrodysplasia spectrum.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "A states a facial dysmorphism phenotype of atelosteogenesis type II, while B states a molecular mechanism (reduced sulfate import by SLC26A2 variants) for the chondrodysplasia spectrum; they share a disease only loosely and neither asserts the other's content, so there is no meaningful relation to classify beyond a shared topic."
+    },
+    {
+      "id": "p112",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Inadequate sulfate availability produces insufficiently sulfated proteoglycans and other cartilage-matrix macromolecules, compromising matrix composition and organization.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.7,
+      "rationale": "A states a facial dysmorphism feature of Atelosteogenesis Type II while B states a sulfate-deficiency mechanism affecting cartilage matrix (with the disease only as the relation subject); the two don't state the same fact and can both be true, but neither adds to the other in a way that clearly makes them complementary about the same aspect."
+    },
+    {
+      "id": "p113",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Abnormal cartilage-matrix composition and organization impair the cartilage templates and growth-plate processes required for endochondral bone formation.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.55,
+      "rationale": "Both concern atelosteogenesis type II but A asserts facial dysmorphism as a feature while B asserts a cartilage-matrix mechanism impairing endochondral ossification; they are compatible, neither entails the other, and together they say more about the condition."
+    },
+    {
+      "id": "p114",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Disordered fetal cartilage growth and ossification generate severe limb shortening, characteristic hand and foot positioning, vertebral and long-bone abnormalities, and craniofacial malformations.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both describe atelosteogenesis type II, and B's 'craniofacial malformations' touches A's facial dysmorphism, but B adds limb, hand/foot, and vertebral features while A adds the 'distinctive' facial emphasis, so neither contains the other and together they say more."
+    },
+    {
+      "id": "p115",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[4]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Small thoracic dimensions restrict fetal lung growth, while abnormal laryngeal, tracheal, and bronchial cartilage produces stenosis and dynamic airway collapse. Together these lesions explain the usual perinatal respiratory lethality.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both concern atelosteogenesis type II but assert different facts (A: facial dysmorphism; B: thoracic and airway cartilage causes of respiratory lethality), which can both be true and do not overlap or nest."
+    },
+    {
+      "id": "p116",
+      "claim_a_id": "c5",
+      "claim_b_id": "pathophysiology[5]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "In Slc26a2-null mouse chondrocytes, impaired type II/type IX collagen secretion causes intracellular collagen retention, preferential ATF6 unfolded-protein-response activation, and excessive FGFR3 signaling. This is a provisional preclinical branch and is not yet established as a human AOII biomarker or treatment target.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "A states a clinical feature (facial dysmorphism) of AOII, while B describes a mouse chondrocyte mechanism (collagen retention, ATF6, FGFR3) and explicitly disclaims human relevance, so they share only the disease label with no meaningful relation between the assertions."
+    },
+    {
+      "id": "p117",
+      "claim_a_id": "c5",
+      "claim_b_id": "phenotypes[0]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Rhizomelic shortening of the proximal limbs is a characteristic AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of atelosteogenesis type II (facial dysmorphism vs. rhizomelic limb shortening); they are compatible but assert different features, so together they say more than either alone."
+    },
+    {
+      "id": "p118",
+      "claim_a_id": "c5",
+      "claim_b_id": "phenotypes[1]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Generalized marked limb shortening is part of the reported AOII skeletal phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both describe phenotypic features of Atelosteogenesis Type II, but A asserts facial dysmorphism while B asserts limb shortening (micromelia); they are compatible, distinct features that together say more about the same disease."
+    },
+    {
+      "id": "p119",
+      "claim_a_id": "c5",
+      "claim_b_id": "phenotypes[2]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Medially deviated abducted thumbs are characteristic of AOII.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both describe phenotypic features of Atelosteogenesis Type II (facial dysmorphism vs. hitchhiker thumbs); they are different features that can both be true and together say more about the condition."
+    },
+    {
+      "id": "p120",
+      "claim_a_id": "c5",
+      "claim_b_id": "phenotypes[3]",
+      "claim_a_text": "Atelosteogenesis Type II is characterized by distinctive facial dysmorphism.",
+      "claim_b_text": "Ulnar deviation of the fingers is part of the characteristic hand phenotype.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "ENTITY"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims describe phenotypic features of Atelosteogenesis Type II (facial dysmorphism vs. ulnar deviation of the fingers), which are different features that can both be true and together say more about the condition than either alone."
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 """Report-level rubric aggregation (issue #43, item 4): deterministic, no model."""
 
+from typing import Optional
+
 import pytest
 
 from deep_research_client.claims import (
@@ -15,11 +17,20 @@ from deep_research_client.claims import (
     ClaimAlignment,
     ClaimSet,
     ClaimTopic,
+    ClaimVerification,
+    Decidability,
+    EntityMention,
     EvidentialRelation,
     ExtractorInfo,
+    FlagKind,
+    GrounderInfo,
+    ReviewFlag,
     SemanticRelation,
     SourceDocument,
     SourceType,
+    VerificationReport,
+    VerificationStatus,
+    VerifierInfo,
     summarize_alignment,
 )
 
@@ -133,6 +144,174 @@ def test_a_within_source_alignment_has_no_rubric() -> None:
     )
     with pytest.raises(ValueError, match="within one source"):
         summarize_alignment(alignment, report, report)
+
+
+def _grounded(cid: str, mentions: list[tuple[str, Optional[str]]]) -> Claim:
+    """A candidate claim with entity mentions, each (label, id-or-None)."""
+    return Claim(
+        id=cid, claim_text=f"Claim {cid}.", anchor_status=AnchorStatus.EXACT,
+        about=ClaimTopic.DOMAIN, citation_status=CitationStatus.UNCITED,
+        entities=[EntityMention(label=label, id=cid_) for label, cid_ in mentions],
+    )
+
+
+def _candidate_alignment(set_a: ClaimSet) -> tuple[ClaimAlignment, ClaimSet]:
+    """A minimal cross-source alignment with set_a (a.md) as the candidate (A)."""
+    set_b = _set("b.yaml", SourceType.STRUCTURED_DOCUMENT, [_claim("r1")])
+    alignment = ClaimAlignment(
+        source_a=AlignedSource(id="a.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        source_b=AlignedSource(id="b.yaml", source_type=AlignedSourceType.STRUCTURED_DOCUMENT),
+        aligner=AlignerInfo(name="llm-pairwise"),
+        pairs=[_pair("p1", set_a.claim_list[0].id, "r1", SemanticRelation.IDENTICAL)],
+    )
+    return alignment, set_b
+
+
+def test_grounding_metric_counts_mention_coverage() -> None:
+    """With grounding run, the metric is grounded mentions over all mentions."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT,
+                 [_grounded("c1", [("acne", "MONDO:1"), ("TLR2", None)]),
+                  _grounded("c2", [("sebum", "CHEBI:1")])])
+    set_a = set_a.model_copy(update={"grounder": GrounderInfo(name="oak-llm", considered=3, grounded=2)})
+    alignment, set_b = _candidate_alignment(set_a)
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=None)
+    grounding = _m(summary, "grounding")
+    assert grounding.value == pytest.approx(2 / 3)  # 2 of 3 mentions grounded
+    assert grounding.supporting_claim_ids == ["c1"]  # c1 has an ungrounded mention
+
+
+def test_grounding_metric_absent_when_the_set_was_not_grounded() -> None:
+    """No grounder stamp means grounding did not run, so there is nothing to score."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT,
+                 [_grounded("c1", [("acne", "MONDO:1")])])  # entities, but grounder is None
+    alignment, set_b = _candidate_alignment(set_a)
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b")
+    assert summary.metric("grounding") is None
+
+
+def test_citation_accuracy_reads_fabricated_citations_from_verdicts() -> None:
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT,
+                 [_claim("c1", cited=True), _claim("c2", cited=True), _claim("c3", cited=True)])
+    alignment, set_b = _candidate_alignment(set_a)
+    verification = VerificationReport(
+        source_id="a.md", verifier=VerifierInfo(name="triage+citation"),
+        verifications=[
+            ClaimVerification(claim_id="c1", status=VerificationStatus.SUPPORTED,
+                              method="citation:resolution", reference_id="PMID:1"),
+            ClaimVerification(claim_id="c2", status=VerificationStatus.UNSUPPORTED,
+                              method="citation:resolution", reference_id="PMID:999999999"),
+            # c3 got no citation verdict: not counted as checked.
+        ],
+    )
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    accuracy = _m(summary, "citation_accuracy")
+    assert accuracy.value == pytest.approx(1 / 2)  # c1 resolves, c2 is fabricated
+    assert accuracy.supporting_claim_ids == ["c2"]  # the fabricated one
+    assert accuracy.denominator == 2  # only c1 and c2 were checked
+
+
+def test_unverifiable_only_citations_drop_out_of_citation_accuracy() -> None:
+    """A citation that could not be resolved either way is not 'accurate' -- it is unchecked."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT,
+                 [_claim("c1", cited=True), _claim("c2", cited=True)])
+    alignment, set_b = _candidate_alignment(set_a)
+    verification = VerificationReport(
+        source_id="a.md", verifier=VerifierInfo(name="triage+citation"),
+        verifications=[
+            ClaimVerification(claim_id="c1", status=VerificationStatus.SUPPORTED,
+                              method="citation:resolution", reference_id="PMID:1"),
+            ClaimVerification(claim_id="c2", status=VerificationStatus.UNVERIFIABLE,
+                              method="citation:resolution", reference_id="ISBN:x"),
+        ],
+    )
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    accuracy = _m(summary, "citation_accuracy")
+    assert accuracy.denominator == 1  # only c1 was decisively checked; c2 is excluded
+    assert accuracy.value == 1.0
+
+
+def test_an_off_topic_citation_still_counts_as_resolving() -> None:
+    """NEEDS_REVIEW (citation:relevance) means the work resolved, so it is not fabricated."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1", cited=True)])
+    alignment, set_b = _candidate_alignment(set_a)
+    verification = VerificationReport(
+        source_id="a.md", verifier=VerifierInfo(name="triage+citation"),
+        verifications=[ClaimVerification(claim_id="c1", status=VerificationStatus.NEEDS_REVIEW,
+                                         method="citation:relevance", reference_id="PMID:1")],
+    )
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    accuracy = _m(summary, "citation_accuracy")
+    assert accuracy.denominator == 1 and accuracy.value == 1.0  # resolved, just off topic
+
+
+def test_grounding_metric_is_none_when_a_grounded_set_has_no_mentions() -> None:
+    """A grounded set with no entity mentions anywhere has no coverage to score."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1")])  # no entities
+    set_a = set_a.model_copy(update={"grounder": GrounderInfo(name="oak-llm", considered=0, grounded=0)})
+    alignment, set_b = _candidate_alignment(set_a)
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b")
+    assert summary.metric("grounding") is None
+
+
+def test_review_burden_folds_in_alignment_contradictions() -> None:
+    """A contradicted candidate claim needs a human even when the verification is triage-only."""
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1"), _claim("c2")])
+    set_b = _set("b.yaml", SourceType.STRUCTURED_DOCUMENT, [_claim("r1")])
+    alignment = ClaimAlignment(
+        source_a=AlignedSource(id="a.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        source_b=AlignedSource(id="b.yaml", source_type=AlignedSourceType.STRUCTURED_DOCUMENT),
+        aligner=AlignerInfo(name="llm-pairwise"),
+        pairs=[_pair("p1", "c1", "r1", SemanticRelation.CONTRADICTORY)],
+    )
+    # A triage-only verification carries no CONTRADICTION flag, yet c1 contradicts r1.
+    verification = VerificationReport(source_id="a.md", verifier=VerifierInfo(name="triage"))
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    burden = _m(summary, "review_burden")
+    assert burden.supporting_claim_ids == ["c1"]  # folded in from the alignment
+    assert burden.value == pytest.approx(1 / 2)
+
+
+def test_review_burden_counts_a_claim_once_even_in_a_multi_id_flag() -> None:
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1"), _claim("c2"), _claim("c3")])
+    alignment, set_b = _candidate_alignment(set_a)
+    verification = VerificationReport(
+        source_id="a.md", verifier=VerifierInfo(name="triage"),
+        flags=[ReviewFlag(kind=FlagKind.SELF_CONTRADICTION, decidability=Decidability.HUMAN,
+                          claim_ids=["c1", "c2"], message="c1 vs c2")],
+    )
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    burden = _m(summary, "review_burden")
+    assert set(burden.supporting_claim_ids or []) == {"c1", "c2"}
+    assert burden.value == pytest.approx(1 / 3)  # c3 is the only clean one
+
+
+def test_review_burden_counts_claims_with_a_human_flag() -> None:
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1"), _claim("c2")])
+    alignment, set_b = _candidate_alignment(set_a)
+    verification = VerificationReport(
+        source_id="a.md", verifier=VerifierInfo(name="triage"),
+        flags=[ReviewFlag(kind=FlagKind.CONTRADICTION, decidability=Decidability.HUMAN,
+                          claim_ids=["c1"], message="c1 contradicts something")],
+    )
+    summary = summarize_alignment(alignment, set_a, set_b, reference="b", verification=verification)
+    burden = _m(summary, "review_burden")
+    assert burden.value == pytest.approx(1 / 2)  # 1 of 2 claims is clean
+    assert burden.supporting_claim_ids == ["c1"]  # the one needing a human
+
+
+def test_verification_for_a_different_source_is_refused() -> None:
+    set_a = _set("a.md", SourceType.MARKDOWN_REPORT, [_claim("c1")])
+    alignment, set_b = _candidate_alignment(set_a)
+    wrong = VerificationReport(source_id="other.md", verifier=VerifierInfo(name="triage"))
+    with pytest.raises(ValueError, match="different source than the candidate"):
+        summarize_alignment(alignment, set_a, set_b, reference="b", verification=wrong)
+
+
+def test_without_verification_only_the_five_alignment_metrics_appear(scenario) -> None:
+    """Backward compatible: the folded metrics appear only when their inputs are given."""
+    alignment, set_a, set_b = scenario
+    names = {m.name for m in (summarize_alignment(alignment, set_a, set_b, reference="b").metrics or [])}
+    assert names == {"relevance", "informativeness", "support", "completeness", "citation_quality"}
 
 
 def test_the_substrate_is_source_agnostic_report_vs_report() -> None:

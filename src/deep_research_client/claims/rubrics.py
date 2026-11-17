@@ -16,15 +16,116 @@ Standard metrics, all as ``numerator/denominator`` with the shortfall listed:
 - ``completeness``: reference claims the candidate covers.
 - ``citation_quality``: candidate domain claims that are cited.
 
-Everything here is a pure function of an alignment and the two claim sets.
+When the candidate's grounding and verification are available, three more metrics
+fold those later steps in, so accuracy is read from what was checked, not only from
+contradiction counts:
+
+- ``grounding``: candidate entity mentions resolved to an ontology id (coverage).
+- ``citation_accuracy``: checked cited claims whose citations resolve to a real
+  work (not fabricated). Driven by citation verdicts, unlike ``citation_quality``,
+  which only asks whether a claim is cited at all.
+- ``review_burden``: candidate claims that raise no flag only a human can settle.
+
+Everything here is a pure function of the alignment, the two claim sets, and (for
+the folded metrics) the candidate's verification report.
 """
 
 from typing import Optional
 
 from .alignment_models import ClaimAlignment, RubricMetric, RubricSummary
-from .models import CitationStatus, ClaimSet, ClaimTopic
+from .models import CitationStatus, Claim, ClaimSet, ClaimTopic, EntityMention
+from .verification_models import VerificationReport, VerificationStatus
 
 __all__ = ["summarize_alignment"]
+
+
+def _mentions(claim: Claim) -> list[EntityMention]:
+    """Every entity mention on a claim: its entities, subject and object."""
+    mentions = list(claim.entities or [])
+    mentions += [m for m in (claim.subject, claim.object) if m is not None]
+    return mentions
+
+
+def _grounding_metric(candidate: ClaimSet) -> Optional[RubricMetric]:
+    """Coverage of the candidate's entity grounding, or None when it was not grounded.
+
+    Only meaningful once grounding ran (``candidate.grounder`` set) and the claims
+    carry entity mentions; otherwise there is nothing to measure.
+    """
+    if candidate.grounder is None:
+        return None
+    total = 0
+    grounded = 0
+    ungrounded_claim_ids: list[str] = []
+    for claim in candidate.claim_list:
+        mentions = _mentions(claim)
+        if not mentions:
+            continue
+        total += len(mentions)
+        here = sum(1 for m in mentions if m.id)
+        grounded += here
+        if here < len(mentions):
+            ungrounded_claim_ids.append(claim.id)
+    if total == 0:
+        return None
+    return _metric(
+        "grounding",
+        numerator=grounded,
+        denominator=total,
+        note=f"{grounded} of {total} candidate entity mentions are grounded to an ontology id",
+        claim_ids=ungrounded_claim_ids,
+    )
+
+
+def _citation_accuracy_metric(
+    candidate: ClaimSet, verification: VerificationReport
+) -> Optional[RubricMetric]:
+    """Checked cited claims whose citations resolve to a real work, or None if none checked.
+
+    A claim is *checked* when a citation verifier returned a verdict for it; it is
+    sound when none of those verdicts is a fabricated citation (an ``UNSUPPORTED``
+    ``citation:`` verdict). This reads accuracy from the verdicts, where
+    ``citation_quality`` only asks whether a claim is cited at all.
+    """
+    checked: list[str] = []
+    fabricated: list[str] = []
+    for claim in candidate.claim_list:
+        verdicts = [
+            v for v in verification.verifications_for(claim.id)
+            if (v.method or "").startswith("citation:")
+        ]
+        if not verdicts:
+            continue
+        checked.append(claim.id)
+        if any(VerificationStatus(v.status) == VerificationStatus.UNSUPPORTED for v in verdicts):
+            fabricated.append(claim.id)
+    if not checked:
+        return None
+    return _metric(
+        "citation_accuracy",
+        numerator=len(checked) - len(fabricated),
+        denominator=len(checked),
+        note=f"{len(fabricated)} of {len(checked)} checked claims cite a work that does not resolve",
+        claim_ids=fabricated,
+    )
+
+
+def _review_burden_metric(
+    candidate: ClaimSet, verification: VerificationReport
+) -> RubricMetric:
+    """Candidate claims that raise no human-only review flag (higher is cleaner)."""
+    needs_human = {
+        cid for flag in verification.needs_human for cid in (flag.claim_ids or [])
+    }
+    candidate_ids = [c.id for c in candidate.claim_list]
+    flagged = [cid for cid in candidate_ids if cid in needs_human]
+    return _metric(
+        "review_burden",
+        numerator=len(candidate_ids) - len(flagged),
+        denominator=len(candidate_ids),
+        note=f"{len(flagged)} of {len(candidate_ids)} candidate claims need human review",
+        claim_ids=flagged,
+    )
 
 
 def _metric(
@@ -54,8 +155,15 @@ def summarize_alignment(
     set_b: ClaimSet,
     *,
     reference: str = "b",
+    verification: Optional[VerificationReport] = None,
 ) -> RubricSummary:
     """Aggregate an alignment into report-level rubric metrics.
+
+    The five alignment metrics are always produced. When ``verification`` (the
+    candidate's report) is given, and when the candidate was grounded, the folded
+    metrics ``grounding``, ``citation_accuracy`` and ``review_burden`` are appended,
+    so the summary reads accuracy from what grounding and verification found, not
+    only from the alignment.
 
     Args:
         alignment: The alignment of set A against set B.
@@ -63,12 +171,17 @@ def summarize_alignment(
         set_b: Source B's claims (the B side).
         reference: Which source is the reference the other is judged against,
             ``"a"`` or ``"b"``. The other source is the candidate.
+        verification: The candidate's verification report (from
+            :func:`~deep_research_client.claims.verify_claims`), to fold citation
+            and review metrics in. Its ``source_id`` must be the candidate's.
 
     Returns:
-        A summary with the standard metrics, each carrying the ids behind it.
+        A summary with the standard metrics, each carrying the ids behind it, plus
+        the folded metrics when their inputs are present.
 
     Raises:
-        ValueError: If ``reference`` is not ``"a"`` or ``"b"``.
+        ValueError: If ``reference`` is not ``"a"`` or ``"b"``, or if a
+            ``verification`` is given whose source is not the candidate.
 
     >>> from deep_research_client.claims import (AlignedClaimPair, AlignedSource,
     ...     AlignedSourceType, AlignerInfo, CitationHandle, CitationScope, Claim,
@@ -96,6 +209,17 @@ def summarize_alignment(
     1.0
     >>> summary.metric("informativeness").value  # c2 is novel: 1 of 2 candidate claims
     0.5
+
+    Fold in the candidate's verification to read citation accuracy from verdicts:
+
+    >>> from deep_research_client.claims import (ClaimVerification, VerificationReport,
+    ...     VerificationStatus, VerifierInfo)
+    >>> vr = VerificationReport(source_id="a.md", verifier=VerifierInfo(name="triage+citation"),
+    ...     verifications=[ClaimVerification(claim_id="c1", status=VerificationStatus.SUPPORTED,
+    ...         method="citation:resolution", reference_id="PMID:1")])
+    >>> enriched = summarize_alignment(alignment, set_a, set_b, reference="b", verification=vr)
+    >>> enriched.metric("citation_accuracy").value  # c1's one checked citation resolves
+    1.0
     """
     if reference not in ("a", "b"):
         raise ValueError(f'reference must be "a" or "b", not {reference!r}')
@@ -118,6 +242,13 @@ def summarize_alignment(
     else:
         candidate, ref_set = set_b, set_a
         aligned_candidate, aligned_reference = alignment.aligned_b_ids, alignment.aligned_a_ids
+
+    if verification is not None and verification.source_id != candidate.source.id:
+        raise ValueError(
+            "the verification is for a different source than the candidate: it "
+            f"reports on {verification.source_id!r}, but the candidate is "
+            f"{candidate.source.id!r} (pass the candidate's own verification)."
+        )
 
     candidate_ids = [c.id for c in candidate.claim_list]
     reference_ids = [c.id for c in ref_set.claim_list]
@@ -169,4 +300,17 @@ def summarize_alignment(
             claim_ids=uncited_domain,
         ),
     ]
+
+    # Fold in the later steps when their inputs are present. Grounding needs only the
+    # candidate (it carries its own grounder stamp and entity ids); the citation and
+    # review metrics need the candidate's verification report.
+    grounding = _grounding_metric(candidate)
+    if grounding is not None:
+        metrics.append(grounding)
+    if verification is not None:
+        citation_accuracy = _citation_accuracy_metric(candidate, verification)
+        if citation_accuracy is not None:
+            metrics.append(citation_accuracy)
+        metrics.append(_review_burden_metric(candidate, verification))
+
     return RubricSummary(reference=reference, metrics=metrics)

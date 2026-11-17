@@ -15,7 +15,7 @@ single B claim, bypassing candidate generation.
 import asyncio
 from typing import Any, Optional
 
-from .align_llm import ALIGN_PROMPT_VERSION, DEFAULT_ALIGN_MAX_TOKENS, classify_pairs
+from .align_llm import ALIGN_PROMPT_VERSION, DEFAULT_ALIGN_MAX_TOKENS, Classification, classify_pairs
 from .alignment_datamodel import AlignedSourceType
 from .alignment_models import (
     AlignedClaimPair,
@@ -74,7 +74,7 @@ def _pair(index: int, candidate: CandidatePair, relation: Any) -> AlignedClaimPa
 
 def _assemble(
     candidates: list[CandidatePair],
-    classification: Any,
+    classification: Classification,
     *,
     source_a: AlignedSource,
     source_b: AlignedSource,
@@ -82,7 +82,7 @@ def _assemble(
     model: str,
     min_overlap: float,
     embedder: Optional[Embedder],
-    within_source: Optional[bool],
+    within_source: bool,
 ) -> ClaimAlignment:
     """Build the ClaimAlignment from classified candidates. Shared by both aligners."""
     pairs = [
@@ -146,7 +146,7 @@ async def aalign_claim_sets(
         candidates, classification,
         source_a=_aligned_source(set_a.source), source_b=_aligned_source(set_b.source),
         aligner_name="llm-pairwise", model=model, min_overlap=min_overlap,
-        embedder=embedder, within_source=None,
+        embedder=embedder, within_source=False,
     )
 
 

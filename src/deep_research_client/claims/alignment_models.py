@@ -225,7 +225,13 @@ class ClaimAlignment(GeneratedClaimAlignment):
 
         Returns:
             Those with no aligning pair: what source A contributes that B does not.
+
+        Raises:
+            ValueError: If this is a within-source alignment, where a claim can be
+                on either side of a pair; use :meth:`unpaired_ids` there.
         """
+        if self.within_source:
+            raise ValueError("this is a within-source alignment; use unpaired_ids")
         aligned = self.aligned_a_ids
         return [cid for cid in a_claim_ids if cid not in aligned]
 
@@ -237,7 +243,12 @@ class ClaimAlignment(GeneratedClaimAlignment):
 
         Returns:
             Those with no aligning pair: what source B holds that A does not cover.
+
+        Raises:
+            ValueError: If this is a within-source alignment; use :meth:`unpaired_ids`.
         """
+        if self.within_source:
+            raise ValueError("this is a within-source alignment; use unpaired_ids")
         aligned = self.aligned_b_ids
         return [cid for cid in b_claim_ids if cid not in aligned]
 

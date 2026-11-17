@@ -35,7 +35,9 @@ source are not independent corroboration; two that *disagree* while citing the
 same source are worth a closer look.
 
 A claim with no aligned partner is not a relation; it is *coverage*, read off the
-alignment (`unaligned_a_ids`, `unaligned_b_ids`) and summarised by the rubrics.
+alignment (`unaligned_a_ids`, `unaligned_b_ids`) and summarised by the rubrics. For
+a within-source alignment, where a claim can sit on either side of a pair, use
+`unpaired_ids` instead — the one-sided helpers raise there.
 
 ## Quick start
 

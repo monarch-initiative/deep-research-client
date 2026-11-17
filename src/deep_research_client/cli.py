@@ -4318,9 +4318,10 @@ def claims_align(
     rubric_output: Annotated[Optional[Path], typer.Option(
         "--rubric-output",
         help="Write the rubric summary here (.json/.yaml); implies --rubric")] = None,
-    reference: Annotated[str, typer.Option(
+    reference: Annotated[Optional[str], typer.Option(
         "--reference",
-        help="Which side is the reference the other is judged against: a or b")] = "b",
+        help="Which side the rubric judges the other against: a or b (default b). "
+             "Only applies with two inputs")] = None,
     llm_backend: Annotated[str, typer.Option(
         "--llm-backend",
         help="How the model is called: openai (any OpenAI-compatible API) or "
@@ -4371,12 +4372,17 @@ def claims_align(
     from .claims.candidates import DEFAULT_MIN_OVERLAP
 
     within = claims_b is None
-    if reference not in ("a", "b"):
+    if reference is not None and reference not in ("a", "b"):
         _error(f"--reference must be a or b, not {reference!r}")
+        raise typer.Exit(1)
+    if within and reference is not None:
+        _error("--reference applies to the rubric, which compares two sources; it has "
+               "no meaning when aligning a set with itself.")
         raise typer.Exit(1)
     if within and (rubric or rubric_output is not None):
         _error("--rubric compares two sources; it does not apply to aligning a set with itself.")
         raise typer.Exit(1)
+    reference = reference or "b"
 
     set_a = _load_claim_set(claims_a)
     set_b = _load_claim_set(claims_b) if claims_b is not None else None

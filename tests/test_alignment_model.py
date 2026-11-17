@@ -1,5 +1,6 @@
 """The alignment datamodel and its generated code (issue #43, item 2)."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from deep_research_client.claims import (
     AlignedSourceType,
     AlignerInfo,
     ClaimAlignment,
+    ClaimSet,
     EvidentialRelation,
     RubricMetric,
     RubricSummary,
@@ -20,11 +22,7 @@ from deep_research_client.claims import (
 
 def test_the_committed_worked_example_still_validates() -> None:
     """The docs example data must keep matching the schema if it changes later."""
-    import json
-
     examples = Path(__file__).resolve().parent.parent / "examples" / "within-report-alignment"
-    from deep_research_client.claims import ClaimSet
-
     claims = ClaimSet.model_validate(
         json.loads((examples / "acne_vulgaris.claims.json").read_text(encoding="utf-8"))
     )
@@ -35,6 +33,20 @@ def test_the_committed_worked_example_still_validates() -> None:
     assert len(alignment.pair_list) == 114
     assert alignment.within_source is True
     assert alignment.source_a.id == alignment.source_b.id  # a within-source alignment
+
+
+def test_one_sided_coverage_helpers_refuse_a_within_alignment() -> None:
+    """Within a source a claim can be on either side; the one-sided helpers raise."""
+    within = ClaimAlignment(
+        source_a=AlignedSource(id="r.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        source_b=AlignedSource(id="r.md", source_type=AlignedSourceType.MARKDOWN_REPORT),
+        aligner=AlignerInfo(name="llm-pairwise-within"), within_source=True, pairs=[_pair()],
+    )
+    with pytest.raises(ValueError, match="use unpaired_ids"):
+        within.unaligned_a_ids(["c1"])
+    with pytest.raises(ValueError, match="use unpaired_ids"):
+        within.unaligned_b_ids(["phenotypes[0]"])
+    assert within.unpaired_ids(["c1", "phenotypes[0]", "x"]) == ["x"]
 
 
 def test_aligned_source_type_covers_every_claims_source_type() -> None:

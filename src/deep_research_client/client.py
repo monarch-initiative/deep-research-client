@@ -607,8 +607,18 @@ class DeepResearchClient:
         if provider:
             ordered = [provider]
         else:
-            first_available = self.registry.get_first_available()
-            ordered = [first_available.name] if first_available else []
+            # automatic_fallback guards this route too: a provider costly
+            # enough to run only when named must not be picked for a caller
+            # who named nobody.
+            available = self.registry.get_available_providers()
+            unnamed = [c.name for c in available if c.automatic_fallback]
+            if available and not unnamed:
+                raise NoProvidersConfiguredError(
+                    "No provider is available that runs without being named ("
+                    + ", ".join(c.name for c in available)
+                    + " run only when named, with --provider)"
+                )
+            ordered = unnamed[:1]
 
         for name in extra:
             if name not in ordered:

@@ -5,6 +5,20 @@ in the source again. Extraction does not judge whether a claim is true;
 alignment across sources and verification consume these records later.
 """
 
+from .alignment_models import (
+    AlignedClaimPair,
+    AlignedSource,
+    AlignedSourceType,
+    AlignerInfo,
+    CandidateSignal,
+    ClaimAlignment,
+    EvidentialRelation,
+    RubricMetric,
+    RubricSummary,
+    SemanticRelation,
+    evidential_relation,
+    shares_citation,
+)
 from .extract import (
     SourceFormat,
     aextract_claims,
@@ -32,6 +46,7 @@ from .models import (
 )
 
 __all__ = [
+    # Extraction (issue #43, item 1)
     "SourceFormat",
     "aextract_claims",
     "detect_format",
@@ -53,4 +68,17 @@ __all__ = [
     "SourceType",
     "TextSpan",
     "content_sha256",
+    # Alignment data model and derived axes (issue #43, item 2)
+    "evidential_relation",
+    "shares_citation",
+    "AlignedClaimPair",
+    "AlignedSource",
+    "AlignedSourceType",
+    "AlignerInfo",
+    "CandidateSignal",
+    "ClaimAlignment",
+    "EvidentialRelation",
+    "SemanticRelation",
+    "RubricMetric",
+    "RubricSummary",
 ]

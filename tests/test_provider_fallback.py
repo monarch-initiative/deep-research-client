@@ -57,6 +57,12 @@ class StandInProvider(MockProvider):
     produces_real_reports = True
 
 
+class CostlyProvider(StandInProvider):
+    """A real-report provider that is a fallback only when named, like claude_managed."""
+
+    automatic_fallback = False
+
+
 class UnclassifiableFailure(StandInProvider):
     """A provider whose SDK error nothing recognises.
 
@@ -737,6 +743,40 @@ def test_naming_a_fabricating_provider_still_honours_it():
     result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
     assert result.provider == BACKUP
     assert result.fell_back is True
+
+
+def test_a_costly_provider_is_left_out_of_the_automatic_ordering(caplog):
+    """A failed cheap run must not quietly become an expensive one, and says why."""
+    client = _client((PRIMARY, _params(error_type="billing")))
+    client.registry.register(CostlyProvider(ProviderConfig(name=BACKUP), _params()))
+
+    with caplog.at_level("INFO", logger=_CLIENT_LOGGER):
+        with pytest.raises(ProviderBillingError):
+            client.research("q", provider=PRIMARY, fallback=True)
+
+    said = [r.getMessage() for r in caplog.records if "only candidate" in r.getMessage()]
+    assert len(said) == 1
+    assert f"are used only when named ({BACKUP})" in said[0]
+    assert "do not produce real reports" not in said[0]
+
+
+def test_naming_a_costly_provider_still_honours_it():
+    """Asking for the expensive run is the caller's decision to make."""
+    client = _client((PRIMARY, _params(error_type="billing")))
+    client.registry.register(CostlyProvider(ProviderConfig(name=BACKUP), _params()))
+
+    result = client.research("q", provider=PRIMARY, fallback=[BACKUP])
+    assert result.provider == BACKUP
+    assert result.fell_back is True
+
+
+def test_providers_are_automatic_fallbacks_by_default_except_claude_managed():
+    """The exclusion is opt-in, and the Managed Agents provider opts in."""
+    from deep_research_client.client import load_provider_class
+    from deep_research_client.providers import ResearchProvider
+
+    assert ResearchProvider.automatic_fallback is True
+    assert load_provider_class("claude_managed").automatic_fallback is False
 
 
 def test_real_providers_declare_themselves_real_by_default():
@@ -1551,9 +1591,14 @@ def test_the_documented_fallback_order_names_every_eligible_provider():
     eligible = set()
     for name in PROVIDER_CLASS_PATHS:
         provider_class = load_provider_class(name)
-        # `_plan_providers` filters the automatic route by produces_real_reports,
-        # and a stub can never be available to reach it in the first place.
-        if provider_class.produces_real_reports and not provider_class.stub_reason:
+        # `_plan_providers` filters the automatic route by produces_real_reports
+        # and automatic_fallback, and a stub can never be available to reach it
+        # in the first place.
+        if (
+            provider_class.produces_real_reports
+            and provider_class.automatic_fallback
+            and not provider_class.stub_reason
+        ):
             eligible.add(name)
 
     assert documented == eligible, (

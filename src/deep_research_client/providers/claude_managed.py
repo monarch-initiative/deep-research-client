@@ -83,6 +83,8 @@ REPORT_FILE = "REPORT.md"
 
 #: Outputs that are the team's own working files, not evidence.
 WORKSPACE_FILES = frozenset({REPORT_FILE, "PLAN.md"})
+#: A retriever's findings card sits next to its evidence file (see managed-retriever.md).
+FINDINGS_SUFFIX = ".findings.md"
 
 #: Prefix of the agent and environment names; a fingerprint follows it.
 RESOURCE_PREFIX = "deep-research-client"
@@ -633,21 +635,28 @@ def newest_by_name(files: List[Any]) -> dict[str, Any]:
 
 
 def is_evidence_candidate(name: str) -> bool:
-    """Whether an output file could be an evidence file: markdown, not the workspace's own.
+    """Whether an output file could be an evidence file: markdown, not the team's own.
 
     Evidence files are told apart from stray notes by their frontmatter, which
-    needs the file's text, so only candidates are downloaded to find out.
+    needs the file's text, so only candidates are downloaded to find out. A
+    findings card is excluded by name: its quotes are what the evidence check
+    tests, so a card that carried frontmatter would otherwise vouch for itself.
 
     Args:
         name: Output file name.
 
     Returns:
-        True for a markdown file other than REPORT.md and PLAN.md.
+        True for a markdown file other than REPORT.md, PLAN.md and a findings card.
 
-    >>> [is_evidence_candidate(name) for name in ("hodges-1971.md", "REPORT.md", "hodges-1971.pdf")]
-    [True, False, False]
+    >>> names = ("hodges-1971.md", "REPORT.md", "hodges-1971.pdf", "hodges-1971.findings.md")
+    >>> [is_evidence_candidate(name) for name in names]
+    [True, False, False, False]
     """
-    return name.endswith(".md") and name not in WORKSPACE_FILES
+    return (
+        name.endswith(".md")
+        and not name.endswith(FINDINGS_SUFFIX)
+        and name not in WORKSPACE_FILES
+    )
 
 
 def is_artifact_candidate(name: str, include_globs: List[str]) -> bool:
@@ -752,6 +761,9 @@ class ClaudeManagedProvider(ResearchProvider):
     credential_env_var = "ANTHROPIC_API_KEY"
     credential_label = "Claude Managed Agents"
     credential_noun = "Anthropic"
+    # A run costs several dollars (capped by max_cost_usd), so it is a fallback
+    # only when named.
+    automatic_fallback = False
     timeout_meaning = (
         "how long the session may run, repair turns included, before it is "
         "interrupted and its outputs collected "
@@ -1014,9 +1026,15 @@ class ClaudeManagedProvider(ResearchProvider):
                 logger.warning(
                     "Session %s still running after %ss; interrupting it", session_id, self.timeout
                 )
-                await client.beta.sessions.events.send(
-                    session_id, events=[{"type": "user.interrupt"}]
-                )
+                try:
+                    await client.beta.sessions.events.send(
+                        session_id, events=[{"type": "user.interrupt"}]
+                    )
+                except APIConnectionError as exc:
+                    # Same outage as above. The grace period still runs, so the
+                    # wait stays bounded, and if the session has stopped by then
+                    # its outputs are collected as usual.
+                    logger.warning("Could not interrupt session %s (%s)", session_id, exc)
                 interrupted = True
                 deadline = time.monotonic() + _INTERRUPT_GRACE_SECONDS
             await asyncio.sleep(self.params.poll_interval)
@@ -1050,6 +1068,9 @@ class ClaudeManagedProvider(ResearchProvider):
             not evidence_check.passed
             and len(repair_history) < self.params.max_repair_rounds
             and can_repair(trail)
+            # A repair turn started after the deadline would be interrupted at
+            # once, paying for a turn that cannot finish.
+            and time.monotonic() < deadline
         ):
             repair_history.append(evidence_check.model_dump(exclude={"unanchored_quotes"}))
             logger.info(

@@ -161,7 +161,7 @@ providers would make those records wrong. So you have to ask for it.
 which is a fixed sequence filtered down to whichever you have configured — not
 a preference ranking, and not dependent on how your environment is set up:
 
-    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code, claude_managed, antigravity, rss_agent
+    openai, falcon, asta, perplexity, consensus, openscientist, cyberian, biomni, tooluniverse, claude_code, antigravity, rss_agent
 
 Most candidates are a paid account, and `biomni` is not: it is a local agent
 that executes generated code and may pull down a multi-gigabyte data lake the
@@ -371,6 +371,11 @@ Note that `mock` is reached by `--fallback-provider mock` but never by
 `--fallback` on its own: a provider that invents its reports is excluded from
 the automatic ordering, so a real run that runs out of credits fails rather
 than quietly handing you a fabricated report.
+
+`claude_managed` is left out of the automatic ordering too, for cost: a run
+costs several dollars (up to its `max_cost_usd` cap), so a cheap run that
+fails does not quietly become an expensive one. `--fallback-provider
+claude_managed` still reaches it.
 
 ## Check Available Models
 

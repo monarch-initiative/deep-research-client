@@ -783,6 +783,11 @@ The other artifact selection fields work as described in
    frontmatter are the evidence, and each one's first identifier (or URL) is a
    citation. `PLAN.md`, and any file named by `artifact_include_globs`, become
    artifacts. Files come back flat: `citations/hodges-1971.md` is listed as `hodges-1971.md`.
+   Findings cards (`*.findings.md`) are never read as evidence, so a card
+   cannot anchor its own quotes.
+5. If the evidence check fails, the failures are sent back for a repair turn,
+   up to `max_repair_rounds`, unless the session stopped at its cost cap, was
+   refused or interrupted, or the timeout has already passed.
 
 `run_metadata` records `session_id`, `agent_id`, `environment_id`,
 `retriever_model`, `writer_model`, `workflow_runs`, `stop_reason`, `outcome_result`,
@@ -795,8 +800,10 @@ threads in the Claude Console show every search and fetch each agent made.
 ### Recovering a run whose client lost contact
 
 The session runs on Anthropic's side whether or not the client is watching. A
-brief network outage while polling is logged and retried until the timeout,
-but a client that dies or exits outright leaves the session running unwatched.
+brief network outage while polling is logged and retried until the timeout.
+One that loses the interrupt sent at the timeout is logged too, and the
+provider still waits out the five-minute grace period and collects whatever the
+session has produced if it stopped by then. But a client that dies or exits outright leaves the session running unwatched.
 To collect it, run the same command again with
 `--param session_id=sesn_...` (the ID is in the log, and in
 `client.beta.sessions.list()`). The provider then waits for that session,

@@ -579,8 +579,9 @@ class DeepResearchClient:
                     candidate.name
                     for candidate in self.registry.get_available_providers()
                     # A provider that invents its reports is not a stand-in for
-                    # one that does the work. Name it and it is honoured.
-                    if candidate.produces_real_reports
+                    # one that does the work, and a costly one is not a stand-in
+                    # for a cheap one. Name either and it is honoured.
+                    if candidate.produces_real_reports and candidate.automatic_fallback
                 ]
                 if fallback
                 else []
@@ -634,25 +635,33 @@ class DeepResearchClient:
             # Blaming the filter there would tell an operator their own
             # --fallback-provider mock would be dropped, which is the reverse
             # of what happens.
-            excluded = (
+            others = (
                 [
-                    candidate.name
+                    candidate
                     for candidate in self.registry.get_available_providers()
-                    if not candidate.produces_real_reports
-                    and candidate.name != ordered[0]
+                    if candidate.name != ordered[0]
                 ]
                 if fallback is True
                 else []
             )
+            fabricating = [c.name for c in others if not c.produces_real_reports]
+            named_only = [
+                c.name for c in others if c.produces_real_reports and not c.automatic_fallback
+            ]
+            excluded = [
+                f"{clause} ({', '.join(names)})"
+                for clause, names in (
+                    ("do not produce real reports", fabricating),
+                    ("are used only when named", named_only),
+                )
+                if names
+            ]
             # Three reasons, not two. "named or available" as one string
             # asserts on the list route that nobody else is here, when the
             # truth is usually that nobody else was listed -- and listing one
             # is the fix the operator needs pointing at.
             if excluded:
-                reason = (
-                    "the other available provider(s) do not produce real "
-                    f"reports ({', '.join(excluded)})"
-                )
+                reason = f"the other available provider(s) {' or '.join(excluded)}"
             elif fallback is True:
                 reason = "no other provider is available"
             else:

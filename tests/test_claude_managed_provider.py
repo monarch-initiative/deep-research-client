@@ -477,10 +477,15 @@ def test_newest_by_name_keeps_the_final_version_of_a_rewritten_file():
 @pytest.mark.parametrize(
     "name,candidate",
     [("hodges-1971.md", True), ("REPORT.md", False), ("PLAN.md", False),
-     ("hodges-1971.pdf", False), ("table1.csv", False)],
+     ("hodges-1971.pdf", False), ("table1.csv", False),
+     ("hodges-1971.findings.md", False)],
 )
 def test_only_markdown_outside_the_workspace_is_read_as_evidence(name, candidate):
-    """Binary originals and the team's own files are never parsed as evidence."""
+    """Binary originals, findings cards and the team's own files are never parsed as evidence.
+
+    A card's quotes are what the evidence check tests, so a card read as
+    evidence would anchor its own quotes.
+    """
     assert is_evidence_candidate(name) is candidate
 
 

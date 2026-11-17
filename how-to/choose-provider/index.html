@@ -1729,6 +1729,10 @@ since that one is fail-closed by design.</p>
 <code>--fallback</code> on its own: a provider that invents its reports is excluded from
 the automatic ordering, so a real run that runs out of credits fails rather
 than quietly handing you a fabricated report.</p>
+<p><code>claude_managed</code> is left out of the automatic ordering too, for cost: a run
+costs several dollars (up to its <code>max_cost_usd</code> cap), so a cheap run that
+fails does not quietly become an expensive one. <code>--fallback-provider
+claude_managed</code> still reaches it.</p>
 <h2 id="check-available-models">Check Available Models</h2>
 <p>List all available models and their characteristics:</p>
 <pre><code class="language-bash"># All models

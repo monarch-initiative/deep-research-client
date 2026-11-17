@@ -510,9 +510,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#setup" class="md-nav__link">
     <span class="md-ellipsis">
-      Install
+      Setup
     </span>
   </a>
   
@@ -1230,9 +1230,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#setup" class="md-nav__link">
     <span class="md-ellipsis">
-      Install
+      Setup
     </span>
   </a>
   
@@ -1452,14 +1452,10 @@ report's references can be checked as soon as it is produced.</p>
    passes an existence check without complaint. See
    <a href="#topical-relevance">topical relevance</a>.</li>
 </ol>
-<h2 id="install">Install</h2>
-<p>Reference validation pulls in bibliographic tooling that most users do not need, so it is
-an optional extra:</p>
-<pre><code class="language-bash">pip install &quot;deep_research_client[validation]&quot;
-</code></pre>
-<p>Or, in a uv project:</p>
-<pre><code class="language-bash">uv add &quot;deep_research_client[validation]&quot;
-</code></pre>
+<h2 id="setup">Setup</h2>
+<p>Reference validation is part of the base install and runs on every <code>research</code> call; pass
+<code>--no-validate-references</code> to skip it. (The <code>validation</code> extra still exists, so existing
+<code>deep_research_client[validation]</code> installs keep working, but it adds nothing now.)</p>
 <p>NCBI asks for a contact address on Entrez requests. Set it once:</p>
 <pre><code class="language-bash">export NCBI_EMAIL=&quot;you@example.org&quot;
 </code></pre>
@@ -1506,9 +1502,8 @@ it is safe to re-run over a whole corpus. It replaces a <em>trailing</em> sectio
 that discusses reference validation in its body and then continues with another section
 keeps everything.</p>
 <h2 id="validate-as-part-of-the-research-run">Validate as part of the research run</h2>
-<pre><code class="language-bash">deep-research-client research &quot;Statins and myopathy risk&quot; \
-  --output statins.md \
-  --validate-references
+<p>This happens by default:</p>
+<pre><code class="language-bash">deep-research-client research &quot;Statins and myopathy risk&quot; --output statins.md
 </code></pre>
 <p>The saved report gains both a <code>## Reference Validation</code> section and a frontmatter summary:</p>
 <pre><code class="language-yaml">reference_validation:
@@ -1677,8 +1672,8 @@ is reported rather than what is fetched, and the run it would speed up is alread
 </tbody>
 </table>
 <ul>
-<li><strong>Cache, above all.</strong> Fetched references are written to <code>./references_cache</code> by default
-  and reused on later runs. Point <code>--cache-dir</code> at a shared directory - or commit it - to
+<li><strong>Cache, above all.</strong> Fetched references are written to <code>~/.deep_research_cache/references</code>
+  by default and reused on later runs. Point <code>--cache-dir</code> at a shared directory - or commit it - to
   make repeated validation across a corpus nearly free. This is worth more than every other
   option combined. Two caveats: PMC accessions still need one request to NCBI's ID
   converter on every run, which is not cached, so a warm run is fast but not offline; and a
@@ -1712,7 +1707,7 @@ is reported rather than what is fetched, and the run it would speed up is alread
   not want the extra section.</li>
 </ul>
 <p>Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven minutes on
-a cold cache, against under three for a hundred PMIDs. Validating as part of <code>research --validate-references</code> adds that time to a run
+a cold cache, against under three for a hundred PMIDs. Validating as part of <code>research</code> adds that time to a run
 that is already slow; validating afterwards with <code>validate-references</code> lets you do it once
 across a whole corpus against a shared cache.</p>
 <h2 id="use-it-from-python">Use it from Python</h2>

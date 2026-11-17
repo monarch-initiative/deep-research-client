@@ -19,6 +19,7 @@ from .alignment_models import (
     evidential_relation,
     shares_citation,
 )
+from .candidates import CandidatePair, candidate_pairs
 from .extract import (
     SourceFormat,
     aextract_claims,
@@ -69,9 +70,11 @@ __all__ = [
     "TextSpan",
     "content_sha256",
     # Alignment data model and derived axes (issue #43, item 2)
+    "candidate_pairs",
     "evidential_relation",
     "shares_citation",
     "AlignedClaimPair",
+    "CandidatePair",
     "AlignedSource",
     "AlignedSourceType",
     "AlignerInfo",

@@ -36,6 +36,7 @@ __all__ = [
     "ScoredTerm",
     "TopicalRelevance",
     "assess_relevance",
+    "content_terms",
     "extract_keywords",
     "reference_text",
 ]
@@ -279,8 +280,13 @@ def _singular(word: str) -> str:
     return word
 
 
-def _terms(text: str) -> list[str]:
-    """Tokenise text into the terms relevance is judged on.
+def content_terms(text: str) -> list[str]:
+    """Tokenise text into its content words, dropping boilerplate.
+
+    The content-word substrate shared by relevance scoring and, in the claims
+    package, lexical claim alignment: markup is stripped, stopwords and the
+    citation keys some providers write inline are dropped, and plurals are
+    folded, so "mutations" and "mutation" count as the same term.
 
     Args:
         text: Markdown or plain text.
@@ -289,18 +295,18 @@ def _terms(text: str) -> list[str]:
         Lowercased, de-pluralised, stopword-filtered terms, in order.
 
     Examples:
-        >>> _terms("The ichthyosiform skin lesions are unilateral.")
+        >>> content_terms("The ichthyosiform skin lesions are unilateral.")
         ['ichthyosiform', 'skin', 'lesion', 'unilateral']
 
         Gene and locus symbols are terms; the citation keys some providers write
         inline are not, and no abstract will ever contain one:
 
-        >>> _terms("NF1 and POLR3A (peduto2023neurofibromatosistype1 pages 1-2)")
+        >>> content_terms("NF1 and POLR3A (peduto2023neurofibromatosistype1 pages 1-2)")
         ['nf1', 'polr3a']
 
         A digit-bearing symbol is a term, however many digits it carries:
 
-        >>> _terms("KIAA0319 and KIAA1109 and CYP21A2")
+        >>> content_terms("KIAA0319 and KIAA1109 and CYP21A2")
         ['kiaa0319', 'kiaa1109', 'cyp21a2']
     """
     terms = []
@@ -464,11 +470,11 @@ def extract_keywords(
         []
     """
     markdown = _topic_body(markdown)
-    frequencies = Counter(_terms(markdown))
+    frequencies = Counter(content_terms(markdown))
     documents = _documents(markdown)
     document_frequency: Counter[str] = Counter()
     for document in documents:
-        document_frequency.update(set(_terms(document)))
+        document_frequency.update(set(content_terms(document)))
     total_documents = max(len(documents), 1)
 
     scored = [
@@ -595,7 +601,7 @@ def assess_relevance(
     if not total_weight or not text.strip():
         return RelevanceAssessment(TopicalRelevance.NOT_ASSESSED, 0.0, ())
 
-    present = set(_terms(text))
+    present = set(content_terms(text))
     matched = [keyword for keyword in keywords if keyword.term in present]
     score = sum(keyword.score for keyword in matched) / total_weight
 

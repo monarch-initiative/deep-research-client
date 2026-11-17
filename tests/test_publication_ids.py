@@ -56,6 +56,28 @@ def test_a_bare_url_resolves_weakly_to_the_url() -> None:
 
 @pytest.mark.parametrize(
     "raw",
+    [
+        "(see https://example.org/paper).",
+        "https://example.org/paper,",
+        "available at https://example.org/paper;",
+        "[https://example.org/paper]",
+    ],
+)
+def test_a_bare_url_drops_trailing_prose_punctuation(raw: str) -> None:
+    """Punctuation abutting a URL in prose is not part of the URL."""
+    result = normalize_publication_id(raw)
+    assert result.canonical_id == "https://example.org/paper"
+
+
+def test_a_doi_url_normalises_to_the_doi_not_a_bare_url() -> None:
+    """A DOI expressed as a URL resolves to the DOI id, the same as the written form."""
+    result = normalize_publication_id("https://doi.org/10.1038/ng1234")
+    assert result.canonical_id == "DOI:10.1038/ng1234"
+    assert result.id_type == PublicationIdType.DOI
+
+
+@pytest.mark.parametrize(
+    "raw",
     ["Smith et al. 2020, Nature", "[3]", "personal communication", ""],
 )
 def test_unresolvable_strings_are_kept_not_dropped(raw: str) -> None:

@@ -4683,7 +4683,8 @@ def claims_verify(
         "--max-claims", min=1,
         help="Check citations for at most this-many claims (triage still sees every claim)")] = None,
     concurrency: Annotated[int, typer.Option(
-        "--concurrency", min=1, help="Citation checks in flight at once")] = 4,
+        "--concurrency", min=1,
+        help="Verifier calls in flight at once (citation checks run one at a time)")] = 4,
 ):
     """Flag the claims and pairs that need review, and optionally check their citations.
 
@@ -4723,8 +4724,7 @@ def claims_verify(
 
             _error(INSTALL_HINT)
             raise typer.Exit(1)
-        topic_text = "\n".join(c.claim_text for c in claim_set.claim_list if c.claim_text)
-        verifiers.append(CitationVerifier(topic_text=topic_text or None, email=email, cache_dir=cache))
+        verifiers.append(CitationVerifier(email=email, cache_dir=cache))
 
     report = asyncio.run(averify_claims(
         claim_set, verifiers, alignment=loaded_alignment,

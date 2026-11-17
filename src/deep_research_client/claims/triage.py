@@ -16,6 +16,7 @@ the world (citation resolution, agents) live in ``verification.py`` and
 ``verification_citation.py`` and compose with these flags.
 """
 
+import re
 from typing import Optional, Sequence
 
 from .alignment_models import ClaimAlignment
@@ -53,6 +54,17 @@ CONSENSUS_CUES: tuple[str, ...] = (
 #: How much claim text to keep as a flag's evidence snippet.
 _SNIPPET_LEN = 200
 
+#: Words that negate a consensus cue when they precede it ("no consensus", "lack of
+#: consensus", "little agreement"). A negated cue is the opposite of overstatement,
+#: so it must not be flagged. Checked against the few words before the cue.
+_NEGATORS = frozenset({
+    "no", "not", "never", "little", "lack", "lacks", "lacking", "without",
+    "absent", "absence", "nor", "neither",
+})
+
+#: How far back to look for a negator before a cue.
+_NEGATION_WINDOW = 30
+
 
 def _snippet(text: str) -> str:
     """A short, single-line piece of claim text for a flag's evidence."""
@@ -65,20 +77,42 @@ def _is_domain(claim: Claim) -> bool:
 
 
 def _matched_cue(text: str, cues: Sequence[str]) -> Optional[str]:
-    """The first consensus cue that appears in the text, casefolded, or None."""
+    """The first non-negated consensus cue in the text, or None.
+
+    A plain substring match would flag "there is *no consensus*" as framing a
+    point as settled -- the opposite of what the cue means. Each occurrence is
+    kept only when no negator sits in the few words before it.
+    """
     folded = text.casefold()
     for cue in cues:
-        if cue.casefold() in folded:
-            return cue
+        needle = cue.casefold()
+        start = 0
+        while True:
+            at = folded.find(needle, start)
+            if at == -1:
+                break
+            preceding = folded[max(0, at - _NEGATION_WINDOW):at]
+            prior_words = re.findall(r"[a-z]+", preceding)[-3:]
+            if not _NEGATORS.intersection(prior_words):
+                return cue
+            start = at + 1
     return None
 
 
-def _claims_in_contradictions(alignment: ClaimAlignment) -> set[str]:
-    """Every claim id that takes part in a contradictory pair."""
+def _contradicted_claim_ids(alignment: ClaimAlignment, claim_set: ClaimSet) -> set[str]:
+    """Ids *in this claim set* that take part in a contradictory pair.
+
+    A pair's ``claim_a_id`` and ``claim_b_id`` are ids in two different claim sets,
+    and both sets number claims ``c1``, ``c2``, ... With ``within_source`` the two
+    sides are the same set, so both ids belong to it. Otherwise this set is source
+    A, and only ``claim_a_id`` is one of its ids -- taking ``claim_b_id`` too would
+    flag the wrong claim.
+    """
     ids: set[str] = set()
     for pair in alignment.contradictions:
         ids.add(pair.claim_a_id)
-        ids.add(pair.claim_b_id)
+        if alignment.within_source:
+            ids.add(pair.claim_b_id)
     return ids
 
 
@@ -107,15 +141,20 @@ def triage_claims(
     contradictions in pair order, so the output is deterministic.
 
     Args:
-        claim_set: The claims to triage.
-        alignment: An alignment of the set, for contradiction flags and to know
-            which claims take part in one. Its ``source_a``/``source_b`` are not
-            checked against the claim set here; pass the alignment of this set.
+        claim_set: The claims to triage. It is the A side of the alignment, if one
+            is given.
+        alignment: An alignment of this set, for contradiction flags and to know
+            which claims take part in one. Its ``source_a`` must be this claim
+            set's source (its ``source_b`` too, for a within-source alignment),
+            so the A-side ids line up with the claims here.
         cues: Consensus/certainty phrases for CONSENSUS_OVERSTATED. Defaults to
             :data:`CONSENSUS_CUES`.
 
     Returns:
         The review flags, most-local first (claim-level), then contradictions.
+
+    Raises:
+        ValueError: If the alignment's A side is not this claim set's source.
 
     Examples:
         >>> from deep_research_client.claims import (AnchorStatus, CitationStatus,
@@ -137,7 +176,15 @@ def triage_claims(
          ('UNSUPPORTED_CLAIM', 'AGENT', ['c2']),
          ('CONSENSUS_OVERSTATED', 'HUMAN', ['c2'])]
     """
-    contradicted = _claims_in_contradictions(alignment) if alignment is not None else set()
+    if alignment is not None and alignment.source_a.id != claim_set.source.id:
+        raise ValueError(
+            "the alignment does not match this claim set: it aligns "
+            f"{alignment.source_a.id!r} (A), but the claim set is "
+            f"{claim_set.source.id!r}. Pass the alignment whose A side is this set."
+        )
+    contradicted = (
+        _contradicted_claim_ids(alignment, claim_set) if alignment is not None else set()
+    )
     flags: list[ReviewFlag] = []
 
     for claim in claim_set.claim_list:
@@ -189,18 +236,33 @@ def triage_claims(
             ))
 
     if alignment is not None:
-        kind = FlagKind.SELF_CONTRADICTION if alignment.within_source else FlagKind.CONTRADICTION
+        within = alignment.within_source
+        kind = FlagKind.SELF_CONTRADICTION if within else FlagKind.CONTRADICTION
+        other = alignment.source_b.id
         for pair in alignment.contradictions:
-            where = "the source contradicts itself" if alignment.within_source else "two sources disagree"
+            # Within one source both ids are in this set. Across sources only the
+            # A-side id is; name the B-side claim by its source so flags_for cannot
+            # collide it with an A-side claim of the same id (both sets use c1, c2...).
+            if within:
+                claim_ids = [pair.claim_a_id, pair.claim_b_id]
+                message = (
+                    f"{pair.claim_a_id} and {pair.claim_b_id} cannot both be true "
+                    "(the source contradicts itself); a person must judge which, if "
+                    "either, holds."
+                )
+            else:
+                claim_ids = [pair.claim_a_id]
+                message = (
+                    f"{pair.claim_a_id} cannot both be true with {pair.claim_b_id} in "
+                    f"{other} (two sources disagree); a person must judge which, if "
+                    "either, holds."
+                )
             flags.append(ReviewFlag(
                 kind=kind,
                 decidability=Decidability.HUMAN,
-                claim_ids=[pair.claim_a_id, pair.claim_b_id],
+                claim_ids=claim_ids,
                 pair_id=pair.id,
-                message=(
-                    f"{pair.claim_a_id} and {pair.claim_b_id} cannot both be true "
-                    f"({where}); a person must judge which, if either, holds."
-                ),
+                message=message,
                 evidence=_snippet(f"{pair.claim_a_text}  ≠  {pair.claim_b_text}"),
             ))
 

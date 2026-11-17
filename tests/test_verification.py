@@ -98,15 +98,38 @@ def test_no_unchecked_flag_without_verifiers() -> None:
     assert report.flags_of_kind(FlagKind.UNCHECKED_CITATION) == []
 
 
-def test_a_verdict_that_is_not_settled_still_counts_as_seen() -> None:
-    """An UNVERIFIABLE verdict is a verdict: the claim was checked, so not UNCHECKED."""
+def test_an_unverifiable_only_claim_is_flagged_unchecked() -> None:
+    """A citation that came back only UNVERIFIABLE was never settled, so it needs a look."""
     report = verify_claims(
         _set(_cited("c1")),
         [FakeVerifier({"c1": VerificationStatus.UNVERIFIABLE})],
     )
-    assert report.flags_of_kind(FlagKind.UNCHECKED_CITATION) == []
+    assert [f.kind for f in report.flags_for("c1")] == [FlagKind.UNCHECKED_CITATION.value]
     verdict = report.verification_for("c1")
     assert verdict is not None and verdict.status == VerificationStatus.UNVERIFIABLE.value
+
+
+def test_a_non_citation_unsupported_verdict_is_not_called_confabulated() -> None:
+    """Only a citation:* UNSUPPORTED verdict means a fabricated citation (issue-#5 fix)."""
+    report = verify_claims(
+        _set(_cited("c1")),
+        [FakeVerifier({"c1": VerificationStatus.UNSUPPORTED})],  # method is "fake:test"
+    )
+    kinds = {f.kind for f in report.flags_for("c1")}
+    assert FlagKind.CONFABULATED_CITATION.value not in kinds
+    # It also was not supported, so it stands unchecked for an agent.
+    assert FlagKind.UNCHECKED_CITATION.value in kinds
+
+
+def test_max_claims_leaves_uncovered_claims_flagged_unchecked() -> None:
+    """Claims past the cap get no verdict, so their resolvable citations read as unchecked."""
+    report = verify_claims(
+        _set(_cited("c1"), _cited("c2")),
+        [FakeVerifier({"c1": VerificationStatus.SUPPORTED, "c2": VerificationStatus.SUPPORTED})],
+        max_claims=1,
+    )
+    assert report.flags_for("c1") == []  # c1 was checked and supported
+    assert [f.kind for f in report.flags_for("c2")] == [FlagKind.UNCHECKED_CITATION.value]
 
 
 def test_max_claims_bounds_verifier_coverage() -> None:

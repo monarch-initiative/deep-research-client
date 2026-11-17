@@ -41,18 +41,24 @@ __all__ = [
     "verify_claims",
 ]
 
-#: Statuses that count as a citation having been checked and settled. A resolved
-#: citation that reached none of these after verifiers ran is UNCHECKED.
-_SETTLED = (VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED)
+def _flag_for(verdict: ClaimVerification) -> Optional[tuple[FlagKind, Decidability]]:
+    """The review flag a verdict warrants, or None when it needs no review.
 
-#: How a verifier's verdict becomes a review flag. Derived in one place so every
-#: verifier's verdicts surface consistently: (flag kind, decidability) per status.
-#: SUPPORTED and UNVERIFIABLE raise no flag (nothing to review).
-_FLAG_FOR_STATUS: dict[VerificationStatus, tuple[FlagKind, Decidability]] = {
-    VerificationStatus.UNSUPPORTED: (FlagKind.CONFABULATED_CITATION, Decidability.MACHINE),
-    VerificationStatus.NEEDS_REVIEW: (FlagKind.WEAK_CITATION, Decidability.HUMAN),
-    VerificationStatus.CONTRADICTED: (FlagKind.CONTRADICTION, Decidability.HUMAN),
-}
+    The citation-specific kinds are keyed on a ``citation:`` method, not on status
+    alone: a future retrieval verifier returning UNSUPPORTED for an *uncited* claim
+    means "found no support", not "the cited identifier is fabricated", so it must
+    not be labelled CONFABULATED_CITATION. A verifier of a new kind needs its own
+    case here rather than silently borrowing a citation flag.
+    """
+    status = VerificationStatus(verdict.status)
+    is_citation = (verdict.method or "").startswith("citation:")
+    if is_citation and status == VerificationStatus.UNSUPPORTED:
+        return FlagKind.CONFABULATED_CITATION, Decidability.MACHINE
+    if is_citation and status == VerificationStatus.NEEDS_REVIEW:
+        return FlagKind.WEAK_CITATION, Decidability.HUMAN
+    if status == VerificationStatus.CONTRADICTED:
+        return FlagKind.CONTRADICTION, Decidability.HUMAN
+    return None
 
 
 def _flags_from_verdicts(verifications: list[ClaimVerification]) -> list[ReviewFlag]:
@@ -60,11 +66,12 @@ def _flags_from_verdicts(verifications: list[ClaimVerification]) -> list[ReviewF
 
     A verdict and a flag are different products: the verdict records what a
     verifier found, the flag routes it to whoever can act on it. Mapped in one
-    pure place so a new verifier's verdicts surface without new flag code.
+    pure place (:func:`_flag_for`) so a new verifier of a known kind surfaces
+    without new flag code.
     """
     flags: list[ReviewFlag] = []
     for v in verifications:
-        mapped = _FLAG_FOR_STATUS.get(VerificationStatus(v.status))
+        mapped = _flag_for(v)
         if mapped is None:
             continue
         kind, decidability = mapped
@@ -105,22 +112,31 @@ def _source_type(claim_set: ClaimSet) -> Optional[VerifiedSourceType]:
 
 
 def _unchecked_flags(
-    claim_set: ClaimSet, verifications: list[ClaimVerification]
+    claim_set: ClaimSet,
+    verifications: list[ClaimVerification],
+    verdict_flags: list[ReviewFlag],
 ) -> list[ReviewFlag]:
-    """Flag cited, resolvable claims that verifiers ran over but never settled.
+    """Flag cited, resolvable claims a verifier neither supported nor faulted.
 
-    Only meaningful once at least one verifier has run: it means a citation that
-    could have been checked was not confirmed either way, so an agent should.
+    Only meaningful once at least one verifier has run. A claim is *addressed* when
+    a verifier returned SUPPORTED for it, or raised a flag about it (fabricated,
+    weak, contradicted). A cited, resolvable claim that is not addressed stands
+    unchecked -- whether because no verifier reached it, or because every verdict
+    came back UNVERIFIABLE (no resolver, nothing learned). An agent could still
+    settle it, so it is flagged for one.
     """
-    settled = {v.claim_id for v in verifications if v.status in _SETTLED}
-    seen = {v.claim_id for v in verifications}
+    addressed = {
+        v.claim_id for v in verifications
+        if VerificationStatus(v.status) == VerificationStatus.SUPPORTED
+    }
+    for flag in verdict_flags:
+        addressed.update(flag.claim_ids or [])
     flags: list[ReviewFlag] = []
     for claim in claim_set.claim_list:
         if (
             claim.citation_status == CitationStatus.CITED
             and resolved_reference_ids(claim)
-            and claim.id not in settled
-            and claim.id not in seen
+            and claim.id not in addressed
         ):
             flags.append(ReviewFlag(
                 kind=FlagKind.UNCHECKED_CITATION,
@@ -191,8 +207,9 @@ async def averify_claims(
             raise
         for verdicts in results:
             verifications.extend(verdicts)
-        flags.extend(_flags_from_verdicts(verifications))
-        flags.extend(_unchecked_flags(claim_set, verifications))
+        verdict_flags = _flags_from_verdicts(verifications)
+        flags.extend(verdict_flags)
+        flags.extend(_unchecked_flags(claim_set, verifications, verdict_flags))
 
     names = [v.name for v in verifiers]
     verified_claims = {v.claim_id for v in verifications}

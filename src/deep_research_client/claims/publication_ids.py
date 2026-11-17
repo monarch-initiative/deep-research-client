@@ -43,6 +43,11 @@ _NCT_PATTERN = re.compile(r"NCT\d{8}(?!\d)", re.IGNORECASE)
 #: the string -- the citation points somewhere, even if not to a canonical id.
 _URL_PATTERN = re.compile(r"https?://\S+", re.IGNORECASE)
 
+#: Trailing characters stripped from a matched bare URL: sentence and bracket
+#: punctuation that abuts a URL in prose ("(see https://x/p).") but is not part of
+#: it, so equivalent mentions still normalise to the same string.
+_URL_TRAILING = ".,;:!?)]}>\"'"
+
 #: Confidence for an identifier recovered from a URL rather than written directly:
 #: still a real id, but one indirection from the source's own words.
 _FROM_URL_CONFIDENCE = 0.7
@@ -169,13 +174,15 @@ def normalize_publication_id(raw: str) -> NormalizedPublicationId:
     url = _URL_PATTERN.search(raw)
     if url:
         # A bare URL with no extractable id: it points to a page, not to a
-        # canonical publication id, so it resolves only weakly.
+        # canonical publication id, so it resolves only weakly. Trailing prose
+        # punctuation ("(see https://x/p).") is not part of the URL.
+        cleaned = url.group(0).rstrip(_URL_TRAILING)
         return NormalizedPublicationId(
             raw=raw,
-            canonical_id=url.group(0),
+            canonical_id=cleaned,
             id_type=PublicationIdType.URL,
             confidence=_BARE_URL_CONFIDENCE,
-            source_url=url.group(0),
+            source_url=cleaned,
         )
 
     # Nothing readable. Keep the raw string rather than drop it: a later, online

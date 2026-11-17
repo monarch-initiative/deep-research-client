@@ -1,5 +1,7 @@
 """Pure review-flag triage (issue #43, item 5)."""
 
+import pytest
+
 from deep_research_client.claims import (
     AlignedClaimPair,
     AlignedSource,
@@ -49,6 +51,11 @@ def _set(*claims: Claim, source_id: str = "r.md") -> ClaimSet:
 
 def _kinds(flags) -> list[str]:
     return [f.kind for f in flags]
+
+
+def flags_for(flags, claim_id):
+    """The flags whose claim_ids include the given id."""
+    return [f for f in flags if claim_id in (f.claim_ids or [])]
 
 
 def test_uncited_domain_finding_is_flagged_unsupported() -> None:
@@ -123,6 +130,27 @@ def test_a_caller_may_supply_its_own_cues() -> None:
     assert _kinds(flags) == [FlagKind.CONSENSUS_OVERSTATED.value]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "There is no consensus on the cause of acne.",
+        "There is a lack of consensus here.",
+        "There is little consensus in the field.",
+    ],
+)
+def test_a_negated_consensus_cue_is_not_flagged(text: str) -> None:
+    """'no consensus' is the opposite of overstatement and must not be flagged."""
+    flags = triage_claims(_set(_claim("c1", text, basis=ClaimBasis.BACKGROUND_KNOWLEDGE)))
+    assert flags == []
+
+
+def test_an_affirmed_consensus_cue_is_still_flagged() -> None:
+    flags = triage_claims(_set(_claim(
+        "c1", "There is broad consensus that acne is multifactorial.",
+        basis=ClaimBasis.BACKGROUND_KNOWLEDGE)))
+    assert _kinds(flags) == [FlagKind.CONSENSUS_OVERSTATED.value]
+
+
 def _pair(pid: str, a: str, b: str, relation: SemanticRelation) -> AlignedClaimPair:
     return AlignedClaimPair(
         id=pid, claim_a_id=a, claim_b_id=b, claim_a_text="A.", claim_b_text="not A.",
@@ -155,12 +183,46 @@ def test_cross_source_contradiction_is_a_contradiction() -> None:
     alignment = _alignment(_pair("p1", "c1", "x1", SemanticRelation.CONTRADICTORY), within=False)
     flags = triage_claims(claim_set, alignment)
     assert _kinds(flags) == [FlagKind.CONTRADICTION.value]
+    # Only the A-side id belongs to this claim set; the B-side is named in the
+    # message, not in claim_ids, so flags_for cannot collide on a shared id.
+    assert flags[0].claim_ids == ["c1"]
+    assert "x1" in flags[0].message
+
+
+def test_cross_source_ids_do_not_collide_when_both_sets_use_c1() -> None:
+    """B-side c1 being contradicted must not flag A-side c1, which shares the id."""
+    # This claim set is source A. Its c1 is cited, sound, and contradicts nothing.
+    # The contradiction is between A's cA and B's c1 -- a different claim that only
+    # happens to share the id c1. Before the fix, triage lumped both pair ids into
+    # one set and flagged *this* c1 as "takes part in a contradiction".
+    claim_set = _set(
+        _claim("cA", basis=ClaimBasis.BACKGROUND_KNOWLEDGE),
+        _claim("c1", "There is consensus acne is multifactorial.",
+               basis=ClaimBasis.BACKGROUND_KNOWLEDGE, citation_status=CitationStatus.CITED,
+               citations=[CitationHandle(marker="[1]", reference_id="PMID:1",
+                                         scope=CitationScope.SENTENCE)]),
+    )
+    alignment = _alignment(_pair("p1", "cA", "c1", SemanticRelation.CONTRADICTORY), within=False)
+    flags = triage_claims(claim_set, alignment)
+    # A's c1 is cited and not the A-side of the contradiction, so it gets no flag.
+    assert flags_for(flags, "c1") == []
+    # The contradiction is correctly attributed to cA alone.
+    assert [f.kind for f in flags_for(flags, "cA")] == [FlagKind.CONTRADICTION.value]
 
 
 def test_non_contradictory_pairs_raise_no_flag() -> None:
     claim_set = _set(_claim("c1", basis=ClaimBasis.BACKGROUND_KNOWLEDGE))
     alignment = _alignment(_pair("p1", "c1", "x1", SemanticRelation.IDENTICAL), within=False)
     assert triage_claims(claim_set, alignment) == []
+
+
+def test_an_alignment_for_a_different_source_is_refused() -> None:
+    """Passing the wrong alignment would line A-side ids up against the wrong claims."""
+    claim_set = _set(_claim("c1", basis=ClaimBasis.BACKGROUND_KNOWLEDGE), source_id="r.md")
+    alignment = _alignment(_pair("p1", "c1", "x1", SemanticRelation.CONTRADICTORY),
+                           within=False, source_id="other.md")
+    with pytest.raises(ValueError, match="does not match this claim set"):
+        triage_claims(claim_set, alignment)
 
 
 def test_consensus_cue_on_a_contradicted_claim_is_flagged_even_when_cited() -> None:

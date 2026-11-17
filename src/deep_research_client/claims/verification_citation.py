@@ -116,10 +116,15 @@ def verdict_from_check(check: ReferenceCheck, claim_id: str) -> ClaimVerificatio
 class CitationVerifier:
     """Verify a claim's citations by resolving them with ``ReferenceValidator``.
 
+    Relevance is weighed against each claim's own text, so WEAK_CITATION means the
+    cited work looks off topic *for that claim* -- not for the report as a whole. A
+    single claim is little vocabulary, so a clear mismatch is what trips it; an
+    uncertain overlap stays SUPPORTED.
+
+    Resolution runs one claim at a time (see :meth:`_resolve`), so a caller's
+    concurrency does not speed a run with only this verifier.
+
     Args:
-        topic_text: Vocabulary to weigh each resolved work's relevance against,
-            usually the whole report's text. Without it, relevance is not assessed
-            and a resolved citation is SUPPORTED on existence alone.
         email: Contact address for the NCBI Entrez API, which asks for one to
             raise the rate limit. None by default; a caller may set it. Never set
             from the user's own address automatically.
@@ -135,14 +140,12 @@ class CitationVerifier:
     def __init__(
         self,
         *,
-        topic_text: Optional[str] = None,
         email: Optional[str] = None,
         cache_dir: Optional[Path] = None,
         max_references: Optional[int] = None,
         skip_prefixes: Sequence[str] = (),
         check_relevance: bool = True,
     ) -> None:
-        self._topic_text = topic_text
         self._email = email
         self._cache_dir = cache_dir
         self._max_references = max_references
@@ -169,24 +172,32 @@ class CitationVerifier:
             check_relevance=self._check_relevance,
         )
 
-    def _resolve(self, found: list[FoundReference]) -> list[ReferenceCheck]:
+    def _resolve(
+        self, found: list[FoundReference], topic_text: Optional[str]
+    ) -> list[ReferenceCheck]:
         """Resolve a claim's references; callers run this in a worker thread.
 
         Taken under a lock because the validator shares a cache directory and is
-        not assumed thread-safe, and the lazy build happens once. The lock is held
+        not assumed thread-safe, and the lazy build happens once. The lock serialises
+        resolution, so concurrent callers do not overlap here. The lock is held
         inside the worker thread only, never across an ``await``.
         """
         with self._lock:
             if self._validator is None:
                 self._validator = self._build_validator()
-            report = self._validator.validate_references(found, topic_text=self._topic_text)
+            report = self._validator.validate_references(found, topic_text=topic_text)
             return list(report.references)
 
     async def averify(self, claim: Claim) -> list[ClaimVerification]:
-        """Resolve each identifier the claim cites and return a verdict per identifier."""
+        """Resolve each identifier the claim cites and return a verdict per identifier.
+
+        Relevance is weighed against the claim's own text, so a WEAK_CITATION verdict
+        means the work looks off topic for this claim.
+        """
         refs = sorted(resolved_reference_ids(claim))
         if not refs:
             return []
         found = [FoundReference(normalized_id=r, raw=r) for r in refs]
-        checks = await asyncio.to_thread(self._resolve, found)
+        topic_text = claim.claim_text if self._check_relevance else None
+        checks = await asyncio.to_thread(self._resolve, found, topic_text)
         return [verdict_from_check(check, claim.id) for check in checks]

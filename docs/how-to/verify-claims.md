@@ -61,7 +61,10 @@ contradictions become flags. Without it, triage still runs the claim-level rules
 identifier against its source (reusing the reference validator) and returns a
 verdict per identifier: a fabricated identifier (resolves to nothing) becomes a
 machine-decidable `CONFABULATED_CITATION`; a real but off-topic work becomes a
-`WEAK_CITATION` for a human; a resolved, on-topic work is `SUPPORTED`.
+`WEAK_CITATION` for a human; a resolved, on-topic work is `SUPPORTED`. Relevance is
+weighed against **the claim's own text**, so `WEAK_CITATION` means the work looks
+off topic *for that claim* — and because a single claim is little vocabulary, only
+a clear mismatch trips it; an uncertain overlap stays `SUPPORTED`.
 
 ```bash
 deep-research-client claims verify report.claims.json --check-citations
@@ -75,7 +78,17 @@ pip install "deep_research_client[validation]"
 
 `--email` passes a contact address to the NCBI API (it asks for one to raise the
 rate limit); `--cache` reuses resolved references between runs; `--max-claims`
-bounds how many claims are resolved while triage still sees every claim.
+bounds how many claims are resolved — triage still sees every claim, and any
+resolvable citation past the cap is reported `UNCHECKED_CITATION`. Citation checks
+run **one at a time** (the resolver is not assumed thread-safe), so `--concurrency`
+does not speed a run that uses only this verifier.
+
+`SUPPORTED` means the cited work resolves and is on topic, **not** that it entails
+the claim. A claim citing several works gets one verdict each; a report's
+`verifications_for(claim_id)` returns them all, so a later `UNSUPPORTED` is not
+hidden behind an earlier `SUPPORTED`. A hard failure (a resolver error the engine
+does not turn into `UNVERIFIABLE`) aborts the run rather than returning partial
+results.
 
 ## Normalising citations (issue #41)
 
@@ -94,8 +107,10 @@ normalize_publication_id("Smith et al. 2020").resolved
 ```
 
 The canonical form matches `CitationHandle.reference_id`, so the two are
-interchangeable. Online resolution of a paper's title, authors and year from an
-identifier — the rest of #41 — is a hook left for a following PR.
+interchangeable (which is why a clinical-trial id reads `NCT:NCT00000419` — the
+`PREFIX:value` shape the rest of the substrate uses, prefix and value alike).
+Online resolution of a paper's title, authors and year from an identifier — the
+rest of #41 — is a hook left for a following PR.
 
 ## Limitations
 

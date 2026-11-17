@@ -50,6 +50,22 @@ def test_views_read_flags_and_verdicts() -> None:
     assert report.verification_for("nope") is None
 
 
+def test_verifications_for_returns_every_verdict_for_a_claim() -> None:
+    """A claim citing several works has several verdicts; the plural view shows all."""
+    report = _report(verifications=[
+        ClaimVerification(claim_id="c1", status=VerificationStatus.SUPPORTED,
+                          method="citation:resolution", reference_id="PMID:1"),
+        ClaimVerification(claim_id="c1", status=VerificationStatus.UNSUPPORTED,
+                          method="citation:resolution", reference_id="PMID:999999999"),
+    ])
+    verdicts = report.verifications_for("c1")
+    assert len(verdicts) == 2
+    assert {v.status for v in verdicts} == {
+        VerificationStatus.SUPPORTED.value, VerificationStatus.UNSUPPORTED.value,
+    }
+    assert report.verifications_for("c2") == []
+
+
 def test_empty_report_reads_cleanly() -> None:
     """A triage-only report with no flags and no verdicts reads through the views."""
     report = _report()

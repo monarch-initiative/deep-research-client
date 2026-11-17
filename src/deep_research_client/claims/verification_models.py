@@ -105,6 +105,10 @@ class VerificationReport(GeneratedVerificationReport):
     def verification_for(self, claim_id: str) -> Optional[ClaimVerification]:
         """The first verdict recorded for a claim, if any.
 
+        A claim citing several works has one verdict per work; this returns the
+        first. Use :meth:`verifications_for` to see them all — the first being
+        SUPPORTED does not mean a later one is not UNSUPPORTED.
+
         Args:
             claim_id: A claim id within the verified source's ClaimSet.
 
@@ -115,3 +119,14 @@ class VerificationReport(GeneratedVerificationReport):
             if v.claim_id == claim_id:
                 return v
         return None
+
+    def verifications_for(self, claim_id: str) -> list[ClaimVerification]:
+        """Every verdict recorded for a claim, in report order.
+
+        Args:
+            claim_id: A claim id within the verified source's ClaimSet.
+
+        Returns:
+            Its :class:`ClaimVerification` records — one per cited work checked.
+        """
+        return [v for v in self.verification_list if v.claim_id == claim_id]

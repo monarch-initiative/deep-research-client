@@ -64,6 +64,16 @@ from .models import (
     content_sha256,
 )
 from .rubrics import summarize_alignment
+from .verification_models import (
+    ClaimVerification,
+    Decidability,
+    FlagKind,
+    ReviewFlag,
+    VerificationReport,
+    VerificationStatus,
+    VerifiedSourceType,
+    VerifierInfo,
+)
 
 __all__ = [
     # Extraction (issue #43, item 1)
@@ -121,4 +131,13 @@ __all__ = [
     "GroundingCandidate",
     "GrounderInfo",
     "OakGrounder",
+    # Verification data model (issue #43, item 5)
+    "ClaimVerification",
+    "Decidability",
+    "FlagKind",
+    "ReviewFlag",
+    "VerificationReport",
+    "VerificationStatus",
+    "VerifiedSourceType",
+    "VerifierInfo",
 ]

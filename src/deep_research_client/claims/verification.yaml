@@ -1,0 +1,260 @@
+id: https://w3id.org/monarch-initiative/deep-research-client/verification
+name: verification
+title: Deep Research Client Claim Verification
+description: >-
+  Data model for verifying a source's claims and surfacing the ones that need
+  human review (issue #43, item 5). Extraction (claims.yaml) records what a
+  source says; alignment (alignment.yaml) relates one source's claims to
+  another's; this schema records what is wrong, or unproven, and who can settle
+  it.
+
+  Two products sit in a VerificationReport:
+
+  - flags: a ReviewFlag per claim or pair that a person (or a downstream tool)
+    should look at -- a domain claim supported by nothing, a citation that
+    resolves to no identifier, a contradiction, a claim that frames a disputed
+    point as settled consensus. Each flag carries a `decidability`: whether the
+    question it raises can be settled by a machine rule, by an agent with tools,
+    or only by a human. This is the heart of the schema: the flags do not
+    adjudicate, they route.
+  - verifications: a ClaimVerification per claim a Verifier checked, recording
+    the verdict (supported, unsupported, contradicted, unverifiable, needs
+    review), the method, and enough provenance to reproduce it. A Verifier is a
+    pluggable hook (see verification.py); citation verification against the cited
+    work is the one backend shipped here, and it connects to publication
+    identifier normalisation (issue #41).
+
+  This schema is standalone: it imports only linkml:types and redeclares a
+  lightweight SourceType rather than importing claims.yaml, so each datamodel
+  generates independently (as claims.yaml and alignment.yaml already do) and the
+  drift test stays a single-file regenerate-and-diff.
+
+  This schema is the source of truth for
+  deep_research_client/claims/verification_datamodel.py, generated with
+  `just gen-datamodel`. Derived views are added in
+  deep_research_client/claims/verification_models.py; they are not stored here.
+
+license: BSD-3-Clause
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  verification: https://w3id.org/monarch-initiative/deep-research-client/verification/
+  dcterms: http://purl.org/dc/terms/
+
+default_prefix: verification
+default_range: string
+
+imports:
+  - linkml:types
+
+enums:
+
+  VerifiedSourceType:
+    description: >-
+      What kind of document the verified claims came from. Mirrors
+      claims.SourceType; redeclared here to keep this schema standalone.
+    permissible_values:
+      MARKDOWN_REPORT:
+        description: A deep research report or other markdown prose.
+      STRUCTURED_DOCUMENT:
+        description: A YAML or JSON knowledge artifact.
+
+  Decidability:
+    description: >-
+      Who can settle the question a review flag raises. The flag is always
+      detected by a machine rule; this says who can adjudicate it, which is not
+      the same thing. A claim that cites nothing is detected mechanically, but
+      whether it is actually unsupported is an agent's or a person's judgement.
+    permissible_values:
+      MACHINE:
+        description: >-
+          A deterministic rule settles it with no further input, for example a
+          citation marker that resolves to no identifier at all.
+      AGENT:
+        description: >-
+          An automated agent with tools (search, retrieval, identifier
+          resolution) could settle it, though it may still escalate to a human.
+      HUMAN:
+        description: >-
+          Only a person can settle it. A contradiction between two claims, or a
+          disputed point framed as consensus, is a judgement no rule or tool
+          makes reliably.
+
+  FlagKind:
+    description: The kind of problem a review flag marks.
+    permissible_values:
+      UNSUPPORTED_CLAIM:
+        description: >-
+          A claim about the domain is presented as a finding or an attributed
+          result, yet cites nothing. It may be true, but the source gives nothing
+          to stand on. Background-knowledge claims are expected to be uncited and
+          are not flagged.
+      UNRESOLVED_CITATION:
+        description: >-
+          A claim is cited, but none of its citations resolve to a normalised
+          identifier (a PMID, DOI, and so on): the marker points nowhere that can
+          be checked. Connects to publication identifier normalisation (#41).
+      UNCHECKED_CITATION:
+        description: >-
+          A claim cites a resolvable identifier, but no verifier confirmed the
+          cited work supports it. Raised when verification ran but produced no
+          supporting or contradicting verdict for the claim.
+      WEAK_CITATION:
+        description: >-
+          A citation resolves and the work exists, but the work appears to be
+          about something other than the claim (low topical relevance). The
+          citation is real but may not support this claim.
+      CONTRADICTION:
+        description: >-
+          Two claims from different sources cannot both be true. Which, if
+          either, is right is a human judgement.
+      SELF_CONTRADICTION:
+        description: >-
+          Two claims from the same source cannot both be true: the source
+          contradicts itself. Flagged apart from CONTRADICTION because a source
+          disagreeing with itself is a different and usually worse problem.
+      CONSENSUS_OVERSTATED:
+        description: >-
+          A claim frames a point as settled or universal ("well established",
+          "consensus", "it is well known") while either citing nothing or taking
+          part in a contradiction. A disputed point dressed as consensus. A
+          lexical heuristic, so always a human's call.
+
+  VerificationStatus:
+    description: A Verifier's verdict on one claim.
+    permissible_values:
+      SUPPORTED:
+        description: The cited work or the evidence checked supports the claim.
+      UNSUPPORTED:
+        description: >-
+          The claim's support could not be found: a cited identifier does not
+          resolve to a real work, or no evidence was located for it.
+      CONTRADICTED:
+        description: The evidence checked contradicts the claim.
+      UNVERIFIABLE:
+        description: >-
+          No check could be run: no resolver for the identifier's kind, or the
+          claim offered nothing checkable. Nothing was learned either way.
+      NEEDS_REVIEW:
+        description: >-
+          The check ran but its result is not conclusive and a person should
+          look, for example a citation that resolves but is only weakly on topic.
+
+classes:
+
+  VerificationReport:
+    description: >-
+      The verification of one source's claims: the review flags raised and the
+      per-claim verdicts, with enough provenance to reproduce or audit them.
+    tree_root: true
+    attributes:
+      source_id:
+        description: >-
+          The verified source's id, as recorded on its ClaimSet (a path or URI).
+        required: true
+      source_type:
+        range: VerifiedSourceType
+        description: What kind of document the claims came from, when known.
+      verifier:
+        range: VerifierInfo
+        required: true
+        inlined: true
+      flags:
+        range: ReviewFlag
+        multivalued: true
+        inlined_as_list: true
+        description: >-
+          One per claim or pair that needs review. A claim may raise several
+          flags, or none.
+      verifications:
+        range: ClaimVerification
+        multivalued: true
+        inlined_as_list: true
+        description: >-
+          One per claim a Verifier checked. Empty when the report is triage-only
+          (no Verifier was run).
+
+  VerifierInfo:
+    description: What produced a verification, so it can be reproduced or compared.
+    attributes:
+      name:
+        description: >-
+          Verifier identifier, for example "triage" (flags only) or
+          "triage+citation".
+        required: true
+      methods:
+        multivalued: true
+        description: >-
+          The checks that ran, for example "triage" and "citation:resolution".
+      model:
+        description: >-
+          Model used, when a verifier called one: the id its replies report. None
+          for the rule-based triage and citation checks shipped here.
+      prompt_version:
+        description: Version of the prompt, when a model was used.
+      considered:
+        range: integer
+        description: How many claims were examined.
+      flagged:
+        range: integer
+        description: How many claims or pairs raised at least one review flag.
+      verified:
+        range: integer
+        description: How many claims a Verifier reached a verdict on.
+
+  ReviewFlag:
+    description: >-
+      One claim or pair a person or downstream tool should review, with the kind
+      of problem and who can settle it.
+    attributes:
+      kind:
+        range: FlagKind
+        required: true
+      decidability:
+        range: Decidability
+        required: true
+      claim_ids:
+        multivalued: true
+        description: >-
+          The claim ids the flag concerns, within the verified source's ClaimSet.
+          One for a claim-level flag; two for a contradiction between claims.
+      pair_id:
+        description: >-
+          The alignment pair id this flag came from, for a contradiction. Empty
+          for a claim-level flag.
+      message:
+        description: A short human-readable statement of what to review and why.
+        required: true
+      evidence:
+        description: >-
+          The claim text, cue, or other short snippet the flag was raised from,
+          so a reviewer sees what triggered it without opening the source.
+
+  ClaimVerification:
+    description: One Verifier's verdict on one claim, with its method and provenance.
+    attributes:
+      claim_id:
+        description: The id of the checked claim, within the verified source's ClaimSet.
+        required: true
+      status:
+        range: VerificationStatus
+        required: true
+      method:
+        description: >-
+          How the verdict was reached, for example "citation:resolution" or
+          "citation:relevance".
+        required: true
+      reference_id:
+        slot_uri: dcterms:references
+        description: >-
+          The normalised identifier that was checked, when the verdict is about a
+          cited work (a PMID, DOI, and so on).
+      confidence:
+        range: float
+        description: The verifier's confidence in the verdict, 0 to 1, when it gave one.
+      note:
+        description: A short human-readable gloss of the verdict.
+      verifier:
+        description: >-
+          Which verifier produced this verdict, when a report mixes several. The
+          same name the VerifierInfo would carry for that backend.

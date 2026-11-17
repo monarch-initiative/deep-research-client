@@ -937,7 +937,7 @@ deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
 #### claims align
 
 ```bash
-deep-research-client claims align CLAIMS_A CLAIMS_B [OPTIONS]
+deep-research-client claims align CLAIMS_A [CLAIMS_B] [OPTIONS]
 ```
 
 Align one claim set against another — or, with a single input, against itself —
@@ -952,7 +952,7 @@ and the `evidential_relation` (derived from each claim's `about` and `basis`). S
 | `--output`, `-o PATH` | Write the alignment here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
 | `--rubric / --no-rubric` | Also compute report-level rubric metrics and print a summary to stderr (default: off) |
 | `--rubric-output PATH` | Write the rubric summary here (`.json`/`.yaml`); implies `--rubric` |
-| `--reference TEXT` | Which side is the reference the other is judged against: `a` or `b` (default: `b`) |
+| `--reference TEXT` | Which side the rubric judges the other against: `a` or `b` (default: `b`). Two inputs only — refused for a within-report alignment |
 | `--llm-backend TEXT` | `openai` (default) or `claude-code`, as for `claims extract` |
 | `--llm-model TEXT` | Model that classifies the semantic relation (default: `gpt-4o-mini`, or `sonnet` with `--llm-backend claude-code`) |
 | `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API. `openai` backend only |

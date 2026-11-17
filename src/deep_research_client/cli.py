@@ -4382,7 +4382,7 @@ def claims_align(
     if within and (rubric or rubric_output is not None):
         _error("--rubric compares two sources; it does not apply to aligning a set with itself.")
         raise typer.Exit(1)
-    reference = reference or "b"
+    ref_side = reference or "b"
 
     set_a = _load_claim_set(claims_a)
     set_b = _load_claim_set(claims_b) if claims_b is not None else None
@@ -4443,8 +4443,8 @@ def claims_align(
 
     if rubric or rubric_output is not None:
         assert set_b is not None  # within was refused above
-        summary = summarize_alignment(alignment, set_a, set_b, reference=reference)
-        _warn(f"Rubric (reference = source {reference}):")
+        summary = summarize_alignment(alignment, set_a, set_b, reference=ref_side)
+        _warn(f"Rubric (reference = source {ref_side}):")
         for metric in summary.metrics or []:
             value = "n/a" if metric.value is None else f"{metric.value:.2f}"
             _warn(f"  {metric.name}: {value} ({metric.numerator}/{metric.denominator}) -- {metric.note}")

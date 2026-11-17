@@ -78,7 +78,7 @@ def test_a_total_outage_raises_rather_than_returning_nothing() -> None:
     grounder = _grounder(_ALL_BAD)
     with pytest.raises(GroundingError, match="Every ontology search"):
         grounder._candidates("anything")
-    assert grounder.searches_ok == 0 and grounder.searches_failed >= 3
+    assert (grounder.searches_ok, grounder.searches_failed) == (0, 3)  # exactly the floor
 
 
 def test_a_total_outage_fails_fast_without_calling_the_model() -> None:

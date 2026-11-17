@@ -74,10 +74,11 @@ ontology_adapters:
 
 The config is the same `oak_config.yaml` term validation uses. `--adapter` sets the
 default for an entry with no value (`ols:` over the network, `sqlite:obo:` for bulk
-local lookups); `--offline` resolves only from the cache. `--include-definitions`
-shows each candidate's definition to the model — a help for disambiguation, but one
-extra request per candidate over a networked adapter, so it is off by default and
-best paired with a local `sqlite:obo:` adapter.
+local lookups); `--offline` resolves only from the cache, so with an empty cache it
+grounds nothing — populate the cache with an online run first, or use a local
+`sqlite:obo:` adapter. `--include-definitions` shows each candidate's definition to
+the model — a help for disambiguation, but extra lookups over a networked adapter,
+so it is off by default and best paired with a local `sqlite:obo:` adapter.
 
 ## Limitations
 

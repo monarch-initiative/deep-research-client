@@ -59,11 +59,11 @@ class OakGrounder:
         cache_dir: Where OAK caches labels between runs, if the adapter caches.
         offline: Build a cache-only resolver that never reaches the network.
         candidates_per_ontology: How many search hits to keep per ontology.
-        include_definitions: Fetch each candidate's definition for the prompt. Off
-            by default: over a networked adapter (``ols:``) it is one extra request
-            per candidate, which dominates runtime; labels alone are usually enough
-            for the model to choose. Worth turning on with a local ``sqlite:obo:``
-            adapter, where it is cheap.
+        include_definitions: Fetch candidate definitions for the prompt. Off by
+            default: over a networked adapter (``ols:``) it adds lookups that
+            dominate runtime, and labels alone are usually enough for the model to
+            choose. Worth turning on with a local ``sqlite:obo:`` adapter, where it
+            is cheap.
         max_tokens: Reply budget for the choice.
     """
 
@@ -144,6 +144,12 @@ class OakGrounder:
             try:
                 adapter = self._access.get_adapter(prefix)
                 if adapter is None:
+                    # No adapter for a configured prefix is a search that could not
+                    # run, so it counts as failed -- otherwise a config where every
+                    # prefix is unresolvable would silently ground nothing and never
+                    # trip the outage check.
+                    self.searches_failed += 1
+                    logger.warning("No ontology adapter for %s; skipping", prefix)
                     continue
                 curies = [c for c in list(adapter.basic_search(label))[: self._candidates_per_ontology]
                           if c not in found]

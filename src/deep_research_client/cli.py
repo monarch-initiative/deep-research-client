@@ -4529,8 +4529,8 @@ def claims_ground(
         "--offline", help="Resolve only from the cache; never reach the network")] = False,
     include_definitions: Annotated[bool, typer.Option(
         "--include-definitions",
-        help="Show each candidate's definition to the model. A request each over a "
-             "networked adapter; worth it with a local sqlite:obo: adapter")] = False,
+        help="Show candidate definitions to the model. Extra lookups over a networked "
+             "adapter; worth it with a local sqlite:obo: adapter")] = False,
     llm_backend: Annotated[str, typer.Option(
         "--llm-backend",
         help="How the model is called: openai or claude-code")] = "openai",

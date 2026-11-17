@@ -4306,8 +4306,9 @@ def _render_payload(payload: dict, output: Optional[Path]) -> None:
 def claims_align(
     claims_a: Annotated[Path, typer.Argument(
         help="A claim set from `claims extract` (the A side)")],
-    claims_b: Annotated[Path, typer.Argument(
-        help="A claim set from `claims extract` (the B side)")],
+    claims_b: Annotated[Optional[Path], typer.Argument(
+        help="A second claim set (the B side). Omit to align the first set with "
+             "itself, finding where it repeats, refines or contradicts itself")] = None,
     output: Annotated[Optional[Path], typer.Option(
         "--output", "-o",
         help="Write the alignment here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
@@ -4341,14 +4342,19 @@ def claims_align(
         "--min-overlap", min=0.0, max=1.0,
         help="Lexical overlap (Jaccard) at or above which a pair is a candidate")] = None,
 ):
-    """Align the claims of one source against another and classify each pair.
+    """Align the claims of one source against another, or a source with itself.
 
-    Both inputs are claim sets from `claims extract`. Candidate pairs are proposed
-    without a model (shared entities, shared citations, lexical overlap); a model
-    then classifies each pair's semantic relation (identical, subsumes, close,
-    consistent, complementary, contradictory, unrelated). The evidential relation
-    (observation vs attribution vs background knowledge) and the shared-citation
-    flag are derived from the claims, not judged.
+    Inputs are claim sets from `claims extract`. With two, A is aligned against B.
+    With one, the set is aligned against itself (the within-report case: where a
+    report repeats, refines or contradicts its own claims). Candidate pairs are
+    proposed without a model (shared entities, shared citations, lexical overlap);
+    a model then classifies each pair's semantic relation (identical, subsumes,
+    close, consistent, complementary, contradictory, unrelated). The evidential
+    relation (observation vs attribution vs background knowledge) and the
+    shared-citation flag are derived from the claims, not judged.
+
+    The rubric (--rubric) is only meaningful for two different sources, so it is
+    refused for a within-source alignment.
 
     Examples:
 
@@ -4356,17 +4362,24 @@ def claims_align(
 
       deep-research-client claims align report.claims.json gold.claims.yaml \\
         --llm-backend claude-code --rubric --reference b
+
+      deep-research-client claims align report.claims.json \\
+        --llm-backend claude-code -o self.align.json
     """
-    from .claims import aalign_claim_sets, summarize_alignment
+    from .claims import aalign_claim_sets, aalign_within, summarize_alignment
     from .claims.align_llm import DEFAULT_ALIGN_MAX_TOKENS
     from .claims.candidates import DEFAULT_MIN_OVERLAP
 
+    within = claims_b is None
     if reference not in ("a", "b"):
         _error(f"--reference must be a or b, not {reference!r}")
         raise typer.Exit(1)
+    if within and (rubric or rubric_output is not None):
+        _error("--rubric compares two sources; it does not apply to aligning a set with itself.")
+        raise typer.Exit(1)
 
     set_a = _load_claim_set(claims_a)
-    set_b = _load_claim_set(claims_b)
+    set_b = None if within else _load_claim_set(claims_b)  # type: ignore[arg-type]
 
     llm_client, model = _claims_llm_client(
         llm_backend, llm_model, llm_base_url, llm_api_key_env,
@@ -4375,13 +4388,20 @@ def claims_align(
 
     import openai
 
+    max_tokens = llm_max_tokens if llm_max_tokens is not None else DEFAULT_ALIGN_MAX_TOKENS
+    overlap = min_overlap if min_overlap is not None else DEFAULT_MIN_OVERLAP
     try:
-        alignment = asyncio.run(aalign_claim_sets(
-            set_a, set_b, llm_client=llm_client, model=model,
-            concurrency=concurrency,
-            max_tokens=llm_max_tokens if llm_max_tokens is not None else DEFAULT_ALIGN_MAX_TOKENS,
-            min_overlap=min_overlap if min_overlap is not None else DEFAULT_MIN_OVERLAP,
-        ))
+        if within:
+            alignment = asyncio.run(aalign_within(
+                set_a, llm_client=llm_client, model=model,
+                concurrency=concurrency, max_tokens=max_tokens, min_overlap=overlap,
+            ))
+        else:
+            assert set_b is not None
+            alignment = asyncio.run(aalign_claim_sets(
+                set_a, set_b, llm_client=llm_client, model=model,
+                concurrency=concurrency, max_tokens=max_tokens, min_overlap=overlap,
+            ))
     except ProviderError as exc:
         _error(f"Could not align the claim sets: {_claims_backend_failure(exc)}")
         raise typer.Exit(1)
@@ -4389,13 +4409,22 @@ def claims_align(
         _error(f"Could not align the claim sets: {exc}")
         raise typer.Exit(1)
 
-    unaligned_a = alignment.unaligned_a_ids([c.id for c in set_a.claim_list])
-    unaligned_b = alignment.unaligned_b_ids([c.id for c in set_b.claim_list])
-    logger.info(
-        "Aligned %d pairs across %d A claims and %d B claims; %d A and %d B align to nothing",
-        len(alignment.aligned_pairs), len(set_a.claim_list), len(set_b.claim_list),
-        len(unaligned_a), len(unaligned_b),
-    )
+    if within:
+        covered = alignment.aligned_a_ids | alignment.aligned_b_ids
+        alone = sum(1 for c in set_a.claim_list if c.id not in covered)
+        logger.info(
+            "Aligned %d pairs among %d claims; %d claims relate to no other",
+            len(alignment.aligned_pairs), len(set_a.claim_list), alone,
+        )
+    else:
+        assert set_b is not None
+        unaligned_a = alignment.unaligned_a_ids([c.id for c in set_a.claim_list])
+        unaligned_b = alignment.unaligned_b_ids([c.id for c in set_b.claim_list])
+        logger.info(
+            "Aligned %d pairs across %d A claims and %d B claims; %d A and %d B align to nothing",
+            len(alignment.aligned_pairs), len(set_a.claim_list), len(set_b.claim_list),
+            len(unaligned_a), len(unaligned_b),
+        )
     if alignment.contradictions:
         _warn(
             f"{len(alignment.contradictions)} aligned pairs are contradictory "
@@ -4408,6 +4437,7 @@ def claims_align(
         logger.info(f"Alignment written to {output}")
 
     if rubric or rubric_output is not None:
+        assert set_b is not None  # within was refused above
         summary = summarize_alignment(alignment, set_a, set_b, reference=reference)
         _warn(f"Rubric (reference = source {reference}):")
         for metric in summary.metrics or []:

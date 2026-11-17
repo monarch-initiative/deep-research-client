@@ -12,9 +12,17 @@ from pathlib import Path
 import pytest
 
 from deep_research_client.claims import (
+    AnchorStatus,
+    CitationStatus,
+    Claim,
     ClaimSet,
+    ClaimTopic,
+    ExtractorInfo,
     SemanticRelation,
+    SourceDocument,
+    SourceType,
     aalign_claim_sets,
+    aalign_within,
     acompare_claims,
     summarize_alignment,
 )
@@ -76,3 +84,33 @@ async def test_compare_claims_classifies_a_single_pair() -> None:
     pair = await acompare_claims(a, b, llm_client=ClaudeCodeChatClient(), model=DEFAULT_CLAUDE_CODE_MODEL)
     assert pair.semantic_relation == SemanticRelation.IDENTICAL
     assert pair.candidate_signals is None  # nothing proposed it; it was asked directly
+
+
+async def test_a_report_aligns_against_itself() -> None:
+    """Within-report alignment finds where a source repeats and contradicts itself."""
+    _needs_claude()
+    from deep_research_client.claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
+
+    def claim(cid, text):
+        return Claim(id=cid, claim_text=text, anchor_status=AnchorStatus.EXACT,
+                     citation_status=CitationStatus.UNCITED, about=ClaimTopic.DOMAIN)
+
+    # Two near-duplicate statements and one that conflicts with them.
+    report = ClaimSet(
+        source=SourceDocument(id="within.md", source_type=SourceType.MARKDOWN_REPORT),
+        extractor=ExtractorInfo(name="fixture"),
+        claims=[
+            claim("c1", "Marfan syndrome is caused by variants in FBN1."),
+            claim("c2", "FBN1 variants are the cause of Marfan syndrome."),
+            claim("c3", "Marfan syndrome is caused by variants in TGFBR2, not FBN1."),
+        ],
+    )
+    alignment = await aalign_within(
+        report, llm_client=ClaudeCodeChatClient(), model=DEFAULT_CLAUDE_CODE_MODEL, min_overlap=0.3,
+    )
+
+    assert alignment.source_a.id == alignment.source_b.id == "within.md"
+    assert alignment.aligner.name == "llm-pairwise-within"
+    # c1 and c2 say the same thing; the model should see that.
+    c1_c2 = next(p for p in alignment.pair_list if (p.claim_a_id, p.claim_b_id) == ("c1", "c2"))
+    assert c1_c2.semantic_relation in {SemanticRelation.IDENTICAL, SemanticRelation.CLOSE}

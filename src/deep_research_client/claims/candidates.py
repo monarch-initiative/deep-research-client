@@ -32,6 +32,7 @@ __all__ = [
     "CandidatePair",
     "Embedder",
     "candidate_pairs",
+    "candidate_pairs_within",
     "grounded_ids",
     "jaccard",
 ]
@@ -163,10 +164,83 @@ def candidate_pairs(
     >>> [(p.claim_a.id, p.claim_b.id, [s.value for s in p.signal_list]) for p in pairs]
     [('a1', 'b1', ['ENTITY', 'LEXICAL'])]
     """
+    return _candidate_pairs(
+        claims_a, claims_b, accept=_ALL_PAIRS,
+        min_overlap=min_overlap, embedder=embedder, embed_threshold=embed_threshold,
+    )
+
+
+def candidate_pairs_within(
+    claims: Sequence[Claim],
+    *,
+    min_overlap: float = DEFAULT_MIN_OVERLAP,
+    embedder: Optional[Embedder] = None,
+    embed_threshold: float = DEFAULT_EMBED_THRESHOLD,
+) -> list[CandidatePair]:
+    """Propose the pairs worth classifying *within* one claim set.
+
+    For comparing a source against itself: finding where a report repeats,
+    refines, or contradicts its own claims. Each unordered pair of distinct
+    claims is proposed at most once (``i`` before ``j``); a claim is never paired
+    with itself. In a single-topic document lexical overlap is less
+    discriminative than across sources, so a higher ``min_overlap`` is often
+    wanted.
+
+    Args:
+        claims: The claims to compare against each other.
+        min_overlap: Lexical Jaccard at or above which a pair is proposed.
+        embedder: Optional batch embedder; without it, no embedding signal.
+        embed_threshold: Cosine at or above which the embedder proposes a pair.
+
+    Returns:
+        Candidate pairs with ``claim_a`` earlier than ``claim_b`` in ``claims``.
+
+    >>> from deep_research_client.claims import EntityMention
+    >>> def claim(i, text, ent=None):
+    ...     return Claim(id=i, claim_text=text, anchor_status="EXACT", citation_status="UNCITED",
+    ...                  entities=[EntityMention(label="x", id=ent)] if ent else None)
+    >>> claims = [claim("c1", "FBN1 variants cause Marfan syndrome.", "HGNC:3603"),
+    ...           claim("c2", "Marfan syndrome is caused by FBN1 variants.", "HGNC:3603"),
+    ...           claim("c3", "The sky is blue.")]
+    >>> [(p.claim_a.id, p.claim_b.id) for p in candidate_pairs_within(claims)]
+    [('c1', 'c2')]
+    """
+    return _candidate_pairs(
+        claims, claims, accept=_lower_triangle,
+        min_overlap=min_overlap, embedder=embedder, embed_threshold=embed_threshold,
+    )
+
+
+def _ALL_PAIRS(i: int, j: int) -> bool:
+    """Accept every (i, j): the cross-set case."""
+    return True
+
+
+def _lower_triangle(i: int, j: int) -> bool:
+    """Accept only i < j: unordered distinct pairs, the within-set case."""
+    return i < j
+
+
+def _candidate_pairs(
+    claims_a: Sequence[Claim],
+    claims_b: Sequence[Claim],
+    *,
+    accept: Callable[[int, int], bool],
+    min_overlap: float,
+    embedder: Optional[Embedder],
+    embed_threshold: float,
+) -> list[CandidatePair]:
+    """Collect candidate pairs over claims_a × claims_b, keeping those ``accept``s.
+
+    Shared by :func:`candidate_pairs` (every pair) and
+    :func:`candidate_pairs_within` (``i < j`` of one list). When the two lists are
+    the same object, the embedder is called once.
+    """
     signals: dict[tuple[int, int], set[CandidateSignal]] = {}
 
     def add(i: int, j: int, signal: CandidateSignal) -> None:
-        signals.setdefault((i, j), set()).add(signal)
+        if accept(i, j):
+            signals.setdefault((i, j), set()).add(signal)
 
     # Entity and citation: inverted index from id to the B claims that carry it.
     b_by_entity: dict[str, list[int]] = {}
@@ -186,24 +260,25 @@ def candidate_pairs(
 
     # Lexical: Jaccard over content words, computed once per claim.
     terms_a = [set(content_terms(c.claim_text)) for c in claims_a]
-    terms_b = [set(content_terms(c.claim_text)) for c in claims_b]
+    terms_b = terms_a if claims_b is claims_a else [set(content_terms(c.claim_text)) for c in claims_b]
     for i, ta in enumerate(terms_a):
         for j, tb in enumerate(terms_b):
             if jaccard(ta, tb) >= min_overlap:
                 add(i, j, CandidateSignal.LEXICAL)
 
     # Embedding: optional, cosine over caller-supplied vectors. Vectors are
-    # normalised once, so each pair's cosine is one dot product.
+    # normalised once, so each pair's cosine is one dot product; within one set
+    # the texts are embedded once.
     if embedder is not None and claims_a and claims_b:
         vecs_a = list(embedder([c.claim_text for c in claims_a]))
-        vecs_b = list(embedder([c.claim_text for c in claims_b]))
+        vecs_b = vecs_a if claims_b is claims_a else list(embedder([c.claim_text for c in claims_b]))
         if len(vecs_a) != len(claims_a) or len(vecs_b) != len(claims_b):
             raise ValueError(
                 f"embedder returned {len(vecs_a)} and {len(vecs_b)} vectors for "
                 f"{len(claims_a)} and {len(claims_b)} claims; it must return one per text"
             )
         units_a = [_unit(v) for v in vecs_a]
-        units_b = [_unit(v) for v in vecs_b]
+        units_b = units_a if vecs_b is vecs_a else [_unit(v) for v in vecs_b]
         if len({len(v) for v in units_a} | {len(v) for v in units_b}) > 1:
             raise ValueError("embedder returned vectors of differing dimensions")
         for i, ua in enumerate(units_a):

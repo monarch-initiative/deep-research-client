@@ -79,6 +79,36 @@ from deep_research_client.claims import compare_claims
 pair = compare_claims(claim_a, claim_b, llm_client=AsyncOpenAI(), model="gpt-4o-mini")
 ```
 
+## Comparing a report with itself
+
+Alignment is not only across sources. Aligning a claim set against itself finds
+where one report **repeats, refines or contradicts its own claims** — internal
+redundancy, over-claiming, and self-contradiction. Omit the second input on the
+CLI, or call `align_within`:
+
+```bash
+deep-research-client claims align report.claims.json \
+    --llm-backend claude-code -o report.self-align.json
+```
+
+```python
+from deep_research_client.claims import align_within
+
+alignment = align_within(claim_set, llm_client=..., model=...)
+redundant = [p for p in alignment.pair_list
+             if p.semantic_relation in ("IDENTICAL", "CLOSE")]
+refinements = [p for p in alignment.pair_list
+               if p.semantic_relation in ("SUBSUMES", "SUBSUMED_BY")]
+self_contradictions = alignment.contradictions
+```
+
+Each unordered pair of distinct claims is classified once; a claim is never
+paired with itself. Within one document every claim tends to be on the one topic,
+so lexical overlap is a weaker signal than it is across sources — a higher
+`--min-overlap` keeps the candidate pairs meaningful. The rubric metrics compare
+two *different* sources, so they do not apply here and `--rubric` is refused for a
+within-report alignment.
+
 ## How pairs are proposed
 
 Asking a model about every A×B pair does not scale (two reports of a few hundred

@@ -7,8 +7,10 @@ alignment across sources and verification consume these records later.
 
 from .align import (
     aalign_claim_sets,
+    aalign_within,
     acompare_claims,
     align_claim_sets,
+    align_within,
     compare_claims,
 )
 from .alignment_models import (
@@ -25,7 +27,7 @@ from .alignment_models import (
     evidential_relation,
     shares_citation,
 )
-from .candidates import CandidatePair, candidate_pairs
+from .candidates import CandidatePair, candidate_pairs, candidate_pairs_within
 from .extract import (
     SourceFormat,
     aextract_claims,
@@ -78,10 +80,13 @@ __all__ = [
     "content_sha256",
     # Alignment data model and derived axes (issue #43, item 2)
     "aalign_claim_sets",
+    "aalign_within",
     "acompare_claims",
     "align_claim_sets",
+    "align_within",
     "compare_claims",
     "candidate_pairs",
+    "candidate_pairs_within",
     "evidential_relation",
     "shares_citation",
     "AlignedClaimPair",

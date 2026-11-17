@@ -940,14 +940,15 @@ deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
 deep-research-client claims align CLAIMS_A CLAIMS_B [OPTIONS]
 ```
 
-Align one claim set against another and classify each pair on two axes: the
-`semantic_relation` (judged by a model) and the `evidential_relation` (derived
-from each claim's `about` and `basis`). See [Align Claims](../how-to/align-claims.md).
+Align one claim set against another — or, with a single input, against itself —
+and classify each pair on two axes: the `semantic_relation` (judged by a model)
+and the `evidential_relation` (derived from each claim's `about` and `basis`). See
+[Align Claims](../how-to/align-claims.md).
 
 | Argument/Option | Description |
 |-----------------|-------------|
 | `CLAIMS_A` | A claim set from `claims extract` (the A side) |
-| `CLAIMS_B` | A claim set from `claims extract` (the B side) |
+| `CLAIMS_B` | A second claim set (the B side). Omit to align `CLAIMS_A` with itself (the within-report case); `--rubric` is then refused |
 | `--output`, `-o PATH` | Write the alignment here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
 | `--rubric / --no-rubric` | Also compute report-level rubric metrics and print a summary to stderr (default: off) |
 | `--rubric-output PATH` | Write the rubric summary here (`.json`/`.yaml`); implies `--rubric` |
@@ -968,6 +969,10 @@ optional embedding signal is a Python-API hook (`embedder=`), not a CLI flag.
 # Align a report against a curated gold file, via a logged-in Claude Code
 deep-research-client claims align report.claims.json gold.claims.json \
   --llm-backend claude-code --rubric --reference b -o alignment.json
+
+# Align a report with itself: find internal redundancy and self-contradiction
+deep-research-client claims align report.claims.json \
+  --llm-backend claude-code -o report.self-align.json
 ```
 
 ---

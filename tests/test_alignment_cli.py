@@ -51,6 +51,13 @@ def test_a_backend_that_cannot_run_is_refused_before_any_call(args, message) -> 
     assert message in result.stderr
 
 
+def test_rubric_is_refused_for_a_within_report_alignment() -> None:
+    """The rubric compares two sources; it makes no sense aligning a set with itself."""
+    result = runner.invoke(app, ["claims", "align", A, "--rubric"])
+    assert result.exit_code == 1
+    assert "--rubric compares two sources" in result.stderr
+
+
 def test_without_a_key_the_reason_names_alignment(monkeypatch) -> None:
     """The no-key message says a model is needed to align, and how to provide one."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

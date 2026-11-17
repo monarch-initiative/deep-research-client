@@ -14,6 +14,7 @@ from deep_research_client.claims import (
     Claim,
     EntityMention,
     candidate_pairs,
+    candidate_pairs_within,
 )
 from deep_research_client.claims.candidates import jaccard
 
@@ -95,6 +96,25 @@ def test_jaccard_is_intersection_over_union() -> None:
 def test_empty_inputs_produce_no_candidates() -> None:
     assert candidate_pairs([], []) == []
     assert candidate_pairs([_claim("a1", "A sentence.")], []) == []
+
+
+def test_within_generates_unordered_distinct_pairs() -> None:
+    """A set against itself: each pair once, i before j, never a claim with itself."""
+    claims = [
+        _claim("c1", "FBN1 variants cause Marfan syndrome.", entity="HGNC:3603"),
+        _claim("c2", "Marfan syndrome is caused by FBN1 variants.", entity="HGNC:3603"),
+        _claim("c3", "Marfan syndrome arises from FBN1 variants.", entity="HGNC:3603"),
+    ]
+    ids = [(p.claim_a.id, p.claim_b.id) for p in candidate_pairs_within(claims)]
+    assert ids == [("c1", "c2"), ("c1", "c3"), ("c2", "c3")]
+
+
+def test_within_pairs_nothing_when_claims_do_not_overlap() -> None:
+    claims = [
+        _claim("c1", "FBN1 variants cause Marfan syndrome.", entity="HGNC:3603"),
+        _claim("c2", "The mitochondrion is the powerhouse of the cell.", entity="GO:0005739"),
+    ]
+    assert candidate_pairs_within(claims) == []
 
 
 def test_an_embedder_returning_the_wrong_count_is_refused() -> None:

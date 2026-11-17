@@ -31,13 +31,16 @@ from .candidates import (
     CandidatePair,
     Embedder,
     candidate_pairs,
+    candidate_pairs_within,
 )
 from .models import Claim, ClaimSet, SourceDocument
 
 __all__ = [
     "aalign_claim_sets",
+    "aalign_within",
     "acompare_claims",
     "align_claim_sets",
+    "align_within",
     "compare_claims",
 ]
 
@@ -123,6 +126,84 @@ async def aalign_claim_sets(
         ),
         pairs=pairs,
     )
+
+
+async def aalign_within(
+    claim_set: ClaimSet,
+    *,
+    llm_client: Any,
+    model: str,
+    embedder: Optional[Embedder] = None,
+    concurrency: int = 4,
+    max_tokens: int = DEFAULT_ALIGN_MAX_TOKENS,
+    min_overlap: float = DEFAULT_MIN_OVERLAP,
+    embed_threshold: float = DEFAULT_EMBED_THRESHOLD,
+) -> ClaimAlignment:
+    """Align one source's claims against each other: compare a report with itself.
+
+    This finds where a source repeats, refines or contradicts its own claims.
+    Each unordered pair of distinct claims is classified once; the result is a
+    ClaimAlignment whose A and B sources are the one source. In a single-topic
+    document lexical overlap is less discriminative, so a higher ``min_overlap``
+    than the cross-source default is often wanted.
+
+    Args:
+        claim_set: The source's claims; both sides of every pair come from it.
+        llm_client: An ``openai.AsyncOpenAI``-compatible client.
+        model: Model that classifies the semantic relation.
+        embedder: Optional batch embedder; the texts are embedded once.
+        concurrency: Classification requests in flight at once.
+        max_tokens: Reply budget per pair; a reply cut off at it raises.
+        min_overlap: Lexical Jaccard at or above which a pair is a candidate.
+        embed_threshold: Cosine at or above which the embedder proposes a pair.
+
+    Returns:
+        The within-source alignment: a pair per classified candidate, with both
+        axes, and the source recorded as both source_a and source_b.
+    """
+    candidates = candidate_pairs_within(
+        claim_set.claim_list,
+        min_overlap=min_overlap, embedder=embedder, embed_threshold=embed_threshold,
+    )
+    classification = await classify_pairs(
+        candidates, llm_client, model, concurrency=concurrency, max_tokens=max_tokens,
+    )
+    pairs = [
+        _pair(number, candidate, verdict)
+        for number, (candidate, verdict) in enumerate(zip(candidates, classification.verdicts), 1)
+    ]
+    source = _aligned_source(claim_set.source)
+    return ClaimAlignment(
+        source_a=source,
+        source_b=source,
+        aligner=AlignerInfo(
+            name="llm-pairwise-within",
+            model=classification.model_label(model),
+            prompt_version=ALIGN_PROMPT_VERSION,
+            min_overlap=min_overlap,
+            embedder_used=embedder is not None,
+        ),
+        pairs=pairs,
+    )
+
+
+def align_within(
+    claim_set: ClaimSet,
+    *,
+    llm_client: Any,
+    model: str,
+    embedder: Optional[Embedder] = None,
+    concurrency: int = 4,
+    max_tokens: int = DEFAULT_ALIGN_MAX_TOKENS,
+    min_overlap: float = DEFAULT_MIN_OVERLAP,
+    embed_threshold: float = DEFAULT_EMBED_THRESHOLD,
+) -> ClaimAlignment:
+    """Synchronous :func:`aalign_within`, for callers without an event loop."""
+    return asyncio.run(aalign_within(
+        claim_set, llm_client=llm_client, model=model, embedder=embedder,
+        concurrency=concurrency, max_tokens=max_tokens,
+        min_overlap=min_overlap, embed_threshold=embed_threshold,
+    ))
 
 
 def align_claim_sets(

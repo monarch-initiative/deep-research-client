@@ -552,6 +552,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/ground-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ground Claims
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../how-to/align-claims/" class="md-nav__link">
         
   
@@ -1483,6 +1506,15 @@
   <a href="#claims-align" class="md-nav__link">
     <span class="md-ellipsis">
       claims align
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-ground" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims ground
     </span>
   </a>
   
@@ -2481,6 +2513,15 @@
   <a href="#claims-align" class="md-nav__link">
     <span class="md-ellipsis">
       claims align
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-ground" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims ground
     </span>
   </a>
   
@@ -4038,6 +4079,84 @@ deep-research-client claims align report.claims.json gold.claims.json \
 # Align a report with itself: find internal redundancy and self-contradiction
 deep-research-client claims align report.claims.json \
   --llm-backend claude-code -o report.self-align.json
+</code></pre>
+<h4 id="claims-ground">claims ground</h4>
+<pre><code class="language-bash">deep-research-client claims ground CLAIMS_FILE [OPTIONS]
+</code></pre>
+<p>Ground a claim set's entities to ontology CURIEs: each distinct entity label is
+searched against the configured ontologies with OAK, and a model chooses the term
+it denotes (or none). Fills <code>EntityMention.id</code>; does not change labels. An opt-in
+step; needs the <code>terms</code> extra (<code>pip install "deep_research_client[terms]"</code>). See
+<a href="../../how-to/ground-claims/">Ground Claims</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAIMS_FILE</code></td>
+<td>A claim set from <code>claims extract</code></td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Write the grounded set here (.json/.yaml); else JSON to stdout</td>
+</tr>
+<tr>
+<td><code>--ontology-config PATH</code></td>
+<td>An <code>oak_config.yaml</code> of ontologies to ground against. Exactly one of this or <code>--ontologies</code></td>
+</tr>
+<tr>
+<td><code>--ontologies TEXT</code></td>
+<td>A built-in set instead of a config file. One of: <code>biomedical</code> (MONDO, HP, GO, CHEBI, CL, UBERON)</td>
+</tr>
+<tr>
+<td><code>--max-terms INT</code></td>
+<td>Ground only the this-many most frequent distinct labels (search is the slow step)</td>
+</tr>
+<tr>
+<td><code>--adapter TEXT</code></td>
+<td>Default OAK adapter for a config entry with no value (<code>ols:</code>, <code>sqlite:obo:</code>)</td>
+</tr>
+<tr>
+<td><code>--terms-cache PATH</code></td>
+<td>Directory where OAK caches labels between runs</td>
+</tr>
+<tr>
+<td><code>--offline</code></td>
+<td>Resolve only from the cache; never reach the network</td>
+</tr>
+<tr>
+<td><code>--llm-backend TEXT</code></td>
+<td><code>openai</code> (default) or <code>claude-code</code>, as for the other claims commands</td>
+</tr>
+<tr>
+<td><code>--llm-model TEXT</code></td>
+<td>Model that chooses among candidates</td>
+</tr>
+<tr>
+<td><code>--llm-base-url TEXT</code> / <code>--llm-api-key-env TEXT</code></td>
+<td>OpenAI-compatible endpoint settings</td>
+</tr>
+<tr>
+<td><code>--concurrency INT</code></td>
+<td>Terms grounded in flight at once (default 4)</td>
+</tr>
+<tr>
+<td><code>--llm-max-tokens INT</code></td>
+<td>Reply budget per term</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># Ground against the built-in biomedical ontologies, via a logged-in Claude Code
+deep-research-client claims ground report.claims.json --ontologies biomedical \
+  --llm-backend claude-code -o report.grounded.json
+
+# A custom ontology set from a config, grounding only the 200 most frequent terms
+deep-research-client claims ground report.claims.json \
+  --ontology-config oak_config.yaml --max-terms 200 --adapter sqlite:obo:
 </code></pre>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>

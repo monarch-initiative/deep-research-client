@@ -11,7 +11,7 @@
         <link rel="canonical" href="https://ai4curation.github.io/deep-research-client/how-to/align-claims/">
       
       
-        <link rel="prev" href="../extract-claims/">
+        <link rel="prev" href="../ground-claims/">
       
       
         <link rel="next" href="../../examples/within-report-alignment/">
@@ -535,6 +535,29 @@
   
   <span class="md-ellipsis">
     Extract Claims
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ground-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ground Claims
     
   </span>
   
@@ -1335,7 +1358,9 @@ claims, refining a few, and contradicting itself nowhere — is worked through i
 claims each would be a hundred thousand calls). A cheap pass first proposes only
 the pairs worth classifying, and each pair records which signal proposed it:</p>
 <ul>
-<li><strong><code>ENTITY</code></strong> — the two claims share a grounded entity (the same CURIE).</li>
+<li><strong><code>ENTITY</code></strong> — the two claims share a grounded entity (the same CURIE). This
+  fires only on claims whose entities carry ids; <a href="../ground-claims/">grounding</a>
+  adds those, so running it first makes this signal far more effective.</li>
 <li><strong><code>CITATION</code></strong> — the two claims cite a work with the same resolved <code>reference_id</code>.</li>
 <li><strong><code>LEXICAL</code></strong> — the two claims' content words overlap at or above <code>--min-overlap</code>
   (Jaccard over stop-word-filtered, singularised terms).</li>

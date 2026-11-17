@@ -109,6 +109,10 @@ so lexical overlap is a weaker signal than it is across sources — a higher
 two *different* sources, so they do not apply here and `--rubric` is refused for a
 within-report alignment.
 
+A real run on one dismech report — which found the report restating 12 of its own
+claims, refining a few, and contradicting itself nowhere — is worked through in
+[the within-report comparison example](../examples/within-report-alignment.md).
+
 ## How pairs are proposed
 
 Asking a model about every A×B pair does not scale (two reports of a few hundred

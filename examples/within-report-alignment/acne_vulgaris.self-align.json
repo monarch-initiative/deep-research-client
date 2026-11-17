@@ -1,0 +1,1733 @@
+{
+  "source_a": {
+    "id": "Acne_Vulgaris-deep-research-falcon.md",
+    "source_type": "MARKDOWN_REPORT",
+    "title": "Disease Pathophysiology Research Template",
+    "content_sha256": "64a136589905b8c3608b7acd0a34bb7a3adee486a18b168cbbed1e9ac4c4d563"
+  },
+  "source_b": {
+    "id": "Acne_Vulgaris-deep-research-falcon.md",
+    "source_type": "MARKDOWN_REPORT",
+    "title": "Disease Pathophysiology Research Template",
+    "content_sha256": "64a136589905b8c3608b7acd0a34bb7a3adee486a18b168cbbed1e9ac4c4d563"
+  },
+  "aligner": {
+    "name": "llm-pairwise-within",
+    "model": "claude-sonnet-5-5",
+    "prompt_version": "1",
+    "min_overlap": 0.6,
+    "embedder_used": false
+  },
+  "pairs": [
+    {
+      "id": "p1",
+      "claim_a_id": "c13",
+      "claim_b_id": "c74",
+      "claim_a_text": "Chronic acne can culminate in extracellular matrix remodeling.",
+      "claim_b_text": "Chronic extracellular matrix remodeling underpins scars in acne.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.7,
+      "rationale": "A says chronic acne can lead to ECM remodeling, while B says chronic ECM remodeling underlies acne scars; they are compatible and concern the same causal chain (acne → ECM remodeling → scarring), but each adds a distinct link the other lacks, and neither is the same fact nor a nested special case of the other."
+    },
+    {
+      "id": "p2",
+      "claim_a_id": "c18",
+      "claim_b_id": "c63",
+      "claim_a_text": "Acne has a prevalence of 15–20% among adult women.",
+      "claim_b_text": "Adult female acne has a prevalence of 15–20%.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.95,
+      "rationale": "Both state that acne prevalence among adult women is 15–20%; 'adult female acne' and 'acne among adult women' denote the same population and condition, with only wording differing."
+    },
+    {
+      "id": "p3",
+      "claim_a_id": "c18",
+      "claim_b_id": "c166",
+      "claim_a_text": "Acne has a prevalence of 15–20% among adult women.",
+      "claim_b_text": "The prevalence of acne in adult women is 15–20%.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.97,
+      "rationale": "Both claims state that acne prevalence among adult women is 15–20%, differing only in phrasing, with the same population, condition, and value range."
+    },
+    {
+      "id": "p4",
+      "claim_a_id": "c19",
+      "claim_b_id": "c64",
+      "claim_a_text": "Hyperandrogenism occurs in about 50% of cases of adult female acne.",
+      "claim_b_text": "Hyperandrogenism occurs in about 50% of adult female acne cases.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.97,
+      "rationale": "Both claims assert that hyperandrogenism occurs in about 50% of adult female acne cases, differing only in trivial wording order."
+    },
+    {
+      "id": "p5",
+      "claim_a_id": "c19",
+      "claim_b_id": "c65",
+      "claim_a_text": "Hyperandrogenism occurs in about 50% of cases of adult female acne.",
+      "claim_b_text": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.6,
+      "rationale": "A gives about 50% for all adult female acne while B gives about 70% for the PCOS subset; the figures describe different populations (a subgroup can have a higher rate than the whole), so both can be true, but neither states the same fact or is a clean restatement of the other."
+    },
+    {
+      "id": "p6",
+      "claim_a_id": "c19",
+      "claim_b_id": "c167",
+      "claim_a_text": "Hyperandrogenism occurs in about 50% of cases of adult female acne.",
+      "claim_b_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.93,
+      "rationale": "Both claim hyperandrogenism is found in roughly 50% of adult female acne cases; 'occurs in about' vs 'is present in' is only a wording difference, with the hedge 'about' being trivial."
+    },
+    {
+      "id": "p7",
+      "claim_a_id": "c20",
+      "claim_b_id": "c65",
+      "claim_a_text": "Hyperandrogenism in adult female acne is commonly linked to PCOS.",
+      "claim_b_text": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.62,
+      "rationale": "Both concern hyperandrogenism, PCOS and adult female acne, but A says PCOS is a common association of hyperandrogenism while B gives a ~70% prevalence of hyperandrogenism within PCOS acne cases, so they run in different conditional directions and can both be true without either being a special case of the other."
+    },
+    {
+      "id": "p8",
+      "claim_a_id": "c20",
+      "claim_b_id": "c167",
+      "claim_a_text": "Hyperandrogenism in adult female acne is commonly linked to PCOS.",
+      "claim_b_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.7,
+      "rationale": "A says hyperandrogenism in adult female acne is commonly linked to PCOS, while B gives a prevalence of hyperandrogenism (50%) among adult female acne cases; they are different assertions that can both be true and neither contains the other."
+    },
+    {
+      "id": "p9",
+      "claim_a_id": "c20",
+      "claim_b_id": "c168",
+      "claim_a_text": "Hyperandrogenism in adult female acne is commonly linked to PCOS.",
+      "claim_b_text": "70% of hyperandrogenism cases in adult female acne feature PCOS.",
+      "semantic_relation": "SUBSUMES",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A makes a vague claim that PCOS is 'commonly' linked to hyperandrogenism in adult female acne, and B's specific 70% figure is a precise instance of that qualitative claim, so B adds a number without being contradicted by A."
+    },
+    {
+      "id": "p10",
+      "claim_a_id": "c48",
+      "claim_b_id": "c49",
+      "claim_a_text": "Topical retinoids and topical benzoyl peroxide reduce comedogenesis in acne.",
+      "claim_b_text": "Topical retinoids and topical benzoyl peroxide reduce bacterial load in acne.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims share the same subjects (topical retinoids and benzoyl peroxide in acne) but assert different effects (reduced comedogenesis vs reduced bacterial load), which can both be true without either stating or restricting the other."
+    },
+    {
+      "id": "p11",
+      "claim_a_id": "c58",
+      "claim_b_id": "c59",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 84.4% of C. acnes in acne cohorts overall.",
+      "claim_b_text": "C. acnes phylotype IA1 accounts for 95.6% of C. acnes on back lesions in acne cohorts.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both report IA1's share of C. acnes in acne cohorts, but with different values (84.4% overall vs 95.6%) and different scopes (overall vs back lesions only), so they are neither a clean subsumption nor contradictory since back lesions could differ from the overall figure."
+    },
+    {
+      "id": "p12",
+      "claim_a_id": "c58",
+      "claim_b_id": "c154",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 84.4% of C. acnes in acne cohorts overall.",
+      "claim_b_text": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.93,
+      "rationale": "Both assert that phylotype IA1 makes up 84.4% of C. acnes overall in acne samples/cohorts; the wording differs slightly ('cohorts' vs 'samples') but neither adds or restricts the claim."
+    },
+    {
+      "id": "p13",
+      "claim_a_id": "c58",
+      "claim_b_id": "c155",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 84.4% of C. acnes in acne cohorts overall.",
+      "claim_b_text": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both report IA1's share of C. acnes in acne, but A gives an overall cohort figure (84.4%) while B gives a back-specific figure (95.6%); the values differ and the scopes are not cleanly nested as a restatement, though they are not strictly incompatible since the back could differ from the overall figure."
+    },
+    {
+      "id": "p14",
+      "claim_a_id": "c59",
+      "claim_b_id": "c154",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 95.6% of C. acnes on back lesions in acne cohorts.",
+      "claim_b_text": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both give the share of C. acnes made up by phylotype IA1 in acne, but A restricts to back lesions with 95.6% while B reports 84.4% overall, so the scope and value differ without being a clean subsumption or a direct contradiction."
+    },
+    {
+      "id": "p15",
+      "claim_a_id": "c59",
+      "claim_b_id": "c155",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 95.6% of C. acnes on back lesions in acne cohorts.",
+      "claim_b_text": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both report the same 95.6% share of IA1 among C. acnes on the back in acne, but A specifies 'lesions' and 'cohorts' while B says 'samples from the back', so the scope differs slightly without a clean nesting."
+    },
+    {
+      "id": "p16",
+      "claim_a_id": "c60",
+      "claim_b_id": "c61",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 39.1% of C. acnes in healthy controls.",
+      "claim_b_text": "C. acnes phylotype II accounts for 43.4% of C. acnes in healthy controls.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A and B give shares for different phylotypes (IA1 vs II) in the same healthy-control population; both can be true simultaneously (39.1% + 43.4% = 82.5% ≤ 100%), but they state different facts rather than the same one."
+    },
+    {
+      "id": "p17",
+      "claim_a_id": "c60",
+      "claim_b_id": "c154",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 39.1% of C. acnes in healthy controls.",
+      "claim_b_text": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A gives IA1's share in healthy controls (39.1%) and B gives its share in acne samples (84.4%); these are different populations and values that can both be true, not conflicting values for the same relationship."
+    },
+    {
+      "id": "p18",
+      "claim_a_id": "c60",
+      "claim_b_id": "c155",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 39.1% of C. acnes in healthy controls.",
+      "claim_b_text": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A gives IA1's share in healthy controls and B gives its share in back acne samples, which are different populations and values, so both can be true without stating the same fact or conflicting."
+    },
+    {
+      "id": "p19",
+      "claim_a_id": "c60",
+      "claim_b_id": "c156",
+      "claim_a_text": "C. acnes phylotype IA1 accounts for 39.1% of C. acnes in healthy controls.",
+      "claim_b_text": "In healthy skin, phylotype IA1 accounts for 39.1% and phylotype II for 43.4% of C. acnes.",
+      "semantic_relation": "SUBSUMED_BY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A states only the IA1 39.1% share in healthy controls, which B also states while adding the phylotype II 43.4% share, so A is a special case (a part) of B's fuller claim."
+    },
+    {
+      "id": "p20",
+      "claim_a_id": "c63",
+      "claim_b_id": "c166",
+      "claim_a_text": "Adult female acne has a prevalence of 15–20%.",
+      "claim_b_text": "The prevalence of acne in adult women is 15–20%.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.97,
+      "rationale": "Both state that acne in adult women has a prevalence of 15–20%, differing only in phrasing, with no difference in scope or value."
+    },
+    {
+      "id": "p21",
+      "claim_a_id": "c63",
+      "claim_b_id": "c167",
+      "claim_a_text": "Adult female acne has a prevalence of 15–20%.",
+      "claim_b_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern adult female acne but assert different facts (overall prevalence in the population vs. proportion of cases with hyperandrogenism), which can both be true and together say more than either alone."
+    },
+    {
+      "id": "p22",
+      "claim_a_id": "c64",
+      "claim_b_id": "c65",
+      "claim_a_text": "Hyperandrogenism occurs in about 50% of adult female acne cases.",
+      "claim_b_text": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both give a prevalence of hyperandrogenism among adult female acne cases, but A covers all such cases at ~50% while B covers the PCOS subset at ~70%; the figures differ and the populations are nested, yet they don't form a clean subsumption because the values are different rather than B being a special case of A's assertion."
+    },
+    {
+      "id": "p23",
+      "claim_a_id": "c64",
+      "claim_b_id": "c167",
+      "claim_a_text": "Hyperandrogenism occurs in about 50% of adult female acne cases.",
+      "claim_b_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "semantic_relation": "IDENTICAL",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.93,
+      "rationale": "Both claim hyperandrogenism is present in roughly 50% of adult female acne cases; 'about' vs. exact 50% is a negligible wording difference, not a change in scope or value."
+    },
+    {
+      "id": "p24",
+      "claim_a_id": "c65",
+      "claim_b_id": "c167",
+      "claim_a_text": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS.",
+      "claim_b_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.6,
+      "rationale": "Both give hyperandrogenism prevalence in adult female acne, but A restricts to the PCOS subgroup with ~70% while B covers all adult female acne at 50%, so the populations and values differ without a clean nesting or direct contradiction."
+    },
+    {
+      "id": "p25",
+      "claim_a_id": "c65",
+      "claim_b_id": "c168",
+      "claim_a_text": "Hyperandrogenism occurs in about 70% of adult female acne cases with PCOS.",
+      "claim_b_text": "70% of hyperandrogenism cases in adult female acne feature PCOS.",
+      "semantic_relation": "CLOSE",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both cite ~70% for the hyperandrogenism–PCOS link in adult female acne, but A reads as the share of PCOS acne cases with hyperandrogenism while B reads as the share of hyperandrogenism cases with PCOS, so the conditional direction is reversed and they are not identical."
+    },
+    {
+      "id": "p26",
+      "claim_a_id": "c87",
+      "claim_b_id": "c90",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims assert a different molecule (IGF1 vs FOXO1) is a key player in acne pathophysiology; they can both be true at once, but neither states the same fact nor is nested in the other."
+    },
+    {
+      "id": "p27",
+      "claim_a_id": "c87",
+      "claim_b_id": "c92",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule (IGF1 vs NLRP3) is a key player in acne pathophysiology; they can both be true at once, and neither excludes the other nor states the same fact."
+    },
+    {
+      "id": "p28",
+      "claim_a_id": "c87",
+      "claim_b_id": "c93",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysology; these are separate assertions that can both be true (not mutually exclusive), and neither is a case of the other or adds to the same fact."
+    },
+    {
+      "id": "p29",
+      "claim_a_id": "c87",
+      "claim_b_id": "c94",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different gene (IGF1 vs IL1B) is a key player in acne pathophysiology; these are distinct assertions that can both be true, and neither contradicts the other nor adds to the same fact."
+    },
+    {
+      "id": "p30",
+      "claim_a_id": "c87",
+      "claim_b_id": "c95",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (IGF1 vs IL6) as key players in acne pathophysiology; both can be true at once, and neither states the same fact or nests the other."
+    },
+    {
+      "id": "p31",
+      "claim_a_id": "c87",
+      "claim_b_id": "c97",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different molecule (IGF1 vs TNF) is a key player in acne pathophysiology; these are different assertions that can both be true, and neither excludes the other or is a special case of the other."
+    },
+    {
+      "id": "p32",
+      "claim_a_id": "c87",
+      "claim_b_id": "c98",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (IGF1 vs IL17A) as key players in acne pathophysiology; both can be true at once, and neither is a case of the other or a denial of it."
+    },
+    {
+      "id": "p33",
+      "claim_a_id": "c87",
+      "claim_b_id": "c99",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology; they are about different molecules, and both can be true at once without either restating or excluding the other."
+    },
+    {
+      "id": "p34",
+      "claim_a_id": "c87",
+      "claim_b_id": "c101",
+      "claim_a_text": "IGF1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (IGF1 vs TGFB1) as key players in acne pathophysiology; both can be true at once since neither claims exclusivity, and they state different facts rather than one being a case of the other."
+    },
+    {
+      "id": "p35",
+      "claim_a_id": "c90",
+      "claim_b_id": "c92",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (FOXO1 vs NLRP3) as key players in acne pathophysiology; both can be true at once since multiple key players can coexist, and neither is a special case of the other."
+    },
+    {
+      "id": "p36",
+      "claim_a_id": "c90",
+      "claim_b_id": "c93",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims say a different gene (FOXO1 vs CASP1) is a key player in acne pathophysiology; they concern different entities, can both be true, and neither nests in or excludes the other."
+    },
+    {
+      "id": "p37",
+      "claim_a_id": "c90",
+      "claim_b_id": "c94",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both assert a different gene (FOXO1 vs IL1B) is a key player in acne pathophysiology; 'a key player' does not exclude others, so both can be true but they state different facts."
+    },
+    {
+      "id": "p38",
+      "claim_a_id": "c90",
+      "claim_b_id": "c95",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene/protein (FOXO1 vs IL6) is a key player in acne pathophysiology; these can both be true at once, but they name different molecules and neither is a special case of the other nor contradicts it."
+    },
+    {
+      "id": "p39",
+      "claim_a_id": "c90",
+      "claim_b_id": "c97",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule (FOXO1 vs TNF) is a key player in acne pathophysiology; these are different assertions that can both be true, and neither is nested in or contradicts the other."
+    },
+    {
+      "id": "p40",
+      "claim_a_id": "c90",
+      "claim_b_id": "c98",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule is a key player in acne pathophysiology; they can both be true at once, but they assert different facts about different entities and neither excludes the other."
+    },
+    {
+      "id": "p41",
+      "claim_a_id": "c90",
+      "claim_b_id": "c99",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different genes (FOXO1 vs PPARG) as key players in acne pathophysiology; both can be true at once, and neither entails, restricts, or denies the other."
+    },
+    {
+      "id": "p42",
+      "claim_a_id": "c90",
+      "claim_b_id": "c101",
+      "claim_a_text": "FOXO1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different genes (FOXO1 vs TGFB1) as key players in acne pathophysiology; both can be true at once, and neither claim excludes or contains the other."
+    },
+    {
+      "id": "p43",
+      "claim_a_id": "c92",
+      "claim_b_id": "c93",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B assert the same kind of role for different molecules (NLRP3 vs CASP1), so neither implies nor denies the other and both can be true at once, and they are not nested or about the same entity."
+    },
+    {
+      "id": "p44",
+      "claim_a_id": "c92",
+      "claim_b_id": "c94",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule (NLRP3 vs IL1B) is a key player in acne pathophysiology; they can both be true at once, though they name different entities rather than stating the same fact."
+    },
+    {
+      "id": "p45",
+      "claim_a_id": "c92",
+      "claim_b_id": "c95",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A and B name different molecules (NLRP3 vs IL6) as key players in acne pathophysiology; both can be true at once, and neither is a special case of the other nor do they exclude each other."
+    },
+    {
+      "id": "p46",
+      "claim_a_id": "c92",
+      "claim_b_id": "c97",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule (NLRP3 vs TNF) is a key player in acne pathophysiology; 'a key player' is non-exclusive so both can be true, but they name different entities and neither restricts or contains the other."
+    },
+    {
+      "id": "p47",
+      "claim_a_id": "c92",
+      "claim_b_id": "c98",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different molecule (NLRP3 vs IL17A) is a key player in acne pathophysiology; they can both be true at once since 'a key player' isn't exclusive, and neither states the same fact nor contradicts the other."
+    },
+    {
+      "id": "p48",
+      "claim_a_id": "c92",
+      "claim_b_id": "c99",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different genes (NLRP3 vs PPARG) as key players in acne pathophysiology; both can be true at once since neither excludes the other, and they are not the same fact or nested."
+    },
+    {
+      "id": "p49",
+      "claim_a_id": "c92",
+      "claim_b_id": "c101",
+      "claim_a_text": "NLRP3 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different genes (NLRP3 vs TGFB1) as key players in acne pathophysiology; both can be true at once since 'a key player' is not exclusive, and neither adds to or restricts the other."
+    },
+    {
+      "id": "p50",
+      "claim_a_id": "c93",
+      "claim_b_id": "c94",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B assert the same role for different genes (CASP1 vs IL1B), so they are distinct claims that can both be true, though they are related in the same pathway; neither is a special case of the other."
+    },
+    {
+      "id": "p51",
+      "claim_a_id": "c93",
+      "claim_b_id": "c95",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology; these are distinct assertions that can both be true, and neither is a special case of the other or the same fact."
+    },
+    {
+      "id": "p52",
+      "claim_a_id": "c93",
+      "claim_b_id": "c97",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different gene (CASP1 vs TNF) is a key player in acne pathophysiology; these are distinct assertions that can both be true, and neither nests in or excludes the other."
+    },
+    {
+      "id": "p53",
+      "claim_a_id": "c93",
+      "claim_b_id": "c98",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims say a different gene is a key player in acne pathophysiology; they name different molecules, so they state different facts, but both can be true at once and neither excludes the other."
+    },
+    {
+      "id": "p54",
+      "claim_a_id": "c93",
+      "claim_b_id": "c99",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "The claims assign the same role to different genes (CASP1 vs PPARG), and both can be key players in acne pathophysiology at once, so they are compatible but state different facts."
+    },
+    {
+      "id": "p55",
+      "claim_a_id": "c93",
+      "claim_b_id": "c101",
+      "claim_a_text": "CASP1 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysology; they name different genes, and both can be true at once without being the same fact or excluding each other, and neither adds to the other as a complement about the same entity."
+    },
+    {
+      "id": "p56",
+      "claim_a_id": "c94",
+      "claim_b_id": "c95",
+      "claim_a_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (IL1B vs IL6) as key players in acne pathophysiology; both can be true at once, and neither entails or contradicts the other nor is nested in it."
+    },
+    {
+      "id": "p57",
+      "claim_a_id": "c94",
+      "claim_b_id": "c97",
+      "claim_a_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A and B assert the same kind of claim about different molecules (IL1B vs TNF), and both can be key players in acne pathophysiology at once, so they are compatible but not the same fact."
+    },
+    {
+      "id": "p58",
+      "claim_a_id": "c94",
+      "claim_b_id": "c98",
+      "claim_a_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene (IL1B vs IL17A) is a key player in acne pathophysiology; they are not mutually exclusive, so both can be true, but they name different molecules and neither restricts the other."
+    },
+    {
+      "id": "p59",
+      "claim_a_id": "c94",
+      "claim_b_id": "c99",
+      "claim_a_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysology; they share a template but name different molecules, and both can be true at once without either restricting or denying the other."
+    },
+    {
+      "id": "p60",
+      "claim_a_id": "c94",
+      "claim_b_id": "c101",
+      "claim_a_text": "IL1B is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology; being key players doesn't exclude each other, so both can be true, but they name different molecules and neither is a case of the other."
+    },
+    {
+      "id": "p61",
+      "claim_a_id": "c95",
+      "claim_b_id": "c97",
+      "claim_a_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TNF is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both assert that a different molecule (IL6 vs TNF) is a key player in acne pathophysiology; these are distinct assertions that can both be true, without either subsuming the other or being exclusive."
+    },
+    {
+      "id": "p62",
+      "claim_a_id": "c95",
+      "claim_b_id": "c98",
+      "claim_a_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (IL6 vs IL17A) as key players in acne pathophysiology; both can be true at once, but neither states the same fact nor nests the other."
+    },
+    {
+      "id": "p63",
+      "claim_a_id": "c95",
+      "claim_b_id": "c99",
+      "claim_a_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology; they are not mutually exclusive, so both can be true, but they name different molecules and neither restricts or implies the other."
+    },
+    {
+      "id": "p64",
+      "claim_a_id": "c95",
+      "claim_b_id": "c101",
+      "claim_a_text": "IL6 is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims assign the same role to different molecules (IL6 vs TGFB1) in acne pathophysiology, and both can be true at once without either stating the same fact or adding to a shared claim."
+    },
+    {
+      "id": "p65",
+      "claim_a_id": "c97",
+      "claim_b_id": "c98",
+      "claim_a_text": "TNF is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different molecule (TNF vs IL17A) is a key player in acne pathophysiology; neither excludes the other, so both can be true but they state different facts about different subjects."
+    },
+    {
+      "id": "p66",
+      "claim_a_id": "c97",
+      "claim_b_id": "c99",
+      "claim_a_text": "TNF is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims assert that a different gene is a key player in acne pathophysiology, and since several molecules can be key players at once, both can be true without either stating the same fact."
+    },
+    {
+      "id": "p67",
+      "claim_a_id": "c97",
+      "claim_b_id": "c101",
+      "claim_a_text": "TNF is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different molecules (TNF vs TGFB1) as key players in acne pathophysiology; both can be true at once, and neither entails or denies the other, so it is not identical, contradictory, or a subsumption."
+    },
+    {
+      "id": "p68",
+      "claim_a_id": "c98",
+      "claim_b_id": "c99",
+      "claim_a_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology, which can both be true at once, but neither states the same fact nor does one add to the other about a single entity."
+    },
+    {
+      "id": "p69",
+      "claim_a_id": "c98",
+      "claim_b_id": "c101",
+      "claim_a_text": "IL17A is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different gene is a key player in acne pathophysiology; these are distinct assertions that can both be true, and neither says the other is not key, so they are compatible but not identical."
+    },
+    {
+      "id": "p70",
+      "claim_a_id": "c99",
+      "claim_b_id": "c101",
+      "claim_a_text": "PPARG is a key molecular player in acne pathophysiology.",
+      "claim_b_text": "TGFB1 is a key molecular player in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims assert that a different gene is a key player in acne pathophysiology; they can both be true at once (neither excludes the other), but they name different molecules and so state different facts."
+    },
+    {
+      "id": "p71",
+      "claim_a_id": "c108",
+      "claim_b_id": "c109",
+      "claim_a_text": "Sebocytes are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Keratinocytes are a key cell type in acne pathophysiology.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both name a different cell type as key in acne pathophysiology; they can both be true and are about the same subject, each adding a distinct cell type the other lacks, rather than being identical or contradictory."
+    },
+    {
+      "id": "p72",
+      "claim_a_id": "c108",
+      "claim_b_id": "c111",
+      "claim_a_text": "Sebocytes are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Neutrophils are a key cell type in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different cell type is key in acne pathophysiology; they can both be true at once (not mutually exclusive), but they assert different facts about different cell types, so neither identical nor contradictory."
+    },
+    {
+      "id": "p73",
+      "claim_a_id": "c108",
+      "claim_b_id": "c112",
+      "claim_a_text": "Sebocytes are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Th17 T cells are a key cell type in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different cell type (sebocytes vs Th17 cells) is key in acne pathophysiology; they are not mutually exclusive and can both be true, but neither states the same fact nor is one a special case of the other."
+    },
+    {
+      "id": "p74",
+      "claim_a_id": "c109",
+      "claim_b_id": "c111",
+      "claim_a_text": "Keratinocytes are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Neutrophils are a key cell type in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different cell type (keratinocytes vs neutrophils) is key in acne pathophysiology; they are about the same subject but state different facts that can both be true, without either being a special case of the other or one adding to a shared claim."
+    },
+    {
+      "id": "p75",
+      "claim_a_id": "c109",
+      "claim_b_id": "c112",
+      "claim_a_text": "Keratinocytes are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Th17 T cells are a key cell type in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different cell type (keratinocytes vs Th17 T cells) is key in acne pathophysiology; they are different assertions that can both be true since 'a key cell type' is non-exclusive, and neither subsumes the other nor adds to a shared fact."
+    },
+    {
+      "id": "p76",
+      "claim_a_id": "c111",
+      "claim_b_id": "c112",
+      "claim_a_text": "Neutrophils are a key cell type in acne pathophysiology.",
+      "claim_b_text": "Th17 T cells are a key cell type in acne pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B name different cell types as key in acne pathophysiology; both can be true at once, and neither contains nor excludes the other, so this is compatible but not identical or nested."
+    },
+    {
+      "id": "p77",
+      "claim_a_id": "c116",
+      "claim_b_id": "c124",
+      "claim_a_text": "Lipid metabolic process is a biological process relevant to the disease's pathophysiology, listed for GO annotation.",
+      "claim_b_text": "Collagen catabolic process is a biological process relevant to the disease's pathophysiology, listed for GO annotation.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims have the same template (a GO biological process relevant to the disease's pathophysiology) but name different processes, lipid metabolic process versus collagen catabolic process, so they can both be true without either restating or nesting the other."
+    },
+    {
+      "id": "p78",
+      "claim_a_id": "c117",
+      "claim_b_id": "c122",
+      "claim_a_text": "Regulation of cell differentiation is a biological process relevant to the disease's pathophysiology, listed for GO annotation.",
+      "claim_b_text": "Th17 cell differentiation is a biological process relevant to the disease's pathophysiology, listed for GO annotation.",
+      "semantic_relation": "SUBSUMES",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Th17 cell differentiation is a specific kind of cell differentiation, so A's general claim about regulation of cell differentiation covers B's narrower claim; the 'regulation of' qualifier makes it not a perfectly clean nesting, but B is essentially a special case."
+    },
+    {
+      "id": "p79",
+      "claim_a_id": "c130",
+      "claim_b_id": "c131",
+      "claim_a_text": "In acne progression, pubertal/androgenic and IGF-1 signals elevate sebum production.",
+      "claim_b_text": "In acne progression, pubertal/androgenic and IGF-1 signals alter sebum composition.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both name the same drivers (pubertal/androgenic and IGF-1 signals) acting on sebum, but A asserts increased quantity while B asserts altered composition; the two can both be true and each adds something the other lacks."
+    },
+    {
+      "id": "p80",
+      "claim_a_id": "c145",
+      "claim_b_id": "c146",
+      "claim_a_text": "Atrophic scars are a key clinical phenotype of acne.",
+      "claim_b_text": "Hypertrophic scars are a key clinical phenotype of acne.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Atrophic and hypertrophic scars are different scar types, each claimed as a key acne phenotype; both can be true at once, and neither is a general or specific case of the other nor do they exclude each other."
+    },
+    {
+      "id": "p81",
+      "claim_a_id": "c148",
+      "claim_b_id": "c149",
+      "claim_a_text": "IL-17 is mechanistically linked to pustular inflammation in acne.",
+      "claim_b_text": "TNF-α is mechanistically linked to pustular inflammation in acne.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "A and B assert the same kind of link for different cytokines (IL-17 vs TNF-α) to pustular inflammation in acne, so both can be true at once but neither states the same fact nor adds to the other's subject."
+    },
+    {
+      "id": "p82",
+      "claim_a_id": "c153",
+      "claim_b_id": "c156",
+      "claim_a_text": "C. acnes phylotype IA1 is enriched in acne compared with healthy skin.",
+      "claim_b_text": "In healthy skin, phylotype IA1 accounts for 39.1% and phylotype II for 43.4% of C. acnes.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.7,
+      "rationale": "Both concern IA1 in C. acnes and are compatible, but A states IA1 enrichment in acne versus healthy skin while B gives IA1 and II proportions in healthy skin only, so each adds something the other lacks."
+    },
+    {
+      "id": "p83",
+      "claim_a_id": "c154",
+      "claim_b_id": "c155",
+      "claim_a_text": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples.",
+      "claim_b_text": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.6,
+      "rationale": "A gives an overall proportion across acne samples and B gives a proportion for back samples only; the values differ but can both be true because the back is a subset with a different share, so it is neither a clean subsumption nor a contradiction."
+    },
+    {
+      "id": "p84",
+      "claim_a_id": "c154",
+      "claim_b_id": "c156",
+      "claim_a_text": "Phylotype IA1 accounts for 84.4% overall of C. acnes in acne samples.",
+      "claim_b_text": "In healthy skin, phylotype IA1 accounts for 39.1% and phylotype II for 43.4% of C. acnes.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both report IA1 proportions of C. acnes, but A is for acne samples (84.4%) and B is for healthy skin (39.1%, plus phylotype II 43.4%); the claims concern different populations and can both be true, and together they give a fuller picture of IA1 distribution across acne versus healthy skin."
+    },
+    {
+      "id": "p85",
+      "claim_a_id": "c155",
+      "claim_b_id": "c156",
+      "claim_a_text": "Phylotype IA1 accounts for 95.6% of C. acnes in acne samples from the back.",
+      "claim_b_text": "In healthy skin, phylotype IA1 accounts for 39.1% and phylotype II for 43.4% of C. acnes.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A gives IA1's share in acne samples from the back and B gives IA1 and II shares in healthy skin, so they describe different conditions and both can be true without either restating or contradicting the other."
+    },
+    {
+      "id": "p86",
+      "claim_a_id": "c167",
+      "claim_b_id": "c168",
+      "claim_a_text": "Hyperandrogenism is present in 50% of cases of adult female acne.",
+      "claim_b_text": "70% of hyperandrogenism cases in adult female acne feature PCOS.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both concern hyperandrogenism in adult female acne but state different facts (A: prevalence of hyperandrogenism among cases; B: share of hyperandrogenic cases with PCOS), so both can be true and together say more than either."
+    },
+    {
+      "id": "p87",
+      "claim_a_id": "c170",
+      "claim_b_id": "c180",
+      "claim_a_text": "AR is located in the nucleus.",
+      "claim_b_text": "SREBF1 is located in the nucleus.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim nuclear localization but for different proteins (AR vs SREBF1), so they can both be true without being the same fact or nested."
+    },
+    {
+      "id": "p88",
+      "claim_a_id": "c170",
+      "claim_b_id": "c183",
+      "claim_a_text": "AR is located in the nucleus.",
+      "claim_b_text": "FOXO1 is located in the nucleus.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both state nuclear localization but for different proteins (AR vs FOXO1), so they are separate facts that can both be true and neither is a special case of the other."
+    },
+    {
+      "id": "p89",
+      "claim_a_id": "c170",
+      "claim_b_id": "c203",
+      "claim_a_text": "AR is located in the nucleus.",
+      "claim_b_text": "PPARG is located in the nucleus.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim nuclear localization but for different proteins (AR vs PPARG), so they are separate assertions that can both be true and neither contains the other."
+    },
+    {
+      "id": "p90",
+      "claim_a_id": "c196",
+      "claim_b_id": "c200",
+      "claim_a_text": "IL1B is located in the extracellular region.",
+      "claim_b_text": "IL17A is located in the extracellular region.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both state the same localization (extracellular region) for different proteins, IL1B and IL17A, so they are independent assertions that can both be true without one covering the other."
+    },
+    {
+      "id": "p91",
+      "claim_a_id": "c196",
+      "claim_b_id": "c210",
+      "claim_a_text": "IL1B is located in the extracellular region.",
+      "claim_b_text": "TGFB1 is located in the extracellular region.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both state the same localization for different proteins (IL1B vs TGFB1), so they are compatible but assert different facts about different subjects, and neither adds to the other about a shared subject."
+    },
+    {
+      "id": "p92",
+      "claim_a_id": "c200",
+      "claim_b_id": "c210",
+      "claim_a_text": "IL17A is located in the extracellular region.",
+      "claim_b_text": "TGFB1 is located in the extracellular region.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_BACKGROUND",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.9,
+      "rationale": "Both claims assign the same localization (extracellular region) to different proteins (IL17A vs TGFB1), so they can both be true but state different facts."
+    },
+    {
+      "id": "p93",
+      "claim_a_id": "c213",
+      "claim_b_id": "c214",
+      "claim_a_text": "Comedones (HP:0001051) is a phenotype associated with the disease under study.",
+      "claim_b_text": "Papule (HP:0025031) is a phenotype associated with the disease under study.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different phenotype (comedones vs. papule) is associated with the same disease; they can both be true but state distinct facts, and neither is a nested special case of the other as phenotype terms in this claim context, nor do they jointly form a single more informative statement about one fact."
+    },
+    {
+      "id": "p94",
+      "claim_a_id": "c213",
+      "claim_b_id": "c215",
+      "claim_a_text": "Comedones (HP:0001051) is a phenotype associated with the disease under study.",
+      "claim_b_text": "Pustule (HP:0000981) is a phenotype associated with the disease under study.",
+      "semantic_relation": "COMPLEMENTARY",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.75,
+      "rationale": "Both claim different phenotypes (comedones vs pustule) are associated with the same disease; they can both be true, neither nests in the other, and together they describe more of the disease's phenotype profile."
+    },
+    {
+      "id": "p95",
+      "claim_a_id": "c214",
+      "claim_b_id": "c215",
+      "claim_a_text": "Papule (HP:0025031) is a phenotype associated with the disease under study.",
+      "claim_b_text": "Pustule (HP:0000981) is a phenotype associated with the disease under study.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claim a different skin-lesion phenotype (papule vs pustule) for the same disease; they are distinct assertions that can both be true, and neither contains or contradicts the other."
+    },
+    {
+      "id": "p96",
+      "claim_a_id": "c217",
+      "claim_b_id": "c218",
+      "claim_a_text": "Atrophic scars (HP:0001030) is a phenotype associated with the disease under study.",
+      "claim_b_text": "Hypertrophic scar (HP:0001076) is a phenotype associated with the disease under study.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Atrophic scars and hypertrophic scars are distinct phenotypes (neither nested in the other), and a disease could be associated with both, so the claims are compatible but state different facts rather than being identical, nested, or contradictory."
+    },
+    {
+      "id": "p97",
+      "claim_a_id": "c219",
+      "claim_b_id": "c220",
+      "claim_a_text": "Sebocytes (CL:0002328) are involved in the disease pathophysiology.",
+      "claim_b_text": "Keratinocytes (CL:0000312) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different cell type (sebocytes vs keratinocytes) is involved in the disease pathophysiology; the two can both be true, but neither is a more general or identical statement, and they do not add up to a shared more complete claim about the same cell."
+    },
+    {
+      "id": "p98",
+      "claim_a_id": "c219",
+      "claim_b_id": "c221",
+      "claim_a_text": "Sebocytes (CL:0002328) are involved in the disease pathophysiology.",
+      "claim_b_text": "Macrophages (CL:0000738) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "A and B assert involvement of different cell types (sebocytes vs macrophages) in disease pathophysiology; both can be true at once, and neither is a special case of the other nor do they share the same fact."
+    },
+    {
+      "id": "p99",
+      "claim_a_id": "c219",
+      "claim_b_id": "c223",
+      "claim_a_text": "Sebocytes (CL:0002328) are involved in the disease pathophysiology.",
+      "claim_b_text": "Neutrophils (CL:0000775) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claims assert involvement of a different cell type (sebocytes vs neutrophils) in disease pathophysiology; neither implies nor excludes the other, so both can be true at once, and they are not nested or about the same fact."
+    },
+    {
+      "id": "p100",
+      "claim_a_id": "c220",
+      "claim_b_id": "c221",
+      "claim_a_text": "Keratinocytes (CL:0000312) are involved in the disease pathophysiology.",
+      "claim_b_text": "Macrophages (CL:0000738) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims say a different cell type (keratinocytes vs macrophages) is involved in the same disease's pathophysiology; they can both be true but neither is a special case of the other and they do not state the same fact."
+    },
+    {
+      "id": "p101",
+      "claim_a_id": "c220",
+      "claim_b_id": "c223",
+      "claim_a_text": "Keratinocytes (CL:0000312) are involved in the disease pathophysiology.",
+      "claim_b_text": "Neutrophils (CL:0000775) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claim a different cell type (keratinocytes vs neutrophils) is involved in the disease pathophysiology; they can both be true at once but name different cells, so neither is identical, nested, nor contradictory."
+    },
+    {
+      "id": "p102",
+      "claim_a_id": "c221",
+      "claim_b_id": "c223",
+      "claim_a_text": "Macrophages (CL:0000738) are involved in the disease pathophysiology.",
+      "claim_b_text": "Neutrophils (CL:0000775) are involved in the disease pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both assert involvement of a different cell type (macrophages vs neutrophils) in the same disease pathophysiology, so both can be true at once, but neither is a special case of the other and each adds a distinct cell type rather than completing a shared fact."
+    },
+    {
+      "id": "p103",
+      "claim_a_id": "c224",
+      "claim_b_id": "c225",
+      "claim_a_text": "Skin of face (UBERON:0002075) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Dermis (UBERON:0002067) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both list a different skin-related anatomical location (skin of face vs. dermis) as relevant to the disease; they are distinct assertions that can both be true, and neither is a clean special case of the other as the face is a region and the dermis is a skin layer."
+    },
+    {
+      "id": "p104",
+      "claim_a_id": "c224",
+      "claim_b_id": "c226",
+      "claim_a_text": "Skin of face (UBERON:0002075) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Epidermis (UBERON:0002076) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both list different anatomical locations (skin of face vs. epidermis) as relevant to the disease; they can both be true, but neither is the same fact nor a clean subsumption since the claims concern distinct entities (a region of skin vs. a skin layer), and neither adds to the other as a clear complement."
+    },
+    {
+      "id": "p105",
+      "claim_a_id": "c224",
+      "claim_b_id": "c227",
+      "claim_a_text": "Skin of face (UBERON:0002075) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Pilosebaceous unit (UBERON:0035367) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both list a different anatomical location (skin of face vs. pilosebaceous unit) as relevant to the same disease; neither is a clean subset of the other and both can be true together, but they do not state the same fact."
+    },
+    {
+      "id": "p106",
+      "claim_a_id": "c225",
+      "claim_b_id": "c226",
+      "claim_a_text": "Dermis (UBERON:0002067) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Epidermis (UBERON:0002076) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both claims assert that a different skin layer (dermis vs epidermis) is relevant to the same disease's pathophysiology; they are distinct anatomical locations that can both be relevant, and neither is a case of the other nor adds to a shared fact."
+    },
+    {
+      "id": "p107",
+      "claim_a_id": "c225",
+      "claim_b_id": "c227",
+      "claim_a_text": "Dermis (UBERON:0002067) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Pilosebaceous unit (UBERON:0035367) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both list a different anatomical location (dermis vs pilosebaceous unit) as relevant to the same disease's pathophysiology; they can both be true, but neither states the same fact nor is a clean subset of the other, and each names a distinct location without adding information to the other's claim."
+    },
+    {
+      "id": "p108",
+      "claim_a_id": "c225",
+      "claim_b_id": "c228",
+      "claim_a_text": "Dermis (UBERON:0002067) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Hair follicle infundibulum (UBERON:0013702) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims list an anatomical location relevant to the same disease's pathophysiology, but they name different locations (dermis vs. hair follicle infundibulum), so both can be true without either stating the same fact or being a nested case of the other."
+    },
+    {
+      "id": "p109",
+      "claim_a_id": "c226",
+      "claim_b_id": "c227",
+      "claim_a_text": "Epidermis (UBERON:0002076) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Pilosebaceous unit (UBERON:0035367) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "Both claims list a different anatomical location (epidermis vs pilosebaceous unit) as relevant to the same disease's pathophysiology, so both can be true at once without either restating or nesting the other."
+    },
+    {
+      "id": "p110",
+      "claim_a_id": "c226",
+      "claim_b_id": "c228",
+      "claim_a_text": "Epidermis (UBERON:0002076) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "claim_b_text": "Hair follicle infundibulum (UBERON:0013702) is listed as an anatomical location relevant to the disease's pathophysiology.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.72,
+      "rationale": "Both claims list a different anatomical location (epidermis vs. hair follicle infundibulum) as relevant to the same disease's pathophysiology, so both can be true at once; the infundibulum is part of the follicular epithelium continuous with the epidermis, but the claims do not state the same fact and neither adds information the other lacks in a way that makes them complementary."
+    },
+    {
+      "id": "p111",
+      "claim_a_id": "c231",
+      "claim_b_id": "c233",
+      "claim_a_text": "Linoleic acid has the ChEBI identifier CHEBI:15956.",
+      "claim_b_text": "Succinic acid has the ChEBI identifier CHEBI:16707.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "BOTH_SECONDARY",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "The claims assign ChEBI identifiers to different compounds (linoleic acid vs succinic acid) with different IDs; they share only a relation template, with no logical connection between the facts, so neither nesting nor contradiction applies."
+    },
+    {
+      "id": "p112",
+      "claim_a_id": "c259",
+      "claim_b_id": "c263",
+      "claim_a_text": "The Kim and Kim 2024 article is from a poor quality or predatory journal.",
+      "claim_b_text": "The Amuzescu et al. article is from a poor quality or predatory journal.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "NOT_APPLICABLE",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both make the same type of assertion about different articles (Kim and Kim 2024 vs Amuzescu et al.), so each can be true independently without one implying or denying the other."
+    },
+    {
+      "id": "p113",
+      "claim_a_id": "c259",
+      "claim_b_id": "c265",
+      "claim_a_text": "The Kim and Kim 2024 article is from a poor quality or predatory journal.",
+      "claim_b_text": "The Mosca et al. article is from a poor quality or predatory journal.",
+      "semantic_relation": "CONSISTENT",
+      "evidential_relation": "NOT_APPLICABLE",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.85,
+      "rationale": "Both make the same type of assertion about different articles (Kim and Kim 2024 vs. Mosca et al.), so they are independent claims that can both be true without one covering or restating the other."
+    },
+    {
+      "id": "p114",
+      "claim_a_id": "c263",
+      "claim_b_id": "c265",
+      "claim_a_text": "The Amuzescu et al. article is from a poor quality or predatory journal.",
+      "claim_b_text": "The Mosca et al. article is from a poor quality or predatory journal.",
+      "semantic_relation": "UNRELATED",
+      "evidential_relation": "NOT_APPLICABLE",
+      "shares_citation": false,
+      "candidate_signals": [
+        "LEXICAL"
+      ],
+      "confidence": 0.8,
+      "rationale": "The two claims have the same form but concern different articles by different authors (Amuzescu et al. vs Mosca et al.), so neither is a case of the other and both can be true independently, with no shared underlying fact."
+    }
+  ]
+}

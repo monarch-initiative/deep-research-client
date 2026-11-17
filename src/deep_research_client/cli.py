@@ -4504,6 +4504,121 @@ def claims_align(
             logger.info(f"Rubric written to {rubric_output}")
 
 
+@claims_app.command("ground")
+def claims_ground(
+    claims_file: Annotated[Path, typer.Argument(
+        help="A claim set from `claims extract`")],
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the grounded claim set here (.json/.yaml) instead of JSON to stdout")] = None,
+    ontology_config: Annotated[Optional[Path], typer.Option(
+        "--ontology-config",
+        help="An oak_config.yaml naming the ontologies to ground against and how each is reached")] = None,
+    ontologies: Annotated[Optional[str], typer.Option(
+        "--ontologies",
+        help="A built-in ontology set instead of a config file. One of: biomedical")] = None,
+    max_terms: Annotated[Optional[int], typer.Option(
+        "--max-terms", min=1,
+        help="Ground only the this-many most frequent distinct labels (ontology search is slow)")] = None,
+    adapter: Annotated[str, typer.Option(
+        "--adapter",
+        help="Default OAK adapter for a config entry with no value (e.g. ols:, sqlite:obo:)")] = "ols:",
+    terms_cache: Annotated[Optional[Path], typer.Option(
+        "--terms-cache", help="Directory where OAK caches labels between runs")] = None,
+    offline: Annotated[bool, typer.Option(
+        "--offline", help="Resolve only from the cache; never reach the network")] = False,
+    llm_backend: Annotated[str, typer.Option(
+        "--llm-backend",
+        help="How the model is called: openai or claude-code")] = "openai",
+    llm_model: Annotated[Optional[str], typer.Option(
+        "--llm-model", help="Model that chooses among ontology candidates")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Terms grounded in flight at once")] = 4,
+    llm_max_tokens: Annotated[Optional[int], typer.Option(
+        "--llm-max-tokens", min=1, help="Reply budget per term")] = None,
+):
+    """Ground a claim set's entities to ontology CURIEs, so they align on shared terms.
+
+    Each distinct entity label is searched against the configured ontologies with
+    OAK, and a model chooses the term that denotes it, or none. The most frequent
+    labels are grounded first (ontology search is the slow step); `--max-terms`
+    bounds the work. Grounding fills `EntityMention.id`; it does not change labels.
+
+    This is an opt-in step: the claims from `extract` are usable without it. It
+    needs the `terms` extra (`pip install "deep_research_client[terms]"`) for OAK.
+
+    Examples:
+
+      deep-research-client claims ground report.claims.json --ontologies biomedical \\
+        --llm-backend claude-code -o report.grounded.json
+
+      deep-research-client claims ground report.claims.json \\
+        --ontology-config oak_config.yaml --max-terms 200 --adapter sqlite:obo:
+    """
+    import asyncio
+
+    from .claims import OakGrounder, aground_claims, biomedical_ontology_config
+    from .claims.grounding_llm import DEFAULT_GROUNDING_MAX_TOKENS
+    from .claims.grounding_oak import TERM_INSTALL_HINT
+    from .ontologies import OntologyConfig
+
+    if (ontology_config is None) == (ontologies is None):
+        _error("Give exactly one of --ontology-config or --ontologies.")
+        raise typer.Exit(1)
+    if ontologies is not None and ontologies != "biomedical":
+        _error(f"Unknown --ontologies {ontologies!r}. Available built-in sets: biomedical")
+        raise typer.Exit(1)
+    if ontology_config is not None and not ontology_config.is_file():
+        _error(f"Ontology config not found: {ontology_config}")
+        raise typer.Exit(1)
+
+    if ontologies is not None:
+        config = biomedical_ontology_config()
+    else:
+        assert ontology_config is not None  # exactly one of the two is set (checked above)
+        config = OntologyConfig.from_file(ontology_config)
+    claim_set = _load_claim_set(claims_file)
+    llm_client, model = _claims_llm_client(
+        llm_backend, llm_model, llm_base_url, llm_api_key_env,
+        purpose="ontology candidates are chosen by a model",
+    )
+
+    import openai
+
+    grounder = OakGrounder(
+        config, llm_client=llm_client, model=model, adapter=adapter,
+        cache_dir=terms_cache, offline=offline,
+        max_tokens=llm_max_tokens if llm_max_tokens is not None else DEFAULT_GROUNDING_MAX_TOKENS,
+    )
+    try:
+        grounded = asyncio.run(aground_claims(
+            claim_set, grounder, max_terms=max_terms, concurrency=concurrency,
+        ))
+    except ImportError:
+        _error(TERM_INSTALL_HINT)
+        raise typer.Exit(1)
+    except ProviderError as exc:
+        _error(f"Could not ground the claims: {_claims_backend_failure(exc)}")
+        raise typer.Exit(1)
+    except (ValueError, openai.APIError) as exc:
+        _error(f"Could not ground the claims: {exc}")
+        raise typer.Exit(1)
+
+    info = grounded.grounder
+    if info is not None:
+        _warn(
+            f"Grounded {info.grounded} of {info.considered} distinct entity labels "
+            f"against {', '.join(info.ontologies or [])}."
+        )
+    _render_payload(grounded.model_dump(mode="json", exclude_none=True), output)
+    if output is not None:
+        logger.info(f"Grounded claims written to {output}")
+
+
 def main():
     """Main entry point for the CLI."""
     app()

@@ -4042,7 +4042,61 @@ def _claims_backend_failure(error: ProviderError) -> str:
     )
 
 
-claims_app = typer.Typer(help="Extract the claims a source makes, with provenance")
+def _claims_llm_client(
+    backend: str,
+    llm_model: Optional[str],
+    base_url: Optional[str],
+    api_key_env: str,
+    *,
+    purpose: str,
+) -> tuple[Any, str]:
+    """Build the LLM client and resolve the model for a claims subcommand.
+
+    Shared by ``claims extract`` and ``claims align``, which call a model the same
+    way. Exits the program with a usable message on any misconfiguration, so the
+    caller gets a ready client and model or nothing.
+
+    Args:
+        backend: ``openai`` or ``claude-code``.
+        llm_model: The model the user named, or None for the backend's default.
+        base_url: An OpenAI-compatible base URL, or None.
+        api_key_env: Env var holding the API key, for the openai backend.
+        purpose: What needs the model, completing "... is not set, and <purpose>".
+
+    Returns:
+        An async client and the model id to use with it.
+    """
+    from .claims.llm import DEFAULT_MODEL
+
+    backends = ("openai", "claude-code")
+    if backend not in backends:
+        _error(f"Unknown --llm-backend {backend!r}. Use one of: {', '.join(backends)}")
+        raise typer.Exit(1)
+    if backend == "claude-code" and base_url:
+        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
+        raise typer.Exit(1)
+
+    if backend == "claude-code":
+        from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
+
+        if shutil.which("claude") is None:
+            _error("--llm-backend claude-code needs the `claude` CLI on PATH, and it is not there.")
+            raise typer.Exit(1)
+        return ClaudeCodeChatClient(), (llm_model or DEFAULT_CLAUDE_CODE_MODEL)
+
+    client = _openai_compatible_client(api_key_env, base_url)
+    if client is None:
+        _error(
+            f"{api_key_env} is not set, and {purpose}. Set it (or point "
+            f"--llm-api-key-env at a variable that is set), or pass "
+            f"--llm-base-url for a local endpoint that needs no key, or "
+            f"--llm-backend claude-code to use a logged-in Claude Code."
+        )
+        raise typer.Exit(1)
+    return client, (llm_model or DEFAULT_MODEL)
+
+
+claims_app = typer.Typer(help="Extract the claims a source makes, and align one source's against another's")
 app.add_typer(claims_app, name="claims")
 
 
@@ -4125,35 +4179,13 @@ def claims_extract(
         if citations is not None:
             logger.info(f"Resolving [n] markers through {citations}")
 
-    backends = ("openai", "claude-code")
-    if llm_backend not in backends:
-        _error(f"Unknown --llm-backend {llm_backend!r}. Use one of: {', '.join(backends)}")
-        raise typer.Exit(1)
-    if llm_backend == "claude-code" and llm_base_url:
-        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
-        raise typer.Exit(1)
-
     llm_client: Any = None
     model = llm_model or DEFAULT_MODEL
-    if needs_llm(fmt) and llm_backend == "claude-code":
-        from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
-
-        if shutil.which("claude") is None:
-            _error("--llm-backend claude-code needs the `claude` CLI on PATH, and it is not there.")
-            raise typer.Exit(1)
-        llm_client = ClaudeCodeChatClient()
-        model = llm_model or DEFAULT_CLAUDE_CODE_MODEL
-    elif needs_llm(fmt):
-        llm_client = _openai_compatible_client(llm_api_key_env, llm_base_url)
-        if llm_client is None:
-            _error(
-                f"{llm_api_key_env} is not set, and claims are extracted from "
-                f"{fmt.value} sources by a model. Set it (or point "
-                f"--llm-api-key-env at a variable that is set), or pass "
-                f"--llm-base-url for a local endpoint that needs no key, or "
-                f"--llm-backend claude-code to use a logged-in Claude Code."
-            )
-            raise typer.Exit(1)
+    if needs_llm(fmt):
+        llm_client, model = _claims_llm_client(
+            llm_backend, llm_model, llm_base_url, llm_api_key_env,
+            purpose=f"claims are extracted from {fmt.value} sources by a model",
+        )
 
     import openai
 
@@ -4202,6 +4234,166 @@ def claims_extract(
         _error(f"Could not write {output}: {exc}")
         raise typer.Exit(1)
     logger.info(f"Claims written to {output}")
+
+
+def _load_claim_set(path: Path) -> "Any":
+    """Load a ClaimSet written by `claims extract`, as JSON or YAML by suffix."""
+    import json
+
+    import yaml
+
+    from .claims import ClaimSet
+
+    if not path.is_file():
+        _error(f"File not found: {path}")
+        raise typer.Exit(1)
+    text = path.read_text(encoding="utf-8")
+    try:
+        data = yaml.safe_load(text) if path.suffix.lower() in (".yaml", ".yml") else json.loads(text)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        _error(f"Could not parse {path} as a claim set: {exc}")
+        raise typer.Exit(1)
+    try:
+        return ClaimSet.model_validate(data)
+    except ValueError as exc:
+        _error(f"{path} is not a valid claim set (from `claims extract`): {exc}")
+        raise typer.Exit(1)
+
+
+def _render_payload(payload: dict, output: Optional[Path]) -> None:
+    """Write a model's JSON payload to a file by suffix, or echo it to stdout."""
+    import json
+
+    import yaml
+
+    if output is None:
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    if output.suffix.lower() in (".yaml", ".yml"):
+        rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    else:
+        rendered = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    try:
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        _error(f"Could not write {output}: {exc}")
+        raise typer.Exit(1)
+
+
+@claims_app.command("align")
+def claims_align(
+    claims_a: Annotated[Path, typer.Argument(
+        help="A claim set from `claims extract` (the A side)")],
+    claims_b: Annotated[Path, typer.Argument(
+        help="A claim set from `claims extract` (the B side)")],
+    output: Annotated[Optional[Path], typer.Option(
+        "--output", "-o",
+        help="Write the alignment here (.json, .yaml or .yml) instead of JSON to stdout")] = None,
+    rubric: Annotated[bool, typer.Option(
+        "--rubric/--no-rubric",
+        help="Also compute report-level rubric metrics and print a summary to stderr")] = False,
+    rubric_output: Annotated[Optional[Path], typer.Option(
+        "--rubric-output",
+        help="Write the rubric summary here (.json/.yaml); implies --rubric")] = None,
+    reference: Annotated[str, typer.Option(
+        "--reference",
+        help="Which side is the reference the other is judged against: a or b")] = "b",
+    llm_backend: Annotated[str, typer.Option(
+        "--llm-backend",
+        help="How the model is called: openai (any OpenAI-compatible API) or "
+             "claude-code (the local Claude Code CLI, no API key)")] = "openai",
+    llm_model: Annotated[Optional[str], typer.Option(
+        "--llm-model",
+        help="Model that classifies the semantic relation (default gpt-4o-mini, "
+             "or sonnet with --llm-backend claude-code)")] = None,
+    llm_base_url: Annotated[Optional[str], typer.Option(
+        "--llm-base-url", help="Base URL of an OpenAI-compatible API (e.g. CBORG)")] = None,
+    llm_api_key_env: Annotated[str, typer.Option(
+        "--llm-api-key-env", help="Env var holding the API key")] = "OPENAI_API_KEY",
+    concurrency: Annotated[int, typer.Option(
+        "--concurrency", min=1, help="Model requests in flight at once")] = 4,
+    llm_max_tokens: Annotated[Optional[int], typer.Option(
+        "--llm-max-tokens", min=1,
+        help="Reply budget per pair; a reply cut off at it is an error")] = None,
+    min_overlap: Annotated[Optional[float], typer.Option(
+        "--min-overlap", min=0.0, max=1.0,
+        help="Lexical overlap (Jaccard) at or above which a pair is a candidate")] = None,
+):
+    """Align the claims of one source against another and classify each pair.
+
+    Both inputs are claim sets from `claims extract`. Candidate pairs are proposed
+    without a model (shared entities, shared citations, lexical overlap); a model
+    then classifies each pair's semantic relation (identical, subsumes, close,
+    consistent, complementary, contradictory, unrelated). The evidential relation
+    (observation vs attribution vs background knowledge) and the shared-citation
+    flag are derived from the claims, not judged.
+
+    Examples:
+
+      deep-research-client claims align a.claims.json b.claims.json -o align.json
+
+      deep-research-client claims align report.claims.json gold.claims.yaml \\
+        --llm-backend claude-code --rubric --reference b
+    """
+    from .claims import aalign_claim_sets, summarize_alignment
+    from .claims.align_llm import DEFAULT_ALIGN_MAX_TOKENS
+    from .claims.candidates import DEFAULT_MIN_OVERLAP
+
+    if reference not in ("a", "b"):
+        _error(f"--reference must be a or b, not {reference!r}")
+        raise typer.Exit(1)
+
+    set_a = _load_claim_set(claims_a)
+    set_b = _load_claim_set(claims_b)
+
+    llm_client, model = _claims_llm_client(
+        llm_backend, llm_model, llm_base_url, llm_api_key_env,
+        purpose="claims are aligned by a model",
+    )
+
+    import openai
+
+    try:
+        alignment = asyncio.run(aalign_claim_sets(
+            set_a, set_b, llm_client=llm_client, model=model,
+            concurrency=concurrency,
+            max_tokens=llm_max_tokens if llm_max_tokens is not None else DEFAULT_ALIGN_MAX_TOKENS,
+            min_overlap=min_overlap if min_overlap is not None else DEFAULT_MIN_OVERLAP,
+        ))
+    except ProviderError as exc:
+        _error(f"Could not align the claim sets: {_claims_backend_failure(exc)}")
+        raise typer.Exit(1)
+    except (ValueError, openai.APIError) as exc:
+        _error(f"Could not align the claim sets: {exc}")
+        raise typer.Exit(1)
+
+    unaligned_a = alignment.unaligned_a_ids([c.id for c in set_a.claim_list])
+    unaligned_b = alignment.unaligned_b_ids([c.id for c in set_b.claim_list])
+    logger.info(
+        "Aligned %d pairs across %d A claims and %d B claims; %d A and %d B align to nothing",
+        len(alignment.aligned_pairs), len(set_a.claim_list), len(set_b.claim_list),
+        len(unaligned_a), len(unaligned_b),
+    )
+    if alignment.contradictions:
+        _warn(
+            f"{len(alignment.contradictions)} aligned pairs are contradictory "
+            f"({', '.join(p.id for p in alignment.contradictions[:10])}"
+            f"{', ...' if len(alignment.contradictions) > 10 else ''})"
+        )
+
+    _render_payload(alignment.model_dump(mode="json", exclude_none=True), output)
+    if output is not None:
+        logger.info(f"Alignment written to {output}")
+
+    if rubric or rubric_output is not None:
+        summary = summarize_alignment(alignment, set_a, set_b, reference=reference)
+        _warn(f"Rubric (reference = source {reference}):")
+        for metric in summary.metrics or []:
+            value = "n/a" if metric.value is None else f"{metric.value:.2f}"
+            _warn(f"  {metric.name}: {value} ({metric.numerator}/{metric.denominator}) -- {metric.note}")
+        if rubric_output is not None:
+            _render_payload(summary.model_dump(mode="json", exclude_none=True), rubric_output)
+            logger.info(f"Rubric written to {rubric_output}")
 
 
 def main():

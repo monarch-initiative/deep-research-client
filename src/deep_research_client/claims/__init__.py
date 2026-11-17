@@ -51,6 +51,7 @@ from .models import (
     TextSpan,
     content_sha256,
 )
+from .rubrics import summarize_alignment
 
 __all__ = [
     # Extraction (issue #43, item 1)
@@ -92,6 +93,8 @@ __all__ = [
     "ClaimAlignment",
     "EvidentialRelation",
     "SemanticRelation",
+    # Rubrics (issue #43, item 4)
+    "summarize_alignment",
     "RubricMetric",
     "RubricSummary",
 ]

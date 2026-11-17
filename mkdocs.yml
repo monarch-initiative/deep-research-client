@@ -27,6 +27,7 @@ nav:
     - Validate Ontology Terms: how-to/validate-terms.md
     - Evaluate Providers: how-to/evaluate-providers.md
     - Extract Claims: how-to/extract-claims.md
+    - Align Claims: how-to/align-claims.md
     - Manage Cache: how-to/cache.md
     - Browse Cache: how-to/browse-cache.md
     - Browse Files: how-to/browse-files.md

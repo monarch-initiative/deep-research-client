@@ -934,6 +934,42 @@ deep-research-client claims extract report.md -o report.claims.json \
 deep-research-client claims extract Marfan_Syndrome.yaml -o marfan.claims.yaml
 ```
 
+#### claims align
+
+```bash
+deep-research-client claims align CLAIMS_A CLAIMS_B [OPTIONS]
+```
+
+Align one claim set against another and classify each pair on two axes: the
+`semantic_relation` (judged by a model) and the `evidential_relation` (derived
+from each claim's `about` and `basis`). See [Align Claims](../how-to/align-claims.md).
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `CLAIMS_A` | A claim set from `claims extract` (the A side) |
+| `CLAIMS_B` | A claim set from `claims extract` (the B side) |
+| `--output`, `-o PATH` | Write the alignment here; `.yaml`/`.yml` writes YAML, anything else JSON. Without it, JSON goes to stdout |
+| `--rubric / --no-rubric` | Also compute report-level rubric metrics and print a summary to stderr (default: off) |
+| `--rubric-output PATH` | Write the rubric summary here (`.json`/`.yaml`); implies `--rubric` |
+| `--reference TEXT` | Which side is the reference the other is judged against: `a` or `b` (default: `b`) |
+| `--llm-backend TEXT` | `openai` (default) or `claude-code`, as for `claims extract` |
+| `--llm-model TEXT` | Model that classifies the semantic relation (default: `gpt-4o-mini`, or `sonnet` with `--llm-backend claude-code`) |
+| `--llm-base-url TEXT` | Base URL of an OpenAI-compatible API. `openai` backend only |
+| `--llm-api-key-env TEXT` | Env var holding the API key (default: `OPENAI_API_KEY`). `openai` backend only |
+| `--concurrency INT` | Model requests in flight at once (default: 4) |
+| `--llm-max-tokens INT` | Reply budget per pair (default: 1024). A reply cut off at it is an error |
+| `--min-overlap FLOAT` | Lexical overlap (Jaccard) at or above which a pair is a candidate (default: 0.34) |
+
+Candidate pairs are proposed without a model (shared grounded entities, shared
+resolved citations, lexical overlap); the model classifies only those. The
+optional embedding signal is a Python-API hook (`embedder=`), not a CLI flag.
+
+```bash
+# Align a report against a curated gold file, via a logged-in Claude Code
+deep-research-client claims align report.claims.json gold.claims.json \
+  --llm-backend claude-code --rubric --reference b -o alignment.json
+```
+
 ---
 
 ## Environment Variables

@@ -32,7 +32,7 @@ from .alignment_datamodel import (
 )
 from .alignment_datamodel import ClaimAlignment as GeneratedClaimAlignment
 from .alignment_datamodel import RubricSummary as GeneratedRubricSummary
-from .models import Claim, ClaimBasis, ClaimTopic
+from .models import Claim, ClaimBasis, ClaimTopic, resolved_reference_ids
 
 __all__ = [
     "AlignedClaimPair",
@@ -139,9 +139,7 @@ def shares_citation(claim_a: Claim, claim_b: Claim) -> bool:
     >>> shares_citation(a, c)
     False
     """
-    ids_a = {c.reference_id for c in (claim_a.citations or []) if c.reference_id}
-    ids_b = {c.reference_id for c in (claim_b.citations or []) if c.reference_id}
-    return bool(ids_a & ids_b)
+    return bool(resolved_reference_ids(claim_a) & resolved_reference_ids(claim_b))
 
 
 class ClaimAlignment(GeneratedClaimAlignment):

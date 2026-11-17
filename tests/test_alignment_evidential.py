@@ -5,6 +5,8 @@ conclusion can be a firsthand observation in one source and background knowledge
 in another. It is a pure function of the claims, so it is tested without a model.
 """
 
+import itertools
+
 import pytest
 
 from deep_research_client.claims import (
@@ -51,6 +53,14 @@ BG = ClaimBasis.BACKGROUND_KNOWLEDGE
 def test_the_basis_pair_maps_to_the_evidential_relation(basis_a, basis_b, expected) -> None:
     """Every ordered pair of bases has its own relation, read from A to B."""
     assert evidential_relation(_domain(basis_a), _domain(basis_b)) == expected
+
+
+def test_every_pair_of_bases_has_a_mapping() -> None:
+    """Two domain claims always get a concrete relation; a new basis would need one."""
+    for basis_a, basis_b in itertools.product(ClaimBasis, ClaimBasis):
+        relation = evidential_relation(_domain(basis_a), _domain(basis_b))
+        assert isinstance(relation, EvidentialRelation)
+        assert relation not in (EvidentialRelation.NOT_APPLICABLE, EvidentialRelation.UNDETERMINED)
 
 
 def test_the_axis_is_direction_sensitive() -> None:

@@ -109,6 +109,17 @@ def test_a_backend_that_cannot_run_is_refused_before_any_call(args, message):
     assert result.stdout == ""
 
 
+def test_a_bad_backend_is_refused_even_for_a_curated_source():
+    """A curated source needs no model, but a wrong --llm-backend is still named."""
+    result = runner.invoke(
+        app, ["claims", "extract", str(INPUT / "marfan_dismech.yaml"), "--llm-backend", "bogus"]
+    )
+
+    assert result.exit_code == 1
+    assert "Unknown --llm-backend 'bogus'" in result.stderr
+    assert result.stdout == ""
+
+
 def test_the_claude_code_backend_needs_the_cli_on_path(monkeypatch):
     """Without `claude` on PATH, the claude-code backend says so."""
     monkeypatch.setenv("PATH", "")

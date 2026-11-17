@@ -4,6 +4,8 @@ Pure functions of the two claim lists (and, for embeddings, a caller-supplied
 function), so no model is involved.
 """
 
+import pytest
+
 from deep_research_client.claims import (
     AnchorStatus,
     CitationHandle,
@@ -88,3 +90,38 @@ def test_jaccard_is_intersection_over_union() -> None:
     assert jaccard({"a", "b"}, {"a", "b"}) == 1.0
     assert jaccard({"a", "b", "c"}, {"a"}) == 1 / 3
     assert jaccard(set(), {"a"}) == 0.0
+
+
+def test_empty_inputs_produce_no_candidates() -> None:
+    assert candidate_pairs([], []) == []
+    assert candidate_pairs([_claim("a1", "A sentence.")], []) == []
+
+
+def test_an_embedder_returning_the_wrong_count_is_refused() -> None:
+    """A batching bug that drops or adds a vector should fail loudly, not lose pairs."""
+    a = [_claim("a1", "Alpha.")]
+    b = [_claim("b1", "Omega.")]
+
+    def wrong(texts):
+        return [[1.0, 0.0] for _ in range(len(texts) + 1)]  # one too many
+
+    with pytest.raises(ValueError, match="one per text"):
+        candidate_pairs(a, b, embedder=wrong)
+
+
+async def test_aligning_empty_sets_needs_no_model() -> None:
+    """No candidates means no classification, so an empty alignment needs no client."""
+    from deep_research_client.claims import (
+        ClaimSet,
+        ExtractorInfo,
+        SourceDocument,
+        SourceType,
+        aalign_claim_sets,
+    )
+
+    set_a = ClaimSet(source=SourceDocument(id="a.md", source_type=SourceType.MARKDOWN_REPORT),
+                     extractor=ExtractorInfo(name="x"))
+    set_b = ClaimSet(source=SourceDocument(id="b.yaml", source_type=SourceType.STRUCTURED_DOCUMENT),
+                     extractor=ExtractorInfo(name="y"))
+    alignment = await aalign_claim_sets(set_a, set_b, llm_client=None, model="unused")
+    assert alignment.pair_list == []

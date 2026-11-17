@@ -24,7 +24,7 @@ from typing import Callable, Optional, Sequence
 
 from ..validation.relevance import content_terms
 from .alignment_datamodel import CandidateSignal
-from .models import Claim
+from .models import Claim, resolved_reference_ids
 
 __all__ = [
     "DEFAULT_EMBED_THRESHOLD",
@@ -116,19 +116,14 @@ def jaccard(terms_a: set[str], terms_b: set[str]) -> float:
     return len(terms_a & terms_b) / len(union)
 
 
-def _cosine(vec_a: Sequence[float], vec_b: Sequence[float]) -> float:
-    """Cosine similarity of two vectors, 0 when either has no magnitude."""
-    dot = sum(x * y for x, y in zip(vec_a, vec_b))
-    norm_a = sum(x * x for x in vec_a) ** 0.5
-    norm_b = sum(y * y for y in vec_b) ** 0.5
-    if not norm_a or not norm_b:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def _unit(vec: Sequence[float]) -> list[float]:
+    """The vector scaled to length 1, or the zero vector unchanged.
 
-
-def _resolved_reference_ids(claim: Claim) -> set[str]:
-    """The resolved reference_ids a claim cites."""
-    return {c.reference_id for c in (claim.citations or []) if c.reference_id}
+    Normalising once per vector turns each later cosine into a single dot
+    product, instead of recomputing both norms for every pair.
+    """
+    norm = sum(x * x for x in vec) ** 0.5
+    return [x / norm for x in vec] if norm else list(vec)
 
 
 def candidate_pairs(
@@ -179,13 +174,13 @@ def candidate_pairs(
     for j, claim_b in enumerate(claims_b):
         for curie in grounded_ids(claim_b):
             b_by_entity.setdefault(curie, []).append(j)
-        for ref in _resolved_reference_ids(claim_b):
+        for ref in resolved_reference_ids(claim_b):
             b_by_reference.setdefault(ref, []).append(j)
     for i, claim_a in enumerate(claims_a):
         for curie in grounded_ids(claim_a):
             for j in b_by_entity.get(curie, ()):
                 add(i, j, CandidateSignal.ENTITY)
-        for ref in _resolved_reference_ids(claim_a):
+        for ref in resolved_reference_ids(claim_a):
             for j in b_by_reference.get(ref, ()):
                 add(i, j, CandidateSignal.CITATION)
 
@@ -197,13 +192,23 @@ def candidate_pairs(
             if jaccard(ta, tb) >= min_overlap:
                 add(i, j, CandidateSignal.LEXICAL)
 
-    # Embedding: optional, cosine over caller-supplied vectors.
-    if embedder is not None:
-        vecs_a = list(embedder([c.claim_text for c in claims_a])) if claims_a else []
-        vecs_b = list(embedder([c.claim_text for c in claims_b])) if claims_b else []
-        for i, va in enumerate(vecs_a):
-            for j, vb in enumerate(vecs_b):
-                if _cosine(va, vb) >= embed_threshold:
+    # Embedding: optional, cosine over caller-supplied vectors. Vectors are
+    # normalised once, so each pair's cosine is one dot product.
+    if embedder is not None and claims_a and claims_b:
+        vecs_a = list(embedder([c.claim_text for c in claims_a]))
+        vecs_b = list(embedder([c.claim_text for c in claims_b]))
+        if len(vecs_a) != len(claims_a) or len(vecs_b) != len(claims_b):
+            raise ValueError(
+                f"embedder returned {len(vecs_a)} and {len(vecs_b)} vectors for "
+                f"{len(claims_a)} and {len(claims_b)} claims; it must return one per text"
+            )
+        units_a = [_unit(v) for v in vecs_a]
+        units_b = [_unit(v) for v in vecs_b]
+        if len({len(v) for v in units_a} | {len(v) for v in units_b}) > 1:
+            raise ValueError("embedder returned vectors of differing dimensions")
+        for i, ua in enumerate(units_a):
+            for j, ub in enumerate(units_b):
+                if sum(x * y for x, y in zip(ua, ub)) >= embed_threshold:
                     add(i, j, CandidateSignal.EMBEDDING)
 
     return [

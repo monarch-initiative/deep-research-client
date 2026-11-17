@@ -14,7 +14,17 @@ from deep_research_client.claims import (
     RubricMetric,
     RubricSummary,
     SemanticRelation,
+    SourceType,
 )
+
+
+def test_aligned_source_type_covers_every_claims_source_type() -> None:
+    """AlignedSourceType mirrors claims.SourceType; a new source type must be added here.
+
+    `align._aligned_source` maps one to the other by value, so divergence would
+    raise at runtime rather than here.
+    """
+    assert {e.value for e in SourceType} == {e.value for e in AlignedSourceType}
 
 
 def test_datamodel_matches_linkml_schema() -> None:

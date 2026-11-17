@@ -99,6 +99,13 @@ def summarize_alignment(
     """
     if reference not in ("a", "b"):
         raise ValueError(f'reference must be "a" or "b", not {reference!r}')
+    if alignment.source_a.id != set_a.source.id or alignment.source_b.id != set_b.source.id:
+        raise ValueError(
+            "the claim sets do not match the alignment: it aligns "
+            f"{alignment.source_a.id!r} (A) against {alignment.source_b.id!r} (B), "
+            f"but was given {set_a.source.id!r} and {set_b.source.id!r} "
+            "(are set_a and set_b in the wrong order?)"
+        )
 
     if reference == "b":
         candidate, ref_set = set_a, set_b

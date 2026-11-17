@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List,
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
+    from .claims import ClaimSet
     from .evaluation.datamodel import ArmSpec, EvalSet
     from .transcript_stats import TranscriptStats
     from .validation import (
@@ -4042,6 +4043,30 @@ def _claims_backend_failure(error: ProviderError) -> str:
     )
 
 
+def _validate_llm_backend_flags(backend: str, base_url: Optional[str]) -> None:
+    """Reject an unknown backend or an impossible flag combination, fail-fast.
+
+    Called before any source is read, and whether or not a model is actually
+    needed, so ``claims extract foo.yaml --llm-backend bogus`` is rejected even
+    though a curated source would not call a model.
+
+    Args:
+        backend: The ``--llm-backend`` value.
+        base_url: The ``--llm-base-url`` value, or None.
+
+    Raises:
+        typer.Exit: With a message on an unknown backend, or ``--llm-base-url``
+            given for the ``claude-code`` backend.
+    """
+    backends = ("openai", "claude-code")
+    if backend not in backends:
+        _error(f"Unknown --llm-backend {backend!r}. Use one of: {', '.join(backends)}")
+        raise typer.Exit(1)
+    if backend == "claude-code" and base_url:
+        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
+        raise typer.Exit(1)
+
+
 def _claims_llm_client(
     backend: str,
     llm_model: Optional[str],
@@ -4068,13 +4093,7 @@ def _claims_llm_client(
     """
     from .claims.llm import DEFAULT_MODEL
 
-    backends = ("openai", "claude-code")
-    if backend not in backends:
-        _error(f"Unknown --llm-backend {backend!r}. Use one of: {', '.join(backends)}")
-        raise typer.Exit(1)
-    if backend == "claude-code" and base_url:
-        _error("--llm-base-url is for the openai backend; claude-code calls the local CLI.")
-        raise typer.Exit(1)
+    _validate_llm_backend_flags(backend, base_url)
 
     if backend == "claude-code":
         from .claude_code_chat import DEFAULT_CLAUDE_CODE_MODEL, ClaudeCodeChatClient
@@ -4179,6 +4198,9 @@ def claims_extract(
         if citations is not None:
             logger.info(f"Resolving [n] markers through {citations}")
 
+    # Check the backend flags even for curated sources that need no model, so a
+    # wrong backend is named up front rather than silently ignored.
+    _validate_llm_backend_flags(llm_backend, llm_base_url)
     llm_client: Any = None
     model = llm_model or DEFAULT_MODEL
     if needs_llm(fmt):
@@ -4236,7 +4258,7 @@ def claims_extract(
     logger.info(f"Claims written to {output}")
 
 
-def _load_claim_set(path: Path) -> "Any":
+def _load_claim_set(path: Path) -> "ClaimSet":
     """Load a ClaimSet written by `claims extract`, as JSON or YAML by suffix."""
     import json
 

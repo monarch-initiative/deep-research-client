@@ -54,6 +54,7 @@ __all__ = [
     "content_sha256",
     "ids_by_section",
     "inconsistencies",
+    "resolved_reference_ids",
 ]
 
 
@@ -92,6 +93,29 @@ def citation_status_for(citations: list[CitationHandle], anchor_status: str) -> 
     if anchor_status == AnchorStatus.UNANCHORED:
         return CitationStatus.UNKNOWN
     return CitationStatus.CITED if citations else CitationStatus.UNCITED
+
+
+def resolved_reference_ids(claim: Claim) -> set[str]:
+    """The resolved reference_ids a claim cites, ignoring unresolved markers.
+
+    Two reports' bare ``[1]`` markers are not the same work, so only citations
+    that resolved to an identifier count. Shared by candidate generation (the
+    citation signal) and :func:`alignment_models.shares_citation`.
+
+    Args:
+        claim: The claim to read.
+
+    Returns:
+        Every non-empty ``reference_id`` on the claim's citations.
+
+    >>> claim = Claim(id="c", claim_text="X.", anchor_status=AnchorStatus.EXACT,
+    ...               citation_status=CitationStatus.CITED,
+    ...               citations=[CitationHandle(marker="[1]", reference_id="PMID:1", scope=CitationScope.SENTENCE),
+    ...                          CitationHandle(marker="[2]", scope=CitationScope.SENTENCE)])
+    >>> sorted(resolved_reference_ids(claim))
+    ['PMID:1']
+    """
+    return {c.reference_id for c in (claim.citations or []) if c.reference_id}
 
 
 def inconsistencies(claim: Claim) -> list[str]:

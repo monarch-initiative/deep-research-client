@@ -18,6 +18,7 @@ from typing import Any, Optional, Sequence
 from .align_parsing import RelationVerdict, relation_from_reply
 from .candidates import CandidatePair
 from .models import Claim
+from .parsing import UnreadableReplyError
 
 __all__ = [
     "ALIGN_PROMPT_VERSION",
@@ -143,8 +144,6 @@ async def _classify_one(
         )
     choice = response.choices[0]
     if choice.finish_reason == "length":
-        from .parsing import UnreadableReplyError
-
         raise UnreadableReplyError(
             f"The relation reply for {pair.claim_a.id} vs {pair.claim_b.id} was cut off at "
             f"max_tokens={max_tokens}; raise it (--llm-max-tokens)"

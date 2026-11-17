@@ -115,6 +115,13 @@ def test_an_unknown_reference_is_refused(scenario) -> None:
         summarize_alignment(alignment, set_a, set_b, reference="gold")
 
 
+def test_claim_sets_that_do_not_match_the_alignment_are_refused(scenario) -> None:
+    """Passing the sets swapped would otherwise give plausible but wrong metrics."""
+    alignment, set_a, set_b = scenario
+    with pytest.raises(ValueError, match="do not match the alignment"):
+        summarize_alignment(alignment, set_b, set_a)  # A and B swapped
+
+
 def test_the_substrate_is_source_agnostic_report_vs_report() -> None:
     """Alignment and rubrics read claims, not source types: two reports align too.
 

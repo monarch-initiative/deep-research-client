@@ -893,6 +893,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#provider-run-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Provider run identifiers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       Timeouts
@@ -2210,6 +2219,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#provider-run-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Provider run identifiers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       Timeouts
@@ -3389,6 +3407,41 @@
 <p>See <a href="../capabilities/">Capabilities, Resources &amp; Archetypes</a> for the vocabulary
 used to describe each provider, including why a conventional deep-research tool
 is a subset of the co-scientist case.</p>
+<h2 id="provider-run-identifiers">Provider run identifiers</h2>
+<p>A lightweight Markdown report is safe to commit, but the richer artifacts a run
+produced may need to be reassembled from the provider later — to verify
+provenance, fetch a PDF export, or debug a provider-side run. For that a
+committed report has to carry a durable handle on its upstream job. Three
+provider-neutral fields on <code>ResearchResult</code>, written to the report frontmatter,
+hold it (issue #50):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provider_job_id</code></td>
+<td>The provider-side identifier for this run (e.g. an OpenScientist job ID or an Edison trajectory UUID).</td>
+</tr>
+<tr>
+<td><code>provider_job_url</code></td>
+<td>A direct URL to the provider-side job, when the provider exposes one.</td>
+</tr>
+<tr>
+<td><code>provider_instance_url</code></td>
+<td>The base URL of the hosted instance that ran this, when the provider is a hosted service.</td>
+</tr>
+</tbody>
+</table>
+<p>Each provider sets whichever it can and leaves the rest unset rather than
+guessing — a field is absent from the frontmatter when it is unknown, so its
+presence is the finding. Provider-specific raw identifiers that do not fit these
+keys stay in <code>run_metadata</code>. The older Edison/Falcon <code>trajectory_id</code> key is
+unchanged and still written (see <a href="#edison-scientific-falcon">Edison</a>); it now
+coexists with <code>provider_job_id</code>, which carries the same UUID.</p>
 <h2 id="timeouts">Timeouts</h2>
 <p><code>deep-research-client research --timeout SECONDS</code> (or <code>timeout=</code> on
 <code>DeepResearchClient.research()</code>) replaces the chosen provider's
@@ -3640,6 +3693,7 @@ params = FalconParams(
 <li><strong>Capabilities</strong>: Scientific literature, powered by PaperQA3</li>
 <li><strong>Artifacts</strong>: Edison output artifacts are fetched from the completed task. Image artifacts such as diagrams, charts, and figures are written beside saved reports and embedded in the generated Markdown; other artifact files are linked from an <code>Artifacts</code> section.</li>
 <li><strong>Runs that find nothing</strong>: when Edison's agent was not sure of its answer (<code>has_successful_answer</code> false or never set) -- typically because retrieval found no papers -- the report is still written with its artifacts, but its frontmatter says <code>answer_status: unsuccessful</code>, <code>## Output</code> opens with a warning, the result is not cached, and the CLI exits with code 4. Which papers Edison can retrieve is up to its own corpus and search, not this client.</li>
+<li><strong>Trajectory / job identifier</strong>: every run records Edison's task UUID both as the provider-neutral <code>provider_job_id</code> (see <a href="#provider-run-identifiers">Provider run identifiers</a>) and under the long-standing <code>provider_config.trajectory_id</code>, which is also surfaced as a top-level <code>trajectory_id</code> frontmatter key. The two always carry the same UUID; <code>trajectory_id</code> is kept so existing tooling and the <code>deep-research-client edison-trajectory &lt;task id&gt;</code> command keep working. A report reassembled by that command additionally sets <code>provider_config.retrieval_mode: edison_trajectory</code>. Edison exposes no public per-job URL, so <code>provider_job_url</code> and <code>provider_instance_url</code> are left unset rather than guessed. (A fresh run recorded no identifier at all before this; only the retrieval command did.)</li>
 <li><strong>Timeout and cancellation</strong>: the client waits up to <code>ProviderConfig.timeout</code> seconds for the Edison task (2400 by default, edison-client's own default), then raises <code>EdisonTaskTimeoutError</code> (a <code>TimeoutError</code>). When the client stops waiting by choice (that timeout, Ctrl-C, or the caller cancelling the run), it asks Edison to cancel the task, so it doesn't keep running and billing. Edison only cancels a task that has started. One still queued is left alone, and a warning names it so you can stop it from the Edison dashboard. When a status check fails instead, for example on a network error, the task is left running, because it may still finish. A warning gives the <code>deep-research-client edison-trajectory &lt;task id&gt;</code> command that collects it.</li>
 <li><strong>Artifacts with unreadable storage ids</strong>: an output whose storage id is not a UUID is skipped with a warning. The answer and the other artifacts are still returned.</li>
 <li><strong>Failures cached before this was added</strong>: a run that failed this way under an earlier version was cached like any report, and a cache entry records no <code>answer_status</code>, so it is still served as one. If you hit this before upgrading, rerun that query with <code>--no-cache</code> (or <code>deep-research-client clear-cache</code>, which clears everything) to get a fresh run.</li>
@@ -3763,6 +3817,7 @@ params = OpenScientistParams(
 <li><strong>Citations</strong>: PMID format with deduplication</li>
 <li><strong>Artifacts</strong>: Useful figures, small structured files, and rendered reports from the OpenScientist artifact ZIP are returned as <code>ResearchArtifact</code> entries. Runtime scaffolding, logs, transcripts, archives, and oversized files are skipped by default, and every part of that is configurable — see <a href="#artifact-selection">Artifact selection</a>.</li>
 <li><strong>Job ID</strong>: the result's <code>run_metadata</code> carries the OpenScientist <code>job_id</code>, which is also written to the report frontmatter. With it, a caller can fetch the job's complete artifacts ZIP from <code>GET {OPENSCIENTIST_URL}/api/v1/jobs/{job_id}/artifacts</code> when artifact selection leaves out a file it needs. Results cached before this field existed have no <code>run_metadata</code> (the cache version was deliberately not bumped, since runs are long), so callers must handle its absence.</li>
+<li><strong>Provider run identifiers</strong>: the same job is also recorded in the provider-neutral frontmatter keys described under <a href="#provider-run-identifiers">Provider run identifiers</a>: <code>provider_job_id</code>, <code>provider_job_url</code> (<code>{OPENSCIENTIST_URL}/job/{job_id}</code>), and <code>provider_instance_url</code> (the base URL this run used, so a committed report points back at the instance that produced it, not a hard-coded default).</li>
 </ul>
 <h3 id="when-to-use">When to Use</h3>
 <ul>

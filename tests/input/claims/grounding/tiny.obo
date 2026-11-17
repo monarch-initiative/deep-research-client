@@ -1,0 +1,15 @@
+format-version: 1.2
+ontology: tiny
+
+[Term]
+id: MONDO:0007947
+name: Marfan syndrome
+def: "A disorder of connective tissue." []
+
+[Term]
+id: HP:0030348
+name: Increased circulating androgen concentration
+
+[Term]
+id: UBERON:0001821
+name: sebaceous gland

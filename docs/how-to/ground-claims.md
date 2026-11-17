@@ -74,7 +74,26 @@ ontology_adapters:
 
 The config is the same `oak_config.yaml` term validation uses. `--adapter` sets the
 default for an entry with no value (`ols:` over the network, `sqlite:obo:` for bulk
-local lookups); `--offline` resolves only from the cache.
+local lookups); `--offline` resolves only from the cache. `--include-definitions`
+shows each candidate's definition to the model — a help for disambiguation, but one
+extra request per candidate over a networked adapter, so it is off by default and
+best paired with a local `sqlite:obo:` adapter.
+
+## Limitations
+
+- **One concept per label across the set.** A label is grounded once and the CURIE
+  is applied to every mention of it, using one representative sentence as context.
+  A term that genuinely means two things in one report is grounded for the first
+  sense only.
+- **The `grounder` record describes the last run.** Running `claims ground` again
+  keeps the ids already present and only re-grounds the rest, but overwrites the
+  `grounder` provenance with the second run's counts. Ground in one pass when the
+  record needs to describe the whole set.
+- **Ids from the source and ids added here are not distinguished afterwards.**
+  Both live in `EntityMention.id`. The `grounder` record says how many were added,
+  not which.
+- **If every ontology search fails** (an outage, a bad adapter), the command exits
+  non-zero rather than quietly reporting nothing grounded.
 
 ## Then align
 

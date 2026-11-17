@@ -54,6 +54,24 @@ def test_a_bad_backend_is_refused_before_any_search(monkeypatch) -> None:
     assert "Unknown --llm-backend 'bogus'" in result.stderr
 
 
+def test_the_cli_names_the_terms_extra_when_it_is_missing(monkeypatch) -> None:
+    """With linkml-term-validator absent, `claims ground` says how to install it."""
+    import importlib.util
+
+    real_find_spec = importlib.util.find_spec
+
+    def missing(name, *args, **kwargs):
+        return None if name == "linkml_term_validator" else real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", missing)
+    result = runner.invoke(
+        app, ["claims", "ground", CLAIMS, "--ontologies", "biomedical",
+              "--llm-backend", "openai", "--llm-base-url", "http://localhost:9"],
+    )
+    assert result.exit_code == 1
+    assert 'deep_research_client[terms]' in result.stderr
+
+
 def test_the_oak_grounder_names_the_terms_extra_when_it_is_missing(monkeypatch) -> None:
     """Without linkml-term-validator installed, the grounder says how to install it."""
     import sys

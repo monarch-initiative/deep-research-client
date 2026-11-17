@@ -83,6 +83,11 @@ class OakGrounder:
         self._access: Any = None
         self._search_lock = threading.Lock()
         self._models_seen: list[str] = []
+        #: Per-ontology searches that returned, and that raised. If every search
+        #: raised and none returned, the run hit an outage or a bad adapter rather
+        #: than finding nothing, and the caller can tell the two apart.
+        self.searches_ok = 0
+        self.searches_failed = 0
 
     def _build_access(self) -> Any:
         """The OAK-backed resolver, built once. Raises with a hint if the extra is absent."""
@@ -100,16 +105,20 @@ class OakGrounder:
         return access
 
     def _candidates(self, label: str) -> list[GroundingCandidate]:
-        """Search every configured ontology for the label, newest adapter cached.
+        """Search every configured ontology for the label.
 
         A prefix whose adapter is the empty string is named but not searched, as
         in term validation. A search that fails for one ontology is logged and
-        skipped rather than aborting the whole grounding.
+        skipped rather than aborting the whole grounding; the run-wide
+        ``searches_ok``/``searches_failed`` counters let the caller notice when
+        *every* search failed (an outage or a bad adapter) rather than nothing
+        matching.
 
         Runs under a lock because OAK adapters are not assumed thread-safe and
-        several terms are grounded at once. The lock is taken here, inside the
-        worker thread, never across an ``await`` -- holding it across one would
-        block the event loop and deadlock the concurrent calls.
+        several terms are grounded at once; the lock also guards the one-time lazy
+        build of the shared resolver. It is taken here, inside the worker thread,
+        never across an ``await`` -- holding it across one would block the event
+        loop and deadlock the concurrent calls.
         """
         with self._search_lock:
             return self._search(label)
@@ -128,11 +137,12 @@ class OakGrounder:
                     continue
                 curies = [c for c in list(adapter.basic_search(label))[: self._candidates_per_ontology]
                           if c not in found]
-                if not curies:
-                    continue
-                labels = dict(adapter.labels(curies))  # one batched lookup, not one per curie
+                # labels()/definitions() yield (curie, value[, metadata]) across OAK
+                # adapters; take the first two elements so a 3-tuple adapter works too.
+                labels = {t[0]: t[1] for t in adapter.labels(curies)} if curies else {}
                 definitions = (
-                    {c: adapter.definition(c) for c in curies} if self._include_definitions else {}
+                    {t[0]: t[1] for t in adapter.definitions(curies)}
+                    if curies and self._include_definitions else {}
                 )
                 for curie in curies:
                     found[curie] = GroundingCandidate(
@@ -140,7 +150,9 @@ class OakGrounder:
                         label=labels.get(curie) or curie,
                         definition=definitions.get(curie),
                     )
+                self.searches_ok += 1
             except Exception as exc:  # noqa: BLE001 - one ontology failing must not abort the run
+                self.searches_failed += 1
                 logger.warning("Ontology search failed for %s on %s: %s", label, prefix, exc)
         return list(found.values())
 

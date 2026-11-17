@@ -4527,6 +4527,10 @@ def claims_ground(
         "--terms-cache", help="Directory where OAK caches labels between runs")] = None,
     offline: Annotated[bool, typer.Option(
         "--offline", help="Resolve only from the cache; never reach the network")] = False,
+    include_definitions: Annotated[bool, typer.Option(
+        "--include-definitions",
+        help="Show each candidate's definition to the model. A request each over a "
+             "networked adapter; worth it with a local sqlite:obo: adapter")] = False,
     llm_backend: Annotated[str, typer.Option(
         "--llm-backend",
         help="How the model is called: openai or claude-code")] = "openai",
@@ -4560,6 +4564,7 @@ def claims_ground(
         --ontology-config oak_config.yaml --max-terms 200 --adapter sqlite:obo:
     """
     import asyncio
+    import importlib.util
 
     from .claims import OakGrounder, aground_claims, biomedical_ontology_config
     from .claims.grounding_llm import DEFAULT_GROUNDING_MAX_TOKENS
@@ -4589,23 +4594,33 @@ def claims_ground(
 
     import openai
 
+    # Fail fast and specifically when the OAK extra is absent, before any search,
+    # rather than letting an ImportError surface from inside a worker thread mid-run.
+    if importlib.util.find_spec("linkml_term_validator") is None:
+        _error(TERM_INSTALL_HINT)
+        raise typer.Exit(1)
+
     grounder = OakGrounder(
         config, llm_client=llm_client, model=model, adapter=adapter,
-        cache_dir=terms_cache, offline=offline,
+        cache_dir=terms_cache, offline=offline, include_definitions=include_definitions,
         max_tokens=llm_max_tokens if llm_max_tokens is not None else DEFAULT_GROUNDING_MAX_TOKENS,
     )
     try:
         grounded = asyncio.run(aground_claims(
             claim_set, grounder, max_terms=max_terms, concurrency=concurrency,
         ))
-    except ImportError:
-        _error(TERM_INSTALL_HINT)
-        raise typer.Exit(1)
     except ProviderError as exc:
         _error(f"Could not ground the claims: {_claims_backend_failure(exc)}")
         raise typer.Exit(1)
     except (ValueError, openai.APIError) as exc:
         _error(f"Could not ground the claims: {exc}")
+        raise typer.Exit(1)
+
+    if grounder.searches_failed and not grounder.searches_ok:
+        _error(
+            "Every ontology search failed; nothing could be grounded. Check network "
+            "connectivity, the --adapter, and the ontology config. Last errors are on stderr."
+        )
         raise typer.Exit(1)
 
     info = grounded.grounder

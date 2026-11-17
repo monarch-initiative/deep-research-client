@@ -71,8 +71,9 @@ class GroundedTerm:
     """The CURIE a label was grounded to.
 
     Attributes:
-        id: The chosen CURIE.
-        label: The ontology's own label for it (not the label as written).
+        id: The chosen CURIE, the only part written onto a mention.
+        label: The ontology's own label for it, for callers and logging; it is not
+            written onto the mention, whose label stays as the source wrote it.
     """
 
     id: str

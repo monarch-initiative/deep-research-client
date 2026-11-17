@@ -1417,6 +1417,10 @@ rest of #41 — is a hook left for a following PR.</p>
 can take <code>report.needs_agent</code> (unsupported claims, unresolved citations) and try to
 resolve them, escalating what it cannot. The machine-decidable flags
 (<code>CONFABULATED_CITATION</code>) are already settled — those citations are fabricated.</p>
+<p>The report also feeds the report-level rubric: pass it to
+<a href="../align-claims/#folding-in-grounding-and-verification"><code>summarize_alignment(..., verification=report)</code></a>
+and its citation verdicts and review flags fold into <code>citation_accuracy</code> and
+<code>review_burden</code> beside the alignment metrics.</p>
 
 
 

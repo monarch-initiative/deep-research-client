@@ -667,6 +667,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Report-level rubrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#folding-in-grounding-and-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Folding in grounding and verification
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1244,6 +1259,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Report-level rubrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#folding-in-grounding-and-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Folding in grounding and verification
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1426,6 +1456,36 @@ sum to 1 by construction rather than being independent signals.</p>
 <a href="../verify-claims/"><code>claims verify</code></a> and each <code>CONTRADICTORY</code> pair becomes a
 <code>CONTRADICTION</code> flag (or <code>SELF_CONTRADICTION</code>, within one source) — a logical
 conflict a person must adjudicate.</p>
+<h3 id="folding-in-grounding-and-verification">Folding in grounding and verification</h3>
+<p>The five metrics above read only the alignment. Pass the candidate's own
+<a href="../verify-claims/">verification report</a> as <code>verification=</code> and three more metrics
+fold the later steps in, so accuracy reflects what was actually checked:</p>
+<pre><code class="language-python">from deep_research_client.claims import summarize_alignment, verify_claims
+
+report = verify_claims(candidate, [citation_verifier])   # or triage-only
+summary = summarize_alignment(alignment, candidate, reference, reference=&quot;a&quot;,
+                              verification=report)
+</code></pre>
+<ul>
+<li><code>grounding</code> — candidate entity mentions resolved to an ontology id (coverage),
+  appended whenever the candidate was grounded (it carries a grounder stamp). This
+  one needs no <code>verification</code>: a grounded candidate gains it even when <code>verification</code>
+  is omitted.</li>
+<li><code>citation_accuracy</code> — of the candidate's checked cited claims, those whose
+  citations resolve to a real work, read from the citation verdicts. A claim counts
+  as <em>checked</em> only when a verdict settled something (a resolver that could not
+  reach the identifier leaves it out, so it cannot inflate the score). This differs
+  from <code>support</code> (contradiction counts) and from <code>citation_quality</code> (which asks
+  only whether a claim is cited at all): it is the "is the cited work real" signal.
+  The claims with a fabricated citation are listed. Needs <code>verification</code>.</li>
+<li><code>review_burden</code> — candidate claims raising no flag only a human can settle, with
+  the ones a person must review listed. The candidate side of each contradictory
+  pair in the alignment is folded in too, so the burden stays coherent with
+  <code>support</code> even when the <code>verification</code> was built triage-only. Needs <code>verification</code>.</li>
+</ul>
+<p>Each is still a <code>numerator / denominator</code> carrying its ids, and the five alignment
+metrics are unchanged. The <code>verification</code> must be the candidate's own (its
+<code>source_id</code> is checked).</p>
 <h2 id="adversarial-inputs">Adversarial inputs</h2>
 <p>Claim text reaches the classifier as prompt content. A source document could in
 principle carry text meant to steer the judgement ("ignore the above and reply

@@ -423,7 +423,7 @@ params = ClaudeCodeParams(
     allowed_tools=["WebSearch", "WebFetch"],  # tool allowlist (default: read-only research set)
     skip_permissions=False,       # default; True bypasses ALL checks (see Security)
     add_dirs=["/data/papers"],    # optional --add-dir entries
-    working_dir="/tmp/research",  # optional cwd for the run
+    working_dir="/tmp/research",  # optional cwd (default: a fresh temp dir)
     min_report_chars=200,         # fail on an implausibly short report (0 disables)
     extra_args=["--max-turns", "30"],  # escape hatch for unmodeled flags
 )
@@ -431,6 +431,18 @@ params = ClaudeCodeParams(
 
 When `skip_permissions` is `False` (the default), you can also set
 `permission_mode` (e.g. `"plan"` or `"acceptEdits"`).
+
+**Working directory.** With `working_dir` unset the run uses a fresh empty
+temporary directory, removed when it ends, rather than the caller's current
+directory. A one-shot research run needs its web tools, not the caller's files,
+and starting in the caller's workspace lets the agent pick up agent-instruction
+files sitting there (`CLAUDE.md`, `AGENTS.md`), which can send it after a tool
+the read-only allowlist denies (issue #113). Set `working_dir="."` to keep the
+old current-directory behaviour, or `add_dirs` to grant tool access to specific
+directories without making one the cwd. Note the flip side of this change:
+project-scoped Claude Code config in the current directory (`.mcp.json`,
+`.claude/settings.json`, a local `CLAUDE.md`) is no longer loaded by default;
+set `working_dir="."` if a run needs it.
 
 ### What every run is told
 
@@ -626,11 +638,20 @@ params = AntigravityParams(
     print_timeout=None,               # default: agy's own no-limit; set e.g. "15m" to pass one through
     settings_override=None,           # escape hatch: raw JSON for `agy --settings`
     add_dirs=["/data/papers"],        # optional --add-dir entries
-    working_dir="/tmp/research",      # optional cwd for the run
+    working_dir="/tmp/research",      # optional cwd (default: a fresh temp dir)
     min_report_chars=200,             # fail on an implausibly short report (0 disables)
     extra_args=["--sandbox"],         # escape hatch for unmodeled flags
 )
 ```
+
+**Working directory.** With `working_dir` unset the run uses a fresh empty
+temporary directory, removed when it ends, rather than the caller's current
+directory. `agy` treats its starting directory as the workspace, so starting in
+a directory that holds agent-instruction files (`CLAUDE.md`, `AGENTS.md`) lets
+the agent read them and reach for a shell or file tool its read-only mode
+auto-denies — which ends the run with an empty report (issue #113). Set
+`working_dir="."` to run in the current directory, or `add_dirs` to grant tool
+access to specific directories without making one the cwd.
 
 ### What every run is told
 
@@ -662,8 +683,15 @@ notice is printed to stderr, and the run still exits 0. So the out-of-the-box
 behaviour is already read-only, and this provider never passes
 `--dangerously-skip-permissions` unless you set `skip_permissions=True` (only do
 so for a trusted query in a sandbox). One consequence: a soft-denied *final*
-action can leave a successful run with an empty response — `min_report_chars`
-catches that and fails the run rather than caching an empty report.
+action can leave a successful run with an empty response. When that empty-or-too-short
+report is explained by an auto-denied tool — the terminal event's
+`denied_actions` (the strong signal), or an `auto-denied` note on stderr (a
+fallback) — the provider raises an error that names the refused action (e.g.
+`Bash (command)`) and includes the stderr tail, instead of the generic
+short-report error, so the real cause is visible (issue #113).
+Otherwise `min_report_chars` catches the empty report and fails the run rather
+than caching it. The refused actions are also recorded in `run_metadata`
+(`denied_actions`, `denied_action_names`) even when the report survives.
 
 Two caller-controlled escape hatches can also undo the read-only stance:
 `skip_permissions=True` (adds `--dangerously-skip-permissions`) and

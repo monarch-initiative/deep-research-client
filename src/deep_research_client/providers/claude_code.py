@@ -440,7 +440,10 @@ class ClaudeCodeProvider(CLIAgentResearchProvider):
         # assistant message; the plain "json" format would give us only the last
         # one. See the module docstring.
         command: List[str] = [
-            self.claude_executable,
+            # Absolute if it carries a path separator, so the default
+            # throwaway-temp-dir cwd (see _working_directory) cannot break a
+            # relative executable path like ./bin/claude.
+            self._abs_executable(self.claude_executable),
             "--print",
             "--output-format",
             "stream-json",
@@ -469,8 +472,12 @@ class ClaudeCodeProvider(CLIAgentResearchProvider):
         if allowed_tools:
             command.extend(["--allowedTools", ",".join(allowed_tools)])
 
+        # Resolve add_dirs against the caller's directory, not the throwaway
+        # temp-dir cwd the run will use, so a relative entry still points where
+        # the caller meant (see _working_directory). extra_args are passed
+        # verbatim; a relative path inside them is the caller's to make absolute.
         for directory in self.params.add_dirs:
-            command.extend(["--add-dir", directory])
+            command.extend(["--add-dir", self._abs_path_arg(directory)])
 
         command.extend(self.params.extra_args)
 

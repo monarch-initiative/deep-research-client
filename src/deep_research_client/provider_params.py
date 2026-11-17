@@ -620,7 +620,13 @@ class ClaudeCodeParams(ToolUniverseMixin, BaseProviderParams):
     )
     working_dir: Optional[str] = Field(
         default=None,
-        description="Working directory in which to run the claude process (defaults to current dir)"
+        description=(
+            "Working directory in which to run the claude process. When unset, "
+            "the run uses a fresh empty temporary directory (removed afterwards) "
+            "so it does not pick up agent-instruction files (CLAUDE.md, AGENTS.md) "
+            "from the caller's directory. Set to '.' to run in the current "
+            "directory, or to a path to grant the agent workspace access."
+        )
     )
     timeout: int = Field(
         default=1800,
@@ -712,7 +718,15 @@ class AntigravityParams(BaseProviderParams):
     )
     working_dir: Optional[str] = Field(
         default=None,
-        description="Working directory in which to run the agy process (defaults to current dir)"
+        description=(
+            "Working directory in which to run the agy process. When unset, the "
+            "run uses a fresh empty temporary directory (removed afterwards) so "
+            "it does not pick up agent-instruction files (CLAUDE.md, AGENTS.md) "
+            "from the caller's directory, which agy would otherwise read and act "
+            "on, exhausting the run on a tool its read-only mode denies. Set to "
+            "'.' to run in the current directory, or to a path to grant the agent "
+            "workspace access."
+        )
     )
     timeout: int = Field(
         default=1800,

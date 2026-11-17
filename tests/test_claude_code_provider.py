@@ -8,6 +8,7 @@ skipped automatically when the CLI is unavailable.
 
 import json
 import logging
+import os
 import shutil
 
 import pytest
@@ -888,3 +889,58 @@ def test_the_incomplete_marker_is_recognised_in_any_markdown_spelling(line, is_m
         markdown, ["https://example.org"], retrieval_calls=2, web_search_requests=1
     )
     assert bool(reason and reason.startswith("the model marked the report incomplete")) == is_marker
+
+
+# --------------------------------------------------------------------------- #
+# Shared working-directory behaviour (issue #113 / PR #114): claude_code gets
+# the temp-dir default and path resolution from CLIAgentResearchProvider too.
+# --------------------------------------------------------------------------- #
+
+def _pwd_stub(tmp_path):
+    script = tmp_path / "pwdclaude"
+    script.write_text("#!/bin/sh\npwd\n", encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
+@pytest.mark.asyncio
+async def test_run_process_defaults_to_a_throwaway_temp_dir(tmp_path):
+    """With no working_dir, claude runs in a fresh temp dir that is cleaned up."""
+    provider = make_provider(ClaudeCodeParams(claude_executable=str(_pwd_stub(tmp_path))))
+    stdout, _stderr, code = await provider._run_process([str(_pwd_stub(tmp_path))])
+    assert code == 0
+    used_dir = stdout.strip()
+    assert os.path.realpath(used_dir) != os.path.realpath(os.getcwd())
+    assert "drc-cli-agent-" in used_dir
+    assert not os.path.exists(used_dir)
+
+
+@pytest.mark.asyncio
+async def test_run_process_honours_an_explicit_working_dir(tmp_path):
+    """A set working_dir is used verbatim and left in place."""
+    workdir = tmp_path / "chosen"
+    workdir.mkdir()
+    provider = make_provider(ClaudeCodeParams(
+        claude_executable=str(_pwd_stub(tmp_path)), working_dir=str(workdir)))
+    stdout, _stderr, code = await provider._run_process([str(_pwd_stub(tmp_path))])
+    assert code == 0
+    assert os.path.realpath(stdout.strip()) == os.path.realpath(str(workdir))
+    assert workdir.exists()
+
+
+def test_build_command_resolves_relative_add_dirs_to_absolute():
+    """A relative --add-dir must be anchored to the caller's dir, not the
+    throwaway temp-dir cwd the run uses (PR #114 review)."""
+    cmd = make_provider(ClaudeCodeParams(add_dirs=["data/papers"]))._build_command()
+    resolved = cmd[cmd.index("--add-dir") + 1]
+    assert os.path.isabs(resolved)
+    assert resolved == os.path.abspath("data/papers")
+
+
+def test_build_command_absolutizes_a_relative_executable_path():
+    """A relative executable path breaks under the temp-dir cwd; a bare name does not."""
+    assert make_provider(
+        ClaudeCodeParams(claude_executable="./bin/claude"))._build_command()[0] \
+        == os.path.abspath("./bin/claude")
+    assert make_provider(
+        ClaudeCodeParams(claude_executable="claude"))._build_command()[0] == "claude"

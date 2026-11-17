@@ -1,0 +1,5 @@
+{"relation": "subsumes", "confidence": 0.6, "rationale": "A says aortic root dilatation is the major cardiovascular manifestation, a stronger claim than B's plain statement that it is a phenotype of Marfan syndrome, so B is the weaker claim that A entails."}
+
+Wait, that direction is wrong. A is the more specific claim (adds "major"), so B is the more general one.
+
+{"relation": "subsumed_by", "confidence": 0.65, "rationale": "A adds that aortic root dilatation is the major cardiovascular manifestation, which is more specific than B's claim that it is a phenotype of Marfan syndrome, so A entails B but not vice versa."}

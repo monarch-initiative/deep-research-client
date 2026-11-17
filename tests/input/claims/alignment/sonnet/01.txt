@@ -1,0 +1,1 @@
+{"relation": "identical", "confidence": 0.97, "rationale": "Both claims assert the same causal relationship between FBN1 variants and Marfan syndrome, differing only in active versus passive voice."}

@@ -5,6 +5,12 @@ in the source again. Extraction does not judge whether a claim is true;
 alignment across sources and verification consume these records later.
 """
 
+from .align import (
+    aalign_claim_sets,
+    acompare_claims,
+    align_claim_sets,
+    compare_claims,
+)
 from .alignment_models import (
     AlignedClaimPair,
     AlignedSource,
@@ -70,6 +76,10 @@ __all__ = [
     "TextSpan",
     "content_sha256",
     # Alignment data model and derived axes (issue #43, item 2)
+    "aalign_claim_sets",
+    "acompare_claims",
+    "align_claim_sets",
+    "compare_claims",
     "candidate_pairs",
     "evidential_relation",
     "shares_citation",

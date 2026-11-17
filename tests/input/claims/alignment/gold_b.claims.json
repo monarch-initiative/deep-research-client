@@ -1,0 +1,72 @@
+{
+  "source": {
+    "id": "gold_b.yaml",
+    "source_type": "STRUCTURED_DOCUMENT",
+    "title": "Marfan syndrome (curated)"
+  },
+  "extractor": {
+    "name": "dismech"
+  },
+  "claims": [
+    {
+      "id": "phenotypes[0]",
+      "claim_text": "Marfan syndrome has phenotype aortic root dilatation.",
+      "source_path": "phenotypes[0]",
+      "anchor_status": "NOT_APPLICABLE",
+      "entities": [
+        {
+          "label": "Aortic root dilatation",
+          "id": "HP:0002616"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:2",
+          "reference_id": "PMID:2",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "genetic_factors[0]",
+      "claim_text": "Marfan syndrome is caused by variants in FBN1.",
+      "source_path": "genetic_factors[0]",
+      "anchor_status": "NOT_APPLICABLE",
+      "entities": [
+        {
+          "label": "FBN1",
+          "id": "HGNC:3603"
+        }
+      ],
+      "citations": [
+        {
+          "marker": "PMID:3",
+          "reference_id": "PMID:3",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    },
+    {
+      "id": "phenotypes[1]",
+      "claim_text": "Marfan syndrome occurs in about 1 in 3000 people.",
+      "source_path": "phenotypes[1]",
+      "anchor_status": "NOT_APPLICABLE",
+      "citations": [
+        {
+          "marker": "PMID:1",
+          "reference_id": "PMID:1",
+          "scope": "RECORD"
+        }
+      ],
+      "citation_status": "CITED",
+      "about": "DOMAIN",
+      "basis": "SECONDARY_SOURCE"
+    }
+  ]
+}

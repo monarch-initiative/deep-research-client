@@ -26,7 +26,11 @@ from .models import GrounderInfo
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["OakGrounder"]
+__all__ = ["GroundingError", "OakGrounder"]
+
+
+class GroundingError(RuntimeError):
+    """Grounding could not proceed -- for example every ontology search failed."""
 
 TERM_INSTALL_HINT = (
     "linkml-term-validator is required for ontology grounding. "
@@ -154,6 +158,15 @@ class OakGrounder:
             except Exception as exc:  # noqa: BLE001 - one ontology failing must not abort the run
                 self.searches_failed += 1
                 logger.warning("Ontology search failed for %s on %s: %s", label, prefix, exc)
+        # Fail fast on a total outage: once a whole term's worth of searches has
+        # been attempted and not one has ever succeeded, stop rather than make the
+        # same failing calls for every remaining label.
+        searchable = sum(1 for a in self._ontologies.resolved_adapters(self._adapter).values() if a != "")
+        if self.searches_ok == 0 and searchable and self.searches_failed >= searchable:
+            raise GroundingError(
+                "Every ontology search has failed; nothing can be grounded. Check network "
+                "connectivity, the --adapter, and the ontology config (last errors are logged)."
+            )
         return list(found.values())
 
     async def aground_term(self, label: str, context: str) -> Optional[GroundedTerm]:

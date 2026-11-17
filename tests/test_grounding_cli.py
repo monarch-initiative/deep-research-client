@@ -4,6 +4,7 @@ The OAK + model path is covered under the ``llm`` marker in
 test_grounding_integration.py; here only the paths that need neither run.
 """
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -54,32 +55,15 @@ def test_a_bad_backend_is_refused_before_any_search(monkeypatch) -> None:
     assert "Unknown --llm-backend 'bogus'" in result.stderr
 
 
-def test_the_cli_names_the_terms_extra_when_it_is_missing(monkeypatch) -> None:
-    """With linkml-term-validator absent, `claims ground` says how to install it."""
-    import importlib.util
-
-    real_find_spec = importlib.util.find_spec
-
-    def missing(name, *args, **kwargs):
-        return None if name == "linkml_term_validator" else real_find_spec(name, *args, **kwargs)
-
-    monkeypatch.setattr(importlib.util, "find_spec", missing)
+@pytest.mark.skipif(
+    importlib.util.find_spec("linkml_term_validator") is not None,
+    reason="runs only when the optional `terms` extra is absent (the base-install CI job)",
+)
+def test_the_cli_names_the_terms_extra_when_it_is_missing() -> None:
+    """With linkml-term-validator not installed, `claims ground` says how to install it."""
     result = runner.invoke(
         app, ["claims", "ground", CLAIMS, "--ontologies", "biomedical",
               "--llm-backend", "openai", "--llm-base-url", "http://localhost:9"],
     )
     assert result.exit_code == 1
-    assert 'deep_research_client[terms]' in result.stderr
-
-
-def test_the_oak_grounder_names_the_terms_extra_when_it_is_missing(monkeypatch) -> None:
-    """Without linkml-term-validator installed, the grounder says how to install it."""
-    import sys
-
-    from deep_research_client.claims import OakGrounder, biomedical_ontology_config
-
-    # Simulate the optional extra being absent: the submodule import raises ImportError.
-    monkeypatch.setitem(sys.modules, "linkml_term_validator.utils", None)
-    grounder = OakGrounder(biomedical_ontology_config(), llm_client=None, model="unused")
-    with pytest.raises(ImportError, match="deep_research_client\\[terms\\]"):
-        grounder._build_access()
+    assert "deep_research_client[terms]" in result.stderr

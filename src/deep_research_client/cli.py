@@ -4568,7 +4568,7 @@ def claims_ground(
 
     from .claims import OakGrounder, aground_claims, biomedical_ontology_config
     from .claims.grounding_llm import DEFAULT_GROUNDING_MAX_TOKENS
-    from .claims.grounding_oak import TERM_INSTALL_HINT
+    from .claims.grounding_oak import TERM_INSTALL_HINT, GroundingError
     from .ontologies import OntologyConfig
 
     if (ontology_config is None) == (ontologies is None):
@@ -4609,6 +4609,9 @@ def claims_ground(
         grounded = asyncio.run(aground_claims(
             claim_set, grounder, max_terms=max_terms, concurrency=concurrency,
         ))
+    except GroundingError as exc:
+        _error(str(exc))
+        raise typer.Exit(1)
     except ProviderError as exc:
         _error(f"Could not ground the claims: {_claims_backend_failure(exc)}")
         raise typer.Exit(1)
@@ -4616,13 +4619,11 @@ def claims_ground(
         _error(f"Could not ground the claims: {exc}")
         raise typer.Exit(1)
 
-    if grounder.searches_failed and not grounder.searches_ok:
-        _error(
-            "Every ontology search failed; nothing could be grounded. Check network "
-            "connectivity, the --adapter, and the ontology config. Last errors are on stderr."
+    if grounder.searches_failed:
+        _warn(
+            f"{grounder.searches_failed} ontology searches failed; some labels may be "
+            f"ungrounded. Check the warnings above (connectivity, adapters, config)."
         )
-        raise typer.Exit(1)
-
     info = grounded.grounder
     if info is not None:
         _warn(

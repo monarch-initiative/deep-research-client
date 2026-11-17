@@ -24,6 +24,7 @@ from deep_research_client.claims import (  # noqa: E402 - after importorskip
     SourceType,
     ground_claims,
 )
+from deep_research_client.claims.grounding_oak import GroundingError  # noqa: E402
 from deep_research_client.ontologies import OntologyConfig  # noqa: E402
 
 OBO = f"simpleobo:{Path(__file__).parent / 'input' / 'claims' / 'grounding' / 'tiny.obo'}"
@@ -61,14 +62,16 @@ def test_an_empty_adapter_string_is_not_searched() -> None:
     assert grounder.searches_failed == 0  # NCIT was skipped, not searched and failed
 
 
-def test_a_bad_adapter_counts_as_a_failed_search() -> None:
+def test_a_total_search_outage_raises_rather_than_returning_nothing() -> None:
+    """A whole term's searches all failing is an outage, not an empty result."""
     grounder = _grounder({"X": "simpleobo:/no/such/file.obo"})
-    assert grounder._candidates("anything") == []
+    with pytest.raises(GroundingError, match="Every ontology search"):
+        grounder._candidates("anything")
     assert (grounder.searches_ok, grounder.searches_failed) == (0, 1)
 
 
-def test_all_searches_failing_grounds_nothing_and_needs_no_model() -> None:
-    """When every search fails there are no candidates, so the model is never called."""
+def test_a_total_outage_fails_fast_without_calling_the_model() -> None:
+    """ground_claims raises before any candidate, so the model (llm_client=None) is never reached."""
     claim_set = ClaimSet(
         source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
         extractor=ExtractorInfo(name="x"),
@@ -76,6 +79,5 @@ def test_all_searches_failing_grounds_nothing_and_needs_no_model() -> None:
                       citation_status=CitationStatus.UNCITED, entities=[EntityMention(label="acne")])],
     )
     grounder = _grounder({"X": "simpleobo:/no/such/file.obo"})
-    grounded = ground_claims(claim_set, grounder)  # llm_client=None never reached
-    assert grounded.grounder is not None and grounded.grounder.grounded == 0
-    assert grounder.searches_ok == 0 and grounder.searches_failed > 0
+    with pytest.raises(GroundingError):
+        ground_claims(claim_set, grounder)

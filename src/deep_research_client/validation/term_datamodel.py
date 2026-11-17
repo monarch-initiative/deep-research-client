@@ -114,6 +114,10 @@ class TermStatus(str, Enum):
     """
     No resolver could be reached for this prefix, or the prefix was skipped. Distinct from NOT_FOUND: nothing was learned either way, so this is never evidence of fabrication.
     """
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    """
+    The CURIE's prefix is not among the ontologies the run was configured with, so the report used an ontology it was not asked to. The term is not looked up. Not evidence of fabrication, but a report asked for terms from a fixed set of ontologies should not reach outside it.
+    """
 
 
 class LabelAgreement(str, Enum):

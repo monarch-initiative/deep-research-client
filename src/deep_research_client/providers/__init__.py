@@ -51,6 +51,12 @@ class ResearchProvider(ABC):
     #: not a stand-in nobody asked for.
     produces_real_reports: ClassVar[bool] = True
 
+    #: Whether the *automatic* fallback ordering (``fallback=True``) may pick
+    #: this provider. False for one whose run is costly enough that it should
+    #: happen only when asked for: a cheap run that failed must not turn into
+    #: an expensive one nobody chose. Naming it as a fallback still works.
+    automatic_fallback: ClassVar[bool] = True
+
     #: What ``ProviderConfig.timeout`` limits for this provider, as a phrase
     #: that completes "the timeout is ...". The same number means different
     #: things to different providers -- a gap between streamed chunks, a

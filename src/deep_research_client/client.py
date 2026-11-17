@@ -23,6 +23,7 @@ from .models import (
     CacheConfig,
     QueryMetadata,
 )
+from .ontologies import OntologyConfig
 from .providers import ProviderRegistry, ResearchProvider
 from .provider_params import BaseProviderParams, create_provider_params
 
@@ -38,6 +39,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "openscientist": ("deep_research_client.providers.openscientist", "OpenScientistProvider"),
     "claude_code": ("deep_research_client.providers.claude_code", "ClaudeCodeProvider"),
     "antigravity": ("deep_research_client.providers.antigravity", "AntigravityProvider"),
+    "claude_managed": ("deep_research_client.providers.claude_managed", "ClaudeManagedProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
@@ -265,6 +267,16 @@ class DeepResearchClient:
                 timeout=1800,  # 30 minutes for long-running agentic research
             )
             self.registry.register(self._create_provider("antigravity", antigravity_config))
+        # Claude Managed Agents - runs the deep-research workflow in an
+        # Anthropic-hosted sandbox, billed to the Anthropic API key.
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key:
+            config = ProviderConfig(
+                name="claude_managed",
+                api_key=anthropic_key,
+                enabled=True,
+            )
+            self.registry.register(self._create_provider("claude_managed", config))
 
         # RSS Agent provider - opt-in: registered only when RSS_AGENT_DIR names
         # a local rss_agent_claude checkout. Its scoring LLM authenticates via
@@ -510,6 +522,15 @@ class DeepResearchClient:
             effective_params["_cache_version"] = "inline-report-v1"
         elif provider_name == "antigravity":
             effective_params["_cache_version"] = "agy-v1"
+        # The team's prompts and rubric decide what a claude_managed run
+        # produces, and they change without any parameter changing, so their
+        # content is part of the key.
+        elif provider_name == "claude_managed":
+            from .providers.claude_managed import prompt_fingerprint
+
+            effective_params["_prompt_fingerprint"] = prompt_fingerprint(
+                effective_params.get("task_file"), effective_params.get("rubric_file")
+            )
         elif provider_name == "tooluniverse":
             effective_params = create_provider_params(
                 provider_name, provider_params=provider_params,
@@ -558,8 +579,9 @@ class DeepResearchClient:
                     candidate.name
                     for candidate in self.registry.get_available_providers()
                     # A provider that invents its reports is not a stand-in for
-                    # one that does the work. Name it and it is honoured.
-                    if candidate.produces_real_reports
+                    # one that does the work, and a costly one is not a stand-in
+                    # for a cheap one. Name either and it is honoured.
+                    if candidate.produces_real_reports and candidate.automatic_fallback
                 ]
                 if fallback
                 else []
@@ -613,25 +635,33 @@ class DeepResearchClient:
             # Blaming the filter there would tell an operator their own
             # --fallback-provider mock would be dropped, which is the reverse
             # of what happens.
-            excluded = (
+            others = (
                 [
-                    candidate.name
+                    candidate
                     for candidate in self.registry.get_available_providers()
-                    if not candidate.produces_real_reports
-                    and candidate.name != ordered[0]
+                    if candidate.name != ordered[0]
                 ]
                 if fallback is True
                 else []
             )
+            fabricating = [c.name for c in others if not c.produces_real_reports]
+            named_only = [
+                c.name for c in others if c.produces_real_reports and not c.automatic_fallback
+            ]
+            excluded = [
+                f"{clause} ({', '.join(names)})"
+                for clause, names in (
+                    ("do not produce real reports", fabricating),
+                    ("are used only when named", named_only),
+                )
+                if names
+            ]
             # Three reasons, not two. "named or available" as one string
             # asserts on the list route that nobody else is here, when the
             # truth is usually that nobody else was listed -- and listing one
             # is the fix the operator needs pointing at.
             if excluded:
-                reason = (
-                    "the other available provider(s) do not produce real "
-                    f"reports ({', '.join(excluded)})"
-                )
+                reason = f"the other available provider(s) {' or '.join(excluded)}"
             elif fallback is True:
                 reason = "no other provider is available"
             else:
@@ -841,6 +871,7 @@ class DeepResearchClient:
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
         timeout: Optional[int] = None,
+        ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Perform research on the given query.
 
@@ -862,6 +893,10 @@ class DeepResearchClient:
                 provider's ``timeout_meaning``. Like ``model`` and
                 ``provider_params`` it applies to the named provider only; a
                 fallback runs on its own default.
+            ontologies: Ontologies the report should cite terms from. Their
+                prefixes are named in a section appended to the query, which
+                asks for CURIEs from those ontologies only. None (the default)
+                asks for no ontology terms.
 
         Returns:
             ResearchResult with markdown content and citations
@@ -884,6 +919,7 @@ class DeepResearchClient:
                 metadata,
                 fallback,
                 timeout,
+                ontologies,
             )
         )
 
@@ -897,6 +933,7 @@ class DeepResearchClient:
         metadata: Optional[dict] = None,
         fallback: Optional[Union[bool, str, Sequence[str]]] = False,
         timeout: Optional[int] = None,
+        ontologies: Optional[OntologyConfig] = None,
     ) -> ResearchResult:
         """Async version of research method.
 
@@ -916,6 +953,12 @@ class DeepResearchClient:
 
         start_time = datetime.now()
         start_timestamp = time.time()
+
+        if ontologies is not None:
+            # Part of the query, so it is part of the cache key and of the
+            # recorded question: a report is cached and shown with what it was
+            # actually asked.
+            query = f"{query}\n\n{ontologies.prompt_section()}"
 
         candidates = self._fallback_candidates(provider, fallback)
         failed: list[ProviderAttempt] = []

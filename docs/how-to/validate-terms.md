@@ -108,7 +108,54 @@ result as structured data. `--in-place` replaces any section a previous run left
 it is safe to re-run over a whole corpus, and it leaves a `## Reference Validation` section
 where it found one — running the two commands over the same file in either order keeps both.
 
-## Validate as part of the research run
+## Ask for terms from chosen ontologies
+
+Ontology terms are opt-in. A research run neither asks for nor checks them unless you give
+it an ontology config: an OAK-style YAML whose `ontology_adapters` keys are the ontologies
+the report should cite terms from, and whose values say how each one is looked up.
+
+```yaml
+# ontologies.yaml
+ontology_adapters:
+  HP: ols:hp                  # online, through OLS
+  MONDO: sqlite:obo:mondo     # a prebuilt SQLite build, downloaded once, then offline
+  MYONT: simpleobo:myont.obo  # a local OBO file
+  CHEBI:                      # no value: the default adapter (--term-adapter, ols: unless set)
+  NCIT: ""                    # named in the prompt, but not checked
+```
+
+```bash
+deep-research-client research "Marfan syndrome surveillance" \
+  --output marfan.md \
+  --ontology-config ontologies.yaml
+```
+
+The keys do two jobs:
+
+- **They are named in the prompt.** A short `## Ontology terms` section is appended to the
+  query, after any template is rendered, asking for CURIEs from those ontologies only, each
+  followed by its label in brackets (`PREFIX:ID (term label)`, a form the label check
+  reads). The same section goes to every provider, and it is part of the query, so it is
+  part of the cache key and of the question recorded in the report.
+- **They scope the check.** Terms from the listed ontologies are resolved through the listed
+  adapters. A term from any other ontology is reported as **not configured**: it is not
+  looked up, it is listed under "Terms from ontologies the report was not asked to use", and
+  it sets `needs_review`. It is not a confabulation and does not trip
+  `--fail-on-unresolved`.
+
+The values mean what they mean in OAK, with one difference: in an `oak_config.yaml` an entry
+with no value is skipped, while here it gets the default adapter, so you can list prefixes
+without choosing an adapter for each. An existing `oak_config.yaml` can be passed as it is;
+any other keys it carries are ignored. Choosing `sqlite:obo:` downloads that ontology's
+build on first use, which for some (NCBITaxon) is several gigabytes.
+
+`validate-terms --ontology-config ontologies.yaml report.md` checks a saved report the
+same way, for instance to recover the section after a network failure.
+
+## Validate whatever the report cites
+
+`--validate-terms` checks every CURIE the report cites, from any ontology, and asks the
+provider for nothing:
 
 ```bash
 deep-research-client research "Marfan syndrome surveillance" \
@@ -156,8 +203,9 @@ term_validation:
   validator_version: 0.4.5
 ```
 
-`--validate-terms` and `--validate-references` compose: passing both appends both sections
-and writes both summaries.
+Reference validation runs by default alongside either: both sections are appended and
+both summaries written. If one validator fails, for instance because a service is
+unreachable, the other's section is still written and the run exits with code `3`.
 
 The `labels_*` counts are per term, not per name: a report calling one identifier three
 things contributes one to each.

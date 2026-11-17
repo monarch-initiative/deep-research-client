@@ -377,14 +377,14 @@ def test_research_warnings_stay_out_of_the_report_on_stdout():
         app,
         [
             "research", "What is synthetic biology?", "--provider", "mock",
-            "--no-cache", "--validation-email", "me@example.org",
+            "--no-cache", "--no-validate-references", "--validation-email", "me@example.org",
         ],
         env={"ENABLE_MOCK_PROVIDER": "true"},
     )
 
     assert result.exit_code == 0, result.output
     assert (
-        "Warning: --validation-email has no effect without --validate-references"
+        "Warning: --validation-email has no effect with --no-validate-references"
         in result.stderr
     )
     assert "has no effect" not in result.stdout

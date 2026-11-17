@@ -58,13 +58,21 @@ INSTALL_HINT = (
 )
 
 
+#: Where fetched references are cached when the caller names no directory.
+#: Under the research cache rather than the working directory: validation runs
+#: on every research call by default, and a default step should not leave a
+#: directory wherever it happens to be run.
+DEFAULT_REFERENCE_CACHE_DIR = Path.home() / ".deep_research_cache" / "references"
+
+
 @dataclass
 class ReferenceValidator:
     """Resolve and check the references cited by a research report.
 
     Attributes:
         cache_dir: Directory where fetched references are cached. Reusing one
-            directory across runs avoids re-fetching the same papers.
+            directory across runs avoids re-fetching the same papers. Defaults
+            to :data:`DEFAULT_REFERENCE_CACHE_DIR`.
         email: Contact address sent to the NCBI Entrez API, which requires one.
         fetch_full_text: Whether to try to retrieve full text as well as
             abstracts. Slower, but quote checking is far more accurate with it.
@@ -398,8 +406,7 @@ class ReferenceValidator:
             "rate_limit_delay": self.rate_limit_delay,
             "skip_prefixes": list(self.skip_prefixes),
         }
-        if self.cache_dir is not None:
-            config_kwargs["cache_dir"] = Path(self.cache_dir)
+        config_kwargs["cache_dir"] = Path(self.cache_dir or DEFAULT_REFERENCE_CACHE_DIR)
         if self.email is not None:
             config_kwargs["email"] = self.email
 

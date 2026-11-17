@@ -1,0 +1,23 @@
+TERM: sebaceous gland
+SENTENCE: Acne begins in the sebaceous gland of the hair follicle.
+
+CANDIDATES:
+1. MONDO:0037735 (sebaceous gland cancer) -- A cancer that involves the sebaceous gland.
+2. MONDO:0021490 (benign neoplasm of sebaceous gland) -- A benign neoplasm that involves the sebaceous gland.
+3. MONDO:0006963 (sebaceous gland neoplasm) -- A benign or malignant neoplasm that arises from the sebaceous glands. Representative examples include sebaceous adenoma and sebaceous carcinoma.
+4. MONDO:0006607 (sebaceous gland disorder) -- A disease involving the sebaceous gland.
+5. GO:0060791 (sebaceous gland placode formation) -- The developmental process in which a sebaceous gland placode forms. A sebaceous gland placode is a thickening of the ectoderm that will give rise to the sebaceous gland bud.
+6. GO:0048733 (sebaceous gland development) -- The process whose specific outcome is the progression of the sebaceous gland over time, from its formation to the mature structure.
+7. GO:0001949 (sebaceous gland cell differentiation) -- The process in which a relatively unspecialized epidermal cell acquires the specialized features of a sebaceous gland cell.
+8. GO:1903680 (acinar cell of sebaceous gland differentiation) -- The process in which a relatively unspecialized cell acquires the specialized features of an acinar cell of sebaceous gland.
+9. GO:0030879 (mammary gland development) -- The process whose specific outcome is the progression of the mammary gland over time, from its formation to the mature structure. The mammary gland is a large compound sebaceous gland that in female mammals is modified to secrete milk. Its development starts with the formation of the mammary line and ends as the mature gland cycles between nursing and weaning stages.
+10. CL:2000021 (sebaceous gland cell) -- Any native cell that is part of a sebaceous gland.
+11. CL:0002140 (skin sebocyte) -- An acinar cell that is part of a skin sebaceous gland. This cell produces and secretes sebum into hair follicles.
+12. CL:0002337 (keratinocyte stem cell) -- A stem cell found in the basal layer of the epidermis, hair follicle, and sebaceous gland, characterised by its quiescent nature, high proliferative potential, and capacity for long-term self-renewal. This cell maintains epidermal homeostasis by producing transit-amplifying cells that differentiate to replenish the stratified squamous epithelium.
+13. CL:1000391 (melanocyte of eyelid) -- A melanocyte that is part of the eyelid.
+14. CL:0000317 (sebocyte) -- An epithelial cell that is part of a sebaceous gland. This cell produces and secretes sebum, an oily, lipid-rich substance, through holocrine secretion where the entire cell ruptures to release its contents.
+15. UBERON:0001821 (sebaceous gland) -- A holocrine gland that secretes sebum into the hair follicles, or in hairless areas into ducts.[MP].
+16. UBERON:0003484 (eye sebaceous gland) -- A sebaceous gland that is part of a camera-type eye. Example: a tarsal gland.
+17. UBERON:0003487 (skin sebaceous gland) -- A holocrine gland of the dermis that secretes sebum into hair follicles.
+18. UBERON:0003485 (vagina sebaceous gland) -- A sebaceous gland that is part of a vagina [Automatically generated definition].
+19. UBERON:0011845 (duct of sebaceous gland) -- A duct that is part of a sebaceous gland.

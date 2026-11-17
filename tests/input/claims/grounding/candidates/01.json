@@ -1,0 +1,52 @@
+[
+  {
+    "id": "MONDO:0007947",
+    "label": "Marfan syndrome",
+    "definition": "A disorder of the connective tissue. Connective tissue provides strength and flexibility to structures throughout the body such as bones, ligaments, muscles, walls of blood vessels, and heart valves. Marfan syndrome affects most organs and tissues, especially the skeleton, lungs, eyes, heart, and the large blood vessel that distributes blood from the heart to the rest of the body (the aorta). It is caused by mutations in the FBN1 gene, which provides instructions for making a protein called fibrillin-1. Marfan syndrome is inherited in an autosomal dominant pattern. At least 25% of cases are due to a new (de novo) mutation. Treatment is based on the signs and symptoms in each person."
+  },
+  {
+    "id": "MONDO:0009566",
+    "label": "marfanoid impaired intellectual developmental syndrome, autosomal",
+    "definition": "Marfanoid habitus B intellectual deficit, autosomal recessive is a very rare multiple congenital anomalies syndrome described in four sibs and characterized by intellectual deficit, flat face and some skeletelal features of Marfan syndrome such as tall stature, dolichostenomelia, arm span larger than height, arachnodactyly of hands and feet, little subcutaneous fat, muscle hypotonia and intellectual deficit."
+  },
+  {
+    "id": "MONDO:0008426",
+    "label": "Shprintzen-Goldberg syndrome",
+    "definition": "Shprintzen-Goldberg syndrome (SGS) is a very rare genetic disorder characterized by craniosynostosis, craniofacial and skeletal abnormalities, marfanoid habitus, cardiac anomalies, neurological abnormalities, and intellectual disability."
+  },
+  {
+    "id": "MONDO:0013574",
+    "label": "cutis laxa - Marfanoid syndrome",
+    "definition": null
+  },
+  {
+    "id": "MONDO:0017309",
+    "label": "neonatal Marfan syndrome",
+    "definition": "Neonatal Marfan syndrome is a rare, severe and life-threatening genetic disease, occurring during the neonatal period, characterized by classical Marfan syndrome manifestations in addition to facial dysmorphism (megalocornea, iridodonesis, ectopia lentis, crumpled ears, loose redundant skin giving a 'senile' facial appearance), flexion joint contractures, pulmonary emphysema, and a severe, rapidly progressive cardiovascular disease (including ascending aortic dilatation and severe mitral and/or tricuspid valve insufficiency). Additionally, skeletal manifestations (arachnodactyly, dolichostenomelia, pectus deformities) are also associated."
+  },
+  {
+    "id": "HP:0001182",
+    "label": "Tapered finger",
+    "definition": "The gradual reduction in girth of the finger from proximal to distal."
+  },
+  {
+    "id": "HP:0002156",
+    "label": "Homocystinuria",
+    "definition": "Homocystine is a disulfide derivate of homocysteine (a precursor of cysteine). Patients with homocystinuria have a clinical phenotype similar to that of patients affected by Marfan syndrome (pectus excavatum, dislocated lenses, etc). This term does not describe the disease entity, but rather the finding of an increased concentration of homocystine in urine, which can be easily detected by a sensitive test for disulphide compounds (the cyanide-nitroprusside reaction) and using chromatographic techniques. Homocystinuria can be caused by biochemical defects including cystathionine B-synthase deficiency, N5-methyltetrahydrofolate:homocystine methyltransferase deficiency, N5,10-methylentetrahydrofolate reductase deficiency, and methhylcobalamin deficiency."
+  },
+  {
+    "id": "HP:0008132",
+    "label": "Medial rotation of the medial malleolus",
+    "definition": "In the context of Marfan syndrome, this anomaly is sometimes referred to as hindfoot deformity, but in general, the term hindfoot deformity is also used to describe other findings."
+  },
+  {
+    "id": "HP:0100775",
+    "label": "Dural ectasia",
+    "definition": "Dural ectasia is one of the major manifestations of Marfan syndrome. It may cause low back pain, headaches and neurological signs such as weakness and loss of bowel and bladder function, but in many patients it is asymptomatic. It is also a cause of posterior vertebral scalloping present in radiographs in patients who are diagnosed with Neurofibromatosis. Dural ectasia may also manifest in Ehlers-Danlos Syndrome, cauda equina syndrome and in ankylosing spondylitis."
+  },
+  {
+    "id": "HP:0030745",
+    "label": "Dilatation of the ductus arteriosus",
+    "definition": "Ductus arteriosus aneurysm has been observed in patients with connective tissue disorders like Marfan and Ehlers-Danlos syndrome and in patients with chromosomal syndromes (e.g. Williams, Larsen, aneuploidies). Aneurysm is considered a severe form of dilatation."
+  }
+]

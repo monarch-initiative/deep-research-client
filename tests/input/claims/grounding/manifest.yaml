@@ -1,0 +1,18 @@
+# Terms grounded for the recorded grounding replies, replayed through the real
+# parser by tests/test_grounding_recorded.py.
+#
+# record.py searches each term against the biomedical ontologies with OAK, writes
+# the candidates it found (candidates/NN.json) and the prompt this code builds
+# (prompts/NN.txt), then records each model's reply verbatim (<model>/NN.txt).
+# The candidates are committed so the test needs no network; re-record (run
+# record.py) whenever the prompt or the terms change.
+prompt_version: "1"
+recordings:
+  sonnet: claude-sonnet-5, via Claude Code
+terms:
+  - label: Marfan syndrome
+    context: Marfan syndrome is caused by variants in FBN1.
+  - label: hyperandrogenism
+    context: Hyperandrogenism occurs in about 50% of adult female acne cases.
+  - label: sebaceous gland
+    context: Acne begins in the sebaceous gland of the hair follicle.

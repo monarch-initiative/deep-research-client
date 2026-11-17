@@ -1,0 +1,13 @@
+You ground a term to an ontology. You are given a term as it was written, a
+sentence it appears in, and a numbered list of candidate ontology terms, each with
+its identifier (a CURIE), its own label, and its definition where there is one.
+
+Choose the one candidate that denotes the same concept as the term, reading it in
+the sentence. Match the concept, not the surface string: a candidate whose label or
+definition means the same thing is right even if the wording differs, and a
+candidate whose string looks similar but means something else is wrong. If no
+candidate denotes the term's concept, choose none -- do not stretch to the nearest.
+
+Reply with JSON only: {"id": "<the chosen CURIE, exactly as given>", "reason": "..."}
+Use the CURIE of a candidate from the list, or null for none. Never invent a CURIE
+that is not in the list.

@@ -1,0 +1,10 @@
+TERM: hyperandrogenism
+SENTENCE: Hyperandrogenism occurs in about 50% of adult female acne cases.
+
+CANDIDATES:
+1. MONDO:0008019 (mullerian aplasia and hyperandrogenism) -- Deficiency of the glycoprotein WNT4, associated with loss of function mutation(s) in the WNT4 gene. The condition in 46,XX individuals is characterized by mild hyperandrogenism, absence of underdevelopment of the uterus, and sometimes absence of underdevelopment of the vagina.
+2. MONDO:1014565 (hyperandrogenism, non-human animal)
+3. MONDO:0000193 (cortisone reductase deficiency) -- A disorder in which there is a failure to regenerate the active glucocorticoid cortisol from cortisone via 11beta-HSD1. The resulting lack of cortisol regeneration stimulates ACTH-mediated adrenal hyperandrogenism, with males manifesting in childhood with precocious pseudopuberty and females presenting in adolescence and early adulthood with hirsutism, oligoamenorrhea, and infertility.
+4. MONDO:0012520 (insulin-resistance syndrome type A) -- Type A insulin-resistance syndrome belongs to the group of extreme insulin-resistance syndromes (which includes leprechaunism, the lipodystrophies, Rabson-Mendenhall syndrome and type B insulin resistance syndrome) and is characterized by the triad of hyperinsulinemia, acanthosis nigricans (skin lesions associated with insulin resistance), and signs of hyperandrogenism in females without lipodystrophy and who are not overweight.
+5. MONDO:0008728 (classic congenital adrenal hyperplasia due to 21-hydroxylase deficiency) -- The most common form of congenital adrenal hyperplasia (CAH), characterized by simple virilizing or salt wasting forms that can manifest with genital ambiguity in females and with adrenal insufficiency (in both sexes), and that presents with dehydration, hypoglycemia in the neonatal period (that can be lethal if untreated), and hyperandrogenia.
+6. HP:0030348 (Increased circulating androgen concentration) -- An elevation of the blood concentration of an androgen, that is, of a steroid hormone that controls development and maintenance of masculine characteristics. The androgens include testosterone and Dehydroepiandrosterone.

@@ -1,0 +1,97 @@
+[
+  {
+    "id": "MONDO:0037735",
+    "label": "sebaceous gland cancer",
+    "definition": "A cancer that involves the sebaceous gland."
+  },
+  {
+    "id": "MONDO:0021490",
+    "label": "benign neoplasm of sebaceous gland",
+    "definition": "A benign neoplasm that involves the sebaceous gland."
+  },
+  {
+    "id": "MONDO:0006963",
+    "label": "sebaceous gland neoplasm",
+    "definition": "A benign or malignant neoplasm that arises from the sebaceous glands. Representative examples include sebaceous adenoma and sebaceous carcinoma."
+  },
+  {
+    "id": "MONDO:0006607",
+    "label": "sebaceous gland disorder",
+    "definition": "A disease involving the sebaceous gland."
+  },
+  {
+    "id": "GO:0060791",
+    "label": "sebaceous gland placode formation",
+    "definition": "The developmental process in which a sebaceous gland placode forms. A sebaceous gland placode is a thickening of the ectoderm that will give rise to the sebaceous gland bud."
+  },
+  {
+    "id": "GO:0048733",
+    "label": "sebaceous gland development",
+    "definition": "The process whose specific outcome is the progression of the sebaceous gland over time, from its formation to the mature structure."
+  },
+  {
+    "id": "GO:0001949",
+    "label": "sebaceous gland cell differentiation",
+    "definition": "The process in which a relatively unspecialized epidermal cell acquires the specialized features of a sebaceous gland cell."
+  },
+  {
+    "id": "GO:1903680",
+    "label": "acinar cell of sebaceous gland differentiation",
+    "definition": "The process in which a relatively unspecialized cell acquires the specialized features of an acinar cell of sebaceous gland."
+  },
+  {
+    "id": "GO:0030879",
+    "label": "mammary gland development",
+    "definition": "The process whose specific outcome is the progression of the mammary gland over time, from its formation to the mature structure. The mammary gland is a large compound sebaceous gland that in female mammals is modified to secrete milk. Its development starts with the formation of the mammary line and ends as the mature gland cycles between nursing and weaning stages."
+  },
+  {
+    "id": "CL:2000021",
+    "label": "sebaceous gland cell",
+    "definition": "Any native cell that is part of a sebaceous gland."
+  },
+  {
+    "id": "CL:0002140",
+    "label": "skin sebocyte",
+    "definition": "An acinar cell that is part of a skin sebaceous gland. This cell produces and secretes sebum into hair follicles."
+  },
+  {
+    "id": "CL:0002337",
+    "label": "keratinocyte stem cell",
+    "definition": "A stem cell found in the basal layer of the epidermis, hair follicle, and sebaceous gland, characterised by its quiescent nature, high proliferative potential, and capacity for long-term self-renewal. This cell maintains epidermal homeostasis by producing transit-amplifying cells that differentiate to replenish the stratified squamous epithelium."
+  },
+  {
+    "id": "CL:1000391",
+    "label": "melanocyte of eyelid",
+    "definition": "A melanocyte that is part of the eyelid."
+  },
+  {
+    "id": "CL:0000317",
+    "label": "sebocyte",
+    "definition": "An epithelial cell that is part of a sebaceous gland. This cell produces and secretes sebum, an oily, lipid-rich substance, through holocrine secretion where the entire cell ruptures to release its contents."
+  },
+  {
+    "id": "UBERON:0001821",
+    "label": "sebaceous gland",
+    "definition": "A holocrine gland that secretes sebum into the hair follicles, or in hairless areas into ducts.[MP]."
+  },
+  {
+    "id": "UBERON:0003484",
+    "label": "eye sebaceous gland",
+    "definition": "A sebaceous gland that is part of a camera-type eye. Example: a tarsal gland."
+  },
+  {
+    "id": "UBERON:0003487",
+    "label": "skin sebaceous gland",
+    "definition": "A holocrine gland of the dermis that secretes sebum into hair follicles."
+  },
+  {
+    "id": "UBERON:0003485",
+    "label": "vagina sebaceous gland",
+    "definition": "A sebaceous gland that is part of a vagina [Automatically generated definition]."
+  },
+  {
+    "id": "UBERON:0011845",
+    "label": "duct of sebaceous gland",
+    "definition": "A duct that is part of a sebaceous gland."
+  }
+]

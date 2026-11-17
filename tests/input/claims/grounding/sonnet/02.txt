@@ -1,0 +1,1 @@
+{"id": "HP:0030348", "reason": "Hyperandrogenism as a general feature (excess androgens) in acne patients matches 'Increased circulating androgen concentration'. The other candidates are specific syndromes or a non-human animal term, not the general concept."}

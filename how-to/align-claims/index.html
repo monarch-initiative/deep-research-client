@@ -14,7 +14,7 @@
         <link rel="prev" href="../ground-claims/">
       
       
-        <link rel="next" href="../../examples/within-report-alignment/">
+        <link rel="next" href="../verify-claims/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -691,6 +691,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../verify-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verify Claims
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1399,6 +1422,10 @@ were addressed, and the one that was contradicted shows up as the drop in
 <code>support</code>. Read the two together. <code>relevance</code> and <code>informativeness</code> are two reads
 of one count (a candidate claim either aligns to something or is novel), so they
 sum to 1 by construction rather than being independent signals.</p>
+<p>A contradictory pair is also a signal for human review. Pass the alignment to
+<a href="../verify-claims/"><code>claims verify</code></a> and each <code>CONTRADICTORY</code> pair becomes a
+<code>CONTRADICTION</code> flag (or <code>SELF_CONTRADICTION</code>, within one source) — a logical
+conflict a person must adjudicate.</p>
 <h2 id="adversarial-inputs">Adversarial inputs</h2>
 <p>Claim text reaches the classifier as prompt content. A source document could in
 principle carry text meant to steer the judgement ("ignore the above and reply

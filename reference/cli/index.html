@@ -598,6 +598,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../../how-to/verify-claims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Verify Claims
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../examples/within-report-alignment/" class="md-nav__link">
         
   
@@ -1515,6 +1538,15 @@
   <a href="#claims-ground" class="md-nav__link">
     <span class="md-ellipsis">
       claims ground
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims verify
     </span>
   </a>
   
@@ -2522,6 +2554,15 @@
   <a href="#claims-ground" class="md-nav__link">
     <span class="md-ellipsis">
       claims ground
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claims-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      claims verify
     </span>
   </a>
   
@@ -4157,6 +4198,65 @@ deep-research-client claims ground report.claims.json --ontologies biomedical \
 # A custom ontology set from a config, grounding only the 200 most frequent terms
 deep-research-client claims ground report.claims.json \
   --ontology-config oak_config.yaml --max-terms 200 --adapter sqlite:obo:
+</code></pre>
+<h4 id="claims-verify">claims verify</h4>
+<pre><code class="language-bash">deep-research-client claims verify CLAIMS_FILE [OPTIONS]
+</code></pre>
+<p>Flag the claims and pairs that need review, and optionally check their citations.
+Triage (always on) raises a flag for a domain finding that cites nothing, a
+citation resolving to no identifier, a point framed as settled consensus, and
+contradictions (with <code>--alignment</code>); each is tagged with who can settle it — a
+machine, an agent, or only a person. <code>--check-citations</code> resolves each cited
+identifier to catch fabricated citations (needs the <code>validation</code> extra and the
+network). See <a href="../../how-to/verify-claims/">Verify Claims</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Argument/Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAIMS_FILE</code></td>
+<td>A claim set from <code>claims extract</code></td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o PATH</code></td>
+<td>Write the verification report here (.json/.yaml); else JSON to stdout</td>
+</tr>
+<tr>
+<td><code>--alignment PATH</code></td>
+<td>An alignment of this set from <code>claims align</code>, for contradiction flags</td>
+</tr>
+<tr>
+<td><code>--check-citations</code></td>
+<td>Resolve each cited identifier against its source (needs the <code>validation</code> extra and network); off by default</td>
+</tr>
+<tr>
+<td><code>--email TEXT</code></td>
+<td>Contact address for the NCBI API when checking citations (raises the rate limit)</td>
+</tr>
+<tr>
+<td><code>--cache PATH</code></td>
+<td>Directory where resolved references are cached between runs</td>
+</tr>
+<tr>
+<td><code>--max-claims INT</code></td>
+<td>Check citations for at most this-many claims (triage still sees every claim)</td>
+</tr>
+<tr>
+<td><code>--concurrency INT</code></td>
+<td>Citation checks in flight at once (default 4)</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># Triage a report against its own self-alignment (no network, nothing to install)
+deep-research-client claims verify report.claims.json \
+  --alignment report.self-align.json -o report.verified.json
+
+# Also resolve every cited identifier to catch fabricated citations
+deep-research-client claims verify report.claims.json --check-citations
 </code></pre>
 <hr />
 <h2 id="environment-variables">Environment Variables</h2>

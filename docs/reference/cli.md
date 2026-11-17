@@ -1010,6 +1010,40 @@ deep-research-client claims ground report.claims.json \
   --ontology-config oak_config.yaml --max-terms 200 --adapter sqlite:obo:
 ```
 
+#### claims verify
+
+```bash
+deep-research-client claims verify CLAIMS_FILE [OPTIONS]
+```
+
+Flag the claims and pairs that need review, and optionally check their citations.
+Triage (always on) raises a flag for a domain finding that cites nothing, a
+citation resolving to no identifier, a point framed as settled consensus, and
+contradictions (with `--alignment`); each is tagged with who can settle it — a
+machine, an agent, or only a person. `--check-citations` resolves each cited
+identifier to catch fabricated citations (needs the `validation` extra and the
+network). See [Verify Claims](../how-to/verify-claims.md).
+
+| Argument/Option | Description |
+|-----------------|-------------|
+| `CLAIMS_FILE` | A claim set from `claims extract` |
+| `--output`, `-o PATH` | Write the verification report here (.json/.yaml); else JSON to stdout |
+| `--alignment PATH` | An alignment of this set from `claims align`, for contradiction flags |
+| `--check-citations` | Resolve each cited identifier against its source (needs the `validation` extra and network); off by default |
+| `--email TEXT` | Contact address for the NCBI API when checking citations (raises the rate limit) |
+| `--cache PATH` | Directory where resolved references are cached between runs |
+| `--max-claims INT` | Check citations for at most this-many claims (triage still sees every claim) |
+| `--concurrency INT` | Citation checks in flight at once (default 4) |
+
+```bash
+# Triage a report against its own self-alignment (no network, nothing to install)
+deep-research-client claims verify report.claims.json \
+  --alignment report.self-align.json -o report.verified.json
+
+# Also resolve every cited identifier to catch fabricated citations
+deep-research-client claims verify report.claims.json --check-citations
+```
+
 ---
 
 ## Environment Variables

@@ -1,0 +1,1 @@
+{"id": "UBERON:0001821", "reason": "The term refers to the sebaceous gland as an anatomical structure, where acne begins in the hair follicle. UBERON:0001821 is the general sebaceous gland, matching the term without restricting it to the eye, vagina, or skin specifically."}

@@ -36,6 +36,15 @@ from .extract import (
     needs_llm,
     resolve_format,
 )
+from .grounding import (
+    Grounder,
+    GroundedTerm,
+    GroundingCandidate,
+    aground_claims,
+    biomedical_ontology_config,
+    ground_claims,
+)
+from .grounding_oak import OakGrounder
 from .models import (
     AnchorStatus,
     CitationHandle,
@@ -47,6 +56,7 @@ from .models import (
     ClaimTopic,
     EntityMention,
     ExtractorInfo,
+    GrounderInfo,
     NearestPassage,
     SourceDocument,
     SourceType,
@@ -102,4 +112,13 @@ __all__ = [
     "summarize_alignment",
     "RubricMetric",
     "RubricSummary",
+    # Grounding (issue #43, item 3)
+    "aground_claims",
+    "ground_claims",
+    "biomedical_ontology_config",
+    "Grounder",
+    "GroundedTerm",
+    "GroundingCandidate",
+    "GrounderInfo",
+    "OakGrounder",
 ]

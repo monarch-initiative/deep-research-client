@@ -27,6 +27,7 @@ nav:
     - Validate Ontology Terms: how-to/validate-terms.md
     - Evaluate Providers: how-to/evaluate-providers.md
     - Extract Claims: how-to/extract-claims.md
+    - Ground Claims: how-to/ground-claims.md
     - Align Claims: how-to/align-claims.md
     - 'Example: within-report comparison': examples/within-report-alignment.md
     - Manage Cache: how-to/cache.md

@@ -169,6 +169,12 @@ classes:
         range: ExtractorInfo
         required: true
         inlined: true
+      grounder:
+        range: GrounderInfo
+        inlined: true
+        description: >-
+          What grounded the claims' entities to ontology terms, when a grounding
+          step has run. Absent on a set straight from extraction.
       claims:
         range: Claim
         multivalued: true
@@ -208,6 +214,31 @@ classes:
           name requested, if no reply named one.
       prompt_version:
         description: Version of the extraction prompt, for extractors that use one.
+
+  GrounderInfo:
+    description: >-
+      What grounded the claims' entities to ontology CURIEs, so a grounded set
+      can be reproduced or compared. Grounding fills EntityMention.id; it does
+      not change the labels the extractor wrote.
+    attributes:
+      name:
+        description: Grounder identifier, for example oak-llm.
+        required: true
+      model:
+        description: >-
+          Model used to choose among ontology candidates, as ExtractorInfo
+          records it. Absent for a grounder that uses no model.
+      prompt_version:
+        description: Version of the grounding prompt, for grounders that use one.
+      ontologies:
+        multivalued: true
+        description: The ontology prefixes grounding searched, for example MONDO, HP.
+      considered:
+        range: integer
+        description: How many distinct entity labels grounding tried to ground.
+      grounded:
+        range: integer
+        description: How many of those it assigned a CURIE to.
 
   Claim:
     description: >-

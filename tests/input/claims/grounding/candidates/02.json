@@ -1,0 +1,32 @@
+[
+  {
+    "id": "MONDO:0008019",
+    "label": "mullerian aplasia and hyperandrogenism",
+    "definition": "Deficiency of the glycoprotein WNT4, associated with loss of function mutation(s) in the WNT4 gene. The condition in 46,XX individuals is characterized by mild hyperandrogenism, absence of underdevelopment of the uterus, and sometimes absence of underdevelopment of the vagina."
+  },
+  {
+    "id": "MONDO:1014565",
+    "label": "hyperandrogenism, non-human animal",
+    "definition": null
+  },
+  {
+    "id": "MONDO:0000193",
+    "label": "cortisone reductase deficiency",
+    "definition": "A disorder in which there is a failure to regenerate the active glucocorticoid cortisol from cortisone via 11beta-HSD1. The resulting lack of cortisol regeneration stimulates ACTH-mediated adrenal hyperandrogenism, with males manifesting in childhood with precocious pseudopuberty and females presenting in adolescence and early adulthood with hirsutism, oligoamenorrhea, and infertility."
+  },
+  {
+    "id": "MONDO:0012520",
+    "label": "insulin-resistance syndrome type A",
+    "definition": "Type A insulin-resistance syndrome belongs to the group of extreme insulin-resistance syndromes (which includes leprechaunism, the lipodystrophies, Rabson-Mendenhall syndrome and type B insulin resistance syndrome) and is characterized by the triad of hyperinsulinemia, acanthosis nigricans (skin lesions associated with insulin resistance), and signs of hyperandrogenism in females without lipodystrophy and who are not overweight."
+  },
+  {
+    "id": "MONDO:0008728",
+    "label": "classic congenital adrenal hyperplasia due to 21-hydroxylase deficiency",
+    "definition": "The most common form of congenital adrenal hyperplasia (CAH), characterized by simple virilizing or salt wasting forms that can manifest with genital ambiguity in females and with adrenal insufficiency (in both sexes), and that presents with dehydration, hypoglycemia in the neonatal period (that can be lethal if untreated), and hyperandrogenia."
+  },
+  {
+    "id": "HP:0030348",
+    "label": "Increased circulating androgen concentration",
+    "definition": "An elevation of the blood concentration of an androgen, that is, of a steroid hormone that controls development and maintenance of masculine characteristics. The androgens include testosterone and Dehydroepiandrosterone."
+  }
+]

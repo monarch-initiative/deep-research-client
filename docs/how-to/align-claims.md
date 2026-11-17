@@ -121,7 +121,9 @@ Asking a model about every A×B pair does not scale (two reports of a few hundre
 claims each would be a hundred thousand calls). A cheap pass first proposes only
 the pairs worth classifying, and each pair records which signal proposed it:
 
-- **`ENTITY`** — the two claims share a grounded entity (the same CURIE).
+- **`ENTITY`** — the two claims share a grounded entity (the same CURIE). This
+  fires only on claims whose entities carry ids; [grounding](ground-claims.md)
+  adds those, so running it first makes this signal far more effective.
 - **`CITATION`** — the two claims cite a work with the same resolved `reference_id`.
 - **`LEXICAL`** — the two claims' content words overlap at or above `--min-overlap`
   (Jaccard over stop-word-filtered, singularised terms).

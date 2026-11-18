@@ -375,7 +375,9 @@ than quietly handing you a fabricated report.
 `claude_managed` is left out of the automatic ordering too, for cost: a run
 costs several dollars (up to its `max_cost_usd` cap), so a cheap run that
 fails does not quietly become an expensive one. `--fallback-provider
-claude_managed` still reaches it.
+claude_managed` still reaches it. For the same reason it is never picked when
+no `--provider` is given; if it is the only provider available, the run stops
+and asks you to name it.
 
 ## Check Available Models
 

@@ -4729,6 +4729,18 @@ def claims_verify(
     claim_set = _load_claim_set(claims_file)
     loaded_alignment = _load_alignment(alignment) if alignment is not None else None
 
+    if not check_citations:
+        # As `research` does for its --validation-* options: compared against the
+        # default, so an explicit-but-falsy value such as --email "" still warns.
+        unused_citation_flags: tuple[tuple[str, object, object], ...] = (
+            ("--email", email, None),
+            ("--cache", cache, None),
+            ("--trust-cache", trust_cache, False),
+        )
+        for flag_name, flag_value, default in unused_citation_flags:
+            if flag_value != default:
+                _warn(f"{flag_name} has no effect without --check-citations")
+
     verifiers: list[Verifier] = []
     if check_citations:
         # Fail fast and specifically when the validation extra is absent, before any

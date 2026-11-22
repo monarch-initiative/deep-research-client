@@ -2574,6 +2574,9 @@ def legacy_cache(cache_dir: Path) -> Path:
 #: What linkml-reference-validator logs when it discards an unstamped entry to
 #: re-fetch it. Asserted absent as well as the bytes unchanged, so the trust tests
 #: still fail without the fix when NCBI is unreachable and nothing gets rewritten.
+#: This is upstream's wording: the live control asserts it *is* logged when the
+#: entry is not trusted, so a reworded message fails that test rather than
+#: leaving the absence checks passing vacuously.
 STALE_ENTRY_LOG = "written by an older extractor"
 
 
@@ -2864,7 +2867,9 @@ def test_real_quote_is_verified_against_pubmed(cache_dir: Path) -> None:
 
 
 @pytest.mark.integration
-def test_untrusted_legacy_entry_is_rewritten(legacy_cache: Path) -> None:
+def test_untrusted_legacy_entry_is_rewritten(
+    legacy_cache: Path, validator_log: list[str]
+) -> None:
     """The control for the trust tests: without trust, the same entry is rewritten.
 
     Without this, a fixture the validator happened to accept as current would
@@ -2877,4 +2882,5 @@ def test_untrusted_legacy_entry_is_rewritten(legacy_cache: Path) -> None:
 
     after = _cache_snapshot(legacy_cache)
     assert after != before
+    assert [m for m in validator_log if STALE_ENTRY_LOG in m]
     assert "extractor_version:" in after[next(iter(before))].decode("utf-8")

@@ -59,6 +59,7 @@ def test_citation_options_warn_without_check_citations(flag: list[str], tmp_path
 
 
 def test_triage_only_run_does_not_warn_about_citation_options(tmp_path) -> None:
+    """A plain triage run, passing none of those options, gets no warning about them."""
     out = tmp_path / "report.json"
     result = runner.invoke(app, ["claims", "verify", CLAIMS, "-o", str(out)])
     assert result.exit_code == 0, result.stderr

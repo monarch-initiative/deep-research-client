@@ -878,7 +878,7 @@ def research(
     validation_relevance: Annotated[bool, typer.Option(
         "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
     validation_trust_cache: Annotated[bool, typer.Option(
-        "--validation-trust-cache", help="Use references already in the cache directory exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
+        "--validation-trust-cache", help="Use references already in --validation-cache-dir (default: ~/.deep_research_cache/references) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
     # Ontology term options
     ontology_config: Annotated[Optional[Path], typer.Option(
         "--ontology-config", exists=True, dir_okay=False, help="OAK-style YAML whose 'ontology_adapters' keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses --term-adapter). Asks the provider for CURIEs from those ontologies only, and validates them, reporting terms from any other ontology as not configured. Implies --validate-terms (requires the 'terms' extra)")] = None,
@@ -1483,7 +1483,7 @@ def validate_references_command(
         "--check-relevance/--no-check-relevance",
         help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
     cache_dir: Annotated[Optional[Path], typer.Option(
-        "--cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+        "--cache-dir", help="Directory for cached reference lookups (default: ~/.deep_research_cache/references)")] = None,
     email: Annotated[Optional[str], typer.Option(
         "--email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
     full_text: Annotated[bool, typer.Option(
@@ -1495,7 +1495,7 @@ def validate_references_command(
     rate_limit_delay: Annotated[Optional[float], typer.Option(
         "--rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5)")] = None,
     trust_cache: Annotated[bool, typer.Option(
-        "--trust-cache", help="Use references already in the cache directory exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
+        "--trust-cache", help="Use references already in --cache-dir (default: ~/.deep_research_cache/references) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
     in_place: Annotated[bool, typer.Option(
         "--in-place", help="Replace or append the validation section in each input file")] = False,
     output: Annotated[Optional[Path], typer.Option(
@@ -4690,7 +4690,8 @@ def claims_verify(
         "--cache", help="Directory where resolved references are cached between runs")] = None,
     trust_cache: Annotated[bool, typer.Option(
         "--trust-cache",
-        help="Use references already in --cache exactly as they are on disk, never "
+        help="Use references already in --cache (default: ~/.deep_research_cache/references) "
+             "exactly as they are on disk, never "
              "re-fetching or rewriting them; for a cache committed to version control")] = False,
     max_claims: Annotated[Optional[int], typer.Option(
         "--max-claims", min=1,

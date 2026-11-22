@@ -203,7 +203,8 @@ is reported rather than what is fetched, and the run it would speed up is alread
   option combined. Two caveats: PMC accessions still need one request to NCBI's ID
   converter on every run, which is not cached, so a warm run is fast but not offline; and a
   cached abstract-only record *is* upgraded on a later `--full-text` run, so that first
-  full-text pass over a warm corpus pays the full cost.
+  full-text pass over a warm corpus pays the full cost. If you commit the cache, also pass
+  `--trust-cache`; see [trusting a committed cache](#trusting-a-committed-cache).
 - **Full text is the expensive one.** `--full-text` took **23x** longer on the same ten
   references. It is off by default for that reason. Turn it on when quote checking matters:
   without it, a quote drawn from the body of a paper is reported as not found, because only
@@ -235,6 +236,34 @@ Resolution is sequential, so a bibliography of a hundred DOIs takes about eleven
 a cold cache, against under three for a hundred PMIDs. Validating as part of `research` adds that time to a run
 that is already slow; validating afterwards with `validate-references` lets you do it once
 across a whole corpus against a shared cache.
+
+## Trusting a committed cache
+
+Some projects commit their reference cache to version control and review it like any
+other content. By default the validator does not treat a cached entry as final: an entry
+written by an older version of `linkml-reference-validator` lacks a current
+`extractor_version` stamp, so it is re-fetched and the file rewritten. That migrates a
+private cache, but in a committed one it changes reviewed files on every run that cites
+them, and a re-fetch can make the text worse (a shorter body, or a bot-check page in
+place of the article).
+
+Pass the trust option to use every entry already in the cache exactly as it is on disk.
+References not yet cached are still fetched and written, so a run adds new files and
+leaves the committed ones alone:
+
+```bash
+deep-research-client research "..." --validation-cache-dir references_cache --validation-trust-cache
+deep-research-client validate-references report.md --cache-dir references_cache --trust-cache
+deep-research-client claims verify report.claims.json --check-citations --cache references_cache --trust-cache
+```
+
+From Python, set `ReferenceValidator(trust_cached_entries=True)`. This is the
+`trust_cached_entries` setting of `linkml-reference-validator`, so a project whose own
+validation config sets it should pass the option here too, to keep the two paths in step.
+It is off by default. Fixing imperfect cached text is then a deliberate edit to the
+cache rather than something any run may do. That includes full text: with the trust
+option, a cached abstract-only entry is *not* upgraded by a `--full-text` run, because
+the entry is served as it is.
 
 ## Use it from Python
 

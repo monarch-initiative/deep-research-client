@@ -56,6 +56,7 @@ deep-research-client research [OPTIONS] [QUERY]
 | `--validation-skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
 | `--validation-rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5) |
 | `--validation-relevance / --validation-no-relevance` | Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups) |
+| `--validation-trust-cache` | Use references already in the cache directory exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control. See [trusting a committed cache](../how-to/validate-references.md#trusting-a-committed-cache) |
 | `--ontology-config PATH` | OAK-style YAML whose `ontology_adapters` keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses `--term-adapter`). Asks the provider for CURIEs from those ontologies only, and validates them; terms from other ontologies are reported as not configured. Implies `--validate-terms` |
 | `--validate-terms` | Resolve every cited ontology CURIE, whatever its ontology, check it against the label the report gave it, and append a validation section. Asks the provider for nothing |
 | `--term-adapter TEXT` | OAK adapter to resolve terms through (default: `ols:`; `sqlite:obo:` for bulk work) |
@@ -172,6 +173,7 @@ Part of the base install.
 | `--max-references INT` | Stop after validating this many references per file |
 | `--skip-prefix TEXT` | Identifier prefix to report as unverifiable rather than resolving (repeatable) |
 | `--rate-limit-delay FLOAT` | Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references |
+| `--trust-cache` | Use references already in the cache directory exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control. See [trusting a committed cache](../how-to/validate-references.md#trusting-a-committed-cache) |
 | `--in-place` | Replace or append the validation section in each input file |
 | `--output PATH` | Write the markdown validation report to a file (single input file only) |
 | `--json PATH` | Write the validation report as JSON (single input file only) |
@@ -1032,6 +1034,7 @@ network). See [Verify Claims](../how-to/verify-claims.md).
 | `--check-citations` | Resolve each cited identifier against its source (needs the `validation` extra and network); off by default |
 | `--email TEXT` | Contact address for the NCBI API when checking citations (raises the rate limit) |
 | `--cache PATH` | Directory where resolved references are cached between runs |
+| `--trust-cache` | Use references already in `--cache` exactly as they are on disk, never re-fetching or rewriting them; for a cache committed to version control |
 | `--max-claims INT` | Check citations for at most this-many claims (triage still sees every claim) |
 | `--concurrency INT` | Citation checks in flight at once (default 4) |
 

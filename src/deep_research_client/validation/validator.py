@@ -86,6 +86,13 @@ class ReferenceValidator:
             already been fetched to check that it resolves.
         keyword_count: How many of the report's terms relevance is judged
             against.
+        trust_cached_entries: Whether to use an entry already in ``cache_dir``
+            exactly as it is on disk. By default the underlying validator
+            re-fetches and rewrites an entry whose extractor stamp is missing or
+            old, which migrates a private cache but rewrites a cache committed
+            to version control. Set this for such a reviewed cache: new
+            references are still fetched and written, existing files are left
+            alone.
 
     Examples:
         >>> validator = ReferenceValidator(email="me@example.org")
@@ -93,6 +100,8 @@ class ReferenceValidator:
         0.5
         >>> validator.check_relevance
         True
+        >>> validator.trust_cached_entries
+        False
     """
 
     cache_dir: Optional[Union[str, Path]] = None
@@ -103,6 +112,7 @@ class ReferenceValidator:
     max_references: Optional[int] = None
     check_relevance: bool = True
     keyword_count: int = DEFAULT_KEYWORD_COUNT
+    trust_cached_entries: bool = False
 
     def validate_result(
         self,
@@ -405,6 +415,7 @@ class ReferenceValidator:
             ),
             "rate_limit_delay": self.rate_limit_delay,
             "skip_prefixes": list(self.skip_prefixes),
+            "trust_cached_entries": self.trust_cached_entries,
         }
         config_kwargs["cache_dir"] = Path(self.cache_dir or DEFAULT_REFERENCE_CACHE_DIR)
         if self.email is not None:

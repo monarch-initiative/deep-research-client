@@ -168,6 +168,9 @@ class CitationVerifier:
         skip_prefixes: Identifier prefixes to report UNVERIFIABLE instead of
             resolving.
         check_relevance: Whether to weigh topical relevance (no extra requests).
+        trust_cached_entries: Use entries already in ``cache_dir`` as they are
+            on disk, never re-fetching or rewriting them; see
+            :attr:`ReferenceValidator.trust_cached_entries`.
     """
 
     name = "citation"
@@ -181,6 +184,7 @@ class CitationVerifier:
         max_references: Optional[int] = None,
         skip_prefixes: Sequence[str] = (),
         check_relevance: bool = True,
+        trust_cached_entries: bool = False,
     ) -> None:
         self._topic_text = topic_text
         self._email = email
@@ -188,6 +192,7 @@ class CitationVerifier:
         self._max_references = max_references
         self._skip_prefixes = list(skip_prefixes)
         self._check_relevance = check_relevance
+        self._trust_cached_entries = trust_cached_entries
         self._validator: Any = None
         self._lock = threading.Lock()
 
@@ -207,6 +212,7 @@ class CitationVerifier:
             max_references=self._max_references,
             skip_prefixes=self._skip_prefixes,
             check_relevance=self._check_relevance,
+            trust_cached_entries=self._trust_cached_entries,
         )
 
     def _resolve(self, found: list[FoundReference]) -> list[ReferenceCheck]:

@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from .sections import TERM_VALIDATION_SECTION_HEADING, VALIDATION_SECTION_HEADING
 
-__all__ = ["ValidationFailure", "redact_query_strings"]
+__all__ = ["ValidationFailure", "redact_url_secrets"]
 
 ValidationKind = Literal["reference", "term"]
 
@@ -58,6 +58,12 @@ _QUERY_STRING_RE = re.compile(r"\?\S*=\S*")
 _TRAILING_DELIMITERS = "'\")]>,.;"
 
 
+#: Login details written into a URL, ``scheme://user:password@host``. Matched
+#: up to the last ``@`` before the host, so a password containing ``@`` is
+#: removed whole.
+_USERINFO_RE = re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)[^\s/?#]*@")
+
+
 def _redact_query(match: "re.Match[str]") -> str:
     """The replacement for one query string, keeping any closing punctuation."""
     query = match.group()
@@ -65,35 +71,49 @@ def _redact_query(match: "re.Match[str]") -> str:
     return "?<query removed>" + kept
 
 
-def redact_query_strings(text: str) -> str:
-    """Replace every URL query string in ``text`` with a placeholder.
+def redact_url_secrets(text: str) -> str:
+    """Remove the parts of any quoted URL that can carry a secret.
+
+    That is the query string, which can carry a contact email or an API key,
+    and login details written into the URL (``user:password@``). Nothing else
+    is changed: a local file path in an error is kept, since it says where the
+    failure was.
 
     Args:
         text: An error message, possibly quoting request URLs.
 
     Returns:
-        The message with each query string replaced.
+        The message with each query string and each URL login replaced.
 
     Examples:
-        >>> redact_query_strings(
+        >>> redact_url_secrets(
         ...     "503 Server Error for url: https://example.org/api?apikey=s3cret&q=GO"
         ... )
         '503 Server Error for url: https://example.org/api?<query removed>'
-        >>> redact_query_strings("Max retries exceeded with url: /terms?id=GO:1 (Caused by x)")
+        >>> redact_url_secrets("Max retries exceeded with url: /terms?id=GO:1 (Caused by x)")
         'Max retries exceeded with url: /terms?<query removed> (Caused by x)'
 
         Punctuation inside the query does not end it early:
 
-        >>> redact_query_strings("url: https://x.org/s?q=label(GO)&apikey=s3cret")
+        >>> redact_url_secrets("url: https://x.org/s?q=label(GO)&apikey=s3cret")
         'url: https://x.org/s?<query removed>'
-        >>> redact_query_strings("for url 'https://x.org/s?q=it's&key=k'.")
+        >>> redact_url_secrets("for url 'https://x.org/s?q=it's&key=k'.")
         "for url 'https://x.org/s?<query removed>'."
 
         A question mark in prose is left alone:
 
-        >>> redact_query_strings("Is this a question? No = answer here.")
+        >>> redact_url_secrets("Is this a question? No = answer here.")
         'Is this a question? No = answer here.'
+
+        Login details in a URL are removed, host kept; an email in prose is not
+        a URL login and is left as it is:
+
+        >>> redact_url_secrets("could not reach https://curator:p@ss@sparql.example.org/q")
+        'could not reach https://<login removed>@sparql.example.org/q'
+        >>> redact_url_secrets("contact someone@example.org")
+        'contact someone@example.org'
     """
+    text = _USERINFO_RE.sub(r"\1<login removed>@", text)
     return _QUERY_STRING_RE.sub(_redact_query, text)
 
 
@@ -126,8 +146,8 @@ class ValidationFailure(BaseModel):
         """Record ``exc`` as the reason the ``kind`` validator did not complete.
 
         The message is collapsed onto one line, which keeps it from being read
-        as a heading when the section is split off again, and query strings are
-        removed from any URL it quotes.
+        as a heading when the section is split off again, and query strings and
+        login details are removed from any URL it quotes.
 
         Args:
             kind: Which validator failed.
@@ -143,7 +163,7 @@ class ValidationFailure(BaseModel):
             'Term validation failed: line one ## line two'
         """
         detail = " ".join(str(exc).split()) or type(exc).__name__
-        return cls(kind=kind, error=f"{_LABELS[kind]} failed: {redact_query_strings(detail)}")
+        return cls(kind=kind, error=f"{_LABELS[kind]} failed: {redact_url_secrets(detail)}")
 
     @property
     def heading(self) -> str:

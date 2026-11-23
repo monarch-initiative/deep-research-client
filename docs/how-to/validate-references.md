@@ -152,8 +152,10 @@ ontology service cannot be reached at all.
 
 The `## Reference Validation` section says the same, and gives the command to retry. There
 are no counts, because nothing was counted: a `confabulation_rate` of `0.0` here would read
-as a clean result. Any query string in a quoted URL is removed from the error before it is
-written, since the file may be shared and the query can carry a contact address or a key.
+as a clean result. Any query string or login (`user:password@`) in a quoted URL is removed
+from the error before it is written, since the file may be shared and either can carry a
+contact address or a key. Nothing else is removed: a local path in the error stays, because
+it says where the failure was.
 
 To finish the job, re-validate the saved file with the cache options the run used (for a
 committed cache, that includes `--trust-cache`):

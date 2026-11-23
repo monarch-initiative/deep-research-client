@@ -175,10 +175,15 @@ def test_revalidating_replaces_the_failure_record(
             "https://x.org/s?<query removed>",
             "s3cret",
         ),
+        (
+            "could not reach https://curator:hunter2@sparql.example.org/query",
+            "https://<login removed>@sparql.example.org/query",
+            "hunter2",
+        ),
     ],
 )
 def test_query_strings_are_kept_out_of_the_record(message: str, kept: str, removed: str) -> None:
-    """A request URL in an error can carry an email or a key; the file keeps neither."""
+    """A URL in an error can carry an email, a key or a password; the file keeps none."""
     failure = ValidationFailure.from_exception("term", ConnectionError(message))
 
     assert kept in failure.error

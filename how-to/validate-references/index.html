@@ -534,6 +534,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Validate as part of the research run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-validation-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      When validation fails
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1355,6 +1370,21 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Validate as part of the research run">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-validation-fails" class="md-nav__link">
+    <span class="md-ellipsis">
+      When validation fails
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1649,6 +1679,36 @@ needed reviewing.</p>
 <p><code>needs_review</code> is deliberately wider than the thing that fails a build. An off-topic
 reference sets it, but does not make <code>--fail-on-unresolved</code> exit non-zero: it is a
 go-and-look, not a failure.</p>
+<h3 id="when-validation-fails">When validation fails</h3>
+<p>Validation runs after the report is written, so a validator that raises costs the
+validation, not the research. The run exits with code <code>3</code>, and the report records the
+failure in the same two places a result would go, so a file read later does not look as if
+validation had never been asked for:</p>
+<pre><code class="language-yaml">reference_validation:
+  status: failed
+  error: 'Reference validation failed: [Errno 20] Not a directory: ''refs/cache'''
+  needs_review: true
+</code></pre>
+<p>This is for a validator that could not run, not for lookups that went unanswered. When
+PubMed, Crossref or the PMC ID converter cannot be reached, each affected reference is
+reported as unresolved or unverifiable and the run completes (see <a href="#what-the-outcomes-mean">what the outcomes
+mean</a>); the failure record appears when the run as a whole could
+not proceed, such as an unusable <code>--validation-cache-dir</code>. For terms, it appears when the
+ontology service cannot be reached at all.</p>
+<p>The <code>## Reference Validation</code> section says the same, and gives the command to retry. There
+are no counts, because nothing was counted: a <code>confabulation_rate</code> of <code>0.0</code> here would read
+as a clean result. Any query string or login (<code>user:password@</code>) in a quoted URL is removed
+from the error before it is written, since the file may be shared and either can carry a
+contact address or a key. Nothing else is removed: a local path in the error stays, because
+it says where the failure was.</p>
+<p>To finish the job, re-validate the saved file with the cache options the run used (for a
+committed cache, that includes <code>--trust-cache</code>):</p>
+<pre><code class="language-bash">deep-research-client validate-references statins.md --in-place --cache-dir references_cache --trust-cache
+</code></pre>
+<p>That replaces the failure record with real results. Term validation works the same way,
+under <code>term_validation</code> and <code>validate-terms --in-place</code> (with the run's
+<code>--ontology-config</code> and cache options), and each validator is recorded
+separately: when one fails, the other's results are written as usual.</p>
 <h2 id="fail-a-pipeline-on-bad-citations">Fail a pipeline on bad citations</h2>
 <p>Both commands accept <code>--fail-on-unresolved</code>, which exits with code <code>2</code> when any reference
 fails to resolve or any attributed quote is checked and not found in its source. Quotes

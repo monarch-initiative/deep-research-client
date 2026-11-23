@@ -55,6 +55,12 @@ _RETRY_OPTIONS: Dict[str, str] = {
 #: not kept, but the report is. It runs to whitespace rather than stopping at
 #: punctuation because a query may contain ``(``, ``)`` or ``'`` unencoded, and
 #: stopping there would leave the rest of it, key included, in the file.
+#:
+#: Two forms are not covered. A query with no ``=`` (``?s3cretkey``) is kept,
+#: because without the ``=`` a ``?`` in prose would be removed too. A fragment
+#: (``#access_token=abc``) is kept, because only ``?`` starts a match. Neither
+#: is likely in an HTTP client's error: a fragment is never sent to the server,
+#: and APIs pass keys as ``key=value``.
 _QUERY_STRING_RE = re.compile(r"\?\S*=\S*")
 
 #: Closing punctuation that may follow a quoted URL rather than belong to it,

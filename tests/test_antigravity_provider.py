@@ -259,6 +259,8 @@ def test_health_from_models_success():
     health = provider._health_from_models(stdout, "", 0)
     assert health.reachable is True
     assert "2 models" in health.detail
+    # Listing models says nothing about what is left of the plan's quota (#126).
+    assert health.summary().startswith("antigravity: OK (capacity unverified) - logged in; ")
 
 
 def test_health_from_models_no_models_is_unreachable():

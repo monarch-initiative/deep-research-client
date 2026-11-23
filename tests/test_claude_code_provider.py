@@ -564,8 +564,12 @@ async def test_research_raises_on_timeout(tmp_path):
     provider = ClaudeCodeProvider(
         config, ClaudeCodeParams(claude_executable=str(script))
     )
-    with pytest.raises(ProviderTimeoutError, match="did not finish within"):
+    with pytest.raises(ProviderTimeoutError, match="did not finish within") as excinfo:
         await provider.research("anything")
+    # The health probe cannot see a spent usage limit, so the message must not
+    # offer it as the way to find one (#126).
+    assert "usage limit" in str(excinfo.value)
+    assert "which `providers --check` cannot see --" in str(excinfo.value)
 
 
 @pytest.mark.integration

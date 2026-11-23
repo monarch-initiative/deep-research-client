@@ -476,13 +476,13 @@ class CLIAgentResearchProvider(ResearchProvider):
                 await process.wait()
                 # A spent usage allowance can stall a run rather than fail it,
                 # and then it arrives here looking like slowness. Say so, so the
-                # reader checks the allowance before chasing latency.
+                # reader checks the allowance before chasing latency. The health
+                # probe confirms the login but cannot see what is left of the
+                # allowance (#126), so it is not offered as the way to check.
                 raise ProviderTimeoutError(
                     self.name,
-                    f"the {self.name} run did not finish within {run_timeout}s. If "
-                    f"this repeats, check the account with `deep-research-client "
-                    f"providers --check --provider {self.name}` -- a spent usage "
-                    f"limit can stall a run instead of failing it",
+                    f"the run did not finish within {run_timeout}s; a spent usage "
+                    f"limit may be stalling it, which `providers --check` cannot see",
                 )
 
             returncode = -1 if process.returncode is None else process.returncode

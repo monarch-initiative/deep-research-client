@@ -154,6 +154,36 @@ def test_a_probe_that_raises_does_not_cost_the_other_reports(capsys):
     assert "the probe itself failed" in out
 
 
+@pytest.mark.parametrize(
+    ("capacity_verified", "reachable", "line", "exit_code"),
+    [
+        # What every probe that can run reports today: the key is accepted,
+        # and the balance behind it cannot be read (#126).
+        (None, True, "a: OK (capacity unverified) - key accepted", 0),
+        (True, True, "a: OK - key accepted", 0),
+        (False, False, "a: NO CAPACITY - key accepted", 1),
+    ],
+    ids=["unverified", "verified", "none-left"],
+)
+def test_the_status_word_says_whether_capacity_was_seen(
+    capsys, capacity_verified, reachable, line, exit_code
+):
+    """An account that may be out of credit is not plainly OK, and still exits 0."""
+    health = ProviderHealth(
+        provider="a", configured=True, reachable=reachable,
+        capacity_verified=capacity_verified, detail="key accepted",
+    )
+
+    if exit_code:
+        with pytest.raises(typer.Exit) as excinfo:
+            _check_provider_health(_StubClient([_StubProvider("a", health)]), None)
+        assert excinfo.value.exit_code == exit_code
+    else:
+        _check_provider_health(_StubClient([_StubProvider("a", health)]), None)
+
+    assert capsys.readouterr().out.splitlines()[1:] == [f"  {line}"]
+
+
 def test_unknown_provider_is_rejected():
     """A typo should not silently probe nothing and report success."""
     with pytest.raises(typer.Exit) as excinfo:

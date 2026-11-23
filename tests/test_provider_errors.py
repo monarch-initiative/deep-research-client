@@ -168,14 +168,29 @@ def test_consensus_maps_http_status_to_typed_error(monkeypatch):
     "health,expected",
     [
         (ProviderHealth(provider="p", configured=False, detail="no key"), "NOT CONFIGURED"),
-        (ProviderHealth(provider="p", configured=True), "UNKNOWN"),
-        (ProviderHealth(provider="p", configured=True, reachable=True), "OK"),
+        (ProviderHealth(provider="p", configured=True), "UNKNOWN (no probe available)"),
+        (ProviderHealth(provider="p", configured=True, reachable=True), "OK (capacity unverified)"),
+        (ProviderHealth(provider="p", configured=True, reachable=True, capacity_verified=True), "OK"),
         (ProviderHealth(provider="p", configured=True, reachable=False), "UNREACHABLE"),
+        (
+            ProviderHealth(provider="p", configured=True, reachable=False, capacity_verified=False),
+            "NO CAPACITY",
+        ),
     ],
 )
 def test_provider_health_summary_distinguishes_configured_from_reachable(health, expected):
-    """"Configured" and "reachable" must be visibly different states."""
-    assert expected in health.summary()
+    """"Configured", "reachable" and "in credit" must be visibly different states."""
+    status = health.summary().removeprefix("p: ").split(" - ")[0]
+    assert status == expected
+
+
+@pytest.mark.parametrize("reachable", [True, None])
+def test_a_provider_seen_to_have_no_capacity_cannot_be_reachable(reachable):
+    """An empty account must not print OK or UNKNOWN and exit 0 (#126)."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="seen to have no capacity cannot take work"):
+        ProviderHealth(provider="p", configured=True, reachable=reachable, capacity_verified=False)
 
 
 def test_unconfigured_provider_reports_unreachable_without_probing():

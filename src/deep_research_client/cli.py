@@ -2064,7 +2064,7 @@ def providers(
         help="Show details for specific provider only")] = None,
     check: Annotated[bool, typer.Option(
         "--check",
-        help="Probe each configured provider with a cheap live call to see if it is reachable")] = False,
+        help="Probe each configured provider with a cheap live call to see if it is reachable; one whose credit balance the probe cannot read reports OK (capacity unverified)")] = False,
 ):
     """List available research providers and their parameters."""
     from .provider_params import PROVIDER_PARAMS_REGISTRY

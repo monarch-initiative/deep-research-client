@@ -169,7 +169,8 @@ deep-research-client providers
 
 # Ask each configured provider whether it can actually take work.
 # "Configured" only means a key is set; this probes reachability and
-# exits non-zero if any provider cannot run.
+# exits non-zero if any provider cannot run. "OK (capacity unverified)"
+# means the key works but the probe cannot see whether credits are left.
 deep-research-client providers --check
 deep-research-client providers --check --provider falcon
 

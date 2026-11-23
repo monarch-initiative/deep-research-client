@@ -146,6 +146,15 @@ def test_auth_status_becomes_health(status, reachable, expected_detail):
     assert expected_detail in health.detail
 
 
+def test_a_logged_in_cli_does_not_claim_its_usage_allowance_is_left():
+    """`auth status` shows the plan, not what is left of its usage limit (#126)."""
+    status = {"loggedIn": True, "authMethod": "claude.ai", "subscriptionType": "max"}
+
+    health = _provider()._health_from_auth_status(json.dumps(status), "", 0)
+
+    assert health.summary() == "claude_code: OK (capacity unverified) - auth: claude.ai, plan: max"
+
+
 def test_failed_auth_status_is_classified():
     """A probe that exits non-zero is read the same way a run failure is."""
     health = _provider()._health_from_auth_status("", "Invalid API key. Please run /login", 1)

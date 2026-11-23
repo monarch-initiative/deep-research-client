@@ -204,3 +204,32 @@ def test_a_failure_record_comes_off_again_like_a_report() -> None:
     )
 
     assert strip_validation_section(formatted).endswith("Body\n")
+
+
+def test_identifiers_in_a_failure_record_are_not_validated(tmp_path: Path) -> None:
+    """Re-validating reads the report, not the record of the last failed attempt.
+
+    The error quotes an identifier the report never cites; it must not be counted.
+    """
+    result = ResearchResult(
+        query="q", markdown="Widgets vary (PMID:12345678).", provider="mock"
+    )
+    failure = ValidationFailure.from_exception(
+        "reference", OSError("lookup of PMID:99999999 failed")
+    )
+    report = tmp_path / "report.md"
+    report.write_text(
+        ResultFormatter().format_full_markdown(result, reference_validation=failure),
+        encoding="utf-8",
+    )
+
+    retry = CliRunner().invoke(app, [
+        "validate-references", str(report), "--in-place",
+        "--cache-dir", str(tmp_path / "references"), "--skip-prefix", "PMID",
+        "--email", "test@example.org",
+    ])
+
+    assert retry.exit_code == 0, retry.output
+    frontmatter, body = parse_frontmatter(report.read_text(encoding="utf-8"))
+    assert frontmatter["reference_validation"]["total_references"] == 1
+    assert "PMID:99999999" not in body

@@ -136,6 +136,15 @@ def test_a_reset_in_stderr_ahead_of_the_limit_is_not_the_reset_time() -> None:
     assert error.resets_at == "8pm (UTC)"
 
 
+@pytest.mark.parametrize("after", ["Resetting session state", "preset loaded"])
+def test_a_reset_on_a_later_line_is_not_the_reset_time(after: str) -> None:
+    """A limit message with no time of its own gets none from the next line."""
+    error = classify_cli_failure("claude_code", f"You've hit your limit\n{after}")
+
+    assert isinstance(error, ProviderQuotaError)
+    assert error.resets_at is None
+
+
 def test_a_spent_limit_with_no_result_event_is_a_quota_error(tmp_path: Path) -> None:
     """The reported case: exit 1, empty stderr, and the stream stops early."""
     cli = _fake_cli(tmp_path, [

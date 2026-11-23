@@ -124,7 +124,7 @@ _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
 # ("resets Aug 8 · request an increase at https://..."), which would otherwise
 # run on into the advice.
 _LIMIT_RESET = re.compile(
-    r"reset(?:s|ting)?\s+(?:at\s+)?([^.;\n\u00b7\u2219\u2022]+)", re.IGNORECASE
+    r"\breset(?:s|ting)?\s+(?:at\s+)?([^.;\n\u00b7\u2219\u2022]+)", re.IGNORECASE
 )
 
 # `claude auth status` reads local credentials and makes no model call, so it
@@ -399,6 +399,11 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     ... ).resets_at
     '8pm'
 
+    >>> classify_cli_failure(
+    ...     "claude_code", "You've hit your limit\\nResetting session state"
+    ... ).resets_at is None
+    True
+
     A limit on the conversation is not a limit on the plan:
 
     >>> classify_cli_failure("claude_code", "Context limit reached \u00b7 /compact or /clear to continue") is None
@@ -427,9 +432,13 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
             continue
         detail = text.strip()
         if error_class is ProviderQuotaError:
-            # From the limit message on: stderr ahead of it can say "reset"
-            # about something else ("Connection reset by peer").
-            reset_match = _LIMIT_RESET.search(text, match.start())
+            # Only on the limit message's own line, from the message on: stderr
+            # around it can say "reset" about something else ("Connection
+            # reset by peer" before it, "Resetting session state" after it).
+            line_end = text.find("\n", match.start())
+            reset_match = _LIMIT_RESET.search(
+                text, match.start(), len(text) if line_end == -1 else line_end
+            )
             return ProviderQuotaError(
                 provider,
                 detail,

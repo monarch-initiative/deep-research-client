@@ -5038,6 +5038,20 @@ call, so <code>--check</code> reports the auth method and plan without spending 
 <p>The one failure the CLI does not always report cleanly is a spent usage limit
 mid-run, which can stall rather than fail. The timeout message points at
 <code>providers --check</code> for that reason.</p>
+<p>A spent limit that does end the run is read as a quota error, so <code>--fallback</code>
+applies and the reset time is reported. That holds for the CLI's older wording
+(<code>Claude usage limit reached. Your limit will reset at 3pm.</code>) and its current
+ones (<code>You've hit your limit · resets 8pm</code>, <code>5-hour limit reached ∙ resets
+8:50pm</code>). Limits on the conversation rather than the plan, such as <code>Context
+limit reached</code>, are not. Only the CLI's own words are read: its stderr, the
+failing <code>result</code> event, and the event it writes for a failed API call (marked
+<code>is_api_error_message</code>, which a run that stops early may end on). The model's
+report is never read for this, so a report <em>about</em> usage limits is not one.</p>
+<p>An exit the CLI does not explain still says what it saw. When stderr is empty
+and no failure event is recognised, the message quotes the CLI's last line of
+plain text on stdout, or the end of the last text the model wrote, or else
+names the last event the run wrote (<code>last event: system/init</code>), instead of
+<code>&lt;no stderr&gt;</code>.</p>
 <h2 id="artifact-selection">Artifact selection</h2>
 <p>Providers that return a bundle of files — currently OpenScientist's artifacts
 ZIP — decide which members become <code>ResearchArtifact</code> entries. The defaults keep

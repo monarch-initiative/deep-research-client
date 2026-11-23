@@ -1,13 +1,14 @@
 """High-level processing interface for research operations."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Dict, Any, List, Tuple
+from typing import TYPE_CHECKING, Optional, Dict, Any, List, Tuple, Union
 
 from .template_processor import TemplateProcessor
 from .result_formatter import ResultFormatter
 from ..models import ResearchResult
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from ..validation.failure import ValidationFailure
     from ..validation.models import ReferenceValidationReport
     from ..validation.term_models import TermValidationReport
 
@@ -50,16 +51,20 @@ class ResearchProcessor:
         self,
         result: ResearchResult,
         separate_citations: bool = False,
-        reference_validation: Optional["ReferenceValidationReport"] = None,
-        term_validation: Optional["TermValidationReport"] = None,
+        reference_validation: Optional[
+            Union["ReferenceValidationReport", "ValidationFailure"]
+        ] = None,
+        term_validation: Optional[Union["TermValidationReport", "ValidationFailure"]] = None,
     ) -> str:
         """Format a research result as markdown.
 
         Args:
             result: Research result to format
             separate_citations: If True, excludes citations from main content
-            reference_validation: Optional reference validation report to embed
-            term_validation: Optional ontology term validation report to embed
+            reference_validation: Optional reference validation report to embed,
+                or a ``ValidationFailure`` if that validator raised
+            term_validation: Optional ontology term validation report to embed,
+                or a ``ValidationFailure`` if that validator raised
 
         Returns:
             Formatted markdown string

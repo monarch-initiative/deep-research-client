@@ -2,11 +2,12 @@
 
 from collections import Counter
 import yaml
-from typing import TYPE_CHECKING, Dict, Any, Optional
+from typing import TYPE_CHECKING, Dict, Any, Optional, Union
 
 from ..models import ResearchResult
 
 if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from ..validation.failure import ValidationFailure
     from ..validation.models import ReferenceValidationReport
     from ..validation.term_models import TermValidationReport
 
@@ -18,8 +19,10 @@ class ResultFormatter:
         self,
         result: ResearchResult,
         separate_citations: bool = False,
-        reference_validation: Optional["ReferenceValidationReport"] = None,
-        term_validation: Optional["TermValidationReport"] = None,
+        reference_validation: Optional[
+            Union["ReferenceValidationReport", "ValidationFailure"]
+        ] = None,
+        term_validation: Optional[Union["TermValidationReport", "ValidationFailure"]] = None,
     ) -> str:
         """Format result as markdown with YAML frontmatter.
 
@@ -31,6 +34,10 @@ class ResultFormatter:
                 "Reference Validation" section is appended to the body
             term_validation: Optional ontology term validation report, added the
                 same way under a "Term Validation" section
+            Either may instead be a ``ValidationFailure``, for a validator that
+            was requested but raised. It is written in the same two places, so
+            the file records that validation failed rather than reading as if it
+            had never been asked for.
 
         Returns:
             Formatted markdown with frontmatter

@@ -44,6 +44,7 @@ from .relevance import (
     extract_keywords,
     reference_text,
 )
+from .failure import ValidationFailure, redact_url_secrets
 from .label_matching import compare_labels, label_similarity
 from .sections import (
     TERM_VALIDATION_SECTION_HEADING,
@@ -80,6 +81,7 @@ __all__ = [
     "LabelAgreement",
     "lookup_error_types",
     "QuotedClaim",
+    "redact_url_secrets",
     "reference_text",
     "ReferenceCheck",
     "ReferenceStatus",
@@ -100,5 +102,6 @@ __all__ = [
     "TermValidator",
     "TopicalRelevance",
     "VALIDATION_SECTION_HEADING",
+    "ValidationFailure",
     "validator_is_available",
 ]

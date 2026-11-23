@@ -23,7 +23,9 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         ReferenceValidator,
         TermValidationReport,
         TermValidator,
+        ValidationFailure,
     )
+    from .validation.failure import ValidationKind
 
 from .exceptions import ProviderError
 from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
@@ -754,6 +756,34 @@ def _refresh_validation_frontmatter(
     return f"---\n{rendered}\n---\n{body}"
 
 
+def _validation_failure(
+    kind: "ValidationKind",
+    exc: BaseException,
+    output: Optional[Path],
+) -> "ValidationFailure":
+    """Report a validator that raised, and record it for the saved report.
+
+    The same line goes to stderr and into the file, so what the run said and
+    what the report records cannot disagree.
+
+    Args:
+        kind: Which validator raised.
+        exc: What it raised.
+        output: Where the report was saved, if it was, for the retry command.
+
+    Returns:
+        The failure, for the formatter to write in place of the results.
+    """
+    from .validation import ValidationFailure
+
+    failure = ValidationFailure.from_exception(
+        kind, exc, report_path=str(output) if output is not None else None
+    )
+    _error(failure.error)
+    logger.debug("Exception details:", exc_info=True)
+    return failure
+
+
 def _echo_validation_summary(report: "ReferenceValidationReport") -> None:
     """Summarise a reference validation report, one line per outcome.
 
@@ -1382,7 +1412,7 @@ def research(
     # succeeded; losing a report that cost minutes and real money to an NCBI
     # outage would be a poor trade for a citation check.
     validation_report = None
-    validation_failed = False
+    reference_failure: Optional["ValidationFailure"] = None
     if validate_references:
         reference_validator = _build_reference_validator(
             cache_dir=validation_cache_dir,
@@ -1401,13 +1431,12 @@ def research(
             # urllib raises OSError subclasses for network failures. The report is
             # already saved, so report the real cause rather than letting it surface
             # as a filesystem error.
-            _error(f"Reference validation failed: {exc}")
-            logger.debug("Exception details:", exc_info=True)
-            validation_failed = True
+            reference_failure = _validation_failure("reference", exc, output)
         else:
             _echo_validation_summary(validation_report)
 
     term_report = None
+    term_failure: Optional["ValidationFailure"] = None
     if validate_terms:
         term_validator = _build_term_validator(
             adapter=term_adapter,
@@ -1426,23 +1455,23 @@ def research(
             term_report = term_validator.validate_result(result)
         except (OSError, ValueError) + lookup_error_types() as exc:
             # The report is already saved, so an unreachable ontology service
-            # costs the term section, not the research.
-            _error(f"Term validation failed: {exc}")
-            logger.debug("Exception details:", exc_info=True)
-            validation_failed = True
+            # costs the term results, not the research.
+            term_failure = _validation_failure("term", exc, output)
         else:
             _echo_term_validation_summary(term_report)
 
-    # A validator that failed costs its own section, not the other's: each one
-    # that succeeded is still written, and the run exits 3 afterwards.
-    if validation_report is None and term_report is None:
-        raise typer.Exit(3)
-
+    # A validator that failed is still written, as a record of the failure in
+    # place of its results (#124): stderr and the exit code are gone once the
+    # file is committed, and without it the report would read as if validation
+    # had never been asked for. Each validator that succeeded is written as
+    # usual, and the run exits 3 afterwards.
+    reference_section = validation_report if validation_report is not None else reference_failure
+    term_section = term_report if term_report is not None else term_failure
     validated_content = processor.format_research_result(
         result,
         separate_citations=should_separate_citations,
-        reference_validation=validation_report,
-        term_validation=term_report,
+        reference_validation=reference_section,
+        term_validation=term_section,
     )
     if output:
         try:
@@ -1455,12 +1484,12 @@ def research(
             raise typer.Exit(1)
         logger.info(f"Validation results added to: {output}")
     else:
-        for report in (validation_report, term_report):
-            if report is not None:
+        for section in (reference_section, term_section):
+            if section is not None:
                 typer.echo("\n" + "=" * 60)
-                typer.echo(report.to_markdown())
+                typer.echo(section.to_markdown())
 
-    if validation_failed:
+    if reference_failure is not None or term_failure is not None:
         raise typer.Exit(3)
     if not fail_on_unresolved:
         return

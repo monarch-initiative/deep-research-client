@@ -2777,6 +2777,10 @@
 <td>Weigh each resolved reference against the report's own vocabulary, flagging citations that exist but look off topic (default: on, costs no extra lookups)</td>
 </tr>
 <tr>
+<td><code>--validation-trust-cache</code></td>
+<td>Use references already in <code>--validation-cache-dir</code> (default: <code>~/.deep_research_cache/references</code>) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control. See <a href="../../how-to/validate-references/#trusting-a-committed-cache">trusting a committed cache</a></td>
+</tr>
+<tr>
 <td><code>--ontology-config PATH</code></td>
 <td>OAK-style YAML whose <code>ontology_adapters</code> keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses <code>--term-adapter</code>). Asks the provider for CURIEs from those ontologies only, and validates them; terms from other ontologies are reported as not configured. Implies <code>--validate-terms</code></td>
 </tr>
@@ -2948,6 +2952,10 @@ deep-research-client research &quot;Marfan syndrome surveillance&quot; \
 <tr>
 <td><code>--rate-limit-delay FLOAT</code></td>
 <td>Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references</td>
+</tr>
+<tr>
+<td><code>--trust-cache</code></td>
+<td>Use references already in <code>--cache-dir</code> (default: <code>~/.deep_research_cache/references</code>) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control. See <a href="../../how-to/validate-references/#trusting-a-committed-cache">trusting a committed cache</a></td>
 </tr>
 <tr>
 <td><code>--in-place</code></td>
@@ -4240,6 +4248,10 @@ network). See <a href="../../how-to/verify-claims/">Verify Claims</a>.</p>
 <tr>
 <td><code>--cache PATH</code></td>
 <td>Directory where resolved references are cached between runs</td>
+</tr>
+<tr>
+<td><code>--trust-cache</code></td>
+<td>Use references already in <code>--cache</code> (default: <code>~/.deep_research_cache/references</code>) exactly as they are on disk, never re-fetching or rewriting them; for a cache committed to version control</td>
 </tr>
 <tr>
 <td><code>--max-claims INT</code></td>

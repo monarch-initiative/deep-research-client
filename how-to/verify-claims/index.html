@@ -1362,7 +1362,9 @@ text for the keyword heuristic, which is why the whole report is used.</p>
 <pre><code class="language-bash">pip install &quot;deep_research_client[validation]&quot;
 </code></pre>
 <p><code>--email</code> passes a contact address to the NCBI API (it asks for one to raise the
-rate limit); <code>--cache</code> reuses resolved references between runs; <code>--max-claims</code>
+rate limit); <code>--cache</code> reuses resolved references between runs, and <code>--trust-cache</code>
+uses the entries already there as they are, for a cache committed to version control
+(see <a href="../validate-references/#trusting-a-committed-cache">trusting a committed cache</a>); <code>--max-claims</code>
 bounds how many claims are resolved — triage still sees every claim, and any
 resolvable citation past the cap is reported <code>UNCHECKED_CITATION</code>. Citation checks
 run <strong>one at a time</strong> (the resolver is not assumed thread-safe), so <code>--concurrency</code>

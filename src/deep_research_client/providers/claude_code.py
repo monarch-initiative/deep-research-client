@@ -362,6 +362,13 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     ProviderQuotaError 'Aug 8'
     ProviderQuotaError 'Aug 8'
 
+    A "reset" ahead of the limit message is not its reset time:
+
+    >>> classify_cli_failure(
+    ...     "claude_code", "Connection reset by peer\\nYou've hit your limit \u00b7 resets 8pm"
+    ... ).resets_at
+    '8pm'
+
     A limit on the conversation is not a limit on the plan:
 
     >>> classify_cli_failure("claude_code", "Context limit reached \u00b7 /compact or /clear to continue") is None
@@ -383,11 +390,14 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
         return None
 
     for pattern, error_class in _CLI_FAILURE_PATTERNS:
-        if not pattern.search(text):
+        match = pattern.search(text)
+        if match is None:
             continue
         detail = text.strip()
         if error_class is ProviderQuotaError:
-            reset_match = _LIMIT_RESET.search(text)
+            # From the limit message on: stderr ahead of it can say "reset"
+            # about something else ("Connection reset by peer").
+            reset_match = _LIMIT_RESET.search(text, match.start())
             return ProviderQuotaError(
                 provider,
                 detail,

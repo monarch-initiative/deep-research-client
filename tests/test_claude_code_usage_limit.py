@@ -127,6 +127,14 @@ def test_a_spent_limit_in_a_complete_stream_is_a_quota_error(tmp_path: Path) -> 
     assert excinfo.value.resets_at == "8pm (UTC)"
 
 
+def test_a_reset_in_stderr_ahead_of_the_limit_is_not_the_reset_time() -> None:
+    """Only the limit message's own "resets" gives the time."""
+    error = classify_cli_failure("claude_code", f"Connection reset by peer\n{LIMIT}")
+
+    assert isinstance(error, ProviderQuotaError)
+    assert error.resets_at == "8pm (UTC)"
+
+
 def test_a_spent_limit_with_no_result_event_is_a_quota_error(tmp_path: Path) -> None:
     """The reported case: exit 1, empty stderr, and the stream stops early."""
     cli = _fake_cli(tmp_path, [

@@ -183,6 +183,29 @@ def terminal_result_text(stdout: str) -> str:
     return ""
 
 
+def _text_blocks(event: dict) -> List[str]:
+    """The text blocks of an assistant event, in order.
+
+    ``message`` can be missing or null, and ``content`` can be a plain string
+    (the single-block form the message format permits) rather than a list.
+
+    >>> _text_blocks({"message": {"content": [{"type": "text", "text": "a"},
+    ...                                       {"type": "tool_use", "name": "WebSearch"}]}})
+    ['a']
+    >>> _text_blocks({"message": {"content": "plain"}}), _text_blocks({"message": None})
+    (['plain'], [])
+    """
+    message = event.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return [content]
+    return [
+        str(block.get("text") or "")
+        for block in (content if isinstance(content, list) else [])
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+
+
 def api_error_text(stdout: str) -> str:
     r"""Pull the CLI's own API-error message out of a stream.
 
@@ -235,14 +258,7 @@ def api_error_text(stdout: str) -> str:
             continue
         if event.get("is_api_error_message") is not True:
             return ""
-        message = event.get("message")
-        content = message.get("content") if isinstance(message, dict) else None
-        texts = [
-            block.get("text") or ""
-            for block in (content if isinstance(content, list) else [])
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        return f"{event.get('error') or ''} {' '.join(texts)}".strip()
+        return f"{event.get('error') or ''} {' '.join(_text_blocks(event))}".strip()
     return ""
 
 
@@ -315,12 +331,9 @@ def _stdout_excerpt(stdout: str) -> str:
             return truncate_detail(" ".join(line.split()), _STDOUT_EXCERPT_CHARS)
         if last_text or not isinstance(event, dict) or event.get("type") != "assistant":
             continue
-        message = event.get("message")
-        content = message.get("content") if isinstance(message, dict) else None
-        for block in reversed(content if isinstance(content, list) else []):
-            if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
-                last_text = block["text"]
-                break
+        texts = [text for text in _text_blocks(event) if text]
+        if texts:
+            last_text = texts[-1]
     if last_text:
         # The end of what the model was saying is the part nearest the failure.
         tail = " ".join(last_text.split())[-_STDOUT_EXCERPT_CHARS:]

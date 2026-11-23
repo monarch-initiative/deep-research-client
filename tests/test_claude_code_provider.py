@@ -569,7 +569,9 @@ async def test_research_raises_on_timeout(tmp_path):
     # The health probe cannot see a spent usage limit, so the message must not
     # offer it as the way to find one (#126).
     assert "usage limit" in str(excinfo.value)
-    assert "which `providers --check` cannot see --" in str(excinfo.value)
+    # The detail is capped at MAX_DETAIL_CHARS, and a capped one ends in "…".
+    # So the whole sentence must be in the error's own detail, not cut short.
+    assert excinfo.value.detail.endswith("which `providers --check` cannot see")
 
 
 @pytest.mark.integration

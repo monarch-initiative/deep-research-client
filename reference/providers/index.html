@@ -4925,15 +4925,57 @@ deep-research-client providers --check
 # Probe just one
 deep-research-client providers --check --provider falcon
 </code></pre>
-<p>Each provider reports one of <code>OK</code>, <code>UNREACHABLE</code>, <code>NOT CONFIGURED</code>, or
-<code>UNKNOWN (no probe available)</code> — the last meaning that provider has not
-implemented a probe, so configuration is all we know. The command exits
-non-zero if any provider turns out to be unable to take work, which includes a
-named provider that is not configured at all (no probe needed to know that).</p>
-<p>A probe proves the credential is accepted. It cannot prove the account has
-credits: Edison, for example, only charges when a task is submitted, so an
-uncredited key passes the probe and fails the run with <code>402</code>. A numeric
-balance has to come from the provider's own dashboard.</p>
+<p>Each provider reports one of these:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Means</th>
+<th>Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OK</code></td>
+<td>The credential is accepted, and the probe read a balance or allowance with room for a run</td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>OK (capacity unverified)</code></td>
+<td>The credential is accepted, but the probe cannot see whether the account can pay for a run</td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>UNKNOWN (no probe available)</code></td>
+<td>The provider has no probe, so configuration is all we know</td>
+<td>0</td>
+</tr>
+<tr>
+<td><code>NO CAPACITY</code></td>
+<td>The probe read the balance or allowance, and there is none left</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>UNREACHABLE</code></td>
+<td>The probe failed: a rejected key, no access, the service down</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>NOT CONFIGURED</code></td>
+<td>No credential is set (no probe needed to know that)</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>The command exits non-zero if any provider turns out to be unable to take work.</p>
+<p>A probe proves the credential is accepted. Today no probe can also prove the
+account has credits, so every provider that passes reports
+<code>OK (capacity unverified)</code>. Edison, for example, only charges when a task is
+submitted, so an uncredited key passes the probe and fails the run with <code>402</code>.
+OpenAI and Anthropic expose no balance to read, and <code>claude auth status</code> shows
+the plan but not how much of its usage limit is left. A numeric balance has to
+come from the provider's own dashboard. <code>OK</code> and <code>NO CAPACITY</code> are there for a
+probe that can read one.</p>
 <h2 id="provider-failures">Provider Failures</h2>
 <p>Failures are raised as typed exceptions so callers can tell "switch provider"
 apart from "try again":</p>
@@ -5036,8 +5078,10 @@ apart from the ones that mean "try again".</p>
 one: <code>claude auth status --json</code> reads local credentials and makes no model
 call, so <code>--check</code> reports the auth method and plan without spending a token.</p>
 <p>The one failure the CLI does not always report cleanly is a spent usage limit
-mid-run, which can stall rather than fail. The timeout message points at
-<code>providers --check</code> for that reason.</p>
+mid-run, which can stall rather than fail. The timeout message says so. It does
+not send you to <code>providers --check</code>, because <code>auth status</code> shows the plan but
+not how much of its usage limit is left, so a logged-in CLI with a spent limit
+still reports <code>OK (capacity unverified)</code>.</p>
 <p>A spent limit that does end the run is read as a quota error, so <code>--fallback</code>
 applies and the reset time is reported. That holds for the CLI's older wording
 (<code>Claude usage limit reached. Your limit will reset at 3pm.</code>) and its current

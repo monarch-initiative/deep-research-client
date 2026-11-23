@@ -82,6 +82,11 @@ def test_a_reply_past_the_output_limit_is_empty_and_cut_off():
             _result(is_error=True, result="Claude usage limit reached. Your limit will reset at 3pm."),
             "", 1, ProviderQuotaError, "usage limit",
         ),
+        # The CLI's current wording (#127).
+        (
+            _result(is_error=True, result="You've hit your limit \u00b7 resets 8pm (UTC)"),
+            "", 1, ProviderQuotaError, "hit your limit",
+        ),
     ],
 )
 def test_a_failed_run_raises_with_the_cli_s_own_words(stdout, stderr, returncode, error, text):

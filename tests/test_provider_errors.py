@@ -193,6 +193,14 @@ def test_a_provider_seen_to_have_no_capacity_cannot_be_reachable(reachable):
         ProviderHealth(provider="p", configured=True, reachable=reachable, capacity_verified=False)
 
 
+def test_a_balance_cannot_be_read_by_a_probe_that_never_ran():
+    """A capacity reading needs a probe; UNKNOWN says there was none (#126)."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="can only be read by a probe that ran"):
+        ProviderHealth(provider="p", configured=True, reachable=None, capacity_verified=True)
+
+
 def test_unconfigured_provider_reports_unreachable_without_probing():
     """No key means no network call is worth making."""
     import asyncio

@@ -584,8 +584,8 @@ class ProviderHealth(BaseModel):
     detail: Optional[str] = Field(default=None, description="Explanation of the outcome")
 
     @model_validator(mode="after")
-    def _no_capacity_is_not_reachable(self) -> "ProviderHealth":
-        """Refuse a record that says a provider with no capacity can take work.
+    def _capacity_agrees_with_reachable(self) -> "ProviderHealth":
+        """Refuse a capacity reading that contradicts the rest of the record.
 
         ``reachable`` means "can take work", and an account seen to be out of
         credit cannot. Accepting ``reachable=True`` would print ``OK`` and exit
@@ -595,13 +595,21 @@ class ProviderHealth(BaseModel):
         Returns:
             The record, unchanged.
 
+        A capacity reading with ``reachable=None`` is refused too: a balance
+        can only be read by a probe that ran, and ``None`` says none did.
+
         Raises:
             ValueError: If ``capacity_verified`` is False but ``reachable`` is
-                not False.
+                not False, or ``capacity_verified`` is set but ``reachable`` is
+                None.
         """
         if self.capacity_verified is False and self.reachable is not False:
             raise ValueError(
                 "a provider seen to have no capacity cannot take work: set reachable=False"
+            )
+        if self.capacity_verified is not None and self.reachable is None:
+            raise ValueError(
+                "a balance can only be read by a probe that ran: set reachable"
             )
         return self
 

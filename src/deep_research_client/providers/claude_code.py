@@ -74,12 +74,13 @@ logger = logging.getLogger(__name__)
 # reached ∙ resets 8:50pm", "spend limit reached · resets Aug 8"). It does not
 # take a bare "limit reached": the CLI also says "Context limit reached" and
 # "Subagent nesting limit reached", which are about the conversation, not the
-# plan. Nor "hit your rate limit", which clears in seconds rather than when the
-# plan's window rolls over. Widening it is safe on the research path only because that path never
+# plan. Nor "hit your rate limit" (or "your Opus rate limit"), which clears in
+# seconds rather than when the plan's window rolls over, nor "hit your context
+# window limit"; every word between "your" and "limit" is checked. Widening it is safe on the research path only because that path never
 # classifies the model's report (see `cli_failure_text`).
 _QUOTA_PATTERN = re.compile(
     r"usage limit reached|limit will reset|"
-    r"hit your (?!rate )(?:\S+ ){0,3}limit\b|"
+    r"hit your (?:(?!rate\b|context\b)\S+ ){0,3}limit\b|"
     r"\b(?:usage|session|weekly|daily|monthly|spend|\d+-hour) limit reached",
     re.IGNORECASE,
 )
@@ -368,6 +369,10 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     >>> classify_cli_failure("claude_code", "Subagent nesting limit reached (depth 4)") is None
     True
     >>> classify_cli_failure("claude_code", "You've hit your rate limit, try again shortly") is None
+    True
+    >>> classify_cli_failure("claude_code", "You've hit your Opus rate limit") is None
+    True
+    >>> classify_cli_failure("claude_code", "You've hit your context window limit") is None
     True
     >>> type(classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
     'ProviderAuthError'

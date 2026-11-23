@@ -104,6 +104,8 @@ def test_the_issues_wordings_are_a_spent_allowance(text: str, resets_at: str) ->
         "Subagent nesting limit reached (depth 4)",
         "Concurrent export limit reached",
         "You've hit your rate limit, try again shortly",
+        "You've hit your Opus rate limit",
+        "You've hit your context window limit",
     ],
 )
 def test_limits_that_are_not_the_plans_allowance_stay_unclassified(text: str) -> None:

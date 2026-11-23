@@ -1,0 +1,168 @@
+"""A record that a requested validation did not complete, for the saved report.
+
+When a validator raises, the run still exits 3, but stderr and the exit code are
+gone once the report is committed or handed on. Without a trace in the file, a
+report whose validation failed reads exactly like one that never asked for it,
+and a curator told to read ``needs_review`` first finds no such key (#124).
+
+:class:`ValidationFailure` stands in for the report the validator would have
+produced. It has the same ``summary()`` and ``to_markdown()`` the formatter calls
+on a real report, so the failure lands where the result would have: a
+frontmatter block under the usual key, and a section under the usual heading.
+That also means re-validating the file later replaces both, through the same
+helpers that replace a stale result.
+"""
+
+import re
+from typing import Any, Dict, Literal
+
+from pydantic import BaseModel
+
+from .sections import TERM_VALIDATION_SECTION_HEADING, VALIDATION_SECTION_HEADING
+
+__all__ = ["ValidationFailure", "redact_query_strings"]
+
+ValidationKind = Literal["reference", "term"]
+
+_HEADINGS: Dict[str, str] = {
+    "reference": VALIDATION_SECTION_HEADING,
+    "term": TERM_VALIDATION_SECTION_HEADING,
+}
+_LABELS: Dict[str, str] = {"reference": "Reference validation", "term": "Term validation"}
+_CHECKED: Dict[str, str] = {
+    "reference": "The identifiers and quotes this report cites have not been checked.",
+    "term": "The ontology terms this report cites have not been checked.",
+}
+_RETRY: Dict[str, str] = {
+    "reference": "deep-research-client validate-references REPORT.md --in-place",
+    "term": "deep-research-client validate-terms REPORT.md --in-place",
+}
+#: What the retry must repeat from the original run to check the same way: a
+#: different cache directory, or a missing --trust-cache or --ontology-config,
+#: gives a different result than the run that failed would have.
+_RETRY_OPTIONS: Dict[str, str] = {
+    "reference": "the cache options the run used",
+    "term": "the cache and ontology options the run used",
+}
+
+#: A query string in an error message: ``?`` followed by at least one
+#: ``key=value``. HTTP client errors quote the request URL, and a query can carry
+#: a contact email or an API key; stderr is not kept, but the report is.
+_QUERY_STRING_RE = re.compile(r"\?[^\s'\"()<>]*=[^\s'\"()<>]*")
+
+
+def redact_query_strings(text: str) -> str:
+    """Replace every URL query string in ``text`` with a placeholder.
+
+    Args:
+        text: An error message, possibly quoting request URLs.
+
+    Returns:
+        The message with each query string replaced.
+
+    Examples:
+        >>> redact_query_strings(
+        ...     "503 Server Error for url: https://example.org/api?apikey=s3cret&q=GO"
+        ... )
+        '503 Server Error for url: https://example.org/api?<query removed>'
+        >>> redact_query_strings("Max retries exceeded with url: /terms?id=GO:1 (Caused by x)")
+        'Max retries exceeded with url: /terms?<query removed> (Caused by x)'
+        >>> redact_query_strings("Is this a question? No = answer here.")
+        'Is this a question? No = answer here.'
+    """
+    return _QUERY_STRING_RE.sub("?<query removed>", text)
+
+
+class ValidationFailure(BaseModel):
+    """A requested validation that raised instead of producing a report.
+
+    Attributes:
+        kind: Which validator failed: ``"reference"`` or ``"term"``.
+        error: What went wrong, as one line, with its label as prefix, the
+            same text the run printed to stderr.
+
+    Examples:
+        >>> failure = ValidationFailure.from_exception("reference", TimeoutError("timed out"))
+        >>> failure.error
+        'Reference validation failed: timed out'
+        >>> failure.summary()
+        {'status': 'failed', 'error': 'Reference validation failed: timed out', 'needs_review': True}
+
+        An exception with no message is named by its type rather than left blank:
+
+        >>> ValidationFailure.from_exception("term", TimeoutError()).error
+        'Term validation failed: TimeoutError'
+    """
+
+    kind: ValidationKind
+    error: str
+
+    @classmethod
+    def from_exception(cls, kind: ValidationKind, exc: BaseException) -> "ValidationFailure":
+        """Record ``exc`` as the reason the ``kind`` validator did not complete.
+
+        The message is collapsed onto one line, which keeps it from being read
+        as a heading when the section is split off again, and query strings are
+        removed from any URL it quotes.
+
+        Args:
+            kind: Which validator failed.
+            exc: What it raised.
+
+        Returns:
+            The failure record.
+
+        Examples:
+            >>> ValidationFailure.from_exception(
+            ...     "term", OSError("line one\\n## line two")
+            ... ).error
+            'Term validation failed: line one ## line two'
+        """
+        detail = " ".join(str(exc).split()) or type(exc).__name__
+        return cls(kind=kind, error=f"{_LABELS[kind]} failed: {redact_query_strings(detail)}")
+
+    @property
+    def heading(self) -> str:
+        """The heading this validator's section is written under.
+
+        Examples:
+            >>> ValidationFailure(kind="term", error="x").heading
+            '## Term Validation'
+        """
+        return _HEADINGS[self.kind]
+
+    def summary(self) -> Dict[str, Any]:
+        """The frontmatter block recording the failure.
+
+        No counts and no ``confabulation_rate``: there are none, and a ``0.0``
+        would read as a clean result. ``needs_review`` is set because the docs
+        tell readers that its absence means nothing needed attention.
+
+        Examples:
+            >>> ValidationFailure(kind="term", error="Term validation failed: x").summary()
+            {'status': 'failed', 'error': 'Term validation failed: x', 'needs_review': True}
+        """
+        return {"status": "failed", "error": self.error, "needs_review": True}
+
+    def to_markdown(self) -> str:
+        """The section recording the failure, under the validator's usual heading.
+
+        Examples:
+            >>> print(ValidationFailure(kind="reference", error="Reference validation failed: x").to_markdown())
+            ## Reference Validation
+            <BLANKLINE>
+            **Not completed.** Reference validation was requested but did not complete. The identifiers and quotes this report cites have not been checked.
+            <BLANKLINE>
+            Reference validation failed: x
+            <BLANKLINE>
+            To check them now: `deep-research-client validate-references REPORT.md --in-place`, with the cache options the run used.
+            <BLANKLINE>
+        """
+        label = _LABELS[self.kind]
+        return (
+            f"{self.heading}\n\n"
+            f"**Not completed.** {label} was requested but did not complete. "
+            f"{_CHECKED[self.kind]}\n\n"
+            f"{self.error}\n\n"
+            f"To check them now: `{_RETRY[self.kind]}`, with {_RETRY_OPTIONS[self.kind]}.\n"
+        )

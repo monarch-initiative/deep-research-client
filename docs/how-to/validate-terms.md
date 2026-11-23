@@ -205,7 +205,10 @@ term_validation:
 
 Reference validation runs by default alongside either: both sections are appended and
 both summaries written. If one validator fails, for instance because a service is
-unreachable, the other's section is still written and the run exits with code `3`.
+unreachable, the other's section is still written and the run exits with code `3`. The one
+that failed is recorded too, as `term_validation: {status: failed, error: ..., needs_review:
+true}` and a section saying the terms were not checked; see [when validation
+fails](validate-references.md#when-validation-fails).
 
 The `labels_*` counts are per term, not per name: a report calling one identifier three
 things contributes one to each.
@@ -346,7 +349,8 @@ answer, so a single slow lookup no longer discards the whole report's term valid
 report lists the terms it could not reach under their own heading and notes that a re-run may
 resolve them — the label cache resumes, so only the still-unresolved terms are retried. Only
 a failure to reach the service at all (for example while building the resolver) surfaces as
-an error with exit code `3`.
+an error with exit code `3`, and the report records it as described in [when validation
+fails](validate-references.md#when-validation-fails).
 
 This is a behavior change: an outage used to exit with code `3` and write nothing, whereas
 now the run completes and the report is written. A term left `UNVERIFIABLE` by an outage does

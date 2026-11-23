@@ -74,6 +74,8 @@ Reference validation is on by default; see [validate-references](#validate-refer
 
 Ontology terms are off by default: a report is neither asked for them nor checked for them unless you pass `--ontology-config` (or `--validate-terms`, to check whatever the report cites). The `--term-*` options require the optional `terms` extra; see [validate-terms](#validate-terms) and the [Validate Ontology Terms how-to](../how-to/validate-terms.md). Term validation also runs after the report is written. An ontology service that is unreachable for a given term marks *that term* unverifiable and the run carries on, so one slow or failing lookup no longer discards the validation of every other term; the report says which terms could not be reached and that a re-run may resolve them (the label cache resumes). The two validators are independent: when one fails, the other's section is still written.
 
+A validator that fails is still recorded in the report, so the saved file shows that validation was requested and did not complete, not only stderr and the exit code. Its frontmatter key holds `status: failed`, the error, and `needs_review: true`, with no counts, and its section says the citations or terms were not checked. The run still exits `3`. Re-running `validate-references --in-place` or `validate-terms --in-place` on the file replaces the record with real results. See [when validation fails](../how-to/validate-references.md#when-validation-fails).
+
 #### Examples
 
 ```bash

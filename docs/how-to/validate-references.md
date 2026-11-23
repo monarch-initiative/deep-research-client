@@ -129,6 +129,44 @@ needed reviewing.
 reference sets it, but does not make `--fail-on-unresolved` exit non-zero: it is a
 go-and-look, not a failure.
 
+### When validation fails
+
+Validation runs after the report is written, so a validator that raises costs the
+validation, not the research. The run exits with code `3`, and the report records the
+failure in the same two places a result would go, so a file read later does not look as if
+validation had never been asked for:
+
+```yaml
+reference_validation:
+  status: failed
+  error: 'Reference validation failed: [Errno 20] Not a directory: ''refs/cache'''
+  needs_review: true
+```
+
+This is for a validator that could not run, not for lookups that went unanswered. When
+PubMed, Crossref or the PMC ID converter cannot be reached, each affected reference is
+reported as unresolved or unverifiable and the run completes (see [what the outcomes
+mean](#what-the-outcomes-mean)); the failure record appears when the run as a whole could
+not proceed, such as an unusable `--validation-cache-dir`. For terms, it appears when the
+ontology service cannot be reached at all.
+
+The `## Reference Validation` section says the same, and gives the command to retry. There
+are no counts, because nothing was counted: a `confabulation_rate` of `0.0` here would read
+as a clean result. Any query string in a quoted URL is removed from the error before it is
+written, since the file may be shared and the query can carry a contact address or a key.
+
+To finish the job, re-validate the saved file with the cache options the run used (for a
+committed cache, that includes `--trust-cache`):
+
+```bash
+deep-research-client validate-references statins.md --in-place --cache-dir references_cache --trust-cache
+```
+
+That replaces the failure record with real results. Term validation works the same way,
+under `term_validation` and `validate-terms --in-place` (with the run's
+`--ontology-config` and cache options), and each validator is recorded
+separately: when one fails, the other's results are written as usual.
+
 ## Fail a pipeline on bad citations
 
 Both commands accept `--fail-on-unresolved`, which exits with code `2` when any reference

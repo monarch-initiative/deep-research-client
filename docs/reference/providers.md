@@ -1627,7 +1627,8 @@ report is never read for this, so a report *about* usage limits is not one.
 
 An exit the CLI does not explain still says what it saw. When stderr is empty
 and no failure event is recognised, the message quotes the CLI's last line of
-plain text on stdout, or the end of the last text the model wrote, instead of
+plain text on stdout, or the end of the last text the model wrote, or else
+names the last event the run wrote (`last event: system/init`), instead of
 `<no stderr>`.
 
 ## Artifact selection

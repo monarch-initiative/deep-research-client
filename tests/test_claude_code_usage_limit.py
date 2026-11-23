@@ -219,6 +219,18 @@ def test_a_half_written_last_event_is_not_quoted(tmp_path: Path) -> None:
     assert str(excinfo.value).endswith("last text written: Searching PubMed")
 
 
+def test_a_stream_with_no_text_names_its_last_event(tmp_path: Path) -> None:
+    """Ids and token counts are not quoted; the kind of event the run stopped after is."""
+    cli = _fake_cli(tmp_path, [
+        json.dumps({"type": "system", "subtype": "init", "session_id": "0f3c-session"}),
+    ])
+
+    with pytest.raises(ValueError) as excinfo:
+        _run(cli)
+
+    assert str(excinfo.value) == "Claude Code exited with code 1: last event: system/init"
+
+
 def test_a_silent_exit_says_so(tmp_path: Path) -> None:
     """Nothing at all on either stream is reported as such."""
     cli = _fake_cli(tmp_path, [])

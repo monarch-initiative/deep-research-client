@@ -295,7 +295,8 @@ def _stdout_excerpt(stdout: str) -> str:
     Only for the message, never for classification. stdout is a stream of JSON
     events, and the tail of the last one is usually token counts and ids, so
     this prefers the last line that is not JSON (the CLI's own prose), then the
-    last text the model wrote, and falls back to the raw end of the output.
+    last text the model wrote, then the kind of the last event, and falls back
+    to the raw end of the output.
 
     Args:
         stdout: Raw stdout from the CLI.
@@ -308,6 +309,8 @@ def _stdout_excerpt(stdout: str) -> str:
     >>> _stdout_excerpt('{"type": "assistant", "message": {"content": '
     ...                 '[{"type": "text", "text": "Searching PubMed"}]}}')
     'last text written: Searching PubMed'
+    >>> _stdout_excerpt('{"type": "system", "subtype": "init", "session_id": "abc"}')
+    'last event: system/init'
     >>> _stdout_excerpt("")
     ''
 
@@ -318,6 +321,7 @@ def _stdout_excerpt(stdout: str) -> str:
     'last text written: Searching PubMed'
     """
     last_text = ""
+    last_event = ""
     for line in reversed(stdout.splitlines()):
         line = line.strip()
         if not line:
@@ -329,6 +333,9 @@ def _stdout_excerpt(stdout: str) -> str:
                 # The half-written event a killed run ends on, not prose.
                 continue
             return truncate_detail(" ".join(line.split()), _STDOUT_EXCERPT_CHARS)
+        if isinstance(event, dict) and not last_event:
+            kind = [str(event.get(key)) for key in ("type", "subtype") if event.get(key)]
+            last_event = "/".join(kind)
         if last_text or not isinstance(event, dict) or event.get("type") != "assistant":
             continue
         texts = [text for text in _text_blocks(event) if text]
@@ -338,6 +345,10 @@ def _stdout_excerpt(stdout: str) -> str:
         # The end of what the model was saying is the part nearest the failure.
         tail = " ".join(last_text.split())[-_STDOUT_EXCERPT_CHARS:]
         return f"last text written: {tail}"
+    if last_event:
+        # The tail of the raw JSON would be token counts and ids; the kind of
+        # event the run stopped after says more.
+        return f"last event: {last_event}"
     flat = " ".join(stdout.split())
     if not flat:
         return ""

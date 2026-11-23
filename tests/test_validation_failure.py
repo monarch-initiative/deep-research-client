@@ -91,6 +91,8 @@ def test_a_failed_validator_is_recorded_in_the_report(
             assert block["needs_review"] is True
             assert count_key not in block, "a failure must not carry counts"
             assert NOT_COMPLETED in section.split("\n## ")[0]
+            # The retry names the file actually written, ready to copy.
+            assert f" {tmp_path / 'report.md'} --in-place`" in section.split("\n## ")[0]
             # The same line went to stderr and into the file.
             assert block["error"] in result.stderr
         else:

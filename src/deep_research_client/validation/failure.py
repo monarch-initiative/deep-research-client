@@ -14,7 +14,8 @@ helpers that replace a stale result.
 """
 
 import re
-from typing import Any, Dict, Literal
+import shlex
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -33,10 +34,12 @@ _CHECKED: Dict[str, str] = {
     "reference": "The identifiers and quotes this report cites have not been checked.",
     "term": "The ontology terms this report cites have not been checked.",
 }
-_RETRY: Dict[str, str] = {
-    "reference": "deep-research-client validate-references REPORT.md --in-place",
-    "term": "deep-research-client validate-terms REPORT.md --in-place",
+_RETRY_COMMAND: Dict[str, str] = {
+    "reference": "validate-references",
+    "term": "validate-terms",
 }
+#: Stands in for the report's path when the run printed it rather than saving it.
+_REPORT_PLACEHOLDER = "REPORT.md"
 #: What the retry must repeat from the original run to check the same way: a
 #: different cache directory, or a missing --trust-cache or --ontology-config,
 #: gives a different result than the run that failed would have.
@@ -124,6 +127,8 @@ class ValidationFailure(BaseModel):
         kind: Which validator failed: ``"reference"`` or ``"term"``.
         error: What went wrong, as one line, with its label as prefix, the
             same text the run printed to stderr.
+        report_path: Where the report was saved, so the retry command can be
+            copied as it is. None when the report was printed instead.
 
     Examples:
         >>> failure = ValidationFailure.from_exception("reference", TimeoutError("timed out"))
@@ -140,9 +145,15 @@ class ValidationFailure(BaseModel):
 
     kind: ValidationKind
     error: str
+    report_path: Optional[str] = None
 
     @classmethod
-    def from_exception(cls, kind: ValidationKind, exc: BaseException) -> "ValidationFailure":
+    def from_exception(
+        cls,
+        kind: ValidationKind,
+        exc: BaseException,
+        report_path: Optional[str] = None,
+    ) -> "ValidationFailure":
         """Record ``exc`` as the reason the ``kind`` validator did not complete.
 
         The message is collapsed onto one line, which keeps it from being read
@@ -152,6 +163,7 @@ class ValidationFailure(BaseModel):
         Args:
             kind: Which validator failed.
             exc: What it raised.
+            report_path: Where the report was saved, if it was.
 
         Returns:
             The failure record.
@@ -163,7 +175,11 @@ class ValidationFailure(BaseModel):
             'Term validation failed: line one ## line two'
         """
         detail = " ".join(str(exc).split()) or type(exc).__name__
-        return cls(kind=kind, error=f"{_LABELS[kind]} failed: {redact_url_secrets(detail)}")
+        return cls(
+            kind=kind,
+            error=f"{_LABELS[kind]} failed: {redact_url_secrets(detail)}",
+            report_path=report_path,
+        )
 
     @property
     def heading(self) -> str:
@@ -201,12 +217,22 @@ class ValidationFailure(BaseModel):
             <BLANKLINE>
             To check them now: `deep-research-client validate-references REPORT.md --in-place`, with the cache options the run used.
             <BLANKLINE>
+
+            With the saved path, the command can be copied as it is:
+
+            >>> failure = ValidationFailure(
+            ...     kind="term", error="Term validation failed: x", report_path="out/my report.md"
+            ... )
+            >>> failure.to_markdown().splitlines()[-1]
+            "To check them now: `deep-research-client validate-terms 'out/my report.md' --in-place`, with the cache and ontology options the run used."
         """
         label = _LABELS[self.kind]
+        report = shlex.quote(self.report_path) if self.report_path else _REPORT_PLACEHOLDER
+        retry = f"deep-research-client {_RETRY_COMMAND[self.kind]} {report} --in-place"
         return (
             f"{self.heading}\n\n"
             f"**Not completed.** {label} was requested but did not complete. "
             f"{_CHECKED[self.kind]}\n\n"
             f"{self.error}\n\n"
-            f"To check them now: `{_RETRY[self.kind]}`, with {_RETRY_OPTIONS[self.kind]}.\n"
+            f"To check them now: `{retry}`, with {_RETRY_OPTIONS[self.kind]}.\n"
         )

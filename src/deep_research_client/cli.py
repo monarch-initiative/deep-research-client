@@ -755,7 +755,11 @@ def _refresh_validation_frontmatter(
     return f"---\n{rendered}\n---\n{body}"
 
 
-def _validation_failure(kind: Literal["reference", "term"], exc: BaseException) -> "ValidationFailure":
+def _validation_failure(
+    kind: Literal["reference", "term"],
+    exc: BaseException,
+    output: Optional[Path],
+) -> "ValidationFailure":
     """Report a validator that raised, and record it for the saved report.
 
     The same line goes to stderr and into the file, so what the run said and
@@ -764,13 +768,16 @@ def _validation_failure(kind: Literal["reference", "term"], exc: BaseException) 
     Args:
         kind: Which validator raised.
         exc: What it raised.
+        output: Where the report was saved, if it was, for the retry command.
 
     Returns:
         The failure, for the formatter to write in place of the results.
     """
     from .validation import ValidationFailure
 
-    failure = ValidationFailure.from_exception(kind, exc)
+    failure = ValidationFailure.from_exception(
+        kind, exc, report_path=str(output) if output is not None else None
+    )
     _error(failure.error)
     logger.debug("Exception details:", exc_info=True)
     return failure
@@ -1423,7 +1430,7 @@ def research(
             # urllib raises OSError subclasses for network failures. The report is
             # already saved, so report the real cause rather than letting it surface
             # as a filesystem error.
-            reference_failure = _validation_failure("reference", exc)
+            reference_failure = _validation_failure("reference", exc, output)
         else:
             _echo_validation_summary(validation_report)
 
@@ -1448,7 +1455,7 @@ def research(
         except (OSError, ValueError) + lookup_error_types() as exc:
             # The report is already saved, so an unreachable ontology service
             # costs the term results, not the research.
-            term_failure = _validation_failure("term", exc)
+            term_failure = _validation_failure("term", exc, output)
         else:
             _echo_term_validation_summary(term_report)
 

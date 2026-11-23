@@ -40,13 +40,13 @@ from ._cli_agent import (
     INLINE_REPORT_DIRECTIVE,
 )
 from ..exceptions import (
-    truncate_detail,
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
     ProviderNotInstalledError,
     ProviderQuotaError,
     ProviderTransientError,
+    truncate_detail,
 )
 from ..models import ResearchResult, ProviderConfig, ProviderHealth
 from ..provider_params import ClaudeCodeParams

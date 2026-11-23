@@ -40,6 +40,7 @@ from ._cli_agent import (
     INLINE_REPORT_DIRECTIVE,
 )
 from ..exceptions import (
+    truncate_detail,
     ProviderAuthError,
     ProviderBillingError,
     ProviderError,
@@ -57,8 +58,8 @@ from ..system_prompts import DEFAULT_RESEARCH_SYSTEM_PROMPT
 # ``_INLINE_REPORT_DIRECTIVE`` keeps its leading underscore as the module-local
 # spelling that ``_build_command`` and the test suite use.
 _INLINE_REPORT_DIRECTIVE = INLINE_REPORT_DIRECTIVE
-__all__ = ["ClaudeCodeProvider", "classify_cli_failure", "terminal_result_text",
-           "INCOMPLETE_REPORT_MARKER", "INLINE_REPORT_DIRECTIVE"]
+__all__ = ["ClaudeCodeProvider", "api_error_text", "classify_cli_failure", "cli_failure_text",
+           "terminal_result_text", "INCOMPLETE_REPORT_MARKER", "INLINE_REPORT_DIRECTIVE"]
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,25 @@ logger = logging.getLogger(__name__)
 # these are the closest thing it has to a status code. Ordered most specific
 # first: a spent usage allowance also contains the word "limit", and a plan
 # without access to a model also mentions the model.
+#
+# The quota pattern covers the CLI's older wording ("Claude usage limit
+# reached. Your limit will reset at 3pm.") and its current one ("You've hit
+# your limit · resets 8pm", "You've hit your session limit", "5-hour limit
+# reached ∙ resets 8:50pm", "spend limit reached · resets Aug 8"). It does not
+# take a bare "limit reached": the CLI also says "Context limit reached" and
+# "Subagent nesting limit reached", which are about the conversation, not the
+# plan. Nor "hit your rate limit", which clears in seconds rather than when the
+# plan's window rolls over. Widening it is safe on the research path only because that path never
+# classifies the model's report (see `cli_failure_text`).
+_QUOTA_PATTERN = re.compile(
+    r"usage limit reached|limit will reset|"
+    r"hit your (?!rate )(?:\S+ ){0,3}limit\b|"
+    r"\b(?:usage|session|weekly|daily|monthly|spend|\d+-hour) limit reached",
+    re.IGNORECASE,
+)
+
 _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
-    (re.compile(r"usage limit reached|limit will reset", re.IGNORECASE), ProviderQuotaError),
+    (_QUOTA_PATTERN, ProviderQuotaError),
     (re.compile(r"credit balance is too low|insufficient credit", re.IGNORECASE), ProviderBillingError),
     (
         re.compile(
@@ -94,7 +112,13 @@ _CLI_FAILURE_PATTERNS: list[tuple[re.Pattern[str], type[ProviderError]]] = [
 # message continues past the time with advice ("...at 5pm Pacific Time; if you
 # need capacity sooner..."), and everything after the semicolon is not a time.
 # Commas are kept: "10am, Tuesday 19 August" is one time, not two clauses.
-_LIMIT_RESET = re.compile(r"reset(?:s|ting)?\s+at\s+([^.;\n]+)", re.IGNORECASE)
+# "at" is optional because the current wording drops it ("resets 8:50pm"), and
+# the capture also stops at the middle dots the CLI separates clauses with
+# ("resets Aug 8 · request an increase at https://..."), which would otherwise
+# run on into the advice.
+_LIMIT_RESET = re.compile(
+    r"reset(?:s|ting)?\s+(?:at\s+)?([^.;\n\u00b7\u2219\u2022]+)", re.IGNORECASE
+)
 
 # `claude auth status` reads local credentials and makes no model call, so it
 # should answer immediately. This only guards against a wedged process.
@@ -129,6 +153,12 @@ def terminal_result_text(stdout: str) -> str:
     ''
     >>> terminal_result_text('not json at all')
     ''
+
+    A failed API call is flagged ``is_error`` under a ``success`` subtype, which
+    is left out rather than repeated:
+
+    >>> terminal_result_text('{"type": "result", "is_error": true, "subtype": "success", "result": "Invalid API key"}')
+    'Invalid API key'
     """
     for line in reversed(stdout.splitlines()):
         line = line.strip()
@@ -142,10 +172,162 @@ def terminal_result_text(stdout: str) -> str:
             continue
         # `.get(key, default)` only defaults an *absent* key, so an explicit
         # null subtype would read as a failure and hand back the report.
-        if not event.get("is_error") and (event.get("subtype") or "success") == "success":
+        subtype = event.get("subtype") or "success"
+        if not event.get("is_error") and subtype == "success":
             return ""
-        return f"{event.get('subtype') or ''} {event.get('result') or ''}".strip()
+        # A failed API call ends in a result event flagged is_error whose
+        # subtype still says "success"; naming that subtype would only confuse.
+        prefix = "" if subtype == "success" else subtype
+        return f"{prefix} {event.get('result') or ''}".strip()
     return ""
+
+
+def api_error_text(stdout: str) -> str:
+    r"""Pull the CLI's own API-error message out of a stream.
+
+    When an API call fails, the CLI writes the failure as a synthetic assistant
+    event marked ``is_api_error_message`` (with an ``error`` code such as
+    ``authentication_failed``), and normally follows it with a failing
+    ``result`` event that repeats the text. A run that dies before the
+    ``result`` event leaves only this one (#127). The marker is set by the CLI,
+    never by the model, so this is the CLI's account of the failure rather than
+    report prose.
+
+    Args:
+        stdout: Raw stdout from the CLI, which may be truncated or malformed.
+
+    Returns:
+        The error code and text of the last assistant event, if that event is
+        marked as an API error; else "". An earlier marked event is not read:
+        the run went on after it (a retried overload, say), so it is not what
+        ended the run.
+
+    >>> event = {"type": "assistant", "is_api_error_message": True, "error": "rate_limit",
+    ...          "message": {"content": [{"type": "text", "text": "You've hit your limit"}]}}
+    >>> api_error_text(json.dumps(event))
+    "rate_limit You've hit your limit"
+
+    The model's own words carry no marker, however much they sound like one:
+
+    >>> event = {"type": "assistant",
+    ...          "message": {"content": [{"type": "text", "text": "usage limit reached"}]}}
+    >>> api_error_text(json.dumps(event))
+    ''
+
+    Nor does an API error the run recovered from:
+
+    >>> recovered = [{"type": "assistant", "is_api_error_message": True, "error": "server_error",
+    ...               "message": {"content": [{"type": "text", "text": "overloaded"}]}},
+    ...              {"type": "assistant", "message": {"content": [{"type": "text", "text": "more"}]}}]
+    >>> api_error_text("\n".join(json.dumps(e) for e in recovered))
+    ''
+    """
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "assistant":
+            continue
+        if event.get("is_api_error_message") is not True:
+            return ""
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        texts = [
+            block.get("text") or ""
+            for block in (content if isinstance(content, list) else [])
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return f"{event.get('error') or ''} {' '.join(texts)}".strip()
+    return ""
+
+
+def cli_failure_text(stdout: str) -> str:
+    r"""The CLI's own account of a failure in a stream, for classification.
+
+    The failing terminal ``result`` event when there is one, else the CLI's
+    API-error event. Never the model's report: a report *about* usage limits
+    contains the same phrases a real one does.
+
+    Args:
+        stdout: Raw stdout from the CLI.
+
+    Returns:
+        The CLI's failure text, or "" if the stream holds none.
+
+    >>> cli_failure_text('{"type": "result", "is_error": true, "subtype": "e", "result": "boom"}')
+    'e boom'
+    >>> cli_failure_text('{"type": "assistant", "is_api_error_message": true, "error": "x", '
+    ...                  '"message": {"content": [{"type": "text", "text": "died"}]}}')
+    'x died'
+    """
+    return terminal_result_text(stdout) or api_error_text(stdout)
+
+
+#: How much of stdout an unexplained failure quotes. Enough for a sentence of
+#: the CLI's own prose, not so much that a stream of events buries the message.
+_STDOUT_EXCERPT_CHARS = 300
+
+
+def _stdout_excerpt(stdout: str) -> str:
+    r"""Something a person can read from stdout, for a failure nobody explained.
+
+    Only for the message, never for classification. stdout is a stream of JSON
+    events, and the tail of the last one is usually token counts and ids, so
+    this prefers the last line that is not JSON (the CLI's own prose), then the
+    last text the model wrote, and falls back to the raw end of the output.
+
+    Args:
+        stdout: Raw stdout from the CLI.
+
+    Returns:
+        A short single-line excerpt, or "" when stdout is empty.
+
+    >>> _stdout_excerpt('{"type": "system"}\nYou have been logged out.\n')
+    'You have been logged out.'
+    >>> _stdout_excerpt('{"type": "assistant", "message": {"content": '
+    ...                 '[{"type": "text", "text": "Searching PubMed"}]}}')
+    'last text written: Searching PubMed'
+    >>> _stdout_excerpt("")
+    ''
+
+    The half-written event a killed run ends on is skipped:
+
+    >>> _stdout_excerpt('{"type": "assistant", "message": {"content": '
+    ...                 '[{"type": "text", "text": "Searching PubMed"}]}}\n{"type": "assi')
+    'last text written: Searching PubMed'
+    """
+    last_text = ""
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            if line.startswith("{"):
+                # The half-written event a killed run ends on, not prose.
+                continue
+            return truncate_detail(" ".join(line.split()), _STDOUT_EXCERPT_CHARS)
+        if last_text or not isinstance(event, dict) or event.get("type") != "assistant":
+            continue
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        for block in reversed(content if isinstance(content, list) else []):
+            if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                last_text = block["text"]
+                break
+    if last_text:
+        # The end of what the model was saying is the part nearest the failure.
+        tail = " ".join(last_text.split())[-_STDOUT_EXCERPT_CHARS:]
+        return f"last text written: {tail}"
+    flat = " ".join(stdout.split())
+    if not flat:
+        return ""
+    return "end of output: " + flat[-_STDOUT_EXCERPT_CHARS:]
 
 
 def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
@@ -161,6 +343,32 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     >>> err = classify_cli_failure("claude_code", "Claude usage limit reached. Your limit will reset at 3pm.")
     >>> type(err).__name__, err.resets_at
     ('ProviderQuotaError', '3pm')
+
+    The CLI's current wordings (#127):
+
+    >>> for text in [
+    ...     "You've hit your limit, resets 8:50pm",
+    ...     "You've hit your limit \u00b7 resets 8pm (UTC)",
+    ...     "5-hour limit reached \u2219 resets 8:50pm",
+    ...     "You've hit your session limit. It resets Aug 8.",
+    ...     "spend limit reached \u00b7 resets Aug 8 \u00b7 request an increase at https://x.org",
+    ... ]:
+    ...     err = classify_cli_failure("claude_code", text)
+    ...     print(type(err).__name__, repr(err.resets_at))
+    ProviderQuotaError '8:50pm'
+    ProviderQuotaError '8pm (UTC)'
+    ProviderQuotaError '8:50pm'
+    ProviderQuotaError 'Aug 8'
+    ProviderQuotaError 'Aug 8'
+
+    A limit on the conversation is not a limit on the plan:
+
+    >>> classify_cli_failure("claude_code", "Context limit reached \u00b7 /compact or /clear to continue") is None
+    True
+    >>> classify_cli_failure("claude_code", "Subagent nesting limit reached (depth 4)") is None
+    True
+    >>> classify_cli_failure("claude_code", "You've hit your rate limit, try again shortly") is None
+    True
     >>> type(classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
     'ProviderAuthError'
     >>> classify_cli_failure("claude_code", "tool returned no results") is None
@@ -512,19 +720,25 @@ class ClaudeCodeProvider(CLIAgentResearchProvider):
         stdout, stderr, returncode = await self._run_process(command, query)
 
         if returncode != 0:
-            # stderr is the CLI's own voice; from stdout take only the terminal
-            # event. The rest of the stream is the model's report, and a report
-            # that merely discusses usage limits is not a usage limit.
-            classified = classify_cli_failure(
-                self.name, f"{stderr}\n{terminal_result_text(stdout)}"
-            )
+            # stderr is the CLI's own voice; from stdout take only the events
+            # the CLI writes about a failure. The rest of the stream is the
+            # model's report, and a report that merely discusses usage limits
+            # is not a usage limit.
+            failure_text = cli_failure_text(stdout)
+            classified = classify_cli_failure(self.name, f"{stderr}\n{failure_text}")
             if classified is not None:
                 logger.error(classified.actionable_message())
                 raise classified
-            raise ValueError(
-                f"Claude Code exited with code {returncode}: "
-                f"{stderr.strip() or '<no stderr>'}"
+            # Unexplained, so say as much as is known: the message is for a
+            # person, and the classification narrowing above is not a reason to
+            # throw stdout away here (#127).
+            detail = (
+                stderr.strip()
+                or truncate_detail(" ".join(failure_text.split()), _STDOUT_EXCERPT_CHARS)
+                or _stdout_excerpt(stdout)
+                or "<no output>"
             )
+            raise ValueError(f"Claude Code exited with code {returncode}: {detail}")
 
         assistant_texts, data, tool_uses = self._parse_stream(stdout, self.name)
         markdown = self._report_text(assistant_texts, data)

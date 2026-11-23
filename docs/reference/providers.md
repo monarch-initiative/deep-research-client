@@ -1615,6 +1615,21 @@ The one failure the CLI does not always report cleanly is a spent usage limit
 mid-run, which can stall rather than fail. The timeout message points at
 `providers --check` for that reason.
 
+A spent limit that does end the run is read as a quota error, so `--fallback`
+applies and the reset time is reported. That holds for the CLI's older wording
+(`Claude usage limit reached. Your limit will reset at 3pm.`) and its current
+ones (`You've hit your limit · resets 8pm`, `5-hour limit reached ∙ resets
+8:50pm`). Limits on the conversation rather than the plan, such as `Context
+limit reached`, are not. Only the CLI's own words are read: its stderr, the
+failing `result` event, and the event it writes for a failed API call (marked
+`is_api_error_message`, which a run that stops early may end on). The model's
+report is never read for this, so a report *about* usage limits is not one.
+
+An exit the CLI does not explain still says what it saw. When stderr is empty
+and no failure event is recognised, the message quotes the CLI's last line of
+plain text on stdout, or the end of the last text the model wrote, instead of
+`<no stderr>`.
+
 ## Artifact selection
 
 Providers that return a bundle of files — currently OpenScientist's artifacts

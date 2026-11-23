@@ -76,8 +76,13 @@ logger = logging.getLogger(__name__)
 # "Subagent nesting limit reached", which are about the conversation, not the
 # plan. Nor "hit your rate limit" (or "your Opus rate limit"), which clears in
 # seconds rather than when the plan's window rolls over, nor "hit your context
-# window limit"; every word between "your" and "limit" is checked. Widening it is safe on the research path only because that path never
-# classifies the model's report (see `cli_failure_text`).
+# window limit"; every word between "your" and "limit" is checked.
+#
+# Widening it is safe because nothing classified here is the model's prose. The
+# research path reads stderr and the CLI's failure events, never the report (see
+# `cli_failure_text`). The chat client reads stderr and its one result object.
+# The health check reads the stdout of `claude auth status`, which is the CLI's
+# own JSON about the login and makes no model call.
 _QUOTA_PATTERN = re.compile(
     r"usage limit reached|limit will reset|"
     r"hit your (?:(?!rate\b|context\b)\S+ ){0,3}limit\b|"

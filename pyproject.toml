@@ -26,7 +26,7 @@ dependencies = [
   "cyberian>=0.2.2",
   "anthropic>=2.0.0",
   # Reference validation runs on every research call by default.
-  "linkml-reference-validator>=0.2.1",
+  "linkml-reference-validator>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -65,7 +65,7 @@ biomni = [
 # Kept so existing `deep_research_client[validation]` installs keep working;
 # reference validation is now part of the base install.
 validation = [
-    "linkml-reference-validator>=0.2.1",
+    "linkml-reference-validator>=0.3.0",
 ]
 terms = [
     # Ontology term validation, which reaches OBO ontologies through OAK. Kept
@@ -106,7 +106,7 @@ dev = [
     "pytest>=6.0.0",
     "pytest-asyncio>=0.23.0",
     "types-Markdown>=3.5.0",
-    "linkml-reference-validator>=0.2.1",
+    "linkml-reference-validator>=0.3.0",
     "linkml>=1.9",
     "linkml-term-validator>=0.4.5",
 ]

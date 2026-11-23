@@ -78,7 +78,9 @@ pip install "deep_research_client[validation]"
 ```
 
 `--email` passes a contact address to the NCBI API (it asks for one to raise the
-rate limit); `--cache` reuses resolved references between runs; `--max-claims`
+rate limit); `--cache` reuses resolved references between runs, and `--trust-cache`
+uses the entries already there as they are, for a cache committed to version control
+(see [trusting a committed cache](validate-references.md#trusting-a-committed-cache)); `--max-claims`
 bounds how many claims are resolved — triage still sees every claim, and any
 resolvable citation past the cap is reported `UNCHECKED_CITATION`. Citation checks
 run **one at a time** (the resolver is not assumed thread-safe), so `--concurrency`

@@ -211,7 +211,7 @@ print(report.off_topic_references)        # references that resolve but look off
 print(report.to_markdown())               # renderable summary section
 ```
 
-On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
+On a cold cache this adds roughly 10-25% to the wall time of a research run, and next to nothing once the reference cache is warm. If you commit the reference cache to version control, pass `--validation-trust-cache` (or `--trust-cache` to `validate-references`) so runs add new entries without rewriting the committed ones. See the [Validate References guide](docs/how-to/validate-references.md) for details and [timings](docs/how-to/validate-references.md#how-long-it-takes).
 
 ### Ontology Term Validation
 

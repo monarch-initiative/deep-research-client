@@ -46,6 +46,26 @@ def test_triage_only_run_emits_a_report(tmp_path) -> None:
     assert "verifications" not in report  # triage-only: no verifier verdicts
 
 
+@pytest.mark.parametrize(
+    "flag",
+    [["--email", "me@example.org"], ["--cache", "refs"], ["--trust-cache"]],
+)
+def test_citation_options_warn_without_check_citations(flag: list[str], tmp_path) -> None:
+    """An option that only affects citation checking says so when checking is off."""
+    out = tmp_path / "report.json"
+    result = runner.invoke(app, ["claims", "verify", CLAIMS, "-o", str(out), *flag])
+    assert result.exit_code == 0, result.stderr
+    assert f"{flag[0]} has no effect without --check-citations" in result.stderr
+
+
+def test_triage_only_run_does_not_warn_about_citation_options(tmp_path) -> None:
+    """A plain triage run, passing none of those options, gets no warning about them."""
+    out = tmp_path / "report.json"
+    result = runner.invoke(app, ["claims", "verify", CLAIMS, "-o", str(out)])
+    assert result.exit_code == 0, result.stderr
+    assert "--check-citations" not in result.stderr
+
+
 def _write_contradiction_set(tmp_path) -> tuple[Path, Path]:
     """A tiny claim set and a within-source alignment that contradicts itself."""
     def claim(cid: str) -> Claim:

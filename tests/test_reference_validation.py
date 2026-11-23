@@ -8,6 +8,7 @@ that an identifier genuinely does not exist are marked ``integration``.
 """
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,19 @@ from deep_research_client.validation import (
     find_reference_ids,
     strip_validation_section,
 )
+from linkml_reference_validator.etl.reference_fetcher import (
+    ABSENT_CONTENT_CACHE_VERSION,
+    EXTRACTOR_CACHE_VERSION,
+)
+
+#: Opens a cache entry the way a current fetcher writes one. Without the
+#: extractor stamp the validator treats an entry as stale and re-fetches it,
+#: which would send these offline tests to NCBI and replace the made-up records
+#: with whatever really sits at those PMIDs.
+CACHE_ENTRY_START = f"---\nextractor_version: {EXTRACTOR_CACHE_VERSION}\n"
+#: An entry recording that a reference has no content needs a second stamp,
+#: or it is re-tested in the same way.
+ABSENT_CONTENT_STAMP = f"absent_content_version: {ABSENT_CONTENT_CACHE_VERSION}\n"
 
 PAPER_TITLE = "Widget Coloration in Wild Populations"
 PAPER_BODY = (
@@ -126,7 +140,7 @@ def seeded_cache(cache_dir: Path) -> Path:
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
     for pmid, title in ((CACHED_PMID, PAPER_TITLE), (SECOND_CACHED_PMID, "A Second Study")):
         fetcher.get_cache_path(pmid).write_text(
-            "---\n"
+            CACHE_ENTRY_START +
             f"reference_id: {pmid}\n"
             f"title: {title}\n"
             "year: '2019'\n"
@@ -150,7 +164,7 @@ def abstract_cache(seeded_cache: Path) -> Path:
 
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=seeded_cache))
     fetcher.get_cache_path(ABSTRACT_PMID).write_text(
-        "---\n"
+        CACHE_ENTRY_START +
         f"reference_id: {ABSTRACT_PMID}\n"
         f"title: {ABSTRACT_TITLE}\n"
         "year: '2019'\n"
@@ -376,7 +390,7 @@ def test_empty_record_is_not_counted_as_resolved(cache_dir: Path) -> None:
 
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
     fetcher.get_cache_path("DOI:10.9999/empty").write_text(
-        "---\nreference_id: DOI:10.9999/empty\ncontent_type: unknown\n"
+        CACHE_ENTRY_START + "reference_id: DOI:10.9999/empty\ncontent_type: unknown\n"
         "full_text_attempted: true\n---\n\n",
         encoding="utf-8",
     )
@@ -1003,7 +1017,7 @@ def test_title_only_record_can_still_confirm_a_title_quote(cache_dir: Path) -> N
 
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
     fetcher.get_cache_path("DOI:10.1/title-only").write_text(
-        "---\nreference_id: DOI:10.1/title-only\n"
+        CACHE_ENTRY_START + "reference_id: DOI:10.1/title-only\n"
         f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
         encoding="utf-8",
     )
@@ -1025,7 +1039,7 @@ def test_title_only_record_cannot_contradict_a_quote(cache_dir: Path) -> None:
 
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
     fetcher.get_cache_path("DOI:10.1/title-only").write_text(
-        "---\nreference_id: DOI:10.1/title-only\n"
+        CACHE_ENTRY_START + "reference_id: DOI:10.1/title-only\n"
         f"title: {PAPER_TITLE}\ncontent_type: unknown\nfull_text_attempted: true\n---\n\n",
         encoding="utf-8",
     )
@@ -1226,7 +1240,7 @@ def test_nothing_matching_withholds_the_accusation(abstract_cache: Path) -> None
     unrelated = [f"PMID:2000000{n}" for n in range(3)]
     for pmid in unrelated:
         fetcher.get_cache_path(pmid).write_text(
-            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            CACHE_ENTRY_START + f"reference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
             "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
             "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
             + "Volcanic ash plume heights were retrieved by radar. " * 12
@@ -1266,7 +1280,7 @@ def test_two_references_are_too_few_for_the_withholding_rule(abstract_cache: Pat
     unrelated = [f"PMID:2200000{n}" for n in range(2)]
     for pmid in unrelated:
         fetcher.get_cache_path(pmid).write_text(
-            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            CACHE_ENTRY_START + f"reference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
             "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
             "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
             + "Volcanic ash plume heights were retrieved by radar. " * 12
@@ -1333,9 +1347,9 @@ def test_a_long_heading_list_alone_cannot_convict(cache_dir: Path) -> None:
         f"- Ash Plume Dispersal Modelling Subheading {n}" for n in range(20)
     )
     fetcher.get_cache_path(CACHED_PMID).write_text(
-        f"---\nreference_id: {CACHED_PMID}\ntitle: Ash Plume Heights Over Iceland\n"
+        CACHE_ENTRY_START + f"reference_id: {CACHED_PMID}\ntitle: Ash Plume Heights Over Iceland\n"
         f"keywords:\n{headings}\n"
-        "content_type: unavailable\nfull_text_attempted: true\n---\n\n"
+        f"content_type: unavailable\n{ABSENT_CONTENT_STAMP}full_text_attempted: true\n---\n\n"
         "# Ash Plume Heights Over Iceland\n\n## Content\n\n",
         encoding="utf-8",
     )
@@ -1404,7 +1418,7 @@ def test_one_match_is_enough_to_let_the_accusation_stand(abstract_cache: Path) -
     unrelated = [f"PMID:2100000{n}" for n in range(2)]
     for pmid in unrelated:
         fetcher.get_cache_path(pmid).write_text(
-            f"---\nreference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
+            CACHE_ENTRY_START + f"reference_id: {pmid}\ntitle: Ash Plume Heights Over Iceland\n"
             "content_type: abstract_only\nfull_text_attempted: true\n---\n\n"
             "# Ash Plume Heights Over Iceland\n\n## Content\n\n"
             + "Volcanic ash plume heights were retrieved by radar. " * 12
@@ -1579,10 +1593,11 @@ def test_a_title_only_record_is_never_called_off_topic(cache_dir: Path) -> None:
 
     fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
     fetcher.get_cache_path(CACHED_PMID).write_text(
-        "---\n"
+        CACHE_ENTRY_START +
         f"reference_id: {CACHED_PMID}\n"
         "title: A Monograph On Something Else Entirely\n"
         "content_type: unavailable\n"
+        + ABSENT_CONTENT_STAMP +
         "full_text_attempted: true\n"
         "---\n\n"
         "# A Monograph On Something Else Entirely\n\n## Content\n\n",
@@ -2523,6 +2538,184 @@ def test_cli_research_checks_for_the_extra_before_researching(
 
 
 # ---------------------------------------------------------------------------
+# Trusting a committed cache (#122)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def legacy_cache(cache_dir: Path) -> Path:
+    """A cache holding one entry written before extractor stamps existed.
+
+    The entry has the shape of the committed dismech file in #122: no
+    ``extractor_version`` and ``full_text_attempted: true``. Left untrusted, the
+    validator treats it as stale, re-fetches it and rewrites the file.
+    """
+    from linkml_reference_validator.etl.reference_fetcher import ReferenceFetcher
+    from linkml_reference_validator.models import ReferenceValidationConfig
+
+    fetcher = ReferenceFetcher(ReferenceValidationConfig(cache_dir=cache_dir))
+    fetcher.get_cache_path(CACHED_PMID).write_text(
+        "---\n"
+        f"reference_id: {CACHED_PMID}\n"
+        f"title: {PAPER_TITLE}\n"
+        "year: '2019'\n"
+        "journal: Journal of Widgets\n"
+        "content_type: abstract_only\n"
+        "full_text_attempted: true\n"
+        "---\n\n"
+        f"# {PAPER_TITLE}\n\n"
+        "## Content\n\n"
+        f"{PAPER_BODY}\n",
+        encoding="utf-8",
+    )
+    return cache_dir
+
+
+#: What linkml-reference-validator logs when it discards an unstamped entry to
+#: re-fetch it. Asserted absent as well as the bytes unchanged, so the trust tests
+#: still fail without the fix when NCBI is unreachable and nothing gets rewritten.
+#: This is upstream's wording: the live control asserts it *is* logged when the
+#: entry is not trusted, so a reworded message fails that test rather than
+#: leaving the absence checks passing vacuously.
+STALE_ENTRY_LOG = "written by an older extractor"
+
+
+@pytest.fixture
+def validator_log() -> Iterator[list[str]]:
+    """Messages linkml-reference-validator logs at INFO and above during a test.
+
+    Collected on the library's own logger rather than through ``caplog``: the
+    CLI calls ``logging.basicConfig(force=True)``, which removes the root
+    handler ``caplog`` relies on, but leaves a handler on a named logger alone.
+    """
+    import logging
+
+    messages: list[str] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    library_logger = logging.getLogger("linkml_reference_validator")
+    handler = _Collect(level=logging.INFO)
+    previous_level = library_logger.level
+    library_logger.addHandler(handler)
+    library_logger.setLevel(logging.INFO)
+    yield messages
+    library_logger.removeHandler(handler)
+    library_logger.setLevel(previous_level)
+
+
+def _cache_snapshot(cache_dir: Path) -> dict[str, bytes]:
+    """Every file under a cache directory, by relative path, with its bytes."""
+    return {
+        str(path.relative_to(cache_dir)): path.read_bytes()
+        for path in sorted(cache_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_trusted_cache_entry_is_used_and_left_unchanged(
+    legacy_cache: Path, validator_log: list[str]
+) -> None:
+    """With trust on, an unstamped entry is served as it is and never rewritten."""
+    before = _cache_snapshot(legacy_cache)
+    validator = ReferenceValidator(cache_dir=legacy_cache, trust_cached_entries=True)
+
+    report = validator.validate_markdown(
+        f'The authors report that "Widgets are blue in 90% of observed cases" ({CACHED_PMID}).'
+    )
+
+    assert _cache_snapshot(legacy_cache) == before
+    assert not [m for m in validator_log if STALE_ENTRY_LOG in m]
+    check = report.checked_references[0]
+    assert check.status == ReferenceStatus.VERIFIED
+    assert check.journal == "Journal of Widgets"  # the cached record, not a fresh one
+    assert report.quotes_valid_count == 1
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["research", "validate-references", "claims verify"],
+)
+def test_cli_trust_cache_leaves_committed_entries_unchanged(
+    command: str,
+    tmp_path: Path,
+    legacy_cache: Path,
+    monkeypatch,
+    validator_log: list[str],
+) -> None:
+    """Each command that validates against a cache passes the trust flag through.
+
+    Untrusted, every one of these runs would re-fetch the unstamped entry from
+    NCBI and rewrite it, as the live control below shows.
+    """
+    from deep_research_client.claims import (
+        AnchorStatus,
+        CitationHandle,
+        CitationScope,
+        CitationStatus,
+        Claim,
+        ClaimBasis,
+        ClaimSet,
+        ClaimTopic,
+        ExtractorInfo,
+        SourceDocument,
+        SourceType,
+    )
+
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+    cited = f"Widget coloration varies between populations ({CACHED_PMID})."
+    if command == "research":
+        args = ["research", cited, "--provider", "mock", "--no-cache",
+                "--output", str(tmp_path / "report.md"),
+                "--validation-cache-dir", str(legacy_cache), "--validation-trust-cache"]
+    elif command == "validate-references":
+        report_file = tmp_path / "report.md"
+        report_file.write_text(f"## Output\n\n{cited}\n", encoding="utf-8")
+        args = ["validate-references", str(report_file),
+                "--cache-dir", str(legacy_cache), "--trust-cache"]
+    else:
+        claim = Claim(
+            id="c1", claim_text=cited, anchor_status=AnchorStatus.EXACT,
+            about=ClaimTopic.DOMAIN, basis=ClaimBasis.SECONDARY_SOURCE,
+            citation_status=CitationStatus.CITED,
+            citations=[CitationHandle(marker=CACHED_PMID, reference_id=CACHED_PMID,
+                                      scope=CitationScope.SENTENCE)],
+        )
+        claim_set = ClaimSet(
+            source=SourceDocument(id="r.md", source_type=SourceType.MARKDOWN_REPORT),
+            extractor=ExtractorInfo(name="x"), claims=[claim],
+        )
+        claims_path = tmp_path / "c.json"
+        claims_path.write_text(claim_set.model_dump_json(exclude_none=True), encoding="utf-8")
+        args = ["claims", "verify", str(claims_path), "--check-citations",
+                "--cache", str(legacy_cache), "--trust-cache",
+                "-o", str(tmp_path / "verified.json")]
+    before = _cache_snapshot(legacy_cache)
+
+    result = CliRunner().invoke(app, args)
+
+    assert result.exit_code == 0, result.output
+    assert _cache_snapshot(legacy_cache) == before
+    assert not [m for m in validator_log if STALE_ENTRY_LOG in m]
+
+
+def test_cli_research_warns_that_trust_cache_needs_validation(monkeypatch) -> None:
+    """--validation-trust-cache does nothing once validation is switched off."""
+    monkeypatch.setenv("ENABLE_MOCK_PROVIDER", "true")
+
+    result = CliRunner().invoke(
+        app,
+        ["research", "widgets", "--provider", "mock", "--no-cache",
+         "--no-validate-references", "--validation-trust-cache"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "--validation-trust-cache has no effect with --no-validate-references" in result.output
+
+
+# ---------------------------------------------------------------------------
 # Integration: live bibliographic APIs
 # ---------------------------------------------------------------------------
 
@@ -2671,3 +2864,23 @@ def test_real_quote_is_verified_against_pubmed(cache_dir: Path) -> None:
     assert report.quotes_checked == 2
     assert report.quotes_valid_count == 1
     assert "deletion of chromosome 21" in report.unsupported_quotes[0].quote
+
+
+@pytest.mark.integration
+def test_untrusted_legacy_entry_is_rewritten(
+    legacy_cache: Path, validator_log: list[str]
+) -> None:
+    """The control for the trust tests: without trust, the same entry is rewritten.
+
+    Without this, a fixture the validator happened to accept as current would
+    let the trust tests pass while proving nothing.
+    """
+    before = _cache_snapshot(legacy_cache)
+    validator = ReferenceValidator(cache_dir=legacy_cache, email=_ncbi_email())
+
+    validator.validate_markdown(f"Widgets vary ({CACHED_PMID}).")
+
+    after = _cache_snapshot(legacy_cache)
+    assert after != before
+    assert [m for m in validator_log if STALE_ENTRY_LOG in m]
+    assert "extractor_version:" in after[next(iter(before))].decode("utf-8")

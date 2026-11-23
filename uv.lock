@@ -1174,8 +1174,8 @@ requires-dist = [
     { name = "langchain-openai", marker = "extra == 'biomni'", specifier = ">=0.3.28" },
     { name = "ldp", marker = "extra == 'edison'", specifier = ">=0.45.1" },
     { name = "ldp", marker = "extra == 'falcon'", specifier = ">=0.45.1" },
-    { name = "linkml-reference-validator", specifier = ">=0.2.1" },
-    { name = "linkml-reference-validator", marker = "extra == 'validation'", specifier = ">=0.2.1" },
+    { name = "linkml-reference-validator", specifier = ">=0.3.0" },
+    { name = "linkml-reference-validator", marker = "extra == 'validation'", specifier = ">=0.3.0" },
     { name = "linkml-term-validator", marker = "extra == 'terms'", specifier = ">=0.4.5" },
     { name = "mcp", marker = "extra == 'tooluniverse'", specifier = ">=1.30.0,<2" },
     { name = "mcp", marker = "extra == 'tooluniverse-tools'", specifier = ">=1.30.0,<2" },
@@ -1200,7 +1200,7 @@ browser = [
 dev = [
     { name = "jupyter", specifier = ">=1.0.0" },
     { name = "linkml", specifier = ">=1.9" },
-    { name = "linkml-reference-validator", specifier = ">=0.2.1" },
+    { name = "linkml-reference-validator", specifier = ">=0.3.0" },
     { name = "linkml-term-validator", specifier = ">=0.4.5" },
     { name = "mkdocs-material", specifier = ">=8.2.8" },
     { name = "mkdocs-mermaid2-plugin", specifier = ">=1.1.1" },
@@ -3268,7 +3268,7 @@ dependencies = [
 
 [[package]]
 name = "linkml-reference-validator"
-version = "0.2.1"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -3283,9 +3283,9 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/4d/f03e952e2435faef11adeb16044e03fed71bdac03ef3511245ced0ce6ea1/linkml_reference_validator-0.2.1.tar.gz", hash = "sha256:ea4cf1145462d12984bf1c484958e8561ec863e7d3eafd8d54e2824cf0d65300", size = 1151372, upload-time = "2026-08-07T00:48:48.94Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/7d/ed8e9da3f28440ae1d0431118fd66847717b7b12c38836dff933a855b065/linkml_reference_validator-0.8.0.tar.gz", hash = "sha256:5405a3ca85b28e6a3eb48095163571f483e823e6bfccafd18ec43738d905477c", size = 1543327, upload-time = "2026-11-17T22:32:53.173Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/12/ca4455eec18adb3a2d840f4c5df651b3422fc2d3bf1ab532c3476cfeb4ae/linkml_reference_validator-0.2.1-py3-none-any.whl", hash = "sha256:91d19a3b51001f467b6fb8f6e0968739df81c9b159c5928581fbab4d28c3876c", size = 130650, upload-time = "2026-08-07T00:48:47.285Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/0b/541b45357a2c3c66e9c0654dcbb63dbd9b24875da10311206ed85479abf7/linkml_reference_validator-0.8.0-py3-none-any.whl", hash = "sha256:38a7f6a4d6b9285e9a6a16b3d4e1287f2204030f85afc6cf568d4ba9a0e20ec8", size = 285689, upload-time = "2026-11-17T22:32:51.514Z" },
 ]
 
 [[package]]

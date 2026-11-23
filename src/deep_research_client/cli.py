@@ -609,6 +609,7 @@ def _build_reference_validator(
     skip_prefix: Optional[List[str]] = None,
     rate_limit_delay: Optional[float] = None,
     check_relevance: bool = True,
+    trust_cache: bool = False,
 ) -> "ReferenceValidator":
     """Build a ReferenceValidator, exiting with a hint if the extra is missing."""
     from .validation import INSTALL_HINT, ReferenceValidator, validator_is_available
@@ -632,6 +633,7 @@ def _build_reference_validator(
         "max_references": max_references,
         "skip_prefixes": list(skip_prefix or []),
         "check_relevance": check_relevance,
+        "trust_cached_entries": trust_cache,
     }
     if rate_limit_delay is not None:
         kwargs["rate_limit_delay"] = rate_limit_delay
@@ -875,6 +877,8 @@ def research(
         "--validation-rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5); lowering it risks rate-limit errors being reported as unresolved references")] = None,
     validation_relevance: Annotated[bool, typer.Option(
         "--validation-relevance/--validation-no-relevance", help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
+    validation_trust_cache: Annotated[bool, typer.Option(
+        "--validation-trust-cache", help="Use references already in --validation-cache-dir (default: ~/.deep_research_cache/references) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
     # Ontology term options
     ontology_config: Annotated[Optional[Path], typer.Option(
         "--ontology-config", exists=True, dir_okay=False, help="OAK-style YAML whose 'ontology_adapters' keys are the ontologies the report should cite terms from, and whose values say how each is looked up (an empty value uses --term-adapter). Asks the provider for CURIEs from those ontologies only, and validates them, reporting terms from any other ontology as not configured. Implies --validate-terms (requires the 'terms' extra)")] = None,
@@ -1173,6 +1177,7 @@ def research(
             ("--validation-skip-prefix", validation_skip_prefix, None),
             ("--validation-rate-limit-delay", validation_rate_limit_delay, None),
             ("--validation-no-relevance", validation_relevance, True),
+            ("--validation-trust-cache", validation_trust_cache, False),
         )
         for flag_name, flag_value, default in unused_validation_flags:
             if flag_value != default:
@@ -1387,6 +1392,7 @@ def research(
             skip_prefix=validation_skip_prefix,
             rate_limit_delay=validation_rate_limit_delay,
             check_relevance=validation_relevance,
+            trust_cache=validation_trust_cache,
         )
         logger.info("Validating references...")
         try:
@@ -1477,7 +1483,7 @@ def validate_references_command(
         "--check-relevance/--no-check-relevance",
         help="Also weigh each resolved reference against the report's own vocabulary, to flag citations that exist but look off topic (free: no extra lookups)")] = True,
     cache_dir: Annotated[Optional[Path], typer.Option(
-        "--cache-dir", help="Directory for cached reference lookups (default: ./references_cache)")] = None,
+        "--cache-dir", help="Directory for cached reference lookups (default: ~/.deep_research_cache/references)")] = None,
     email: Annotated[Optional[str], typer.Option(
         "--email", help="Contact email for the NCBI Entrez API (defaults to $NCBI_EMAIL)")] = None,
     full_text: Annotated[bool, typer.Option(
@@ -1488,6 +1494,8 @@ def validate_references_command(
         "--skip-prefix", help="Identifier prefix to report as unverifiable instead of resolving (repeatable)")] = None,
     rate_limit_delay: Annotated[Optional[float], typer.Option(
         "--rate-limit-delay", min=0.0, help="Seconds to wait between lookups (default: 0.5)")] = None,
+    trust_cache: Annotated[bool, typer.Option(
+        "--trust-cache", help="Use references already in --cache-dir (default: ~/.deep_research_cache/references) exactly as they are on disk, never re-fetching or rewriting them; new references are still fetched and cached. For a cache committed to version control")] = False,
     in_place: Annotated[bool, typer.Option(
         "--in-place", help="Replace or append the validation section in each input file")] = False,
     output: Annotated[Optional[Path], typer.Option(
@@ -1548,6 +1556,7 @@ def validate_references_command(
         skip_prefix=skip_prefix,
         rate_limit_delay=rate_limit_delay,
         check_relevance=check_relevance,
+        trust_cache=trust_cache,
     )
 
     any_problems = False
@@ -4679,6 +4688,11 @@ def claims_verify(
         help="Contact address for the NCBI API when checking citations (raises the rate limit)")] = None,
     cache: Annotated[Optional[Path], typer.Option(
         "--cache", help="Directory where resolved references are cached between runs")] = None,
+    trust_cache: Annotated[bool, typer.Option(
+        "--trust-cache",
+        help="Use references already in --cache (default: ~/.deep_research_cache/references) "
+             "exactly as they are on disk, never "
+             "re-fetching or rewriting them; for a cache committed to version control")] = False,
     max_claims: Annotated[Optional[int], typer.Option(
         "--max-claims", min=1,
         help="Check citations for at most this-many claims (triage still sees every claim)")] = None,
@@ -4716,6 +4730,18 @@ def claims_verify(
     claim_set = _load_claim_set(claims_file)
     loaded_alignment = _load_alignment(alignment) if alignment is not None else None
 
+    if not check_citations:
+        # As `research` does for its --validation-* options: compared against the
+        # default, so an explicit-but-falsy value such as --email "" still warns.
+        unused_citation_flags: tuple[tuple[str, object, object], ...] = (
+            ("--email", email, None),
+            ("--cache", cache, None),
+            ("--trust-cache", trust_cache, False),
+        )
+        for flag_name, flag_value, default in unused_citation_flags:
+            if flag_value != default:
+                _warn(f"{flag_name} has no effect without --check-citations")
+
     verifiers: list[Verifier] = []
     if check_citations:
         # Fail fast and specifically when the validation extra is absent, before any
@@ -4728,7 +4754,8 @@ def claims_verify(
         # Relevance is weighed against the report's vocabulary (a single claim is too
         # little text for the keyword heuristic), so pass the whole set's claim text.
         verifiers.append(CitationVerifier(
-            topic_text=report_topic_text(claim_set), email=email, cache_dir=cache))
+            topic_text=report_topic_text(claim_set), email=email, cache_dir=cache,
+            trust_cached_entries=trust_cache))
 
     report = asyncio.run(averify_claims(
         claim_set, verifiers, alignment=loaded_alignment,

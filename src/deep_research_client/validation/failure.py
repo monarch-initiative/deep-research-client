@@ -21,8 +21,9 @@ from pydantic import BaseModel
 
 from .sections import TERM_VALIDATION_SECTION_HEADING, VALIDATION_SECTION_HEADING
 
-__all__ = ["ValidationFailure", "redact_url_secrets"]
+__all__ = ["ValidationFailure", "ValidationKind", "redact_url_secrets"]
 
+#: Which validator a failure belongs to.
 ValidationKind = Literal["reference", "term"]
 
 _HEADINGS: Dict[str, str] = {

@@ -10,7 +10,7 @@ import shutil
 import typer
 from pathlib import Path
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, NoReturn, Optional, List, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, NoReturn, Optional, List, Union
 from typing_extensions import Annotated
 
 if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
@@ -25,6 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover - imports only for type checking
         TermValidator,
         ValidationFailure,
     )
+    from .validation.failure import ValidationKind
 
 from .exceptions import ProviderError
 from .client import PROVIDER_CLASS_PATHS, DeepResearchClient, load_provider_class
@@ -756,7 +757,7 @@ def _refresh_validation_frontmatter(
 
 
 def _validation_failure(
-    kind: Literal["reference", "term"],
+    kind: "ValidationKind",
     exc: BaseException,
     output: Optional[Path],
 ) -> "ValidationFailure":

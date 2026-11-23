@@ -46,9 +46,23 @@ _RETRY_OPTIONS: Dict[str, str] = {
 }
 
 #: A query string in an error message: ``?`` followed by at least one
-#: ``key=value``. HTTP client errors quote the request URL, and a query can carry
-#: a contact email or an API key; stderr is not kept, but the report is.
-_QUERY_STRING_RE = re.compile(r"\?[^\s'\"()<>]*=[^\s'\"()<>]*")
+#: ``key=value``, running to the next whitespace. HTTP client errors quote the
+#: request URL, and a query can carry a contact email or an API key; stderr is
+#: not kept, but the report is. It runs to whitespace rather than stopping at
+#: punctuation because a query may contain ``(``, ``)`` or ``'`` unencoded, and
+#: stopping there would leave the rest of it, key included, in the file.
+_QUERY_STRING_RE = re.compile(r"\?\S*=\S*")
+
+#: Closing punctuation that may follow a quoted URL rather than belong to it,
+#: given back after redaction so the surrounding message still reads correctly.
+_TRAILING_DELIMITERS = "'\")]>,.;"
+
+
+def _redact_query(match: "re.Match[str]") -> str:
+    """The replacement for one query string, keeping any closing punctuation."""
+    query = match.group()
+    kept = query[len(query.rstrip(_TRAILING_DELIMITERS)):]
+    return "?<query removed>" + kept
 
 
 def redact_query_strings(text: str) -> str:
@@ -67,10 +81,20 @@ def redact_query_strings(text: str) -> str:
         '503 Server Error for url: https://example.org/api?<query removed>'
         >>> redact_query_strings("Max retries exceeded with url: /terms?id=GO:1 (Caused by x)")
         'Max retries exceeded with url: /terms?<query removed> (Caused by x)'
+
+        Punctuation inside the query does not end it early:
+
+        >>> redact_query_strings("url: https://x.org/s?q=label(GO)&apikey=s3cret")
+        'url: https://x.org/s?<query removed>'
+        >>> redact_query_strings("for url 'https://x.org/s?q=it's&key=k'.")
+        "for url 'https://x.org/s?<query removed>'."
+
+        A question mark in prose is left alone:
+
         >>> redact_query_strings("Is this a question? No = answer here.")
         'Is this a question? No = answer here.'
     """
-    return _QUERY_STRING_RE.sub("?<query removed>", text)
+    return _QUERY_STRING_RE.sub(_redact_query, text)
 
 
 class ValidationFailure(BaseModel):

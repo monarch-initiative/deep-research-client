@@ -168,6 +168,13 @@ def test_revalidating_replaces_the_failure_record(
             "url: /api/search?<query removed> (Caused by timeout)",
             "someone@example.org",
         ),
+        (
+            # Unencoded punctuation inside the query must not end the redaction
+            # early and leave the rest of the query, key included, behind.
+            "500 Server Error for url: https://x.org/s?q=label(GO)&apikey=s3cret",
+            "https://x.org/s?<query removed>",
+            "s3cret",
+        ),
     ],
 )
 def test_query_strings_are_kept_out_of_the_record(message: str, kept: str, removed: str) -> None:

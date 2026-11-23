@@ -595,6 +595,10 @@ class ProviderHealth(BaseModel):
         A capacity reading with ``reachable=None`` is refused too: a balance
         can only be read by a probe that ran, and ``None`` says none did.
 
+        ``capacity_verified=True`` with ``reachable=False`` is accepted on
+        purpose: a probe can read a healthy balance and then fail another
+        call, and ``UNREACHABLE`` is the right word for that.
+
         Returns:
             The record, unchanged.
 

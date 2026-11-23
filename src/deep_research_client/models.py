@@ -552,6 +552,13 @@ class ProviderHealth(BaseModel):
     Distinct from configuration: a provider with an API key set is *configured*,
     which is not the same as reachable, credentialed, or in credit.
 
+    Reachable and in credit are separate questions, too. Most probes can show a
+    key is accepted, but not that the account behind it can pay for a run:
+    Edison charges only when a task is submitted, and OpenAI and Anthropic
+    expose no balance to read. ``capacity_verified`` says which of those a
+    probe answered, and the status word says it too, since that word is what
+    people and scripts act on (#126).
+
     >>> ProviderHealth(provider="falcon", configured=True, reachable=False,
     ...                detail="402 no credits").summary()
     'falcon: UNREACHABLE - 402 no credits'
@@ -566,7 +573,49 @@ class ProviderHealth(BaseModel):
             "it is not configured; None when no probe was possible"
         ),
     )
+    capacity_verified: Optional[bool] = Field(
+        default=None,
+        description=(
+            "True when the probe read the account's balance or allowance and it "
+            "has room for a run; False when it read it and it has none, so the "
+            "provider cannot take work; None when the probe cannot see it"
+        ),
+    )
     detail: Optional[str] = Field(default=None, description="Explanation of the outcome")
+
+    @model_validator(mode="after")
+    def _capacity_agrees_with_reachable(self) -> "ProviderHealth":
+        """Refuse a capacity reading that contradicts the rest of the record.
+
+        ``reachable`` means "can take work", and an account seen to be out of
+        credit cannot. Accepting ``reachable=True`` would print ``OK`` and exit
+        0 for it; accepting ``reachable=None`` would print ``UNKNOWN`` and exit
+        0, as if no probe had run.
+
+        A capacity reading with ``reachable=None`` is refused too: a balance
+        can only be read by a probe that ran, and ``None`` says none did.
+
+        ``capacity_verified=True`` with ``reachable=False`` is accepted on
+        purpose: a probe can read a healthy balance and then fail another
+        call, and ``UNREACHABLE`` is the right word for that.
+
+        Returns:
+            The record, unchanged.
+
+        Raises:
+            ValueError: If ``capacity_verified`` is False but ``reachable`` is
+                not False, or ``capacity_verified`` is set but ``reachable`` is
+                None.
+        """
+        if self.capacity_verified is False and self.reachable is not False:
+            raise ValueError(
+                "a provider seen to have no capacity cannot take work: set reachable=False"
+            )
+        if self.capacity_verified is not None and self.reachable is None:
+            raise ValueError(
+                "a balance can only be read by a probe that ran: set reachable"
+            )
+        return self
 
     @field_validator("detail")
     @classmethod
@@ -591,8 +640,17 @@ class ProviderHealth(BaseModel):
         Returns:
             Human-readable status line for this provider.
 
+        A reachable provider whose capacity the probe could not see says so in
+        the status word, not only in the detail after it:
+
         >>> ProviderHealth(provider="openai", configured=True, reachable=True).summary()
-        'openai: OK'
+        'openai: OK (capacity unverified)'
+        >>> ProviderHealth(provider="p", configured=True, reachable=True,
+        ...                capacity_verified=True).summary()
+        'p: OK'
+        >>> ProviderHealth(provider="p", configured=True, reachable=False,
+        ...                capacity_verified=False, detail="balance 0").summary()
+        'p: NO CAPACITY - balance 0'
         >>> ProviderHealth(provider="asta", configured=False, detail="no API key").summary()
         'asta: NOT CONFIGURED - no API key'
         """
@@ -601,7 +659,9 @@ class ProviderHealth(BaseModel):
         elif self.reachable is None:
             status = "UNKNOWN (no probe available)"
         elif self.reachable:
-            status = "OK"
+            status = "OK" if self.capacity_verified else "OK (capacity unverified)"
+        elif self.capacity_verified is False:
+            status = "NO CAPACITY"
         else:
             status = "UNREACHABLE"
         suffix = f" - {self.detail}" if self.detail else ""

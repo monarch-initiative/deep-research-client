@@ -424,7 +424,7 @@ deep-research-client providers [OPTIONS]
 |--------|-------------|
 | `--show-params` | Show available parameters for each provider |
 | `--provider TEXT` | Show details for specific provider only |
-| `--check` | Probe the configured providers for live reachability. With nothing configured, lists what every provider needs instead |
+| `--check` | Probe the configured providers for live reachability. A provider whose key is accepted but whose balance the probe cannot read reports `OK (capacity unverified)`; see [Provider Detection](providers.md#provider-detection) for every status. With nothing configured, lists what every provider needs instead |
 
 #### Examples
 

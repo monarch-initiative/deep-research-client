@@ -1536,16 +1536,27 @@ deep-research-client providers --check
 deep-research-client providers --check --provider falcon
 ```
 
-Each provider reports one of `OK`, `UNREACHABLE`, `NOT CONFIGURED`, or
-`UNKNOWN (no probe available)` — the last meaning that provider has not
-implemented a probe, so configuration is all we know. The command exits
-non-zero if any provider turns out to be unable to take work, which includes a
-named provider that is not configured at all (no probe needed to know that).
+Each provider reports one of these:
 
-A probe proves the credential is accepted. It cannot prove the account has
-credits: Edison, for example, only charges when a task is submitted, so an
-uncredited key passes the probe and fails the run with `402`. A numeric
-balance has to come from the provider's own dashboard.
+| Status | Means | Exit |
+|--------|-------|------|
+| `OK` | The credential is accepted, and the probe read a balance or allowance with room for a run | 0 |
+| `OK (capacity unverified)` | The credential is accepted, but the probe cannot see whether the account can pay for a run | 0 |
+| `UNKNOWN (no probe available)` | The provider has no probe, so configuration is all we know | 0 |
+| `NO CAPACITY` | The probe read the balance or allowance, and there is none left | 1 |
+| `UNREACHABLE` | The probe failed: a rejected key, no access, the service down | 1 |
+| `NOT CONFIGURED` | No credential is set (no probe needed to know that) | 1 |
+
+The command exits non-zero if any provider turns out to be unable to take work.
+
+A probe proves the credential is accepted. Today no probe can also prove the
+account has credits, so every provider that passes reports
+`OK (capacity unverified)`. Edison, for example, only charges when a task is
+submitted, so an uncredited key passes the probe and fails the run with `402`.
+OpenAI and Anthropic expose no balance to read, and `claude auth status` shows
+the plan but not how much of its usage limit is left. A numeric balance has to
+come from the provider's own dashboard. `OK` and `NO CAPACITY` are there for a
+probe that can read one.
 
 ## Provider Failures
 
@@ -1612,8 +1623,10 @@ one: `claude auth status --json` reads local credentials and makes no model
 call, so `--check` reports the auth method and plan without spending a token.
 
 The one failure the CLI does not always report cleanly is a spent usage limit
-mid-run, which can stall rather than fail. The timeout message points at
-`providers --check` for that reason.
+mid-run, which can stall rather than fail. The timeout message says so. It does
+not send you to `providers --check`, because `auth status` shows the plan but
+not how much of its usage limit is left, so a logged-in CLI with a spent limit
+still reports `OK (capacity unverified)`.
 
 A spent limit that does end the run is read as a quota error, so `--fallback`
 applies and the reset time is reported. That holds for the CLI's older wording

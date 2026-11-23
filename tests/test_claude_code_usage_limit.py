@@ -106,6 +106,7 @@ def test_the_issues_wordings_are_a_spent_allowance(text: str, resets_at: str) ->
         "You've hit your rate limit, try again shortly",
         "You've hit your Opus rate limit",
         "You've hit your context window limit",
+        "You've hit your output token limit",
     ],
 )
 def test_limits_that_are_not_the_plans_allowance_stay_unclassified(text: str) -> None:

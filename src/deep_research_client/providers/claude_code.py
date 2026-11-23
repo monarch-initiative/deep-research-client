@@ -76,7 +76,8 @@ logger = logging.getLogger(__name__)
 # "Subagent nesting limit reached", which are about the conversation, not the
 # plan. Nor "hit your rate limit" (or "your Opus rate limit"), which clears in
 # seconds rather than when the plan's window rolls over, nor "hit your context
-# window limit"; every word between "your" and "limit" is checked.
+# window limit" or "your output token limit", which are about the conversation;
+# every word between "your" and "limit" is checked.
 #
 # Widening it is safe because nothing classified here is the model's prose. The
 # research path reads stderr and the CLI's failure events, never the report (see
@@ -85,7 +86,7 @@ logger = logging.getLogger(__name__)
 # own JSON about the login and makes no model call.
 _QUOTA_PATTERN = re.compile(
     r"usage limit reached|limit will reset|"
-    r"hit your (?:(?!rate\b|context\b)\S+ ){0,3}limit\b|"
+    r"hit your (?:(?!rate\b|context\b|token\b)\S+ ){0,3}limit\b|"
     r"\b(?:usage|session|weekly|daily|monthly|spend|\d+-hour) limit reached",
     re.IGNORECASE,
 )
@@ -409,6 +410,8 @@ def classify_cli_failure(provider: str, text: str) -> Optional[ProviderError]:
     >>> classify_cli_failure("claude_code", "You've hit your Opus rate limit") is None
     True
     >>> classify_cli_failure("claude_code", "You've hit your context window limit") is None
+    True
+    >>> classify_cli_failure("claude_code", "You've hit your output token limit") is None
     True
     >>> type(classify_cli_failure("claude_code", "Invalid API key. Please run /login")).__name__
     'ProviderAuthError'

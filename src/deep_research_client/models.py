@@ -592,11 +592,11 @@ class ProviderHealth(BaseModel):
         0 for it; accepting ``reachable=None`` would print ``UNKNOWN`` and exit
         0, as if no probe had run.
 
-        Returns:
-            The record, unchanged.
-
         A capacity reading with ``reachable=None`` is refused too: a balance
         can only be read by a probe that ran, and ``None`` says none did.
+
+        Returns:
+            The record, unchanged.
 
         Raises:
             ValueError: If ``capacity_verified`` is False but ``reachable`` is

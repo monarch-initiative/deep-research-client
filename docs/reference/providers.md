@@ -825,9 +825,9 @@ threads in the Claude Console show every search and fetch each agent made.
 
 The session runs on Anthropic's side whether or not the client is watching. A
 brief network outage while polling is logged and retried until the timeout.
-One that loses the interrupt sent at the timeout is logged too, and the
-provider still waits out the five-minute grace period and collects whatever the
-session has produced if it stopped by then. But a client that dies or exits outright leaves the session running unwatched.
+If the interrupt sent at the timeout is lost, it is retried on each poll
+through the five-minute grace period, and whatever the session has produced is
+collected if it stopped by then. But a client that dies or exits outright leaves the session running unwatched.
 To collect it, run the same command again with
 `--param session_id=sesn_...` (the ID is in the log, and in
 `client.beta.sessions.list()`). The provider then waits for that session,

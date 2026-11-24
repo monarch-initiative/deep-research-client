@@ -770,6 +770,27 @@ def test_naming_a_costly_provider_still_honours_it():
     assert result.fell_back is True
 
 
+def test_a_costly_provider_is_not_picked_when_no_provider_is_named():
+    """Naming nobody is not a request for the expensive run, even when it comes first."""
+    client = _client()
+    # Replaces _client's own PRIMARY, so the costly provider is registered first.
+    client.registry.register(CostlyProvider(ProviderConfig(name=PRIMARY), _params()))
+    client.registry.register(StandInProvider(ProviderConfig(name=SPARE), _params()))
+
+    assert client.research("q").provider == SPARE
+
+
+def test_only_costly_providers_available_and_none_named_refuses():
+    """With nothing else to run, the caller is told to name it rather than billed."""
+    client = _client()
+    # Replaces _client's own PRIMARY, leaving the costly provider the only one.
+    client.registry.register(CostlyProvider(ProviderConfig(name=PRIMARY), _params()))
+
+    with pytest.raises(NoProvidersConfiguredError, match=f"{PRIMARY} run only when named"):
+        client.research("q")
+    assert client.research("q", provider=PRIMARY).provider == PRIMARY
+
+
 def test_providers_are_automatic_fallbacks_by_default_except_claude_managed():
     """The exclusion is opt-in, and the Managed Agents provider opts in."""
     from deep_research_client.client import load_provider_class

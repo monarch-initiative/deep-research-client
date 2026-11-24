@@ -995,7 +995,9 @@ class ClaudeManagedProvider(ResearchProvider):
         """
         from anthropic import APIConnectionError
 
-        interrupted = False
+        # Set at the deadline: when to stop waiting for the interrupted session.
+        give_up_at: Optional[float] = None
+        interrupt_sent = False
         while True:
             try:
                 session = await client.beta.sessions.retrieve(session_id)
@@ -1016,27 +1018,28 @@ class ClaudeManagedProvider(ResearchProvider):
                 # deadline still bounds the wait.
                 logger.warning("Lost contact with session %s (%s); will retry", session_id, exc)
             if time.monotonic() > deadline:
-                if interrupted:
+                if give_up_at is None:
+                    logger.warning(
+                        "Session %s still running after %ss; interrupting it", session_id, self.timeout
+                    )
+                    give_up_at = time.monotonic() + _INTERRUPT_GRACE_SECONDS
+                elif time.monotonic() > give_up_at:
                     raise ProviderTimeoutError(
                         self.name,
                         f"session {session_id} did not settle {_INTERRUPT_GRACE_SECONDS}s "
-                        f"after being interrupted; collect it later with "
-                        f"--param session_id={session_id}",
+                        f"after {'being interrupted' if interrupt_sent else 'the timeout (the interrupt could not be sent)'}; "
+                        f"collect it later with --param session_id={session_id}",
                     )
-                logger.warning(
-                    "Session %s still running after %ss; interrupting it", session_id, self.timeout
-                )
-                try:
-                    await client.beta.sessions.events.send(
-                        session_id, events=[{"type": "user.interrupt"}]
-                    )
-                except APIConnectionError as exc:
-                    # Same outage as above. The grace period still runs, so the
-                    # wait stays bounded, and if the session has stopped by then
-                    # its outputs are collected as usual.
-                    logger.warning("Could not interrupt session %s (%s)", session_id, exc)
-                interrupted = True
-                deadline = time.monotonic() + _INTERRUPT_GRACE_SECONDS
+                if not interrupt_sent:
+                    try:
+                        await client.beta.sessions.events.send(
+                            session_id, events=[{"type": "user.interrupt"}]
+                        )
+                        interrupt_sent = True
+                    except APIConnectionError as exc:
+                        # Same outage as above: tried again on the next poll,
+                        # within the grace period, so the wait stays bounded.
+                        logger.warning("Could not interrupt session %s (%s); will retry", session_id, exc)
             await asyncio.sleep(self.params.poll_interval)
 
     async def _collect_checked(

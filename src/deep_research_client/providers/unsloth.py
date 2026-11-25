@@ -89,6 +89,10 @@ UNSLOTH_BUSY_GRACE = 300
 #: is busy; on WSL with mirrored networking a closed port times out instead
 #: of refusing. Long enough to ride out one stray connection timeout.
 UNSLOTH_FIRST_CONTACT_GRACE = 20
+#: How long each cleanup call waits for an answer. Cleanup runs after the
+#: deadline has passed or the run has ended, so it gets a short budget of its
+#: own rather than holding up the result for the full busy grace.
+UNSLOTH_CLEANUP_GRACE = 60
 
 #: Failures that leave it unknown whether Studio received the request. A read
 #: can simply be asked again; a write cannot, since it may have been applied.
@@ -631,15 +635,20 @@ class UnslothProvider(ResearchProvider):
 
         Args:
             client: The authenticated HTTP client
-            thread_id: The chat thread made for the run
+            thread_id: The chat thread made for the run; deleting one that
+                was never created is harmless
             unfinished_run_id: The run to cancel, or None if it reached an end
         """
         try:
             if unfinished_run_id is not None:
-                await self._call(client, "POST", f"/api/chat/research-runs/{unfinished_run_id}/cancel")
+                await self._call(
+                    client, "POST", f"/api/chat/research-runs/{unfinished_run_id}/cancel",
+                    grace=UNSLOTH_CLEANUP_GRACE,
+                )
             if not self.params.keep_thread:
                 await self._call(
                     client, "DELETE", "/api/chat/threads", {"ids": [thread_id], "delete_files": False},
+                    grace=UNSLOTH_CLEANUP_GRACE,
                 )
         except (ValueError, httpx.TransportError) as error:
             logger.warning(
@@ -673,21 +682,30 @@ class UnslothProvider(ResearchProvider):
         deadline = self.config.timeout or UNSLOTH_DEFAULT_TIMEOUT
         start_time = datetime.now()
         thread_id = f"drc-{uuid4().hex}"
+        llm: Optional[str] = None
+        run_id: Optional[str] = None
+        run: Optional[StudioRun] = None
+        started = False
         async with self._client() as client:
-            llm = await self._resolve_llm(client)
-            logger.info(f"Starting Unsloth Studio research on {llm}")
-            run_id: Optional[str] = None
-            run: Optional[StudioRun] = None
             try:
-                run_id = await self._start_run(client, query, llm, thread_id)
+                # The deadline covers finding the model and starting the run as
+                # well as waiting for it: each can stall on a Studio that is
+                # not answering, and the caller asked for one limit on all of it.
                 async with asyncio.timeout(deadline):
+                    llm = await self._resolve_llm(client)
+                    logger.info(f"Starting Unsloth Studio research on {llm}")
+                    started = True
+                    run_id = await self._start_run(client, query, llm, thread_id)
                     run = await self._wait_for_run(client, run_id)
             except TimeoutError as error:
+                which = f"run {run_id}" if run_id else "the run"
                 raise ProviderTimeoutError(
-                    self.name, f"research run {run_id} did not finish within {deadline}s",
+                    self.name, f"{which} did not finish within {deadline}s",
                 ) from error
             finally:
-                await self._clean_up(client, thread_id, run_id if run is None else None)
+                if started:
+                    await self._clean_up(client, thread_id, run_id if run is None else None)
+        assert run is not None and llm is not None  # no exception, so both were set
         return run_result(
             run, query,
             provider=self.name, model=self.model, llm=llm, instance_url=self.base_url,

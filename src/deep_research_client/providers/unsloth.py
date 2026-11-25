@@ -63,7 +63,9 @@ from ..provider_params import UnslothParams
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "STUDIO_INTERFACE",
     "StudioRun",
+    "StudioSetup",
     "UNSLOTH_DEFAULT_BASE_URL",
     "UnslothProvider",
     "cited_sources",
@@ -185,6 +187,40 @@ class StudioRun(BaseModel):
     report: Optional[str] = None
     steps: Annotated[list[StudioStep], BeforeValidator(_empty_list_for_null)] = Field(default_factory=list)
     sources: Annotated[list[StudioSource], BeforeValidator(_empty_list_for_null)] = Field(default_factory=list)
+
+
+#: The interface's name as recorded on a report. The provider name says which
+#: wrapper ran; this says what served the model.
+STUDIO_INTERFACE = "Unsloth Studio"
+
+
+class StudioSetup(BaseModel):
+    """What produced a report: the model that wrote it and the Studio that served it.
+
+    A report from a local model is only interpretable with both. The same
+    model ID covers quantizations that differ in quality, and Studio's own
+    research prompts and tools change between its releases.
+
+    >>> StudioSetup(llm="unsloth/gemma-4-E4B-it-qat-GGUF", quantization="UD-Q4_K_XL",
+    ...             interface_version="v0.1.924-beta").provenance()
+    {'interface': 'Unsloth Studio', 'interface_version': 'v0.1.924-beta', 'llm': 'unsloth/gemma-4-E4B-it-qat-GGUF', 'quantization': 'UD-Q4_K_XL'}
+    """
+
+    llm: str = Field(description="Studio's ID for the model that did the work")
+    quantization: Optional[str] = Field(default=None, description="Quantization in memory, when Studio reports it")
+    interface_version: Optional[str] = Field(default=None, description="Studio's release, e.g. v0.1.924-beta")
+    unsloth_version: Optional[str] = Field(default=None, description="Version of the unsloth package Studio runs on")
+
+    def provenance(self) -> dict[str, str]:
+        """Return the fields for a report's ``run_metadata``, leaving out what Studio did not report."""
+        fields = {
+            "interface": STUDIO_INTERFACE,
+            "interface_version": self.interface_version,
+            "unsloth_version": self.unsloth_version,
+            "llm": self.llm,
+            "quantization": self.quantization,
+        }
+        return {key: value for key, value in fields.items() if value is not None}
 
 
 def _may_retry(error: httpx.TransportError, method: str) -> bool:
@@ -464,8 +500,7 @@ def run_result(
     query: str,
     *,
     provider: str,
-    model: str,
-    llm: str,
+    setup: StudioSetup,
     instance_url: str,
     start_time: datetime,
     end_time: datetime,
@@ -477,8 +512,10 @@ def run_result(
         run: The run in a terminal state.
         query: The question that was asked.
         provider: Provider name to record.
-        model: The model card name to record.
-        llm: The Studio model that did the work.
+        setup: The model that did the work and the Studio that served it.
+            The model's own ID is recorded as the result's ``model``, so a
+            report's header names what wrote it; the interface and its
+            version go in ``run_metadata``.
         instance_url: Studio's root URL.
         start_time: When the provider started.
         end_time: When the run finished.
@@ -494,14 +531,17 @@ def run_result(
 
     >>> now = datetime(2026, 11, 24)
     >>> def result(run, run_kept=False):
-    ...     return run_result(StudioRun.model_validate(run), "q", provider="unsloth", model="m",
-    ...                       llm="unsloth/gemma", instance_url="http://127.0.0.1:8888",
+    ...     return run_result(StudioRun.model_validate(run), "q", provider="unsloth",
+    ...                       setup=StudioSetup(llm="unsloth/gemma", quantization="Q4_K_M"),
+    ...                       instance_url="http://127.0.0.1:8888",
     ...                       start_time=now, end_time=now, run_kept=run_kept)
     >>> done = result({"id": "r1", "status": "completed", "report": "See [A](https://a.example).",
     ...                "sources": [{"url": "https://a.example", "title": "A"},
     ...                            {"url": "https://b.example", "title": "B"}]})
     >>> (done.citations, done.provider_job_id, done.run_metadata["sources_collected"])
     (['A - https://a.example'], None, 2)
+    >>> (done.model, done.run_metadata["interface"], done.run_metadata["quantization"])
+    ('unsloth/gemma', 'Unsloth Studio', 'Q4_K_M')
     >>> result({"id": "r1", "status": "completed", "report": "Text."}, run_kept=True).provider_job_id
     'r1'
     >>> result({"id": "r1", "status": "failed", "error": "model stopped responding"})
@@ -526,14 +566,14 @@ def run_result(
         provider=provider,
         query=query,
         title=(run.plan or {}).get("title"),
-        model=model,
+        model=setup.llm,
         start_time=start_time,
         end_time=end_time,
         duration_seconds=(end_time - start_time).total_seconds(),
         provider_job_id=run.id if run_kept else None,
         provider_instance_url=instance_url,
         run_metadata={
-            "llm": llm,
+            **setup.provenance(),
             "steps": [
                 {
                     "action": step.result.get("action"),
@@ -777,13 +817,22 @@ class UnslothProvider(ResearchProvider):
             )
         return self._decoded(response)
 
-    async def _resolve_llm(self, client: httpx.AsyncClient) -> str:
-        """Return the Studio model the run will use, or raise naming what to load.
+    async def _resolve_setup(self, client: httpx.AsyncClient) -> StudioSetup:
+        """Find the model the run will use and the Studio serving it, or raise naming what to load.
 
-        This is a run's first call, so it gives up on a silent Studio quickly.
+        The model lookup is a run's first call, so it gives up on a silent
+        Studio quickly. Studio reports its versions on ``/api/health`` to an
+        authenticated caller only.
         """
         models = await self._call(client, "GET", "/v1/models", grace=UNSLOTH_FIRST_CONTACT_GRACE)
-        return loaded_model(self._model_rows(models), self.params.llm, self.name)["id"]
+        row = loaded_model(self._model_rows(models), self.params.llm, self.name)
+        health = await self._call(client, "GET", "/api/health")
+        return StudioSetup(
+            llm=row["id"],
+            quantization=row.get("quant"),
+            interface_version=health.get("studio_version"),
+            unsloth_version=health.get("version"),
+        )
 
     def _run_request(self, thread_id: str, message_id: str, llm: str) -> dict[str, Any]:
         """Build the body that starts a research run.
@@ -971,7 +1020,7 @@ class UnslothProvider(ResearchProvider):
         deadline = self.config.timeout or UNSLOTH_DEFAULT_TIMEOUT
         start_time = datetime.now()
         thread_id = f"drc-{uuid4().hex}"
-        llm: Optional[str] = None
+        setup: Optional[StudioSetup] = None
         run_id: Optional[str] = None
         run: Optional[StudioRun] = None
         started = False
@@ -986,10 +1035,10 @@ class UnslothProvider(ResearchProvider):
                 # well as waiting for it: each can stall on a Studio that is
                 # not answering, and the caller asked for one limit on all of it.
                 async with asyncio.timeout(deadline):
-                    llm = await self._resolve_llm(client)
-                    logger.info(f"Starting Unsloth Studio research on {llm}")
+                    setup = await self._resolve_setup(client)
+                    logger.info(f"Starting Unsloth Studio research on {setup.llm}")
                     started = True
-                    run_id = await self._start_run(client, query, llm, thread_id)
+                    run_id = await self._start_run(client, query, setup.llm, thread_id)
                     run = await self._wait_for_run(client, run_id)
             except TimeoutError as error:
                 which = f"run {run_id}" if run_id else "the run"
@@ -999,10 +1048,10 @@ class UnslothProvider(ResearchProvider):
             finally:
                 if started:
                     await self._clean_up(client, thread_id, run_id if run is None else None)
-        assert run is not None and llm is not None  # no exception, so both were set
+        assert run is not None and setup is not None  # no exception, so both were set
         return run_result(
             run, query,
-            provider=self.name, model=self.model, llm=llm, instance_url=self.base_url,
+            provider=self.name, setup=setup, instance_url=self.base_url,
             start_time=start_time, end_time=datetime.now(), run_kept=self.params.keep_thread,
         )
 

@@ -18,14 +18,17 @@ import re
 import time
 
 import pytest
+import yaml
 
 from deep_research_client.client import DeepResearchClient
+from deep_research_client.formatter import ResultFormatter
 from deep_research_client.exceptions import ProviderError, ProviderNotConfiguredError, ProviderTimeoutError
 from deep_research_client.model_cards import get_provider_model_cards
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import UnslothParams, get_provider_params_class
 from deep_research_client.providers.unsloth import (
     StudioRun,
+    StudioSetup,
     UnslothProvider,
     run_result,
 )
@@ -46,7 +49,10 @@ def result_of(run: dict, run_kept: bool = False):
     now = datetime(2026, 11, 24, 17, 0, 0)
     return run_result(
         StudioRun.model_validate(run), QUESTION,
-        provider="unsloth", model="unsloth-studio-research", llm=LLM,
+        provider="unsloth",
+        setup=StudioSetup(
+            llm=LLM, quantization="UD-Q4_K_XL", interface_version="v0.1.924-beta", unsloth_version="2026.11.11",
+        ),
         instance_url="http://127.0.0.1:8888", start_time=now, end_time=now, run_kept=run_kept,
     )
 
@@ -57,9 +63,25 @@ def test_the_report_and_its_provenance_come_from_the_run(recorded):
     assert result.markdown.startswith("# Regulatory Mechanisms of Outer Membrane Lipid Homeostasis")
     assert result.title == recorded["plan"]["title"]
     assert result.provider == "unsloth"
-    assert result.model == "unsloth-studio-research"
     assert result.provider_instance_url == "http://127.0.0.1:8888"
-    assert result.run_metadata["llm"] == LLM
+
+
+def test_the_report_header_names_the_model_that_wrote_it_and_the_interface_that_served_it(recorded):
+    """The research mode's name says nothing about which model ran; the header a
+    reader sees must give the model, its quantization, and Studio with its version."""
+    markdown = ResultFormatter().format_full_markdown(result_of(recorded))
+    header = yaml.safe_load(markdown.split("---")[1])
+
+    assert header["provider"] == "unsloth"
+    assert header["model"] == LLM
+    assert {key: header["run_metadata"][key] for key in
+            ("interface", "interface_version", "unsloth_version", "llm", "quantization")} == {
+        "interface": "Unsloth Studio",
+        "interface_version": "v0.1.924-beta",
+        "unsloth_version": "2026.11.11",
+        "llm": LLM,
+        "quantization": "UD-Q4_K_XL",
+    }
 
 
 @pytest.mark.parametrize("run_kept", [True, False])

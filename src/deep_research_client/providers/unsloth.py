@@ -356,6 +356,11 @@ def link_bare_citations(report: str, sources: list[StudioSource]) -> str:
     )
 
 
+def _link_targets(url: str) -> tuple[str, ...]:
+    """Return the ways markdown can end a link whose target is exactly this URL."""
+    return (f"]({url})", f"]({url} ", f"](<{url}>)")
+
+
 def cited_sources(report: str, sources: list[StudioSource]) -> list[StudioSource]:
     """Return the collected sources the report links to, in order of first use.
 
@@ -375,8 +380,24 @@ def cited_sources(report: str, sources: list[StudioSource]) -> list[StudioSource
     >>> wiki = StudioSource(url="https://en.wikipedia.org/wiki/LRRK2_(gene)", title="W")
     >>> [s.title for s in cited_sources("[W](https://en.wikipedia.org/wiki/LRRK2_(gene)).", [wiki])]
     ['W']
+
+    Markdown's other ways of writing a link target count too: with a title, or in angle brackets.
+
+    >>> [s.title for s in cited_sources('[b](<https://b.example/2>) [a](https://a.example/1 "A page")', sources)]
+    ['B', 'A']
+
+    A longer URL that merely starts with a source's URL is a different page:
+
+    >>> cited_sources("[x](https://a.example/10)", sources)
+    []
     """
-    first_use = {source.url: report.find(f"]({source.url})") for source in sources}
+    first_use = {
+        source.url: min(
+            (position for position in map(report.find, _link_targets(source.url)) if position >= 0),
+            default=-1,
+        )
+        for source in sources
+    }
     cited = {url: position for url, position in first_use.items() if position >= 0}
     by_url = {source.url: source for source in sources}
     return [by_url[url] for url in sorted(cited, key=cited.__getitem__)]

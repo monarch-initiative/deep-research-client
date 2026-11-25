@@ -99,8 +99,13 @@ UNSLOTH_CLEANUP_GRACE = 60
 _UNANSWERED_REQUEST = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
-#: A bracketed label with no link target after it: ``[Some title]``.
-_UNLINKED_LABEL = re.compile(r"\[([^\[\]]+)\](?!\()")
+#: A bracketed label that is not already part of a link: ``[Some title]``.
+#: What follows rules out an inline link ``[a](u)``, a reference link
+#: ``[a][1]`` and a reference definition ``[a]: u``; what precedes rules out
+#: an image ``![a]`` and a label nested in a link ``[[a]](u)``.
+_UNLINKED_LABEL = re.compile(r"(?<![\[!])\[([^\[\]]+)\](?![(\[:])")
+#: Fenced blocks and inline code spans, whose text is shown as written.
+_CODE = re.compile(r"(```.*?```|`[^`\n]+`)", re.DOTALL)
 _PMC_ID = re.compile(r"PMC\d+")
 _TYPOGRAPHIC_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 
@@ -293,6 +298,14 @@ def link_bare_citations(report: str, sources: list[StudioSource]) -> str:
     ...               StudioSource(url="https://b.example/2", title="LRRK2 Review")]
     >>> link_bare_citations("Shown in [LRRK2 review].", same_title)
     'Shown in [LRRK2 review].'
+
+    Brackets that are already part of a link, or sit inside code, are not citations to repair:
+
+    >>> a = [StudioSource(url="https://a.example/1", title="A")]
+    >>> for text in ("[A]: https://z.example", "[[A]](https://z.example)", "[A][1]", "![A](a.png)", "`x[A]`"):
+    ...     assert link_bare_citations(text, a) == text
+    >>> link_bare_citations("`x[A]` but [A].", a)
+    '`x[A]` but [A](https://a.example/1).'
     """
     by_title = _naming_one_url((_title_key(source.title), source.url) for source in sources if source.title)
     by_pmc_id = _naming_one_url(
@@ -307,7 +320,12 @@ def link_bare_citations(report: str, sources: list[StudioSource]) -> str:
             url = named.pop() if len(named) == 1 else None
         return f"{match.group(0)}({url})" if url else match.group(0)
 
-    return _UNLINKED_LABEL.sub(linked, report)
+    # Splitting on a pattern with one group alternates prose and code.
+    pieces = _CODE.split(report)
+    return "".join(
+        piece if index % 2 else _UNLINKED_LABEL.sub(linked, piece)
+        for index, piece in enumerate(pieces)
+    )
 
 
 def cited_sources(report: str, sources: list[StudioSource]) -> list[StudioSource]:

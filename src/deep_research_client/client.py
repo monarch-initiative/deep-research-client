@@ -42,6 +42,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "claude_managed": ("deep_research_client.providers.claude_managed", "ClaudeManagedProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
+    "unsloth": ("deep_research_client.providers.unsloth", "UnslothProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "toxindex": ("deep_research_client.providers.toxindex", "ToxIndexProvider"),
     "rss_agent": ("deep_research_client.providers.rss_agent", "RssAgentProvider"),
@@ -226,6 +227,19 @@ class DeepResearchClient:
             tooluniverse_provider = ToolUniverseProvider(tooluniverse_config)
             if tooluniverse_provider.is_available():
                 self.registry.register(tooluniverse_provider)
+
+        # Unsloth Studio provider - local models through Studio's Deep Research.
+        # The key is one made in Studio's settings; the URL defaults to the
+        # desktop app's local port.
+        unsloth_key = os.getenv("UNSLOTH_API_KEY")
+        if unsloth_key:
+            unsloth_config = ProviderConfig(
+                name="unsloth",
+                api_key=unsloth_key,
+                base_url=os.getenv("UNSLOTH_BASE_URL"),
+                enabled=True,
+            )
+            self.registry.register(self._create_provider("unsloth", unsloth_config))
 
         # Claude Code provider - available whenever the `claude` CLI is on PATH.
         # No API key required; auth/billing is handled by the local installation.

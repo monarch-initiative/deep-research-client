@@ -91,6 +91,7 @@ TIMEOUT_TABLE: dict[str, bool] = {
     "rss_agent": True,
     "biomni": True,
     "toxindex": True,
+    "unsloth": True,
     "mock": True,
     "tooluniverse": False,
     "deeper_med": False,

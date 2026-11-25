@@ -150,6 +150,19 @@ def test_auto_detection_registers_the_provider_only_with_a_key(monkeypatch, tmp_
         assert provider.is_available()
 
 
+@pytest.mark.parametrize("model", [None, "unsloth", "studio", "unsloth-studio-research"])
+def test_the_model_field_accepts_only_the_research_model_and_its_aliases(model):
+    provider = UnslothProvider(ProviderConfig(name="unsloth", api_key="k"), UnslothParams(model=model))
+
+    assert provider.model == "unsloth-studio-research"
+
+
+def test_a_studio_model_id_given_as_the_model_is_refused_and_pointed_at_llm():
+    """Accepted, it would be stamped on a report that another model wrote."""
+    with pytest.raises(ValueError, match="use the llm parameter"):
+        UnslothProvider(ProviderConfig(name="unsloth", api_key="k"), UnslothParams(model="unsloth/phi-4"))
+
+
 def test_a_local_model_is_never_an_automatic_fallback():
     """A hosted provider that failed must not be quietly replaced by a small local model."""
     assert UnslothProvider.automatic_fallback is False

@@ -433,9 +433,20 @@ class UnslothProvider(ResearchProvider):
         Args:
             config: Provider configuration; ``api_key`` is a Studio API key
             params: Optional Unsloth parameters
+
+        Raises:
+            ValueError: If ``model`` names anything but the one research
+                model. A Studio model ID belongs in ``llm``, where it is
+                checked against what is loaded; accepted as ``model`` it would
+                be recorded on the report without having been used.
         """
         self.params = params or UnslothParams()
         super().__init__(config, self.params.model)
+        if self.model != self.get_default_model():
+            raise ValueError(
+                f"Unsloth has one research model, '{self.get_default_model()}', not '{self.model}'. "
+                "To name the Studio model that does the work, use the llm parameter (--param llm=...)"
+            )
 
     @property
     def base_url(self) -> str:

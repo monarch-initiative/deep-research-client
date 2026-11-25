@@ -68,6 +68,7 @@ __all__ = [
     "UnslothProvider",
     "cited_sources",
     "link_bare_citations",
+    "loaded_chat_models",
     "loaded_model",
     "run_result",
     "sends_key_unencrypted",
@@ -237,39 +238,60 @@ def sends_key_unencrypted(root: str) -> bool:
     return parts.scheme == "http" and not on_this_machine
 
 
-def _loaded_chat_models(models: list[dict[str, Any]]) -> list[str]:
-    """Return the IDs of loaded chat models; image and other task models are passed over."""
-    return [m["id"] for m in models if m.get("loaded") and not m.get("task")]
+def loaded_chat_models(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the distinct chat models Studio has loaded, from its ``/v1/models`` list.
+
+    The list holds more rows than there are models. Image, speech and other
+    non-chat models carry a ``task``. A loaded model can also appear again
+    under an alias (``alias_for``) and as ``<id>:<quant>`` naming the
+    quantization in memory. Neither is a second model, so neither is counted.
+
+    >>> rows = [{"id": "unsloth/gemma", "loaded": True, "quant": "Q4_K_M"},
+    ...         {"id": "unsloth/gemma:Q4_K_M", "loaded": True},
+    ...         {"id": "gemma", "loaded": True, "alias_for": "unsloth/gemma"},
+    ...         {"id": "unsloth/z-image", "loaded": True, "task": "text-to-image"},
+    ...         {"id": "unsloth/phi-4", "loaded": False}]
+    >>> [row["id"] for row in loaded_chat_models(rows)]
+    ['unsloth/gemma']
+    """
+    rows = [m for m in models if m.get("loaded") and not m.get("task") and not m.get("alias_for")]
+    ids = {row["id"] for row in rows}
+    return [row for row in rows if row["id"].rpartition(":")[0] not in ids]
 
 
-def loaded_model(models: list[dict[str, Any]], requested: Optional[str], provider: str = "unsloth") -> str:
+def loaded_model(
+    models: list[dict[str, Any]], requested: Optional[str], provider: str = "unsloth",
+) -> dict[str, Any]:
     """Pick the model a run will use from Studio's ``/v1/models`` list.
 
-    Studio serves one loaded chat model at a time, and a research run needs it
-    loaded before it starts. Loading one is slow and takes the GPU, so it is
-    left to the person at the machine: this names the loaded model, or says
-    what to load, and never loads anything itself. Image and other non-chat
-    models carry a ``task`` and are passed over.
+    A research run needs its model loaded before it starts. Loading one is
+    slow and takes the GPU, so it is left to the person at the machine: this
+    names the loaded model, or says what to load, and never loads anything
+    itself. Studio can hold several chat models at once; then the caller has
+    to say which, because a guess would put the wrong model's name on the
+    report.
 
     Args:
         models: The ``data`` list of a ``/v1/models`` response.
-        requested: The ``llm`` parameter, or None to take whatever is loaded.
+        requested: The ``llm`` parameter, or None to take the loaded model.
         provider: Provider name for the error.
 
     Returns:
-        The ID of the loaded chat model.
+        The list's row for the model: its ``id``, and ``quant`` when Studio
+        reports the quantization.
 
     Raises:
-        ProviderNotConfiguredError: If nothing is loaded, or the requested
-            model is not the loaded one.
+        ProviderNotConfiguredError: If nothing is loaded, several models are
+            loaded and none was requested, or the requested one is not loaded.
 
-    >>> models = [{"id": "unsloth/gemma", "loaded": True},
+    >>> models = [{"id": "unsloth/gemma", "loaded": True, "quant": "Q4_K_M"},
+    ...           {"id": "unsloth/gemma:Q4_K_M", "loaded": True},
     ...           {"id": "unsloth/phi-4", "loaded": False},
     ...           {"id": "unsloth/z-image", "loaded": True, "task": "text-to-image"}]
     >>> loaded_model(models, None)
-    'unsloth/gemma'
-    >>> loaded_model(models, "unsloth/gemma")
-    'unsloth/gemma'
+    {'id': 'unsloth/gemma', 'loaded': True, 'quant': 'Q4_K_M'}
+    >>> loaded_model(models, "unsloth/gemma:Q4_K_M")["id"]
+    'unsloth/gemma:Q4_K_M'
     >>> def refusal(models, requested):
     ...     try:
     ...         loaded_model(models, requested)
@@ -279,21 +301,32 @@ def loaded_model(models: list[dict[str, Any]], requested: Optional[str], provide
     "model 'unsloth/phi-4' is not loaded in Unsloth Studio (loaded: unsloth/gemma); load it there, or drop the llm parameter"
     >>> refusal([{"id": "unsloth/phi-4", "loaded": False}], None)
     'no chat model is loaded in Unsloth Studio; load one there first'
+    >>> refusal(models + [{"id": "unsloth/qwen", "loaded": True}], None)
+    'Unsloth Studio has more than one chat model loaded (unsloth/gemma, unsloth/qwen); name one with the llm parameter'
     """
-    loaded = _loaded_chat_models(models)
-    if not loaded:
+    distinct = loaded_chat_models(models)
+    names = ", ".join(row["id"] for row in distinct)
+    if not distinct:
         raise ProviderNotConfiguredError(
             provider, "no chat model is loaded in Unsloth Studio; load one there first"
         )
     if requested is None:
-        return loaded[0]
-    if requested not in loaded:
+        if len(distinct) > 1:
+            raise ProviderNotConfiguredError(
+                provider,
+                f"Unsloth Studio has more than one chat model loaded ({names}); "
+                "name one with the llm parameter",
+            )
+        return distinct[0]
+    # An alias or a quantization-pinned ID names a loaded model as well as its own row does.
+    by_id = {m["id"]: m for m in models if m.get("loaded") and not m.get("task")}
+    if requested not in by_id:
         raise ProviderNotConfiguredError(
             provider,
             f"model '{requested}' is not loaded in Unsloth Studio "
-            f"(loaded: {', '.join(loaded)}); load it there, or drop the llm parameter",
+            f"(loaded: {names}); load it there, or drop the llm parameter",
         )
-    return requested
+    return by_id[requested]
 
 
 def _title_key(title: str) -> str:
@@ -680,7 +713,7 @@ class UnslothProvider(ResearchProvider):
         This is a run's first call, so it gives up on a silent Studio quickly.
         """
         models = await self._call(client, "GET", "/v1/models", grace=UNSLOTH_FIRST_CONTACT_GRACE)
-        return loaded_model(models["data"], self.params.llm, self.name)
+        return loaded_model(models["data"], self.params.llm, self.name)["id"]
 
     def _run_request(self, thread_id: str, message_id: str, llm: str) -> dict[str, Any]:
         """Build the body that starts a research run.
@@ -927,13 +960,14 @@ class UnslothProvider(ResearchProvider):
             classified = classify_status(self.name, response.status_code, error_text)
             detail = classified.diagnosis if classified else f"{response.status_code} {error_text}"
             return ProviderHealth(provider=self.name, configured=True, reachable=False, detail=detail)
-        loaded = _loaded_chat_models(response.json()["data"])
+        loaded = [row["id"] for row in loaded_chat_models(response.json()["data"])]
         if not loaded:
+            # Not reachable in the sense the field has here: able to take work.
             return ProviderHealth(
                 provider=self.name, configured=True, reachable=False,
                 detail="key accepted, but no chat model is loaded in Unsloth Studio",
             )
         return ProviderHealth(
             provider=self.name, configured=True, reachable=True,
-            detail=f"model loaded: {loaded[0]}",
+            detail=f"model loaded: {', '.join(loaded)}",
         )

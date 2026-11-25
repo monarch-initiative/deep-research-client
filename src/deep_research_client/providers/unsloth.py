@@ -123,6 +123,8 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _UNLINKED_LABEL = re.compile(r"(?<![\[!])\[([^\[\]]+)\](?![(\[:])")
 #: Fenced blocks and inline code spans, whose text is shown as written.
 _CODE = re.compile(r"(```.*?```|`[^`\n]+`)", re.DOTALL)
+#: An address in 127.0.0.0/8. A hostname that merely starts with "127." is not one.
+_LOOPBACK_IPV4 = re.compile(r"127(\.\d{1,3}){3}")
 _PMC_ID = re.compile(r"PMC\d+")
 _TYPOGRAPHIC_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 
@@ -272,12 +274,12 @@ def sends_key_unencrypted(root: str) -> bool:
     >>> [sends_key_unencrypted(url) for url in
     ...  ("http://127.0.0.1:8888", "http://localhost:8888", "http://[::1]:8888", "https://studio.example")]
     [False, False, False, False]
-    >>> sends_key_unencrypted("http://studio.lan:9000")
-    True
+    >>> [sends_key_unencrypted(url) for url in ("http://studio.lan:9000", "http://127.example.com")]
+    [True, True]
     """
     parts = urlsplit(root)
     host = parts.hostname or ""
-    on_this_machine = host == "localhost" or host == "::1" or host.startswith("127.")
+    on_this_machine = host in ("localhost", "::1") or bool(_LOOPBACK_IPV4.fullmatch(host))
     return parts.scheme == "http" and not on_this_machine
 
 
@@ -667,7 +669,16 @@ class UnslothProvider(ResearchProvider):
         return create_unsloth_model_cards()
 
     def _client(self) -> httpx.AsyncClient:
-        """Build an HTTP client authenticated with the configured key."""
+        """Build an HTTP client authenticated with the configured key.
+
+        Every use of the key goes through here, a health check as much as a
+        run, so this is where sending it in the clear is warned about.
+        """
+        if sends_key_unencrypted(self.base_url):
+            logger.warning(
+                f"Sending the Unsloth Studio API key over unencrypted http to {self.base_url}; "
+                "use https, or a tunnel, to reach a Studio on another machine"
+            )
         return httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self.config.api_key}"},
@@ -1063,11 +1074,6 @@ class UnslothProvider(ResearchProvider):
         run_id: Optional[str] = None
         run: Optional[StudioRun] = None
         started = False
-        if sends_key_unencrypted(self.base_url):
-            logger.warning(
-                f"Sending the Unsloth Studio API key over unencrypted http to {self.base_url}; "
-                "use https, or a tunnel, to reach a Studio on another machine"
-            )
         async with self._client() as client:
             try:
                 # The deadline covers finding the model and starting the run as

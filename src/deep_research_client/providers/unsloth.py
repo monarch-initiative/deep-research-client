@@ -919,12 +919,20 @@ class UnslothProvider(ResearchProvider):
             (409: revised since). None if the reply was lost, so the next
             poll decides whether to approve again; Studio 2026.11.11 accepts
             a repeated approval of the same plan.
+
+        Raises:
+            ProviderError: If Studio answers with any other failure, a server
+                error included
         """
         try:
             await self._call(client, "POST", f"{run_path}/approve", {
                 "planRevision": plan[0], "planHash": plan[1],
             })
         except ProviderTransientError as error:
+            # A 5xx is the same class but is an answer, not a lost reply:
+            # approving again each poll would only repeat it until the deadline.
+            if error.status_code is not None:
+                raise
             logger.warning(f"No reply to the plan approval; checking the run instead: {error}")
             return None
         except ProviderError as error:

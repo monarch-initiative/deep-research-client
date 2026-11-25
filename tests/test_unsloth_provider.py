@@ -307,10 +307,12 @@ async def test_live_run_past_its_timeout_is_cancelled_in_studio():
     Studio's own record of the run, not only the error raised here. The thread
     is kept so the run can be read back, then deleted."""
     provider = live_provider(keep_thread=True)
-    provider.config.timeout = 15
+    # Long enough that the run has started even if one connection to Studio
+    # times out first (10 s), short enough that no run finishes inside it.
+    provider.config.timeout = 30
     question = f"Summarize the genetics of Parkinson disease. ({time.time_ns()})"
 
-    with pytest.raises(ProviderTimeoutError, match=r"run [0-9a-f]{32} did not finish within 15s") as raised:
+    with pytest.raises(ProviderTimeoutError, match=r"run [0-9a-f]{32} did not finish within 30s") as raised:
         await provider.research(question)
 
     run_id = re.search(r"run ([0-9a-f]{32})", raised.value.detail).group(1)

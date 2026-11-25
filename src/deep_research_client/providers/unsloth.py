@@ -505,7 +505,7 @@ class UnslothProvider(ResearchProvider):
             grace: Seconds to go on retrying a Studio that does not answer
 
         Returns:
-            The decoded JSON response
+            The decoded JSON response, or None when the body is empty
 
         Raises:
             ProviderNotConfiguredError: If the connection is refused
@@ -542,7 +542,7 @@ class UnslothProvider(ResearchProvider):
             if classified is not None:
                 raise classified
             raise ValueError(f"Unsloth Studio API error: {response.status_code} - {detail}")
-        return response.json()
+        return response.json() if response.content else None
 
     async def _resolve_llm(self, client: httpx.AsyncClient) -> str:
         """Return the Studio model the run will use, or raise naming what to load.
@@ -625,13 +625,34 @@ class UnslothProvider(ResearchProvider):
                 })
             await asyncio.sleep(self.params.poll_interval)
 
+    async def _tidy(
+        self, client: httpx.AsyncClient, what: str, method: str, path: str, body: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Make one cleanup call, logging a failure instead of raising it.
+
+        Cleanup runs after the outcome is already decided, and raising would
+        replace that outcome: a finished report would be lost, or the error
+        that ended the run hidden behind one about tidying up. The warning
+        says what is left in Studio so it can be removed by hand.
+
+        Args:
+            client: The authenticated HTTP client
+            what: What the call does, for the warning
+            method: HTTP method
+            path: Path under Studio's root
+            body: JSON body, if any
+        """
+        try:
+            await self._call(client, method, path, body, grace=UNSLOTH_CLEANUP_GRACE)
+        except ValueError as error:  # every failure _call raises, ProviderError included
+            logger.warning(f"Could not {what} in Unsloth Studio: {error}")
+
     async def _clean_up(self, client: httpx.AsyncClient, thread_id: str, unfinished_run_id: Optional[str]) -> None:
         """Cancel a run that did not finish and delete its thread, unless it is kept.
 
-        A failure here is logged and not raised. Cleanup runs after the
-        outcome is already decided, and raising would replace that outcome: a
-        finished report would be lost, or the error that ended the run hidden
-        behind one about tidying up.
+        The two are attempted independently: a cancel that fails, as it does
+        for a run that ended a moment earlier, must not leave the thread
+        behind.
 
         Args:
             client: The authenticated HTTP client
@@ -639,21 +660,15 @@ class UnslothProvider(ResearchProvider):
                 was never created is harmless
             unfinished_run_id: The run to cancel, or None if it reached an end
         """
-        try:
-            if unfinished_run_id is not None:
-                await self._call(
-                    client, "POST", f"/api/chat/research-runs/{unfinished_run_id}/cancel",
-                    grace=UNSLOTH_CLEANUP_GRACE,
-                )
-            if not self.params.keep_thread:
-                await self._call(
-                    client, "DELETE", "/api/chat/threads", {"ids": [thread_id], "delete_files": False},
-                    grace=UNSLOTH_CLEANUP_GRACE,
-                )
-        except (ValueError, httpx.TransportError) as error:
-            logger.warning(
-                f"Could not clean up Unsloth Studio thread {thread_id}; "
-                f"delete it in Studio's chat list: {error}"
+        if unfinished_run_id is not None:
+            await self._tidy(
+                client, f"cancel research run {unfinished_run_id}",
+                "POST", f"/api/chat/research-runs/{unfinished_run_id}/cancel",
+            )
+        if not self.params.keep_thread:
+            await self._tidy(
+                client, f"delete chat thread {thread_id}",
+                "DELETE", "/api/chat/threads", {"ids": [thread_id], "delete_files": False},
             )
 
     async def research(self, query: str) -> ResearchResult:

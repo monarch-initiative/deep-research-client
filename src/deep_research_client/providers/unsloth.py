@@ -39,7 +39,7 @@ from datetime import datetime
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 from uuid import uuid4
 
 import httpx
@@ -247,6 +247,18 @@ def _title_key(title: str) -> str:
     return " ".join(title.translate(_TYPOGRAPHIC_QUOTES).casefold().split())
 
 
+def _naming_one_url(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Map each key to its URL, leaving out a key that goes with more than one.
+
+    >>> _naming_one_url([("a", "u1"), ("b", "u2"), ("a", "u3"), ("b", "u2")])
+    {'b': 'u2'}
+    """
+    urls: dict[str, set[str]] = {}
+    for key, url in pairs:
+        urls.setdefault(key, set()).add(url)
+    return {key: next(iter(found)) for key, found in urls.items() if len(found) == 1}
+
+
 def link_bare_citations(report: str, sources: list[StudioSource]) -> str:
     """Link citations the model wrote as a bare ``[label]`` naming a collected source.
 
@@ -274,9 +286,18 @@ def link_bare_citations(report: str, sources: list[StudioSource]) -> str:
 
     >>> link_bare_citations("Both [PMC13568663, PMC222] and [PMC999].", sources)
     'Both [PMC13568663, PMC222] and [PMC999].'
+
+    So does a title two collected pages share, since it does not say which one was meant:
+
+    >>> same_title = [StudioSource(url="https://a.example/1", title="LRRK2 review"),
+    ...               StudioSource(url="https://b.example/2", title="LRRK2 Review")]
+    >>> link_bare_citations("Shown in [LRRK2 review].", same_title)
+    'Shown in [LRRK2 review].'
     """
-    by_title = {_title_key(source.title): source.url for source in sources if source.title}
-    by_pmc_id = {pmc_id: source.url for source in sources for pmc_id in _PMC_ID.findall(source.url)}
+    by_title = _naming_one_url((_title_key(source.title), source.url) for source in sources if source.title)
+    by_pmc_id = _naming_one_url(
+        (pmc_id, source.url) for source in sources for pmc_id in _PMC_ID.findall(source.url)
+    )
 
     def linked(match: re.Match[str]) -> str:
         label = match.group(1)

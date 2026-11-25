@@ -335,6 +335,13 @@ def loaded_model(
     {'id': 'unsloth/gemma', 'loaded': True, 'quant': 'Q4_K_M'}
     >>> loaded_model(models, "unsloth/gemma:Q4_K_M")["id"]
     'unsloth/gemma:Q4_K_M'
+
+    An alias names a model too, but the report should carry the model's own
+    ID and quantization, so the row it stands for is returned:
+
+    >>> aliased = models + [{"id": "gemma", "loaded": True, "alias_for": "unsloth/gemma"}]
+    >>> loaded_model(aliased, "gemma")
+    {'id': 'unsloth/gemma', 'loaded': True, 'quant': 'Q4_K_M'}
     >>> def refusal(models, requested):
     ...     try:
     ...         loaded_model(models, requested)
@@ -369,7 +376,8 @@ def loaded_model(
             f"model '{requested}' is not loaded in Unsloth Studio "
             f"(loaded: {names}); load it there, or drop the llm parameter",
         )
-    return by_id[requested]
+    row = by_id[requested]
+    return by_id.get(row.get("alias_for"), row)
 
 
 def _title_key(title: str) -> str:

@@ -1547,9 +1547,31 @@ deep-research-client research "What is the role of LRRK2 in Parkinson disease?" 
 ```
 
 `providers --check` reports whether Studio is running, whether the key is
-accepted, and which model is loaded. Studio on Windows is reachable from WSL
-at `127.0.0.1` when WSL uses mirrored networking (`networkingMode=mirrored`
-in `.wslconfig`); otherwise set `UNSLOTH_BASE_URL` to an address WSL can reach.
+accepted, and which model is loaded.
+
+### Where Studio is running
+
+The provider talks to Studio over HTTP and assumes nothing about the machine
+beyond the address. What differs between setups:
+
+- **Port.** Studio listens on `127.0.0.1:8888` by default, and moves to the
+  next free port when that one is taken. If another program answers on 8888,
+  `providers --check` says the answer is not Studio's; set `UNSLOTH_BASE_URL`
+  to the port Studio reports.
+- **Another machine, Colab, or a container.** Set `UNSLOTH_BASE_URL` to an
+  address this machine can reach. Use `https` or a tunnel: over plain `http`
+  to another host the key is readable in transit, and the provider warns.
+- **WSL with Studio on Windows.** `127.0.0.1` works when WSL uses mirrored
+  networking (`networkingMode=mirrored` in `.wslconfig`); otherwise use the
+  Windows host's address.
+- **Backend.** Research runs use whichever backend holds the model (llama.cpp
+  GGUF, MLX, transformers); nothing here depends on it. The quantization is
+  recorded when Studio reports one, which it does for GGUF.
+- **Several models loaded.** With multi-model mode on, Studio can hold more
+  than one chat model. The run is then refused until `llm` names one.
+- **Keyless access.** Studio's keyless mode covers chat and model listing,
+  not research runs, so a key is always needed here.
+- **Tools.** A Studio started with `--disable-tools` refuses research runs.
 
 ### Models and parameters
 
@@ -1557,13 +1579,30 @@ in `.wslconfig`); otherwise set `UNSLOTH_BASE_URL` to an address WSL can reach.
 |-------|---------|-------------|
 | `unsloth-studio-research` | unsloth, studio | Studio's Deep Research on the loaded model |
 
-The harmonized `model` field selects this card. The model that does the work
-is whichever chat model Studio has loaded; `llm` only asserts which one you
-expect.
+The harmonized `model` field selects this card, and accepts nothing else. The
+model that does the work is whichever chat model Studio has loaded; `llm`
+asserts which one you expect, and picks one when several are loaded.
+
+### What the report records
+
+The report header names both the model that wrote it and the interface that
+served it, since the research mode's name says nothing about either:
+
+```yaml
+provider: unsloth
+model: unsloth/gemma-4-E4B-it-qat-GGUF     # Studio's ID for the model that did the work
+provider_instance_url: http://127.0.0.1:8888
+run_metadata:
+  interface: Unsloth Studio
+  interface_version: v0.1.924-beta          # Studio's release
+  unsloth_version: 2026.11.11               # the unsloth package it runs on
+  llm: unsloth/gemma-4-E4B-it-qat-GGUF
+  quantization: UD-Q4_K_XL                  # when Studio reports it
+```
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `llm` | the loaded model | Studio model ID that must be the loaded one. The run is refused before it starts if another model is loaded. The provider never loads a model itself |
+| `llm` | the loaded model | Studio model ID that must be loaded. The run is refused before it starts if it is not, or if several models are loaded and none is named. The provider never loads a model itself |
 | `max_steps` | `12` | Most searches and page fetches the run may make (1–30) |
 | `max_sources` | `40` | Most web pages the run may collect (1–100) |
 | `allowed_domains` | `[]` | Restrict searches and fetches to these domains |
@@ -1575,7 +1614,8 @@ expect.
 
 ### How a run works
 
-1. The provider reads `/v1/models` to find the loaded chat model.
+1. The provider reads `/v1/models` to find the loaded chat model, and
+   `/api/health` for Studio's version.
 2. It stores the question as a message in a new Studio chat thread, because a
    research run is always attached to one, and starts a run on it.
 3. Studio's model writes a plan and waits for approval. In the app a person
@@ -1609,7 +1649,7 @@ does not go on using the GPU, and raises `ProviderTimeoutError`.
 ### Characteristics
 
 - **Cost**: None per report; local hardware
-- **Speed**: About 1–2 minutes with a 4B model on a laptop GPU; longer with larger models or more steps
+- **Speed**: Depends on the model and hardware. For scale: 1–2 minutes with a 4B model (Gemma 4 E4B, Q4) on an 8 GB laptop GPU
 - **Auth**: A Studio API key
 - **Fallback**: Never chosen by `--fallback` on its own; name it with `--fallback-provider unsloth`
 - **Default**: Registered last among the providers that do real research, so with no `--provider` it runs only when nothing else is configured
@@ -1619,19 +1659,21 @@ does not go on using the GPU, and raises `ProviderTimeoutError`.
 - The research-run routes are the ones Studio's own interface uses, not a
   documented public API. This provider follows Studio 2026.11.11 and may need
   changes when Studio updates.
-- Report quality depends on the loaded model. A 4B model typically makes two to
-  six searches and fetches and leans on a few sources.
+- Report quality depends on the loaded model. The one model it was developed
+  against, a 4B Gemma, typically makes two to six searches and fetches and
+  leans on a few sources.
+- It has been run against one setup: Studio 2026.11.11 on Windows with a GGUF
+  model on llama.cpp, reached from WSL. Other backends and platforms are
+  supported by Studio's API as read from its source, but not exercised here.
 - Retrieval is keyless general web search. There are no PubMed or other
   literature-database tools, and citations are URLs rather than PMIDs.
 - Studio runs one research run at a time.
-- Connections to Studio sometimes time out, for a minute or more at a stretch
-  while a run is working and occasionally when it is idle (seen from WSL to
-  Studio on Windows). The provider retries a connection that times out, for
-  up to five minutes at a stretch, before failing.
+- Requests to Studio can go unanswered for a minute or more while a run is
+  working (seen from WSL to Studio on Windows; other setups may not show it).
+  The provider retries a connection that times out, or a status check that
+  gets no answer, for up to five minutes at a stretch before failing.
 - The result cache is keyed on the parameters, not on which model was loaded.
   After switching models in Studio, pass `llm` or `--no-cache`.
-- Studio must have tools enabled; started with `--disable-tools`, it refuses
-  research runs.
 
 ### Using Studio only as the model
 

@@ -21,10 +21,15 @@ a documented public API, so this module follows what Studio 2026.11.11 serves
 4. ``GET /api/chat/research-runs/{id}`` is polled until the run is
    ``completed``, ``failed`` or ``cancelled``.
 
-Connections to Studio sometimes time out, for a minute or more at a stretch
-while a run is working and now and then when it is idle (seen from WSL to
-Studio on Windows). A connection that times out is therefore retried rather
-than treated as a failure (see :data:`UNSLOTH_BUSY_GRACE`).
+Nothing here depends on where Studio runs or which backend holds the model;
+the address is configuration, and the model is read from Studio. Requests to
+it can go unanswered for a minute or more while a run is working (seen from
+WSL to Studio on Windows), so a connection that times out, or a status check
+that gets no answer, is retried rather than treated as a failure (see
+:data:`UNSLOTH_BUSY_GRACE`).
+
+A report records Studio's ID for the model that wrote it as its ``model``,
+with the interface, its version and the quantization in ``run_metadata``.
 
 Deleting a run's chat thread deletes the run with it, so a result carries the
 run's ID only when ``keep_thread`` leaves something for the ID to point at.

@@ -1253,6 +1253,7 @@ def create_unsloth_model_cards() -> ProviderModelCards:
         limitations=[
             "Requires a running Unsloth Studio with a chat model loaded and tools enabled",
             "Report quality depends on the loaded model; small models cite few sources",
+            "The report's model field names the Studio model that ran, not this card",
             "Uses Studio's internal research-run routes, which may change between Studio releases",
             "Keyless web search; no PubMed or other literature-database tools",
             "One research run at a time per Studio instance",

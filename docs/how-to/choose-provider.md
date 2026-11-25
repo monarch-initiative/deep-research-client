@@ -377,6 +377,11 @@ costs several dollars (up to its `max_cost_usd` cap), so a cheap run that
 fails does not quietly become an expensive one. `--fallback-provider
 claude_managed` still reaches it.
 
+`unsloth` is left out as well, for a different reason: its reports come from
+whichever local model Unsloth Studio has loaded, often a small one, so a
+hosted provider that failed is not quietly replaced by it.
+`--fallback-provider unsloth` still reaches it.
+
 ## Check Available Models
 
 List all available models and their characteristics:

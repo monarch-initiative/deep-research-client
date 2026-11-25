@@ -822,16 +822,34 @@ class UnslothProvider(ResearchProvider):
             )
         return self._decoded(response)
 
+    async def _studio_health(self, client: httpx.AsyncClient) -> dict[str, Any]:
+        """Read Studio's versions from ``/api/health``, or nothing if it will not say.
+
+        Studio reports them to an authenticated caller only. They are
+        provenance, not something a run needs: a Studio that has moved the
+        route, or a key that may not read it, can still do the research. So a
+        failure here is logged and the versions are left off the report,
+        rather than stopping a run that would otherwise succeed.
+
+        Returns:
+            The health payload, or an empty dict when it could not be read
+        """
+        try:
+            health = await self._call(client, "GET", "/api/health", grace=UNSLOTH_FIRST_CONTACT_GRACE)
+        except ProviderError as error:
+            logger.warning(f"Could not read Unsloth Studio's version; the report will not record it: {error}")
+            return {}
+        return health if isinstance(health, dict) else {}
+
     async def _resolve_setup(self, client: httpx.AsyncClient) -> StudioSetup:
         """Find the model the run will use and the Studio serving it, or raise naming what to load.
 
         The model lookup is a run's first call, so it gives up on a silent
-        Studio quickly. Studio reports its versions on ``/api/health`` to an
-        authenticated caller only.
+        Studio quickly.
         """
         models = await self._call(client, "GET", "/v1/models", grace=UNSLOTH_FIRST_CONTACT_GRACE)
         row = loaded_model(self._model_rows(models), self.params.llm, self.name)
-        health = await self._call(client, "GET", "/api/health")
+        health = await self._studio_health(client)
         return StudioSetup(
             llm=row["id"],
             quantization=row.get("quant"),

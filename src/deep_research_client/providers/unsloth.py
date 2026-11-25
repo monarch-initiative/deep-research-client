@@ -39,11 +39,11 @@ from datetime import datetime
 import logging
 import re
 import time
-from typing import Any, Iterable, Optional
+from typing import Annotated, Any, Iterable, Optional
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from . import ResearchProvider
 from ..exceptions import (
@@ -110,13 +110,33 @@ _PMC_ID = re.compile(r"PMC\d+")
 _TYPOGRAPHIC_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 
 
+def _empty_text_for_null(value: Any) -> Any:
+    """Read a null as an empty string."""
+    return "" if value is None else value
+
+
+def _empty_list_for_null(value: Any) -> Any:
+    """Read a null as an empty list."""
+    return [] if value is None else value
+
+
+#: Text Studio may send as null. Studio writes other empty fields that way
+#: (``error``, ``ragScope``), and every poll parses the whole run, so a null
+#: here must not end a run that is going fine.
+_Text = Annotated[str, BeforeValidator(_empty_text_for_null)]
+
+
 class StudioSource(BaseModel):
-    """A web page a research run collected."""
+    """A web page a research run collected.
+
+    >>> StudioSource.model_validate({"url": "https://a.example", "title": None}).title
+    ''
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     url: str
-    title: str = ""
+    title: _Text = ""
 
 
 class StudioStep(BaseModel):
@@ -124,8 +144,8 @@ class StudioStep(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    title: str = ""
-    status: str = ""
+    title: _Text = ""
+    status: _Text = ""
     result: Optional[dict[str, Any]] = None
 
 
@@ -139,6 +159,9 @@ class StudioRun(BaseModel):
     ...                                 "planRevision": 1, "planHash": "ab"})
     >>> (run.status, run.plan_revision, run.report, run.sources)
     ('awaiting_approval', 1, None, [])
+    >>> empty = StudioRun.model_validate({"id": "r1", "status": "planning", "steps": None, "sources": None})
+    >>> (empty.steps, empty.sources)
+    ([], [])
     """
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -150,8 +173,8 @@ class StudioRun(BaseModel):
     plan_hash: Optional[str] = Field(default=None, alias="planHash")
     error: Optional[Any] = None
     report: Optional[str] = None
-    steps: list[StudioStep] = Field(default_factory=list)
-    sources: list[StudioSource] = Field(default_factory=list)
+    steps: Annotated[list[StudioStep], BeforeValidator(_empty_list_for_null)] = Field(default_factory=list)
+    sources: Annotated[list[StudioSource], BeforeValidator(_empty_list_for_null)] = Field(default_factory=list)
 
 
 def _may_retry(error: httpx.TransportError, method: str) -> bool:

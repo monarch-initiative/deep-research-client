@@ -89,6 +89,10 @@ UNSLOTH_BUSY_GRACE = 300
 #: is busy; on WSL with mirrored networking a closed port times out instead
 #: of refusing. Long enough to ride out one stray connection timeout.
 UNSLOTH_FIRST_CONTACT_GRACE = 20
+#: Seconds to pause before retrying a request. A timeout spaces retries out by
+#: itself, but a reset or dropped connection fails at once, and without a
+#: pause the retries would run back to back for the whole grace.
+UNSLOTH_RETRY_PAUSE = 1.0
 #: How long each cleanup call waits for an answer. Cleanup runs after the
 #: deadline has passed or the run has ended, so it gets a short budget of its
 #: own rather than holding up the result for the full busy grace.
@@ -614,6 +618,7 @@ class UnslothProvider(ResearchProvider):
                         f"for {grace} s ({type(error).__name__}); is it running?",
                     ) from error
                 logger.debug(f"Unsloth Studio did not answer ({type(error).__name__}); retrying {method} {path}")
+                await asyncio.sleep(UNSLOTH_RETRY_PAUSE)
                 continue
             break
         if not response.is_success:

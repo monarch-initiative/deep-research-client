@@ -697,17 +697,26 @@ class UnslothProvider(ResearchProvider):
         return run["id"]
 
     async def _wait_for_run(self, client: httpx.AsyncClient, run_id: str) -> StudioRun:
-        """Approve the plan when it is ready, then poll until the run ends."""
+        """Approve the plan when it is ready, then poll until the run ends.
+
+        A plan is approved once. Studio may still report ``awaiting_approval``
+        on the poll after an approval, and approving the same revision again
+        would be refused; a revised plan has a new revision and is approved
+        in its turn.
+        """
         path = f"/api/chat/research-runs/{run_id}"
+        approved: Optional[tuple[Optional[int], Optional[str]]] = None
         while True:
             run = StudioRun.model_validate(await self._call(client, "GET", path))
             if run.status in _TERMINAL_STATUSES:
                 return run
-            if run.status == "awaiting_approval":
+            plan = (run.plan_revision, run.plan_hash)
+            if run.status == "awaiting_approval" and plan != approved:
                 logger.info(f"Approving Unsloth Studio research plan: {(run.plan or {}).get('title')}")
                 await self._call(client, "POST", f"{path}/approve", {
                     "planRevision": run.plan_revision, "planHash": run.plan_hash,
                 })
+                approved = plan
             await asyncio.sleep(self.params.poll_interval)
 
     async def _tidy(

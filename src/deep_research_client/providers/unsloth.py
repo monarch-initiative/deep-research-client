@@ -48,6 +48,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 from . import ResearchProvider
 from ..exceptions import (
     MAX_DETAIL_CHARS,
+    ProviderError,
     ProviderNotConfiguredError,
     ProviderTimeoutError,
     ProviderTransientError,
@@ -595,8 +596,8 @@ class UnslothProvider(ResearchProvider):
             ProviderNotConfiguredError: If the connection is refused
             ProviderTransientError: If Studio does not answer for ``grace``
                 seconds, or the request fails in transit
-            ProviderError: A classified subtype for 401/402/403/429/5xx
-            ValueError: For any other failure status
+            ProviderError: For a failure status; a classified subtype for
+                401/402/403/429/5xx
         """
         give_up_at = time.monotonic() + grace
         while True:
@@ -626,7 +627,9 @@ class UnslothProvider(ResearchProvider):
             classified = classify_status(self.name, response.status_code, detail)
             if classified is not None:
                 raise classified
-            raise ValueError(f"Unsloth Studio API error: {response.status_code} - {detail}")
+            raise ProviderError(
+                self.name, f"Unsloth Studio API error: {response.status_code} - {detail}", response.status_code,
+            )
         return response.json() if response.content else None
 
     async def _resolve_llm(self, client: httpx.AsyncClient) -> str:
@@ -696,6 +699,41 @@ class UnslothProvider(ResearchProvider):
         )
         return run["id"]
 
+    async def _approve(
+        self, client: httpx.AsyncClient, run_path: str, plan: tuple[Optional[int], Optional[str]],
+    ) -> Optional[tuple[Optional[int], Optional[str]]]:
+        """Approve a plan, treating an unclear outcome as one to look up, not a failure.
+
+        An approval is a write, so a reply that never arrives is not retried
+        blindly; but its effect shows in the run's status, which is polled
+        anyway. Ending the run over a lost reply would cancel research that
+        had most likely started.
+
+        Args:
+            client: The authenticated HTTP client
+            run_path: The run's API path
+            plan: The plan's revision and hash
+
+        Returns:
+            The plan if it is settled, so it is not approved again: Studio
+            accepted it, or refused it as not the plan awaiting approval
+            (409: revised since). None if the reply was lost, so the next
+            poll decides whether to approve again; Studio 2026.11.11 accepts
+            a repeated approval of the same plan.
+        """
+        try:
+            await self._call(client, "POST", f"{run_path}/approve", {
+                "planRevision": plan[0], "planHash": plan[1],
+            })
+        except ProviderTransientError as error:
+            logger.warning(f"No reply to the plan approval; checking the run instead: {error}")
+            return None
+        except ProviderError as error:
+            if error.status_code != 409:
+                raise
+            logger.info("Studio reports the plan is no longer awaiting this approval; checking the run")
+        return plan
+
     async def _wait_for_run(self, client: httpx.AsyncClient, run_id: str) -> StudioRun:
         """Approve the plan when it is ready, then poll until the run ends.
 
@@ -713,10 +751,7 @@ class UnslothProvider(ResearchProvider):
             plan = (run.plan_revision, run.plan_hash)
             if run.status == "awaiting_approval" and plan != approved:
                 logger.info(f"Approving Unsloth Studio research plan: {(run.plan or {}).get('title')}")
-                await self._call(client, "POST", f"{path}/approve", {
-                    "planRevision": run.plan_revision, "planHash": run.plan_hash,
-                })
-                approved = plan
+                approved = await self._approve(client, path, plan)
             await asyncio.sleep(self.params.poll_interval)
 
     async def _tidy(

@@ -84,6 +84,11 @@ UNSLOTH_CONNECT_TIMEOUT = 10
 #: How long connections to Studio may keep timing out before the provider
 #: gives up on it. Stretches of over a minute were observed during runs.
 UNSLOTH_BUSY_GRACE = 300
+#: How long the first call of a run waits for an answer. Before anything has
+#: been started, silence more likely means Studio is not running than that it
+#: is busy; on WSL with mirrored networking a closed port times out instead
+#: of refusing. Long enough to ride out one stray connection timeout.
+UNSLOTH_FIRST_CONTACT_GRACE = 20
 
 #: Failures that leave it unknown whether Studio received the request. A read
 #: can simply be asked again; a write cannot, since it may have been applied.
@@ -471,7 +476,13 @@ class UnslothProvider(ResearchProvider):
         return truncate_detail(response.text, MAX_DETAIL_CHARS)
 
     async def _call(
-        self, client: httpx.AsyncClient, method: str, path: str, body: Optional[dict[str, Any]] = None,
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        path: str,
+        body: Optional[dict[str, Any]] = None,
+        *,
+        grace: float = UNSLOTH_BUSY_GRACE,
     ) -> Any:
         """Make one API call, waiting out a Studio that is not answering.
 
@@ -487,19 +498,19 @@ class UnslothProvider(ResearchProvider):
             method: HTTP method
             path: Path under Studio's root
             body: JSON body, if any
+            grace: Seconds to go on retrying a Studio that does not answer
 
         Returns:
             The decoded JSON response
 
         Raises:
             ProviderNotConfiguredError: If the connection is refused
-            ProviderTransientError: If Studio does not answer for
-                :data:`UNSLOTH_BUSY_GRACE` seconds, or the request fails in
-                transit
+            ProviderTransientError: If Studio does not answer for ``grace``
+                seconds, or the request fails in transit
             ProviderError: A classified subtype for 401/402/403/429/5xx
             ValueError: For any other failure status
         """
-        give_up_at = time.monotonic() + UNSLOTH_BUSY_GRACE
+        give_up_at = time.monotonic() + grace
         while True:
             try:
                 response = await client.request(method, path, json=body)
@@ -516,7 +527,7 @@ class UnslothProvider(ResearchProvider):
                     raise ProviderTransientError(
                         self.name,
                         f"Unsloth Studio at {self.base_url} did not answer "
-                        f"for {UNSLOTH_BUSY_GRACE} s ({type(error).__name__})",
+                        f"for {grace} s ({type(error).__name__}); is it running?",
                     ) from error
                 logger.debug(f"Unsloth Studio did not answer ({type(error).__name__}); retrying {method} {path}")
                 continue
@@ -530,8 +541,11 @@ class UnslothProvider(ResearchProvider):
         return response.json()
 
     async def _resolve_llm(self, client: httpx.AsyncClient) -> str:
-        """Return the Studio model the run will use, or raise naming what to load."""
-        models = await self._call(client, "GET", "/v1/models")
+        """Return the Studio model the run will use, or raise naming what to load.
+
+        This is a run's first call, so it gives up on a silent Studio quickly.
+        """
+        models = await self._call(client, "GET", "/v1/models", grace=UNSLOTH_FIRST_CONTACT_GRACE)
         return loaded_model(models["data"], self.params.llm, self.name)
 
     def _run_request(self, thread_id: str, message_id: str, llm: str) -> dict[str, Any]:

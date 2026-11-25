@@ -14,11 +14,12 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import time
 
 import pytest
 
 from deep_research_client.client import DeepResearchClient
-from deep_research_client.exceptions import ProviderNotConfiguredError
+from deep_research_client.exceptions import ProviderError, ProviderNotConfiguredError
 from deep_research_client.model_cards import get_provider_model_cards
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import UnslothParams, get_provider_params_class
@@ -170,7 +171,8 @@ async def test_an_empty_question_is_refused_before_studio_is_contacted():
 
 
 async def test_health_reports_a_studio_that_is_not_running():
-    """Port 9 (discard) is closed on a normal machine, so the connection is refused for real."""
+    """Nothing listens on port 9 (discard) on a normal machine. The connection is
+    refused, or on WSL with mirrored networking times out; either is unreachable."""
     provider = UnslothProvider(ProviderConfig(name="unsloth", api_key="k", base_url="http://127.0.0.1:9"))
 
     health = await provider.check_health()
@@ -178,6 +180,17 @@ async def test_health_reports_a_studio_that_is_not_running():
     assert health.configured is True
     assert health.reachable is False
     assert "cannot reach Unsloth Studio at http://127.0.0.1:9" in health.detail
+
+
+async def test_research_on_a_studio_that_is_not_running_fails_soon_and_says_so():
+    """Not after the five minutes a busy Studio is given, and not with a raw transport error."""
+    provider = UnslothProvider(ProviderConfig(name="unsloth", api_key="k", base_url="http://127.0.0.1:9"))
+    started = time.monotonic()
+
+    with pytest.raises(ProviderError, match="is it running"):
+        await provider.research("anything")
+
+    assert time.monotonic() - started < 60
 
 
 async def test_health_without_a_key_is_unconfigured():

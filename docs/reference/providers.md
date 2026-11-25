@@ -73,7 +73,7 @@ and the value is recorded in the report's `provider_config.timeout`.
 | Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | RSS Agent | How long the whole `rss_agent_claude` pipeline run may take before it is killed | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
-| Unsloth Studio | How long the whole research run may take before it is cancelled in Studio | 1800 s |
+| Unsloth Studio | How long the whole research run may take before it is cancelled in Studio. Cancelling the run and deleting its chat thread come after the deadline and can each take up to 60 s if Studio is slow to answer, so a timed-out run may return up to about two minutes late | 1800 s |
 | ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
 | DeepER-Med | **Not supported**: stub, nothing runs | n/a |
 | Mock | Longest the simulated delay (`response_delay`) may run before `TimeoutError` | none |

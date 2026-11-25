@@ -14,12 +14,13 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import re
 import time
 
 import pytest
 
 from deep_research_client.client import DeepResearchClient
-from deep_research_client.exceptions import ProviderError, ProviderNotConfiguredError
+from deep_research_client.exceptions import ProviderError, ProviderNotConfiguredError, ProviderTimeoutError
 from deep_research_client.model_cards import get_provider_model_cards
 from deep_research_client.models import CacheConfig, ProviderConfig
 from deep_research_client.provider_params import UnslothParams, get_provider_params_class
@@ -276,3 +277,26 @@ async def test_live_run_asking_for_a_model_that_is_not_loaded_is_refused_before_
 
     with pytest.raises(ProviderNotConfiguredError, match="is not loaded in Unsloth Studio"):
         await provider.research("anything")
+
+
+@pytest.mark.integration
+async def test_live_run_past_its_timeout_is_cancelled_in_studio():
+    """The point of the timeout is that the run stops using the GPU, so check
+    Studio's own record of the run, not only the error raised here. The thread
+    is kept so the run can be read back, then deleted."""
+    provider = live_provider(keep_thread=True)
+    provider.config.timeout = 15
+    question = f"Summarize the genetics of Parkinson disease. ({time.time_ns()})"
+
+    with pytest.raises(ProviderTimeoutError, match=r"run [0-9a-f]{32} did not finish within 15s") as raised:
+        await provider.research(question)
+
+    run_id = re.search(r"run ([0-9a-f]{32})", raised.value.detail).group(1)
+    async with provider._client() as client:
+        run = await provider._call(client, "GET", f"/api/chat/research-runs/{run_id}")
+        threads = (await provider._call(client, "GET", "/api/chat/threads"))["threads"]
+        ours = [thread["id"] for thread in threads if thread["title"] == f"deep-research-client: {question[:60]}"]
+        await provider._call(client, "DELETE", "/api/chat/threads", {"ids": ours, "delete_files": False})
+
+    assert run["status"] in {"cancelled", "cancelling"}
+    assert ours == [run["threadId"]]

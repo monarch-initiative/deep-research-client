@@ -106,6 +106,8 @@ UNSLOTH_CLEANUP_GRACE = 60
 #: can simply be asked again; a write cannot, since it may have been applied.
 _UNANSWERED_REQUEST = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
 
+#: What Studio puts in ``owned_by`` on every row of its model list.
+_STUDIO_OWNER = "unsloth-studio"
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 #: A bracketed label that is not already part of a link: ``[Some title]``.
 #: What follows rules out an inline link ``[a](u)``, a reference link
@@ -639,6 +641,73 @@ class UnslothProvider(ResearchProvider):
                 return body["error"]["message"]
         return truncate_detail(response.text, MAX_DETAIL_CHARS)
 
+    def _not_studio(self) -> ProviderNotConfiguredError:
+        """Build the error for an answer that cannot have come from Unsloth Studio."""
+        return ProviderNotConfiguredError(
+            self.name,
+            f"{self.base_url} did not answer like Unsloth Studio; check UNSLOTH_BASE_URL "
+            "(Studio moves to the next free port when its own is taken)",
+        )
+
+    def _decoded(self, response: httpx.Response) -> Any:
+        """Decode a successful response, or say that it is not Studio's.
+
+        Another program on the port can answer 200 with a web page. Read as
+        JSON that would surface as a decoding error that says nothing about
+        the cause.
+
+        Raises:
+            ProviderNotConfiguredError: If the body is not JSON
+
+        >>> provider = UnslothProvider(ProviderConfig(name="unsloth", api_key="k"))
+        >>> provider._decoded(httpx.Response(200, json={"status": "deleted"}))
+        {'status': 'deleted'}
+        >>> provider._decoded(httpx.Response(204)) is None
+        True
+        >>> try:
+        ...     provider._decoded(httpx.Response(200, html="<html>Jupyter</html>"))
+        ... except ProviderNotConfiguredError as error:
+        ...     print(error.detail)
+        http://127.0.0.1:8888 did not answer like Unsloth Studio; check UNSLOTH_BASE_URL (Studio moves to the next free port when its own is taken)
+        """
+        if not response.content:
+            return None
+        if not response.headers.get("content-type", "").startswith("application/json"):
+            raise self._not_studio()
+        return response.json()
+
+    def _model_rows(self, payload: Any) -> list[dict[str, Any]]:
+        """Return the rows of a ``/v1/models`` answer, or say that it is not Studio's.
+
+        Any OpenAI-compatible server answers this route with a model list, so
+        the shape alone does not show it is Studio. Studio marks every row
+        ``owned_by: unsloth-studio``; a list of models owned by something
+        else comes from another server, such as Ollama, which has no research
+        runs to offer.
+
+        Raises:
+            ProviderNotConfiguredError: If the payload is not Studio's model list
+
+        >>> provider = UnslothProvider(ProviderConfig(name="unsloth", api_key="k"))
+        >>> provider._model_rows({"data": [{"id": "m", "owned_by": "unsloth-studio", "loaded": True}]})
+        [{'id': 'm', 'owned_by': 'unsloth-studio', 'loaded': True}]
+        >>> provider._model_rows({"data": []})
+        []
+        >>> for other in ({"models": []}, {"data": [{"id": "llama3.1:8b", "owned_by": "library"}]}):
+        ...     try:
+        ...         provider._model_rows(other)
+        ...     except ProviderNotConfiguredError as error:
+        ...         print(error.detail[:52])
+        http://127.0.0.1:8888 did not answer like Unsloth St
+        http://127.0.0.1:8888 did not answer like Unsloth St
+        """
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise self._not_studio()
+        rows = payload["data"]
+        if rows and not any(row.get("owned_by") == _STUDIO_OWNER for row in rows):
+            raise self._not_studio()
+        return rows
+
     async def _call(
         self,
         client: httpx.AsyncClient,
@@ -668,7 +737,8 @@ class UnslothProvider(ResearchProvider):
             The decoded JSON response, or None when the body is empty
 
         Raises:
-            ProviderNotConfiguredError: If the connection is refused
+            ProviderNotConfiguredError: If the connection is refused, or the
+                answer is not JSON
             ProviderTransientError: If Studio does not answer for ``grace``
                 seconds, or the request fails in transit
             ProviderError: For a failure status; a classified subtype for
@@ -705,7 +775,7 @@ class UnslothProvider(ResearchProvider):
             raise ProviderError(
                 self.name, f"Unsloth Studio API error: {response.status_code} - {detail}", response.status_code,
             )
-        return response.json() if response.content else None
+        return self._decoded(response)
 
     async def _resolve_llm(self, client: httpx.AsyncClient) -> str:
         """Return the Studio model the run will use, or raise naming what to load.
@@ -713,7 +783,7 @@ class UnslothProvider(ResearchProvider):
         This is a run's first call, so it gives up on a silent Studio quickly.
         """
         models = await self._call(client, "GET", "/v1/models", grace=UNSLOTH_FIRST_CONTACT_GRACE)
-        return loaded_model(models["data"], self.params.llm, self.name)["id"]
+        return loaded_model(self._model_rows(models), self.params.llm, self.name)["id"]
 
     def _run_request(self, thread_id: str, message_id: str, llm: str) -> dict[str, Any]:
         """Build the body that starts a research run.
@@ -960,7 +1030,11 @@ class UnslothProvider(ResearchProvider):
             classified = classify_status(self.name, response.status_code, error_text)
             detail = classified.diagnosis if classified else f"{response.status_code} {error_text}"
             return ProviderHealth(provider=self.name, configured=True, reachable=False, detail=detail)
-        loaded = [row["id"] for row in loaded_chat_models(response.json()["data"])]
+        try:
+            rows = self._model_rows(self._decoded(response))
+        except ProviderNotConfiguredError as error:
+            return ProviderHealth(provider=self.name, configured=True, reachable=False, detail=error.detail)
+        loaded = [row["id"] for row in loaded_chat_models(rows)]
         if not loaded:
             # Not reachable in the sense the field has here: able to take work.
             return ProviderHealth(

@@ -1610,6 +1610,7 @@ does not go on using the GPU, and raises `ProviderTimeoutError`.
 - **Speed**: About 1–2 minutes with a 4B model on a laptop GPU; longer with larger models or more steps
 - **Auth**: A Studio API key
 - **Fallback**: Never chosen by `--fallback` on its own; name it with `--fallback-provider unsloth`
+- **Default**: Registered last among the providers that do real research, so with no `--provider` it runs only when nothing else is configured
 
 ### Limitations
 

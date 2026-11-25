@@ -163,6 +163,20 @@ def test_a_studio_model_id_given_as_the_model_is_refused_and_pointed_at_llm():
         UnslothProvider(ProviderConfig(name="unsloth", api_key="k"), UnslothParams(model="unsloth/phi-4"))
 
 
+def test_the_local_model_is_the_default_only_when_nothing_else_is_configured(monkeypatch, tmp_path):
+    """With no provider named, the first available one runs; a key set to try a
+    local model must not put it ahead of a hosted provider."""
+    monkeypatch.setenv("UNSLOTH_API_KEY", "sk-unsloth-test")
+    monkeypatch.setenv("CONSENSUS_API_KEY", "consensus-test")
+    monkeypatch.delenv("ENABLE_MOCK_PROVIDER", raising=False)
+
+    client = DeepResearchClient(cache_config=CacheConfig(enabled=False, directory=str(tmp_path)))
+    available = [provider.name for provider in client.registry.get_available_providers()]
+
+    assert available[-1] == "unsloth"
+    assert client.registry.get_first_available().name != "unsloth"
+
+
 def test_a_local_model_is_never_an_automatic_fallback():
     """A hosted provider that failed must not be quietly replaced by a small local model."""
     assert UnslothProvider.automatic_fallback is False

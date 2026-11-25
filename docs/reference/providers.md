@@ -18,6 +18,7 @@ Complete reference for all supported research providers.
 | Antigravity | (local `agy` CLI) | Agentic web research on Gemini, no API key | Slow |
 | Biomni | (upstream local environment) | Biomedical co-scientist, runs code | Very slow |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | Local co-scientist, scientific tools and Python execution | Very slow |
+| Unsloth Studio | `UNSLOTH_API_KEY` (key made in a local Studio) | Web research on a local, open model; no hosted model involved | Slow |
 | RSS Agent | `RSS_AGENT_DIR` (local checkout) + `ANTHROPIC_API_KEY` | Digest of recent papers from feeds, Crossref, bioRxiv | Slow |
 | DeepER-Med | (stub - no API yet) | Evidence-based agentic medical research (arXiv:2604.15456) | n/a |
 | ToxIndex | (stub - no submit API yet; `TOXINDEX_API_KEY` for retrieval) | Chemical safety and toxicology agent (Sage), cited to tool calls | n/a |
@@ -72,6 +73,7 @@ and the value is recorded in the report's `provider_config.timeout`.
 | Biomni | The agent's `timeout_seconds`: a limit on each generated code execution, not the run. The `timeout` provider parameter overrides the config timeout, so passing both `--timeout` and `--param timeout=` is rejected | 3600 s |
 | RSS Agent | How long the whole `rss_agent_claude` pipeline run may take before it is killed | 3600 s |
 | ToxIndex | Timeout on each HTTP request (retrieval and `providers --check`; research is a stub) | 60 s |
+| Unsloth Studio | How long the whole research run may take before it is cancelled in Studio. Cancelling the run and deleting its chat thread come after the deadline and can each take up to 60 s if Studio is slow to answer, so a timed-out run may return up to about two minutes late | 1800 s |
 | ToolUniverse | **Not supported**: refused. Use `--param request_timeout=` for each LLM request | n/a |
 | DeepER-Med | **Not supported**: stub, nothing runs | n/a |
 | Mock | Longest the simulated delay (`response_delay`) may run before `TimeoutError` | none |
@@ -1512,6 +1514,190 @@ integration tests. A paid LLM integration run additionally requires
 RUN_TOOLUNIVERSE_INTEGRATION=1 uv run --extra tooluniverse --group dev \
   pytest -m integration tests/test_tooluniverse_provider.py
 ```
+
+---
+
+## Unsloth Studio (Local Models)
+
+[Unsloth Studio](https://unsloth.ai) is a desktop app that serves local, open
+models. This provider drives its **Deep Research** feature: the loaded model
+writes a plan, searches the web and reads pages step by step, and writes a
+report whose inline links point only at pages it collected. The model runs on
+your machine; only the web searches and page fetches leave it.
+
+### Setup
+
+1. Start Unsloth Studio and load a chat model that supports tools.
+2. In Studio's settings, create an API key. A key with **full** access is what
+   this provider was tested with; an inference-only key was not tried against
+   the research routes.
+3. Export it:
+
+```bash
+export UNSLOTH_API_KEY="sk-unsloth-..."
+# Optional: where Studio listens. Default http://127.0.0.1:8888; a URL ending
+# in /v1 is accepted and means the same server.
+# export UNSLOTH_BASE_URL="http://127.0.0.1:8888"
+```
+
+```bash
+deep-research-client providers --check --provider unsloth
+deep-research-client research "What is the role of LRRK2 in Parkinson disease?" \
+  --provider unsloth
+```
+
+`providers --check` reports whether Studio is running, whether the key is
+accepted, and which model is loaded.
+
+### Where Studio is running
+
+The provider talks to Studio over HTTP and assumes nothing about the machine
+beyond the address. What differs between setups:
+
+- **Port.** Studio listens on `127.0.0.1:8888` by default, and moves to the
+  next free port when that one is taken. If another program answers on 8888,
+  `providers --check` says the answer is not Studio's; set `UNSLOTH_BASE_URL`
+  to the port Studio reports.
+- **Another machine, Colab, or a container.** Set `UNSLOTH_BASE_URL` to an
+  address this machine can reach. Use `https` or a tunnel: over plain `http`
+  to another host the key is readable in transit, and the provider warns.
+- **WSL with Studio on Windows.** `127.0.0.1` works when WSL uses mirrored
+  networking (`networkingMode=mirrored` in `.wslconfig`); otherwise use the
+  Windows host's address.
+- **Backend.** Research runs use whichever backend holds the model (llama.cpp
+  GGUF, MLX, transformers); nothing here depends on it. The quantization is
+  recorded when Studio reports one, which it does for GGUF.
+- **Several models loaded.** With multi-model mode on, Studio can hold more
+  than one chat model. The run is then refused until `llm` names one.
+- **Keyless access.** Studio's keyless mode covers chat and model listing,
+  not research runs, so a key is always needed here.
+- **Tools.** A Studio started with `--disable-tools` refuses research runs.
+
+### Models and parameters
+
+| Model | Aliases | Description |
+|-------|---------|-------------|
+| `unsloth-studio-research` | unsloth, studio | Studio's Deep Research on the loaded model |
+
+The harmonized `model` field selects this card, and accepts nothing else. The
+model that does the work is whichever chat model Studio has loaded; `llm`
+asserts which one you expect, and picks one when several are loaded.
+
+### What the report records
+
+The report header names both the model that wrote it and the interface that
+served it, since the research mode's name says nothing about either:
+
+```yaml
+provider: unsloth
+model: unsloth/gemma-4-E4B-it-qat-GGUF     # Studio's ID for the model that did the work
+provider_instance_url: http://127.0.0.1:8888
+run_metadata:
+  interface: Unsloth Studio
+  interface_version: v0.1.924-beta          # Studio's release
+  unsloth_version: 2026.11.11               # the unsloth package it runs on
+  llm: unsloth/gemma-4-E4B-it-qat-GGUF
+  quantization: UD-Q4_K_XL                  # when Studio reports it
+```
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `llm` | the loaded model | Studio model ID that must be loaded. The run is refused before it starts if it is not, or if several models are loaded and none is named. The provider never loads a model itself |
+| `max_steps` | `12` | Most searches and page fetches the run may make (1–30) |
+| `max_sources` | `40` | Most web pages the run may collect (1–100) |
+| `allowed_domains` | `[]` | Restrict searches and fetches to these domains |
+| `blocked_domains` | `[]` | Domains the run must not search or fetch |
+| `temperature` | Studio's research default | Sampling temperature (0–2) |
+| `system_prompt` | `None` | Extra instructions for the run, added to Studio's own research prompts (at most 32000 characters) |
+| `keep_thread` | `false` | Keep the chat thread the run creates in Studio |
+| `poll_interval` | `5.0` | Seconds between checks on the run's progress |
+
+### How a run works
+
+1. The provider reads `/v1/models` to find the loaded chat model, and
+   `/api/health` for Studio's version.
+2. It stores the question as a message in a new Studio chat thread, because a
+   research run is always attached to one, and starts a run on it.
+3. Studio's model writes a plan and waits for approval. In the app a person
+   approves it; the provider approves it as written, since nobody is watching.
+4. The provider polls until the run is `completed`, `failed` or `cancelled`.
+5. The thread is deleted from Studio's chat history, unless `keep_thread=true`.
+
+Deleting the thread deletes the run with it, so `provider_job_id` (see
+[Provider run identifiers](#provider-run-identifiers)) is recorded only with
+`keep_thread=true`, when the ID still points at a run in Studio.
+`provider_instance_url` is always Studio's address.
+
+The report's **citations** are the collected pages the report actually links
+to, in order of first use. A run collects more pages than it cites (search
+hits it never opened), and `run_metadata` records both counts along with each
+search and fetch and whether it succeeded. A model can cite a page from its
+search snippet after failing to fetch it; a `fetch` step with `status: failed`
+for a cited URL shows that. Small models sometimes cite a page as a bare `[label]`
+that Studio leaves unlinked. The provider adds the link in two unambiguous
+cases: the label is a collected page's title (apart from case, spacing and
+quote style), or it contains PubMed Central IDs that all belong to one
+collected page. Nothing else in the report is changed.
+A citation the model wrote some other way stays unlinked, so a completed
+report can come back with fewer citations than it appears to make, or none;
+check `sources_cited` in `run_metadata`.
+
+A run that fails or is cancelled raises an error, even when Studio saved a
+partial report. A run that exceeds `--timeout` is cancelled in Studio, so it
+does not go on using the GPU, and raises `ProviderTimeoutError`.
+
+### Characteristics
+
+- **Cost**: None per report; local hardware
+- **Speed**: Depends on the model and hardware. For scale: 1–2 minutes with a 4B model (Gemma 4 E4B, Q4) on an 8 GB laptop GPU
+- **Auth**: A Studio API key
+- **Fallback**: Never chosen by `--fallback` on its own; name it with `--fallback-provider unsloth`
+- **Default**: Registered last among the providers that do real research, so with no `--provider` it runs only when nothing else is configured
+
+### Limitations
+
+- The research-run routes are the ones Studio's own interface uses, not a
+  documented public API. This provider follows Studio 2026.11.11 and may need
+  changes when Studio updates.
+- Report quality depends on the loaded model. The one model it was developed
+  against, a 4B Gemma, typically makes two to six searches and fetches and
+  leans on a few sources.
+- It has been run against one setup: Studio 2026.11.11 on Windows with a GGUF
+  model on llama.cpp, reached from WSL. Other backends and platforms are
+  supported by Studio's API as read from its source, but not exercised here.
+- Retrieval is keyless general web search. There are no PubMed or other
+  literature-database tools, and citations are URLs rather than PMIDs.
+- Studio runs one research run at a time.
+- Requests to Studio can go unanswered for a minute or more while a run is
+  working (seen from WSL to Studio on Windows; other setups may not show it).
+  The provider retries a connection that times out, or a status check that
+  gets no answer, for up to five minutes at a stretch before failing.
+- The result cache is keyed on the parameters, not on which model was loaded.
+  After switching models in Studio, pass `llm` or `--no-cache`.
+
+### Using Studio only as the model
+
+Studio also serves an OpenAI-compatible endpoint at `/v1`, so the
+[ToolUniverse](#tooluniverse) provider can use a Studio model as the LLM behind
+its own agent. That route searches PubMed and Europe PMC and cites PMIDs and
+DOIs, at the cost of reading abstracts rather than full pages:
+
+```bash
+uv add 'deep-research-client[tooluniverse]'
+export TOOLUNIVERSE_API_KEY="$UNSLOTH_API_KEY"
+export TOOLUNIVERSE_BASE_URL="http://127.0.0.1:8888/v1"
+deep-research-client research "What is the role of LRRK2 in Parkinson disease?" \
+  --provider tooluniverse --param llm=unsloth/gemma-4-E4B-it-qat-GGUF \
+  --param request_timeout=900
+```
+
+The `tooluniverse` extra does not install on Python 3.14 at the time of
+writing (its `onnxruntime` pin has no 3.14 wheel); use 3.12 or 3.13. The same
+recipe works with any other local OpenAI-compatible server, such as Ollama at
+`http://127.0.0.1:11434/v1`.
+
+For live tests against a running Studio, run `uv run pytest -m integration
+tests/test_unsloth_provider.py` with `UNSLOTH_API_KEY` set.
 
 ---
 

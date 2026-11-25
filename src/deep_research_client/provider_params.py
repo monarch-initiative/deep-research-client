@@ -975,6 +975,63 @@ class ToolUniverseParams(ToolUniverseSelection, BaseProviderParams):
         return self
 
 
+class UnslothParams(BaseProviderParams):
+    """Parameters for Unsloth Studio's Deep Research on a local model.
+
+    ``model`` selects the research model card; ``llm`` names the Studio model
+    that does the work. ``system_prompt`` is passed to Studio as extra
+    instructions for the run, alongside its own research prompts, and
+    ``allowed_domains`` restricts its searches and page fetches.
+
+    >>> params = UnslothParams(max_steps=6, allowed_domains=["nih.gov"])
+    >>> (params.llm, params.max_steps, params.max_sources, params.keep_thread)
+    (None, 6, 40, False)
+    """
+
+    llm: Optional[str] = Field(
+        default=None, min_length=1,
+        description=(
+            "Studio model ID that must be the loaded one (e.g. "
+            "'unsloth/gemma-4-E4B-it-qat-GGUF'). Default: whichever chat model is loaded"
+        ),
+    )
+    max_steps: int = Field(
+        default=12, ge=1, le=30,
+        description="Most searches and page fetches the run may make",
+    )
+    max_sources: int = Field(
+        default=40, ge=1, le=100,
+        description="Most web pages the run may collect",
+    )
+    blocked_domains: List[str] = Field(
+        default_factory=list,
+        description="Domains the run must not search or fetch",
+    )
+    temperature: Optional[float] = Field(
+        default=None, ge=0.0, le=2.0,
+        description="Sampling temperature for the model; Studio's research default applies when unset",
+    )
+    keep_thread: bool = Field(
+        default=False,
+        description=(
+            "Keep the chat thread the run creates in Studio, so it can be read "
+            "there afterwards. By default it is deleted when the run ends"
+        ),
+    )
+    poll_interval: float = Field(
+        default=5.0, gt=0.0, le=60.0,
+        description="Seconds between checks on the run's progress",
+    )
+
+    @field_validator("system_prompt")
+    @classmethod
+    def validate_instructions_length(cls, value: Optional[str]) -> Optional[str]:
+        """Reject instructions longer than Studio accepts, before a run starts."""
+        if value is not None and len(value) > 32000:
+            raise ValueError("Unsloth Studio accepts at most 32000 characters of instructions")
+        return value
+
+
 # Registry mapping provider names to their parameter models
 PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "perplexity": PerplexityParams,
@@ -990,6 +1047,7 @@ PROVIDER_PARAMS_REGISTRY: dict[str, Type[BaseProviderParams]] = {
     "antigravity": AntigravityParams,
     "biomni": BiomniParams,
     "tooluniverse": ToolUniverseParams,
+    "unsloth": UnslothParams,
     "deeper_med": DeeperMedParams,
     "toxindex": ToxIndexParams,
     "rss_agent": RssAgentParams,

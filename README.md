@@ -8,7 +8,7 @@ A simple Python wrapper for multiple deep research tools including OpenAI Deep R
 
 ## Features
 
-- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Claude Managed Agents (hosted sandbox), Google Antigravity (local CLI), and Biomni (biomedical co-scientist)
+- 🔍 **Multiple Providers**: Support for OpenAI Deep Research, Edison Scientific, Asta, Perplexity AI, Consensus, Cyberian (agent-based), OpenScientist (autonomous), Claude Code (local CLI), Claude Managed Agents (hosted sandbox), Google Antigravity (local CLI), Unsloth Studio (local open models), and Biomni (biomedical co-scientist)
 - 📚 **Rich Output**: Returns comprehensive markdown reports with citations
 - 💾 **Smart Caching**: File-based caching to avoid expensive re-queries
 - 🔧 **Simple Configuration**: Auto-detects providers from environment variables
@@ -103,6 +103,12 @@ pip install deep-research-client[biomni]
 export RSS_AGENT_DIR="/path/to/rss_agent_claude"
 export RSS_AGENT_PYTHON="/path/to/rss_agent_claude/venv/bin/python"
 # Claude scoring uses ANTHROPIC_API_KEY (or the checkout's .env).
+
+# For Unsloth Studio (deep research on a local, open model): start Studio, load a
+# chat model, and create an API key in its settings.
+export UNSLOTH_API_KEY="sk-unsloth-..."
+# Optional: where Studio listens (default http://127.0.0.1:8888)
+# export UNSLOTH_BASE_URL="http://127.0.0.1:8888"
 
 # For ToolUniverse (local co-scientist with scientific tools and Python execution):
 uv add 'deep-research-client[tooluniverse]'
@@ -1189,6 +1195,7 @@ deep-research-client research "simple question" --provider perplexity --model so
 | Consensus | `CONSENSUS_API_KEY` | Consensus Academic Search | Peer-reviewed academic papers, evidence-based research |
 | OpenScientist | `OPENSCIENTIST_API_KEY` | openscientist-autonomous | Iterative hypothesis-driven research, PubMed PMID citations, preserves useful artifacts |
 | ToolUniverse | `TOOLUNIVERSE_API_KEY` or `OPENAI_API_KEY` + optional extra | tooluniverse-coscientist | Local co-scientist, scientific database tools, hypothesis investigation and Python execution |
+| Unsloth Studio | `UNSLOTH_API_KEY` (key made in a local Studio) | unsloth-studio-research | Web research on a local, open model through Studio's Deep Research; see the [provider reference](docs/reference/providers.md#unsloth-studio-local-models) |
 | RSS Agent | `RSS_AGENT_DIR` (local rss_agent_claude checkout) | rss-agent-digest | Ranked digest of recent papers from RSS feeds, Crossref and bioRxiv, scored by Claude against your interests |
 
 ToolUniverse exposes its scientific Python tools to a `smolagents.CodeAgent`.

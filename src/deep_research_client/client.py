@@ -42,6 +42,7 @@ PROVIDER_CLASS_PATHS: dict[str, tuple[str, str]] = {
     "claude_managed": ("deep_research_client.providers.claude_managed", "ClaudeManagedProvider"),
     "biomni": ("deep_research_client.providers.biomni", "BiomniProvider"),
     "tooluniverse": ("deep_research_client.providers.tooluniverse", "ToolUniverseProvider"),
+    "unsloth": ("deep_research_client.providers.unsloth", "UnslothProvider"),
     "deeper_med": ("deep_research_client.providers.deeper_med", "DeeperMedProvider"),
     "toxindex": ("deep_research_client.providers.toxindex", "ToxIndexProvider"),
     "rss_agent": ("deep_research_client.providers.rss_agent", "RssAgentProvider"),
@@ -291,6 +292,22 @@ class DeepResearchClient:
                 timeout=RSS_AGENT_DEFAULT_TIMEOUT,
             )
             self.registry.register(self._create_provider("rss_agent", rss_agent_config))
+
+        # Unsloth Studio provider - local models through Studio's Deep Research.
+        # The key is one made in Studio's settings; the URL defaults to the
+        # desktop app's local port. Registered after every other provider that
+        # does real research: with no provider named, the first available one
+        # runs, and setting this key to try a local model must not make that
+        # model the default ahead of a hosted provider or an agent CLI.
+        unsloth_key = os.getenv("UNSLOTH_API_KEY")
+        if unsloth_key:
+            unsloth_config = ProviderConfig(
+                name="unsloth",
+                api_key=unsloth_key,
+                base_url=os.getenv("UNSLOTH_BASE_URL"),
+                enabled=True,
+            )
+            self.registry.register(self._create_provider("unsloth", unsloth_config))
 
         # DeepER-Med is a stub with no upstream endpoint. It is registered
         # unconditionally and needs no credentials: is_available() is always False,

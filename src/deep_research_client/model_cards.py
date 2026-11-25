@@ -1225,6 +1225,45 @@ def create_tooluniverse_model_cards() -> ProviderModelCards:
     )
 
 
+def create_unsloth_model_cards() -> ProviderModelCards:
+    """Create the model card for Unsloth Studio's Deep Research."""
+    card = ModelCard(
+        name="unsloth-studio-research",
+        display_name="Unsloth Studio Deep Research",
+        description=(
+            "Deep Research run by a local Unsloth Studio on whichever open model "
+            "it has loaded. The model plans, searches the web and reads pages, "
+            "and writes a report whose links point only at pages it collected."
+        ),
+        cost_level=CostLevel.LOW,
+        time_estimate=TimeEstimate.SLOW,
+        archetype=ProviderArchetype.agentic_researcher,
+        capabilities=[
+            ResearchCapability.web_search,
+            ResearchCapability.evidence_synthesis,
+            ResearchCapability.citation_tracking,
+        ],
+        resources=[ResearchResource.general_web],
+        aliases=["unsloth", "studio"],
+        pricing_notes="No per-report charge; runs on local hardware.",
+        use_cases=[
+            "Research reports without a hosted model",
+            "Comparing open models on the same question",
+        ],
+        limitations=[
+            "Requires a running Unsloth Studio with a chat model loaded and tools enabled",
+            "Report quality depends on the loaded model; small models cite few sources",
+            "The report's model field names the Studio model that ran, not this card",
+            "Uses Studio's internal research-run routes, which may change between Studio releases",
+            "Keyless web search; no PubMed or other literature-database tools",
+            "One research run at a time per Studio instance",
+        ],
+    )
+    return ProviderModelCards(
+        provider_name="unsloth", default_model=card.name, models={card.name: card},
+    )
+
+
 # Registry of all provider model cards. Defined here, after every factory, so
 # each provider is registered in exactly one place.
 PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
@@ -1242,5 +1281,6 @@ PROVIDER_MODEL_CARDS: Dict[str, ProviderModelCards] = {
     "cyberian": create_cyberian_model_cards(),
     "biomni": create_biomni_model_cards(),
     "tooluniverse": create_tooluniverse_model_cards(),
+    "unsloth": create_unsloth_model_cards(),
     "rss_agent": create_rss_agent_model_cards(),
 }

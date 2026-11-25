@@ -85,6 +85,10 @@ UNSLOTH_CONNECT_TIMEOUT = 10
 #: gives up on it. Stretches of over a minute were observed during runs.
 UNSLOTH_BUSY_GRACE = 300
 
+#: Failures that leave it unknown whether Studio received the request. A read
+#: can simply be asked again; a write cannot, since it may have been applied.
+_UNANSWERED_REQUEST = (httpx.ReadTimeout, httpx.ReadError, httpx.RemoteProtocolError)
+
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 #: A bracketed label with no link target after it: ``[Some title]``.
 _UNLINKED_LABEL = re.compile(r"\[([^\[\]]+)\](?!\()")
@@ -134,6 +138,23 @@ class StudioRun(BaseModel):
     report: Optional[str] = None
     steps: list[StudioStep] = Field(default_factory=list)
     sources: list[StudioSource] = Field(default_factory=list)
+
+
+def _may_retry(error: httpx.TransportError, method: str) -> bool:
+    """Say whether a request that failed in transit can safely be sent again.
+
+    >>> _may_retry(httpx.ConnectTimeout("timed out"), "POST")
+    True
+    >>> _may_retry(httpx.ReadTimeout("timed out"), "GET")
+    True
+    >>> _may_retry(httpx.ReadTimeout("timed out"), "POST")
+    False
+    >>> _may_retry(httpx.WriteError("broken pipe"), "GET")
+    False
+    """
+    if isinstance(error, httpx.ConnectTimeout):
+        return True
+    return method == "GET" and isinstance(error, _UNANSWERED_REQUEST)
 
 
 def studio_root(base_url: Optional[str]) -> str:
@@ -452,11 +473,14 @@ class UnslothProvider(ResearchProvider):
     async def _call(
         self, client: httpx.AsyncClient, method: str, path: str, body: Optional[dict[str, Any]] = None,
     ) -> Any:
-        """Make one API call, waiting out a Studio that is not taking connections.
+        """Make one API call, waiting out a Studio that is not answering.
 
-        Only a connection that timed out is retried: the request was never
-        sent, so repeating it is safe for writes as well as reads. A refused
-        connection means Studio is not running and fails at once.
+        A connection that timed out is retried for any request: it was never
+        sent, so repeating it is safe for writes as well as reads. A read that
+        got no answer is retried too, so one slow poll does not end a healthy
+        run. Any other transport failure is raised as a provider error rather
+        than a raw ``httpx`` exception; a refused connection means Studio is
+        not running and fails at once.
 
         Args:
             client: The authenticated HTTP client
@@ -468,8 +492,10 @@ class UnslothProvider(ResearchProvider):
             The decoded JSON response
 
         Raises:
-            ProviderTransientError: If Studio takes no connection for
-                :data:`UNSLOTH_BUSY_GRACE` seconds
+            ProviderNotConfiguredError: If the connection is refused
+            ProviderTransientError: If Studio does not answer for
+                :data:`UNSLOTH_BUSY_GRACE` seconds, or the request fails in
+                transit
             ProviderError: A classified subtype for 401/402/403/429/5xx
             ValueError: For any other failure status
         """
@@ -477,14 +503,22 @@ class UnslothProvider(ResearchProvider):
         while True:
             try:
                 response = await client.request(method, path, json=body)
-            except httpx.ConnectTimeout as error:
+            except httpx.ConnectError as error:
+                raise ProviderNotConfiguredError(
+                    self.name, f"cannot connect to Unsloth Studio at {self.base_url}; is it running?",
+                ) from error
+            except httpx.TransportError as error:
+                if not _may_retry(error, method):
+                    raise ProviderTransientError(
+                        self.name, f"{method} {path} failed in transit ({type(error).__name__})",
+                    ) from error
                 if time.monotonic() >= give_up_at:
                     raise ProviderTransientError(
                         self.name,
-                        f"Unsloth Studio at {self.base_url} accepted no connection "
-                        f"for {UNSLOTH_BUSY_GRACE} s",
+                        f"Unsloth Studio at {self.base_url} did not answer "
+                        f"for {UNSLOTH_BUSY_GRACE} s ({type(error).__name__})",
                     ) from error
-                logger.debug(f"Connection to Unsloth Studio timed out; retrying {method} {path}")
+                logger.debug(f"Unsloth Studio did not answer ({type(error).__name__}); retrying {method} {path}")
                 continue
             break
         if not response.is_success:

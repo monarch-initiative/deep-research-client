@@ -89,6 +89,17 @@ def test_run_metadata_lists_each_search_and_fetch_in_order(recorded):
     assert steps[1]["input"].startswith("https://")
 
 
+def test_run_metadata_says_which_steps_failed(recorded):
+    """The recorded run could not fetch one page; the record must not read as if it had."""
+    steps = result_of(recorded).run_metadata["steps"]
+    failed = [step for step in steps if step["status"] == "failed"]
+
+    assert [(step["action"], step["input"], step["sources_found"]) for step in failed] == [
+        ("fetch", "https://journals.asm.org/doi/10.1128/mbio.00939-20", 0)
+    ]
+    assert all(step["status"] == "completed" for step in steps if step not in failed)
+
+
 @pytest.mark.parametrize(
     "change, message",
     [

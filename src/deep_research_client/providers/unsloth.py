@@ -453,7 +453,14 @@ def run_result(
         run_metadata={
             "llm": llm,
             "steps": [
-                {"action": step.result.get("action"), "input": step.result.get("input")}
+                {
+                    "action": step.result.get("action"),
+                    "input": step.result.get("input"),
+                    # A fetch can fail; without this the record would say
+                    # the model read a page it never got.
+                    "status": step.status,
+                    "sources_found": step.result.get("sourceCount"),
+                }
                 for step in run.steps
                 if step.result
             ],

@@ -1591,7 +1591,9 @@ Deleting the thread deletes the run with it, so `provider_job_id` (see
 The report's **citations** are the collected pages the report actually links
 to, in order of first use. A run collects more pages than it cites (search
 hits it never opened), and `run_metadata` records both counts along with each
-search and fetch. Small models sometimes cite a page as a bare `[label]`
+search and fetch and whether it succeeded. A model can cite a page from its
+search snippet after failing to fetch it; a `fetch` step with `status: failed`
+for a cited URL shows that. Small models sometimes cite a page as a bare `[label]`
 that Studio leaves unlinked. The provider adds the link in two unambiguous
 cases: the label is a collected page's title (apart from case, spacing and
 quote style), or it contains PubMed Central IDs that all belong to one

@@ -40,6 +40,7 @@ import logging
 import re
 import time
 from typing import Annotated, Any, Iterable, Optional
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -69,6 +70,7 @@ __all__ = [
     "link_bare_citations",
     "loaded_model",
     "run_result",
+    "sends_key_unencrypted",
     "studio_root",
 ]
 
@@ -214,6 +216,25 @@ def studio_root(base_url: Optional[str]) -> str:
     'http://studio.lan:9000'
     """
     return (base_url or UNSLOTH_DEFAULT_BASE_URL).rstrip("/").removesuffix("/v1")
+
+
+def sends_key_unencrypted(root: str) -> bool:
+    """Say whether the API key would cross a network in the clear.
+
+    Plain ``http`` to the same machine is how the desktop app is normally
+    reached and exposes nothing. Plain ``http`` to another host sends the
+    bearer key where others on the network can read it.
+
+    >>> [sends_key_unencrypted(url) for url in
+    ...  ("http://127.0.0.1:8888", "http://localhost:8888", "http://[::1]:8888", "https://studio.example")]
+    [False, False, False, False]
+    >>> sends_key_unencrypted("http://studio.lan:9000")
+    True
+    """
+    parts = urlsplit(root)
+    host = parts.hostname or ""
+    on_this_machine = host == "localhost" or host == "::1" or host.startswith("127.")
+    return parts.scheme == "http" and not on_this_machine
 
 
 def _loaded_chat_models(models: list[dict[str, Any]]) -> list[str]:
@@ -851,6 +872,11 @@ class UnslothProvider(ResearchProvider):
         run_id: Optional[str] = None
         run: Optional[StudioRun] = None
         started = False
+        if sends_key_unencrypted(self.base_url):
+            logger.warning(
+                f"Sending the Unsloth Studio API key over unencrypted http to {self.base_url}; "
+                "use https, or a tunnel, to reach a Studio on another machine"
+            )
         async with self._client() as client:
             try:
                 # The deadline covers finding the model and starting the run as
